@@ -25,7 +25,7 @@ use crate::storage::{StorageRoot, create_private_dir, durable_create_new, durabl
 const RETRY_DIRECTORY: &str = "transcript-retry";
 const RECEIPT_FILE: &str = "receipt.json";
 const MAX_TRANSCRIPT_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_RETRY_DISCOVERY_ENTRIES: usize = 32;
+const MAX_RETRY_DISCOVERY_ENTRIES: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1242,5 +1242,45 @@ mod tests {
             authority.discover_pending_candidate("meeting-a").unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn discovery_allows_256_terminal_receipts_but_bounds_the_next_entry() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        for _ in 0..MAX_RETRY_DISCOVERY_ENTRIES {
+            let operation_id = Uuid::new_v4();
+            authority
+                .create_candidate(
+                    "meeting-a",
+                    operation_id,
+                    b"terminal",
+                    &binding(&fixture, b"terminal"),
+                )
+                .unwrap();
+            assert_eq!(
+                authority.keep_current("meeting-a", operation_id).unwrap(),
+                TranscriptRetryOutcome::CurrentKept
+            );
+        }
+        assert_eq!(
+            authority.discover_pending_candidate("meeting-a").unwrap(),
+            None
+        );
+
+        let overflow = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                overflow,
+                b"terminal",
+                &binding(&fixture, b"terminal"),
+            )
+            .unwrap();
+        authority.keep_current("meeting-a", overflow).unwrap();
+        assert!(matches!(
+            authority.discover_pending_candidate("meeting-a"),
+            Err(TranscriptRetryError::DiscoveryBoundExceeded)
+        ));
     }
 }
