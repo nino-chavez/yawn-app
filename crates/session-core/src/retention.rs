@@ -28,6 +28,7 @@ use crate::storage::{
     BoundPrivateDirectory, BoundPrivateFile, StorageRoot, create_private_dir, durable_create_new,
     durable_replace, sync_directory,
 };
+use crate::transcript_retry::TranscriptRetryAuthority;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -691,6 +692,18 @@ impl AppDataWriterLock {
         &self,
     ) -> crate::transcript_deletion::TranscriptDeletionAuthority<'_> {
         crate::transcript_deletion::TranscriptDeletionAuthority {
+            storage: &self.storage,
+            coordination: self.coordination.as_ref(),
+        }
+    }
+
+    /// Authority for durable transcript retry candidates and operator decisions.
+    ///
+    /// This borrows the held writer lock just like the other storage
+    /// authorities, so callers cannot substitute a different storage root or
+    /// meeting coordination registry.
+    pub fn transcript_retry_authority(&self) -> TranscriptRetryAuthority<'_> {
+        TranscriptRetryAuthority {
             storage: &self.storage,
             coordination: self.coordination.as_ref(),
         }

@@ -25,6 +25,7 @@ use crate::storage::{StorageRoot, create_private_dir, durable_create_new, durabl
 const RETRY_DIRECTORY: &str = "transcript-retry";
 const RECEIPT_FILE: &str = "receipt.json";
 const MAX_TRANSCRIPT_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_RETRY_DISCOVERY_ENTRIES: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -88,6 +89,37 @@ pub struct TranscriptRetryCandidate {
     pub candidate_transcript: ArtifactRef,
 }
 
+/// Restart-discovery metadata for the one candidate awaiting comparison.
+/// Deliberately omits filesystem paths and timestamps; native projection uses
+/// `operation_id` with [`TranscriptRetryAuthority::read_candidate_bytes`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TranscriptRetryPendingCandidate {
+    pub operation_id: Uuid,
+    pub meeting_id: String,
+    pub state: TranscriptRetryState,
+    pub source_transcript_sha256: String,
+    pub capture_session_sha256: String,
+    pub microphone_audio_sha256: String,
+    pub system_audio_sha256: String,
+    pub candidate_transcript_sha256: String,
+}
+
+impl From<&TranscriptRetryCandidate> for TranscriptRetryPendingCandidate {
+    fn from(candidate: &TranscriptRetryCandidate) -> Self {
+        Self {
+            operation_id: candidate.operation_id,
+            meeting_id: candidate.meeting_id.clone(),
+            state: candidate.state,
+            source_transcript_sha256: candidate.source_transcript_sha256.clone(),
+            capture_session_sha256: candidate.capture_session_sha256.clone(),
+            microphone_audio_sha256: candidate.microphone_audio_sha256.clone(),
+            system_audio_sha256: candidate.system_audio_sha256.clone(),
+            candidate_transcript_sha256: candidate.candidate_transcript.sha256.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum TranscriptRetryError {
     #[error("meeting storage coordination is unavailable")]
@@ -124,6 +156,10 @@ pub enum TranscriptRetryError {
     PendingStorageOperation,
     #[error("retry candidate is not in an available state")]
     InvalidState,
+    #[error("another transcript retry candidate is awaiting a decision")]
+    PendingCandidateExists,
+    #[error("too many transcript retry operations to inspect safely")]
+    DiscoveryBoundExceeded,
 }
 
 /// The only capability that can admit or decide a transcript retry.  The
@@ -185,6 +221,12 @@ impl<'a> TranscriptRetryAuthority<'a> {
         }
         if !binding_matches_meeting(binding, &meeting) {
             return Err(TranscriptRetryError::BindingMismatch);
+        }
+        if self
+            .discover_pending_candidate_locked(&meeting_dir, &meeting, meeting_id)?
+            .is_some_and(|candidate| candidate.operation_id != operation_id)
+        {
+            return Err(TranscriptRetryError::PendingCandidateExists);
         }
         let candidate_sha = binding.candidate_transcript_sha256.clone();
         let candidate = TranscriptRetryCandidate {
@@ -321,6 +363,55 @@ impl<'a> TranscriptRetryAuthority<'a> {
         Ok(candidate)
     }
 
+    /// Finds the single valid candidate still awaiting an operator decision.
+    ///
+    /// The scan is intentionally bounded and runs under the meeting lease so a
+    /// restart cannot admit a second pending candidate from a stale directory
+    /// view. Terminal receipts remain durable but are not returned as pending.
+    pub fn discover_pending_candidate(
+        &self,
+        meeting_id: &str,
+    ) -> Result<Option<TranscriptRetryPendingCandidate>, TranscriptRetryError> {
+        let _lease = self.coordination.acquire(meeting_id)?;
+        let meeting_dir = self.meeting_dir(meeting_id)?;
+        let retry_root = meeting_dir.join(RETRY_DIRECTORY);
+        match fs::symlink_metadata(&retry_root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.into()),
+        }
+        let meeting = self.load_source(&meeting_dir, meeting_id)?;
+        Ok(self
+            .discover_pending_candidate_locked(&meeting_dir, &meeting, meeting_id)?
+            .as_ref()
+            .map(TranscriptRetryPendingCandidate::from))
+    }
+
+    /// Reads and verifies candidate bytes for native comparison projection.
+    /// The returned bytes are bounded by the same transcript limit used at
+    /// admission and are checked against the receipt digest while leased.
+    pub fn read_candidate_bytes(
+        &self,
+        meeting_id: &str,
+        operation_id: Uuid,
+    ) -> Result<Vec<u8>, TranscriptRetryError> {
+        let _lease = self.coordination.acquire(meeting_id)?;
+        let meeting_dir = self.meeting_dir(meeting_id)?;
+        let meeting = self.load_source(&meeting_dir, meeting_id)?;
+        let candidate = load_receipt(
+            &self.operation_dir(&meeting_dir, operation_id)?,
+            operation_id,
+        )?;
+        self.validate_receipt(&meeting_dir, &meeting, &candidate, meeting_id)?;
+        let path = meeting_dir.join(&candidate.candidate_transcript.relative_path);
+        let bytes = read_private_bytes(&path, MAX_TRANSCRIPT_BYTES)
+            .map_err(|_| TranscriptRetryError::CandidateChanged)?;
+        if digest_bytes(&bytes) != candidate.candidate_transcript.sha256 {
+            return Err(TranscriptRetryError::CandidateDigestMismatch);
+        }
+        Ok(bytes)
+    }
+
     fn meeting_dir(&self, meeting_id: &str) -> Result<PathBuf, TranscriptRetryError> {
         let path = self
             .storage
@@ -351,6 +442,62 @@ impl<'a> TranscriptRetryAuthority<'a> {
             require_private_directory(&path)?;
         }
         Ok(path)
+    }
+
+    fn discover_pending_candidate_locked(
+        &self,
+        meeting_dir: &Path,
+        meeting: &MeetingRecord,
+        meeting_id: &str,
+    ) -> Result<Option<TranscriptRetryCandidate>, TranscriptRetryError> {
+        let retry_root = meeting_dir.join(RETRY_DIRECTORY);
+        match fs::symlink_metadata(&retry_root) {
+            Ok(_) => require_private_directory(&retry_root)
+                .map_err(|_| TranscriptRetryError::MalformedOperation)?,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(TranscriptRetryError::MalformedOperation),
+        }
+        let mut entries = fs::read_dir(&retry_root)?;
+        let mut pending = None;
+        for index in 0..=MAX_RETRY_DISCOVERY_ENTRIES {
+            let Some(entry) = entries.next() else {
+                break;
+            };
+            let entry = entry.map_err(|_| TranscriptRetryError::MalformedOperation)?;
+            if index == MAX_RETRY_DISCOVERY_ENTRIES {
+                return Err(TranscriptRetryError::DiscoveryBoundExceeded);
+            }
+            let operation_id = entry
+                .file_name()
+                .to_str()
+                .and_then(|value| Uuid::parse_str(value).ok())
+                .ok_or(TranscriptRetryError::MalformedOperation)?;
+            let operation_dir = entry.path();
+            require_private_directory(&operation_dir)
+                .map_err(|_| TranscriptRetryError::MalformedOperation)?;
+            let candidate = load_receipt(&operation_dir, operation_id)?;
+            if candidate.meeting_id != meeting_id || candidate.meeting_id != meeting.meeting_id {
+                return Err(TranscriptRetryError::CrossMeetingCandidate);
+            }
+            match candidate.state {
+                TranscriptRetryState::CandidateAvailableForComparison => {
+                    // A pending candidate must still bind to today's source set.
+                    self.validate_receipt(meeting_dir, meeting, &candidate, meeting_id)?;
+                    if pending.is_some() {
+                        return Err(TranscriptRetryError::PendingCandidateExists);
+                    }
+                    pending = Some(candidate);
+                }
+                TranscriptRetryState::CurrentKept | TranscriptRetryState::CandidatePromoted => {
+                    // Terminal receipts are no longer admission blockers. Keep
+                    // their candidate bytes integrity-checked without requiring
+                    // the old source audio to remain current or retained.
+                    verify_artifact_ref(meeting_dir, &candidate.candidate_transcript)
+                        .map_err(|_| TranscriptRetryError::CandidateChanged)?;
+                }
+            }
+        }
+        Ok(pending)
     }
 
     fn load_source(
@@ -844,5 +991,256 @@ mod tests {
             ),
             Err(TranscriptRetryError::AudioReleased)
         ));
+    }
+
+    #[test]
+    fn pending_candidate_is_discoverable_after_authority_restart() {
+        let fixture = fixture();
+        let id = Uuid::new_v4();
+        TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination)
+            .create_candidate(
+                "meeting-a",
+                id,
+                b"candidate",
+                &binding(&fixture, b"candidate"),
+            )
+            .unwrap();
+
+        let restarted = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let discovered = restarted
+            .discover_pending_candidate("meeting-a")
+            .unwrap()
+            .unwrap();
+        assert_eq!(discovered.operation_id, id);
+        assert_eq!(
+            discovered.candidate_transcript_sha256,
+            digest_bytes(b"candidate")
+        );
+        assert_eq!(
+            discovered.state,
+            TranscriptRetryState::CandidateAvailableForComparison
+        );
+    }
+
+    #[test]
+    fn a_second_pending_candidate_is_refused_but_same_operation_is_idempotent() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let first = Uuid::new_v4();
+        authority
+            .create_candidate("meeting-a", first, b"first", &binding(&fixture, b"first"))
+            .unwrap();
+
+        let second = Uuid::new_v4();
+        assert_eq!(
+            authority
+                .create_candidate(
+                    "meeting-a",
+                    second,
+                    b"second",
+                    &binding(&fixture, b"second")
+                )
+                .unwrap_err()
+                .to_string(),
+            "another transcript retry candidate is awaiting a decision"
+        );
+        assert!(
+            !fixture
+                .meeting_dir
+                .join(RETRY_DIRECTORY)
+                .join(second.to_string())
+                .exists()
+        );
+        assert_eq!(
+            authority
+                .create_candidate("meeting-a", first, b"first", &binding(&fixture, b"first"))
+                .unwrap(),
+            TranscriptRetryOutcome::CandidateAvailableForComparison
+        );
+    }
+
+    #[test]
+    fn stale_source_is_refused_during_restart_discovery() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let id = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                id,
+                b"candidate",
+                &binding(&fixture, b"candidate"),
+            )
+            .unwrap();
+
+        let newer = b"newer source";
+        let newer_path = fixture
+            .meeting_dir
+            .join("transcript")
+            .join(format!("{}.json", digest_bytes(newer)));
+        private_file(&newer_path, newer);
+        let mut meeting = load_meeting(&fixture.meeting_dir).unwrap();
+        meeting.artifacts.current_transcript = Some(
+            artifact_ref(
+                &fixture.meeting_dir,
+                &format!("transcript/{}.json", digest_bytes(newer)),
+            )
+            .unwrap(),
+        );
+        write_meeting(&fixture.meeting_dir, &meeting).unwrap();
+
+        assert!(matches!(
+            authority.discover_pending_candidate("meeting-a"),
+            Err(TranscriptRetryError::StaleSource)
+        ));
+    }
+
+    #[test]
+    fn released_audio_is_refused_during_restart_discovery() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let id = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                id,
+                b"candidate",
+                &binding(&fixture, b"candidate"),
+            )
+            .unwrap();
+        let mut meeting = load_meeting(&fixture.meeting_dir).unwrap();
+        create_private_dir(&fixture.meeting_dir.join("deletion")).unwrap();
+        private_file(
+            &fixture.meeting_dir.join("deletion/audio-deletion.json"),
+            b"released",
+        );
+        meeting.retention.state = AudioState::Released;
+        meeting.retention.deletion_receipt =
+            Some(artifact_ref(&fixture.meeting_dir, "deletion/audio-deletion.json").unwrap());
+        write_meeting(&fixture.meeting_dir, &meeting).unwrap();
+
+        assert!(matches!(
+            authority.discover_pending_candidate("meeting-a"),
+            Err(TranscriptRetryError::AudioReleased)
+        ));
+    }
+
+    #[test]
+    fn corrupt_or_cross_meeting_receipts_are_refused() {
+        {
+            let fixture = fixture();
+            let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+            let corrupt = Uuid::new_v4();
+            authority
+                .create_candidate(
+                    "meeting-a",
+                    corrupt,
+                    b"candidate",
+                    &binding(&fixture, b"candidate"),
+                )
+                .unwrap();
+            std::fs::write(
+                fixture
+                    .meeting_dir
+                    .join(RETRY_DIRECTORY)
+                    .join(corrupt.to_string())
+                    .join(RECEIPT_FILE),
+                b"not json",
+            )
+            .unwrap();
+            assert!(matches!(
+                authority.discover_pending_candidate("meeting-a"),
+                Err(TranscriptRetryError::MalformedOperation)
+            ));
+        }
+
+        let cross_fixture = fixture();
+        let authority =
+            TranscriptRetryAuthority::new(&cross_fixture.storage, &cross_fixture.coordination);
+        let cross = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                cross,
+                b"cross candidate",
+                &binding(&cross_fixture, b"cross candidate"),
+            )
+            .unwrap();
+        let receipt_path = cross_fixture
+            .meeting_dir
+            .join(RETRY_DIRECTORY)
+            .join(cross.to_string())
+            .join(RECEIPT_FILE);
+        let mut receipt: TranscriptRetryCandidate =
+            serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+        receipt.meeting_id = "meeting-b".into();
+        std::fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+        assert!(matches!(
+            authority.discover_pending_candidate("meeting-a"),
+            Err(TranscriptRetryError::CrossMeetingCandidate)
+        ));
+    }
+
+    #[test]
+    fn candidate_bytes_are_bounded_and_verified() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let id = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                id,
+                b"candidate",
+                &binding(&fixture, b"candidate"),
+            )
+            .unwrap();
+        assert_eq!(
+            authority.read_candidate_bytes("meeting-a", id).unwrap(),
+            b"candidate"
+        );
+
+        std::fs::write(
+            fixture
+                .meeting_dir
+                .join("transcript")
+                .join(format!("{}.json", digest_bytes(b"candidate"))),
+            b"tampered",
+        )
+        .unwrap();
+        assert!(matches!(
+            authority.read_candidate_bytes("meeting-a", id),
+            Err(TranscriptRetryError::CandidateChanged)
+                | Err(TranscriptRetryError::CandidateDigestMismatch)
+        ));
+    }
+
+    #[test]
+    fn terminal_candidates_are_not_reported_as_pending() {
+        let fixture = fixture();
+        let authority = TranscriptRetryAuthority::new(&fixture.storage, &fixture.coordination);
+        let kept = Uuid::new_v4();
+        authority
+            .create_candidate("meeting-a", kept, b"kept", &binding(&fixture, b"kept"))
+            .unwrap();
+        authority.keep_current("meeting-a", kept).unwrap();
+        assert_eq!(
+            authority.discover_pending_candidate("meeting-a").unwrap(),
+            None
+        );
+
+        let promoted = Uuid::new_v4();
+        authority
+            .create_candidate(
+                "meeting-a",
+                promoted,
+                b"promoted",
+                &binding(&fixture, b"promoted"),
+            )
+            .unwrap();
+        authority.promote_candidate("meeting-a", promoted).unwrap();
+        assert_eq!(
+            authority.discover_pending_candidate("meeting-a").unwrap(),
+            None
+        );
     }
 }
