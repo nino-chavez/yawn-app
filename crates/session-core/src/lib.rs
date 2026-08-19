@@ -33,3 +33,4 @@ pub mod supervision;
 pub mod transcript_deletion;
 pub mod transcript_restoration;
 pub mod transcript_retry;
+pub mod transcription_queue;
