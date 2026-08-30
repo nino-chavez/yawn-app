@@ -99,20 +99,32 @@ fn product_builds_keep_one_frontend_and_two_bounded_windows() {
     assert!(build_contract::validate(build_contract::BuildMode::Preview, &preview).is_ok());
     assert_eq!(production["build"]["frontendDist"], "../ui");
     assert_eq!(preview["build"]["frontendDist"], "../ui");
-    assert_eq!(production["app"]["security"]["capabilities"], serde_json::json!(["main-window", "settings-window"]));
-    assert_eq!(preview["app"]["security"]["capabilities"], serde_json::json!(["preview-window", "settings-window"]));
+    assert_eq!(
+        production["app"]["security"]["capabilities"],
+        serde_json::json!(["main-window", "settings-window"])
+    );
+    assert_eq!(
+        preview["app"]["security"]["capabilities"],
+        serde_json::json!(["preview-window", "settings-window"])
+    );
 }
 
 #[test]
 fn product_windows_have_only_the_commands_the_new_surface_uses() {
     let main = permissions(include_str!("../capabilities/product/main.json"));
     let preview = permissions(include_str!("../capabilities/product/preview.json"));
-    let expected: Vec<String> = MAIN_PERMISSIONS.iter().map(|permission| (*permission).to_owned()).collect();
+    let expected: Vec<String> = MAIN_PERMISSIONS
+        .iter()
+        .map(|permission| (*permission).to_owned())
+        .collect();
 
     assert_eq!(main, expected);
     assert_eq!(preview, expected);
     for forbidden in ["profile", "folder", "layout", "corpus", "reference"] {
-        assert!(main.iter().all(|permission| !permission.contains(forbidden)));
+        assert!(
+            main.iter()
+                .all(|permission| !permission.contains(forbidden))
+        );
     }
 }
 
@@ -139,24 +151,36 @@ fn every_frontend_call_has_a_matching_product_permission() {
         let permitted = permissions(source);
         for command in invoked {
             let needed = format!("allow-{}", command.replace('_', "-"));
-            assert!(permitted.contains(&needed), "missing permission for {command}");
+            assert!(
+                permitted.contains(&needed),
+                "missing permission for {command}"
+            );
         }
     }
 
     let main_invoked = invoked_commands(
         include_str!("../../ui/main.js"),
-        &["first_run_request_microphone", "first_run_request_system_audio"],
+        &[
+            "first_run_request_microphone",
+            "first_run_request_system_audio",
+        ],
     );
     let settings_invoked = invoked_commands(
         include_str!("../../ui/settings.js"),
-        &["first_run_request_microphone", "first_run_request_system_audio"],
+        &[
+            "first_run_request_microphone",
+            "first_run_request_system_audio",
+        ],
     );
     let mut invoked = main_invoked.clone();
     invoked.extend(settings_invoked.clone());
     invoked.sort();
     invoked.dedup();
 
-    let mut expected: Vec<String> = PRODUCT_COMMANDS.iter().map(|command| (*command).to_owned()).collect();
+    let mut expected: Vec<String> = PRODUCT_COMMANDS
+        .iter()
+        .map(|command| (*command).to_owned())
+        .collect();
     expected.sort();
     assert_eq!(invoked, expected);
     for source in [
@@ -210,14 +234,27 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
 #[test]
 fn desktop_handler_exposes_the_same_small_product_command_set() {
     let source = include_str!("../src/main.rs");
-    let handler_start = source.find(".invoke_handler(tauri::generate_handler![").unwrap();
+    let handler_start = source
+        .find(".invoke_handler(tauri::generate_handler![")
+        .unwrap();
     let handler_end = source[handler_start..].find("])\n        .setup").unwrap() + handler_start;
     let handler = &source[handler_start..handler_end];
 
     for command in PRODUCT_COMMANDS {
-        assert!(handler.contains(command), "handler does not register {command}");
+        assert!(
+            handler.contains(command),
+            "handler does not register {command}"
+        );
     }
-    for retired in ["get_desktop_layout", "preview_profile", "library_create_folder", "corpus_search"] {
-        assert!(!handler.contains(retired), "retired command remains in the product handler: {retired}");
+    for retired in [
+        "get_desktop_layout",
+        "preview_profile",
+        "library_create_folder",
+        "corpus_search",
+    ] {
+        assert!(
+            !handler.contains(retired),
+            "retired command remains in the product handler: {retired}"
+        );
     }
 }

@@ -42,8 +42,7 @@ use crate::model_store::{
 };
 use crate::note_projection::{
     MAX_PROJECTION_FRAME_BYTES, NoteProjector, ProjectRequest, ProjectTransportError,
-    ProjectionCancellation, StrictJson, array, exact_object, strict_json,
-    string, u64_value,
+    ProjectionCancellation, StrictJson, array, exact_object, strict_json, string, u64_value,
 };
 use crate::operations::SpeakerLabelOverride;
 use crate::storage::StorageRoot;
@@ -662,7 +661,9 @@ pub fn parse_note_generation_result(
             // The envelope binds the payload to the request's pinned
             // transcript; every deeper field is the worker contract's to
             // judge.
-            if fields.get("transcript_sha256").and_then(serde_json::Value::as_str)
+            if fields
+                .get("transcript_sha256")
+                .and_then(serde_json::Value::as_str)
                 != Some(request.transcript_sha256.as_str())
             {
                 return Err(ProjectTransportError::Unavailable);
@@ -2508,15 +2509,20 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         fn install_note_model(&self) {
             let entry = &self.catalog.note_models[0];
             let directory = self.model_directory();
-            for ancestor in directory.ancestors().skip(1).collect::<Vec<_>>().iter().rev() {
+            for ancestor in directory
+                .ancestors()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .iter()
+                .rev()
+            {
                 if ancestor.starts_with(self.storage.path()) && !ancestor.exists() {
                     create_private_dir(ancestor).unwrap();
                 }
             }
             create_private_dir(&directory).unwrap();
             durable_create_new(&directory.join("config.json"), NOTE_CONFIG_FIXTURE).unwrap();
-            durable_create_new(&directory.join("model.safetensors"), NOTE_WEIGHTS_FIXTURE)
-                .unwrap();
+            durable_create_new(&directory.join("model.safetensors"), NOTE_WEIGHTS_FIXTURE).unwrap();
             durable_create_new(
                 &directory.join(INSTALL_RECEIPT_NAME),
                 &note_install_receipt_bytes(entry),
@@ -2699,7 +2705,11 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             sandboxed.pre_exec(deny_network_in_child);
         }
         let output = sandboxed.output().unwrap();
-        assert_eq!(output.status.code(), Some(7), "sandboxed connect must be denied");
+        assert_eq!(
+            output.status.code(),
+            Some(7),
+            "sandboxed connect must be denied"
+        );
     }
 
     fn current_python() -> PathBuf {
@@ -2953,11 +2963,8 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         assert_eq!(result, b"{}\n");
         let bound = fs::read(fixture.storage_root.join("bound-command")).unwrap();
         let entry = &fixture.catalog.note_models[0];
-        let expected = generate_command(
-            &generate_request(),
-            entry.relative_path().to_str().unwrap(),
-        )
-        .unwrap();
+        let expected =
+            generate_command(&generate_request(), entry.relative_path().to_str().unwrap()).unwrap();
         assert_eq!(bound, expected);
     }
 
@@ -3732,9 +3739,18 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             installed_bytes: 6,
             files: vec![
                 file(NoteModelFileRole::Config, "config.json"),
-                file(NoteModelFileRole::Weights, "model-00001-of-00002.safetensors"),
-                file(NoteModelFileRole::Weights, "model-00002-of-00002.safetensors"),
-                file(NoteModelFileRole::WeightsIndex, "model.safetensors.index.json"),
+                file(
+                    NoteModelFileRole::Weights,
+                    "model-00001-of-00002.safetensors",
+                ),
+                file(
+                    NoteModelFileRole::Weights,
+                    "model-00002-of-00002.safetensors",
+                ),
+                file(
+                    NoteModelFileRole::WeightsIndex,
+                    "model.safetensors.index.json",
+                ),
                 file(NoteModelFileRole::Tokenizer, "tokenizer.json"),
                 file(NoteModelFileRole::TokenizerConfig, "tokenizer_config.json"),
             ],
@@ -3877,7 +3893,11 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         assert!(!fixture.storage_root.join("bound-command").exists());
     }
 
-    fn generation_frame(outcome: &str, generation: serde_json::Value, failure: serde_json::Value) -> Vec<u8> {
+    fn generation_frame(
+        outcome: &str,
+        generation: serde_json::Value,
+        failure: serde_json::Value,
+    ) -> Vec<u8> {
         let mut bytes = serde_json::to_vec(&serde_json::json!({
             "schema": "note-generation-result/1",
             "request_id": "11111111-1111-4111-8111-111111111111",
@@ -3951,12 +3971,36 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
 
         // Outcome/payload disagreements and malformed envelopes.
         for frame in [
-            generation_frame("generated", generation_payload(), serde_json::json!({"code": "x", "recoverable": false, "receipt": {}})),
-            generation_frame("generated", serde_json::Value::Null, serde_json::Value::Null),
-            generation_frame("transcript-only", generation_payload(), serde_json::Value::Null),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::Value::Null),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::json!({"code": "", "recoverable": true, "receipt": {}})),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::json!({"code": "x", "recoverable": true})),
+            generation_frame(
+                "generated",
+                generation_payload(),
+                serde_json::json!({"code": "x", "recoverable": false, "receipt": {}}),
+            ),
+            generation_frame(
+                "generated",
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                generation_payload(),
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::json!({"code": "", "recoverable": true, "receipt": {}}),
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::json!({"code": "x", "recoverable": true}),
+            ),
             generation_frame("refused", serde_json::Value::Null, serde_json::Value::Null),
             ok[..ok.len() - 1].to_vec(),
             b"not json\n".to_vec(),
@@ -3971,7 +4015,10 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         }
 
         // A schema or operation swap refuses.
-        for (key, value) in [("schema", "note-projection-result/1"), ("operation", "note.project")] {
+        for (key, value) in [
+            ("schema", "note-projection-result/1"),
+            ("operation", "note.project"),
+        ] {
             let mut root: serde_json::Value = serde_json::from_slice(&ok[..ok.len() - 1]).unwrap();
             root[key] = serde_json::Value::String(value.into());
             let mut bytes = serde_json::to_vec(&root).unwrap();

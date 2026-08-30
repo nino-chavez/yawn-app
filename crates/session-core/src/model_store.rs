@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::storage::{durable_replace, sync_directory, StorageRoot};
+use crate::storage::{StorageRoot, durable_replace, sync_directory};
 
 const MAX_CATALOG_BYTES: u64 = 128 * 1024;
 const MAX_RECEIPT_BYTES: u64 = 32 * 1024;
@@ -1287,7 +1287,11 @@ mod tests {
             verify_note_model_directory(&directory, &note),
             Err(ModelStoreError::InvalidModel)
         ));
-        fs::write(directory.join("model-00002-of-00002.safetensors"), b"shard-1").unwrap();
+        fs::write(
+            directory.join("model-00002-of-00002.safetensors"),
+            b"shard-1",
+        )
+        .unwrap();
         durable_create_new(&directory.join("extra"), b"unexpected").unwrap();
         assert!(matches!(
             verify_note_model_directory(&directory, &note),
@@ -1399,7 +1403,10 @@ mod tests {
             model.files().iter().map(|file| file.bytes).sum()
         }
 
-        assert_eq!(total_declared_bytes(&transcript), transcript.download_bytes());
+        assert_eq!(
+            total_declared_bytes(&transcript),
+            transcript.download_bytes()
+        );
         assert_eq!(total_declared_bytes(&note), note.download_bytes());
         assert_eq!(transcript.id(), transcript.id.as_str());
         assert_eq!(note.revision(), note.revision.as_str());
@@ -1428,8 +1435,11 @@ mod tests {
             for (name, bytes) in files {
                 durable_create_new(&directory.join(name), bytes).unwrap();
             }
-            durable_create_new(&directory.join(INSTALL_RECEIPT_NAME), &model.receipt_bytes())
-                .unwrap();
+            durable_create_new(
+                &directory.join(INSTALL_RECEIPT_NAME),
+                &model.receipt_bytes(),
+            )
+            .unwrap();
             model.verify_directory(&directory).unwrap();
             model.activate(storage).unwrap();
         }
@@ -1437,10 +1447,7 @@ mod tests {
         install_like(
             &storage,
             &transcript,
-            &[
-                ("config.json", b"config"),
-                ("weights.npz", b"weights"),
-            ],
+            &[("config.json", b"config"), ("weights.npz", b"weights")],
         );
         install_like(
             &storage,

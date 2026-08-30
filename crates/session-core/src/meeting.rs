@@ -209,10 +209,10 @@ impl MeetingRecord {
             self.artifacts.microphone_audio.is_some() || self.artifacts.system_audio.is_some();
         let transcript = self.artifacts.current_transcript.is_some();
         let note = self.artifacts.current_note.is_some();
-        let audio_deletion_pending = self.pending_storage_operation
-            == Some(PendingStorageOperation::AudioDeletionV1);
-        let transcript_deletion_pending = self.pending_storage_operation
-            == Some(PendingStorageOperation::TranscriptDeletionV1);
+        let audio_deletion_pending =
+            self.pending_storage_operation == Some(PendingStorageOperation::AudioDeletionV1);
+        let transcript_deletion_pending =
+            self.pending_storage_operation == Some(PendingStorageOperation::TranscriptDeletionV1);
 
         match self.lifecycle {
             MeetingLifecycle::Incomplete => {
@@ -280,9 +280,7 @@ impl MeetingRecord {
                 }
             }
             AudioState::Retained => {
-                if !any_audio
-                    || self.retention.deletion_receipt.is_some()
-                    || audio_deletion_pending
+                if !any_audio || self.retention.deletion_receipt.is_some() || audio_deletion_pending
                 {
                     return Err(MeetingError::Malformed("invalid retained audio state"));
                 }

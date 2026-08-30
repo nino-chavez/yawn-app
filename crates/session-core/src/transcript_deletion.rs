@@ -19,14 +19,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::meeting::{
+    MAX_RECEIPT_BYTES, MeetingError, MeetingLifecycle, MeetingRecord, PendingStorageOperation,
     hash_private_file, load_meeting, open_private_file, require_private_directory, valid_opaque_id,
-    verify_record_artifacts, write_meeting, MeetingError, MeetingLifecycle, MeetingRecord,
-    PendingStorageOperation, MAX_RECEIPT_BYTES,
+    verify_record_artifacts, write_meeting,
 };
 use crate::meeting_coordination::{MeetingCoordinationError, MeetingStorageCoordination};
 use crate::operation_store::{OperationStore, OperationStoreError, StoredOperationRequest};
 use crate::storage::{
-    create_private_dir, durable_create_new, durable_replace, sync_directory, StorageRoot,
+    StorageRoot, create_private_dir, durable_create_new, durable_replace, sync_directory,
 };
 
 const RECEIPT_RELATIVE_PATH: &str = "deletion/transcript-deletion.json";
@@ -714,8 +714,8 @@ pub fn reconcile_pending_transcript_deletions(
 mod tests {
     use super::*;
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule, AudioState,
-        MeetingArtifacts, MeetingSchema, NoteRevisionRef,
+        AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts, MeetingSchema,
+        NoteRevisionRef, artifact_ref, retention_policy_sha256,
     };
     use crate::storage::durable_create_new;
     use sha2::{Digest, Sha256};

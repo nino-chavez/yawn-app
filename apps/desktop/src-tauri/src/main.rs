@@ -8,9 +8,9 @@ mod library_reader;
 
 // The correction/regeneration facade is intentionally compiled but not wired
 // into the current internal-alpha command set.
+mod manual_delete_facade;
 #[allow(dead_code)]
 mod product_facade;
-mod manual_delete_facade;
 mod speaker_correction;
 // First run's permission surface (§ H). Runs the manifest-verified permission
 // probe and parses its output as untrusted input; holds no storage authority and
@@ -60,14 +60,15 @@ use local_meeting_notes_session_core::meeting::{
     retention_policy_sha256, write_meeting,
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
-use local_meeting_notes_session_core::note_projection::{NoteProjector, UnavailableProjector};
-use local_meeting_notes_session_core::note_projector_process::{
-    GENERATE_MANIFEST_FILE, PROJECT_MANIFEST_FILE, admit_note_projector,
-};
+use local_meeting_notes_session_core::meeting_deletion::reconcile_pending_meeting_deletions;
 use local_meeting_notes_session_core::model_store::{
     InstalledTranscriptModel, ModelCatalog, TranscriptModel, activate_model, active_model,
     active_note_model, deactivate_note_model, installed_model, model_is_stored,
     note_model_is_stored, remove_inactive_model, remove_inactive_note_model,
+};
+use local_meeting_notes_session_core::note_projection::{NoteProjector, UnavailableProjector};
+use local_meeting_notes_session_core::note_projector_process::{
+    GENERATE_MANIFEST_FILE, PROJECT_MANIFEST_FILE, admit_note_projector,
 };
 #[cfg(target_os = "macos")]
 use local_meeting_notes_session_core::profile_lifecycle::ProfileLifecycleError;
@@ -77,14 +78,12 @@ use local_meeting_notes_session_core::protocol::{
 use local_meeting_notes_session_core::recovery::{
     RecoveryCode, RecoveryDisposition, scan_and_recover,
 };
-use local_meeting_notes_session_core::meeting_deletion::reconcile_pending_meeting_deletions;
 use local_meeting_notes_session_core::reducer::{
     CaptureState, ExclusiveOperation, Reducer, StartupState,
 };
 use local_meeting_notes_session_core::retention::{
     AppDataWriterLock, RetentionOutcome, execute_due_retention_excluding, meeting_dir,
 };
-use local_meeting_notes_session_core::transcript_deletion::reconcile_pending_transcript_deletions;
 #[cfg(target_os = "macos")]
 use local_meeting_notes_session_core::retention::{
     ProfileEnrollmentAdmissionError, ProfileEnrollmentCompletion, ProfileEnrollmentWorker,
@@ -100,6 +99,7 @@ use local_meeting_notes_session_core::supervision::{
     ProcessInspector, SupervisionError, SystemGroupSignaler, SystemProcessInspector,
     internal_alpha_operations,
 };
+use local_meeting_notes_session_core::transcript_deletion::reconcile_pending_transcript_deletions;
 use local_meeting_notes_session_core::transcript_restoration::resolve_stored_transcript_primed;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -155,7 +155,9 @@ fn show_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 #[tauri::command]
 fn open_settings_window(app: AppHandle) -> Result<(), String> {
-    show_settings_window(&app).map(|_| ()).map_err(|error| error.to_string())
+    show_settings_window(&app)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 struct ApplicationState {
@@ -2016,8 +2018,8 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
         let catalog = verified_model_catalog(&storage_context.manifest_path, &manifest)?
             .ok_or_else(|| "this build does not use downloadable speech models".to_string())?;
         let selected = catalog.model(&model_id).map_err(error_text)?.clone();
-        let previous_active = active_model(&storage_context.storage, &catalog)
-            .map_err(error_text)?;
+        let previous_active =
+            active_model(&storage_context.storage, &catalog).map_err(error_text)?;
         {
             let mut model = state.model.lock().expect("application model lock");
             if !matches!(
@@ -2134,8 +2136,7 @@ fn remove_transcript_model(
         matches!(
             model.reducer.startup(),
             StartupState::Ready | StartupState::ModelRequired
-        )
-            && model.reducer.capture() == CaptureState::Idle
+        ) && model.reducer.capture() == CaptureState::Idle
     };
     if !ready || sitting_task_active(&state) {
         return Err("Finish the current meeting before removing a speech model.".into());
@@ -2150,19 +2151,18 @@ fn remove_transcript_model(
         RuntimeManifest::load_and_verify(&storage_context.manifest_path).map_err(error_text)?;
     let catalog = verified_model_catalog(&storage_context.manifest_path, &manifest)?
         .ok_or_else(|| "this build does not use downloadable speech models".to_string())?;
-    remove_inactive_model(&storage_context.storage, &catalog, &model_id)
-        .map_err(|error| match error {
+    remove_inactive_model(&storage_context.storage, &catalog, &model_id).map_err(|error| {
+        match error {
             local_meeting_notes_session_core::model_store::ModelStoreError::ActiveModel => {
                 "Switch to the other speech model before removing this one.".into()
             }
             other => error_text(other),
-        })?;
+        }
+    })?;
     transcript_model_settings_for(&state)
 }
 
-fn note_model_settings_for(
-    state: &ApplicationState,
-) -> Result<NoteModelSettingsSnapshot, String> {
+fn note_model_settings_for(state: &ApplicationState) -> Result<NoteModelSettingsSnapshot, String> {
     let storage_context = state
         .storage
         .lock()
@@ -2236,7 +2236,10 @@ fn note_model_settings(
 }
 
 #[tauri::command]
-fn install_note_model(app: AppHandle, model_id: String) -> Result<NoteModelSettingsSnapshot, String> {
+fn install_note_model(
+    app: AppHandle,
+    model_id: String,
+) -> Result<NoteModelSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
     let capture_active = state
@@ -2272,7 +2275,10 @@ fn install_note_model(app: AppHandle, model_id: String) -> Result<NoteModelSetti
             .ok_or_else(|| "this build does not use downloadable note models".to_string())?;
         let selected = catalog.note_model(&model_id).map_err(error_text)?.clone();
         {
-            let mut setup = state.note_model_setup.lock().expect("note model setup lock");
+            let mut setup = state
+                .note_model_setup
+                .lock()
+                .expect("note model setup lock");
             *setup = NoteModelSetup {
                 state: "downloading".into(),
                 selected_model_id: Some(selected.id.clone()),
@@ -2286,7 +2292,9 @@ fn install_note_model(app: AppHandle, model_id: String) -> Result<NoteModelSetti
     let (storage_context, selected) = match preparation {
         Ok(prepared) => prepared,
         Err(error) => {
-            state.note_model_install_active.store(false, Ordering::SeqCst);
+            state
+                .note_model_install_active
+                .store(false, Ordering::SeqCst);
             return Err(error);
         }
     };
@@ -2342,13 +2350,22 @@ fn install_note_model(app: AppHandle, model_id: String) -> Result<NoteModelSetti
             }
         });
     if let Err(error) = spawned {
-        state.note_model_install_active.store(false, Ordering::SeqCst);
+        state
+            .note_model_install_active
+            .store(false, Ordering::SeqCst);
         {
-            let mut setup = state.note_model_setup.lock().expect("note model setup lock");
+            let mut setup = state
+                .note_model_setup
+                .lock()
+                .expect("note model setup lock");
             setup.state = "failed".into();
             setup.error = Some("The note model download could not start.".into());
         }
-        write_diagnostic(&state, "note_model_download_spawn_failed", &error.to_string());
+        write_diagnostic(
+            &state,
+            "note_model_download_spawn_failed",
+            &error.to_string(),
+        );
         return Err("The note model download could not start.".into());
     }
     note_model_settings_for(&state)
@@ -3085,7 +3102,9 @@ fn current_meeting_dir(state: &ApplicationState) -> Result<std::path::PathBuf, S
 /// snapshot is polled every 400 ms while recording, and putting operator prose on
 /// that path would carry it through every tick for no reader.
 #[tauri::command(async)]
-fn operator_note(state: State<'_, ApplicationState>) -> Result<operator_note::OperatorNote, String> {
+fn operator_note(
+    state: State<'_, ApplicationState>,
+) -> Result<operator_note::OperatorNote, String> {
     Ok(operator_note::read(&current_meeting_dir(&state)?))
 }
 
@@ -3200,7 +3219,9 @@ fn open_current_transcript_file(state: State<'_, ApplicationState>) -> Result<()
         }
         open_verified_transcript_file(&storage, &meeting_id, transcript)
     })
-    .map_err(|_| "The local transcript is unavailable. Reopen the meeting and try again.".to_string())?
+    .map_err(|_| {
+        "The local transcript is unavailable. Reopen the meeting and try again.".to_string()
+    })?
 }
 
 #[tauri::command(async)]
@@ -3786,8 +3807,9 @@ fn parse_sitting_request(
             Ok((SittingKind::OperatorSitting, None))
         }
         "negative-source" => {
-            let class = source_class
-                .ok_or_else(|| "A comparison recording needs its permitted source named.".to_string())?;
+            let class = source_class.ok_or_else(|| {
+                "A comparison recording needs its permitted source named.".to_string()
+            })?;
             if !PERMITTED_NEGATIVE_SOURCE_CLASSES.contains(&class) {
                 return Err("That comparison source is not permitted.".into());
             }
@@ -4022,7 +4044,13 @@ fn run_sitting_task(
         sitting_id: &sitting_id,
         completed: false,
     };
-    let _ = run_sitting_attempt(guard.state, &sitting_id, kind, source_class.as_deref(), &stop);
+    let _ = run_sitting_attempt(
+        guard.state,
+        &sitting_id,
+        kind,
+        source_class.as_deref(),
+        &stop,
+    );
     guard.completed = true;
 }
 
@@ -4056,7 +4084,13 @@ fn preview_enrollment_start_sitting(
     let spawn = std::thread::Builder::new()
         .name("sitting-capture-attempt".into())
         .spawn(move || {
-            run_sitting_task(task_app, task_sitting_id, parsed_kind, parsed_class, receiver)
+            run_sitting_task(
+                task_app,
+                task_sitting_id,
+                parsed_kind,
+                parsed_class,
+                receiver,
+            )
         });
     if spawn.is_err() {
         clear_sitting_task(&state, &sitting_id);
@@ -4201,8 +4235,8 @@ fn request_measured_choices(
     let digests = exact_digests(&digests, &["choices"])
         .map_err(|_| PreviewOperatingPointsResponse::unavailable())?;
     let expected = digests["choices"].clone();
-    let storage = preview_storage_clone(state)
-        .map_err(|_| PreviewOperatingPointsResponse::unavailable())?;
+    let storage =
+        preview_storage_clone(state).map_err(|_| PreviewOperatingPointsResponse::unavailable())?;
     let path = storage
         .resolve(&Path::new("enrollment-choices").join(format!("{operation_id}.json")))
         .map_err(|_| PreviewOperatingPointsResponse::unavailable())?;
@@ -4216,11 +4250,11 @@ fn request_measured_choices(
     if document.schema != "profile-choices/1" {
         return Err(PreviewOperatingPointsResponse::unavailable());
     }
-    let manifest_encoder = state
-        .runtime
-        .lock()
-        .ok()
-        .and_then(|runtime| runtime.as_ref().map(|runtime| runtime.encoder_sha256.clone()));
+    let manifest_encoder = state.runtime.lock().ok().and_then(|runtime| {
+        runtime
+            .as_ref()
+            .map(|runtime| runtime.encoder_sha256.clone())
+    });
     if manifest_encoder.as_deref() != Some(document.encoder_sha256.as_str()) {
         return Err(PreviewOperatingPointsResponse::unavailable());
     }
@@ -4265,8 +4299,7 @@ fn preview_enrollment_operating_points_for(
             state: "choices",
             choices_sha256: Some(digest),
             points: document.choices,
-            message: "Options measured from your own recordings. None is chosen for you."
-                .into(),
+            message: "Options measured from your own recordings. None is chosen for you.".into(),
         },
         Err(response) => response,
     }
@@ -4319,8 +4352,8 @@ fn preview_enrollment_build_profile_for(
     }
     // The selection binds to the reviewed measurements, not to hope: the
     // choices are recomputed and must hash to exactly what the operator saw.
-    let (current_digest, _document) = request_measured_choices(state)
-        .map_err(|response| response.message)?;
+    let (current_digest, _document) =
+        request_measured_choices(state).map_err(|response| response.message)?;
     if current_digest != choices_sha256 {
         return Err("The measured options changed. Review them again.".into());
     }
@@ -4729,9 +4762,10 @@ fn preview_delete_meeting_transcript_for(
             "removed",
             "The interrupted transcript deletion was recovered and completed.",
         ),
-        Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::AlreadyRemoved) => {
-            ("already-removed", "This meeting transcript was already deleted.")
-        }
+        Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::AlreadyRemoved) => (
+            "already-removed",
+            "This meeting transcript was already deleted.",
+        ),
         Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::DeferredActive) => (
             "deferred-active",
             "Transcript deletion was deferred because this meeting is still active.",
@@ -4885,9 +4919,9 @@ fn preview_delete_meeting_for(
     } else {
         manual_delete_facade::MeetingDeletionReview::NotReviewed
     };
-    let result = state.whole_meeting_deletion_facade().delete_meeting(
-        manual_delete_facade::WholeMeetingDeletionUiArgs { meeting_id, review },
-    );
+    let result = state
+        .whole_meeting_deletion_facade()
+        .delete_meeting(manual_delete_facade::WholeMeetingDeletionUiArgs { meeting_id, review });
     let (response_state, message) = match result {
         Ok(manual_delete_facade::WholeMeetingDeletionFacadeOutcome::MeetingRemoved) => (
             "removed",
@@ -5196,7 +5230,9 @@ fn with_current_local_vocabulary<T>(
             .model
             .lock()
             .map_err(|_| "Vocabulary is unavailable. Reopen the meeting and try again.")?;
-        if model.reducer.startup() != StartupState::Ready || model.reducer.capture() != CaptureState::Idle {
+        if model.reducer.startup() != StartupState::Ready
+            || model.reducer.capture() != CaptureState::Idle
+        {
             return Err("Finish the current recording before changing local vocabulary.".into());
         }
     }
@@ -5217,8 +5253,9 @@ fn with_current_local_vocabulary<T>(
         return Err("The transcript changed. Reopen the meeting and try again.".into());
     }
     let (turns, _) = load_transcript_projection(&directory, &meeting_id.to_string(), current)?;
-    let vocabulary = local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore::open(&storage)
-        .map_err(local_vocabulary_error)?;
+    let vocabulary =
+        local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore::open(&storage)
+            .map_err(local_vocabulary_error)?;
     operation(&vocabulary, &turns)
 }
 
@@ -5233,7 +5270,11 @@ fn local_vocabulary_sheet_response(
     // worker transport's 64-range ceiling. Withheld rows are never supplied to
     // the store, even if a later parser accidentally carries text in memory.
     for turn in turns.iter().filter(|turn| !turn.withheld) {
-        for application in vocabulary.project(&turn.text).map_err(local_vocabulary_error)?.applied {
+        for application in vocabulary
+            .project(&turn.text)
+            .map_err(local_vocabulary_error)?
+            .applied
+        {
             *applied_by_entry.entry(application.entry_id).or_default() += 1;
         }
     }
@@ -5257,9 +5298,12 @@ fn local_vocabulary_list(
     source_transcript_sha256: String,
     state: State<'_, ApplicationState>,
 ) -> Result<LocalVocabularySheetResponse, String> {
-    with_current_local_vocabulary(meeting_id, &source_transcript_sha256, &state, |vocabulary, turns| {
-        local_vocabulary_sheet_response(vocabulary, turns)
-    })
+    with_current_local_vocabulary(
+        meeting_id,
+        &source_transcript_sha256,
+        &state,
+        |vocabulary, turns| local_vocabulary_sheet_response(vocabulary, turns),
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -5270,10 +5314,17 @@ fn local_vocabulary_add(
     preferred_replacement: String,
     state: State<'_, ApplicationState>,
 ) -> Result<LocalVocabularySheetResponse, String> {
-    with_current_local_vocabulary(meeting_id, &source_transcript_sha256, &state, |vocabulary, turns| {
-        vocabulary.add(&source_phrase, &preferred_replacement).map_err(local_vocabulary_error)?;
-        local_vocabulary_sheet_response(vocabulary, turns)
-    })
+    with_current_local_vocabulary(
+        meeting_id,
+        &source_transcript_sha256,
+        &state,
+        |vocabulary, turns| {
+            vocabulary
+                .add(&source_phrase, &preferred_replacement)
+                .map_err(local_vocabulary_error)?;
+            local_vocabulary_sheet_response(vocabulary, turns)
+        },
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -5285,10 +5336,17 @@ fn local_vocabulary_edit(
     preferred_replacement: String,
     state: State<'_, ApplicationState>,
 ) -> Result<LocalVocabularySheetResponse, String> {
-    with_current_local_vocabulary(meeting_id, &source_transcript_sha256, &state, |vocabulary, turns| {
-        vocabulary.edit(id, &source_phrase, &preferred_replacement).map_err(local_vocabulary_error)?;
-        local_vocabulary_sheet_response(vocabulary, turns)
-    })
+    with_current_local_vocabulary(
+        meeting_id,
+        &source_transcript_sha256,
+        &state,
+        |vocabulary, turns| {
+            vocabulary
+                .edit(id, &source_phrase, &preferred_replacement)
+                .map_err(local_vocabulary_error)?;
+            local_vocabulary_sheet_response(vocabulary, turns)
+        },
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -5299,10 +5357,17 @@ fn local_vocabulary_set_enabled(
     enabled: bool,
     state: State<'_, ApplicationState>,
 ) -> Result<LocalVocabularySheetResponse, String> {
-    with_current_local_vocabulary(meeting_id, &source_transcript_sha256, &state, |vocabulary, turns| {
-        vocabulary.set_enabled(id, enabled).map_err(local_vocabulary_error)?;
-        local_vocabulary_sheet_response(vocabulary, turns)
-    })
+    with_current_local_vocabulary(
+        meeting_id,
+        &source_transcript_sha256,
+        &state,
+        |vocabulary, turns| {
+            vocabulary
+                .set_enabled(id, enabled)
+                .map_err(local_vocabulary_error)?;
+            local_vocabulary_sheet_response(vocabulary, turns)
+        },
+    )
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -5312,10 +5377,15 @@ fn local_vocabulary_delete(
     id: Uuid,
     state: State<'_, ApplicationState>,
 ) -> Result<LocalVocabularySheetResponse, String> {
-    with_current_local_vocabulary(meeting_id, &source_transcript_sha256, &state, |vocabulary, turns| {
-        vocabulary.delete(id).map_err(local_vocabulary_error)?;
-        local_vocabulary_sheet_response(vocabulary, turns)
-    })
+    with_current_local_vocabulary(
+        meeting_id,
+        &source_transcript_sha256,
+        &state,
+        |vocabulary, turns| {
+            vocabulary.delete(id).map_err(local_vocabulary_error)?;
+            local_vocabulary_sheet_response(vocabulary, turns)
+        },
+    )
 }
 
 /// Saves one meeting-local speaker-name correction without rewriting the
@@ -5386,7 +5456,9 @@ fn correct_speaker_name_for(
         .filter(|turn| !turn.withheld && turn.source_speaker == source_speaker)
         .count();
     if applied_turn_count == 0 {
-        return Err("That speaker group is no longer available. Reopen the meeting and try again.".into());
+        return Err(
+            "That speaker group is no longer available. Reopen the meeting and try again.".into(),
+        );
     }
     let replacement = speaker_correction::normalize_replacement(&replacement)?;
     let operation_id = Uuid::new_v4();
@@ -5401,12 +5473,9 @@ fn correct_speaker_name_for(
             applied_at_epoch_seconds: now_epoch_seconds(),
         },
     )?;
-    let stored = speaker_correction::current_labels(
-        &directory,
-        meeting_id,
-        &source_transcript_sha256,
-    )
-    .map_err(|_| "The saved speaker correction could not be verified.".to_string())?;
+    let stored =
+        speaker_correction::current_labels(&directory, meeting_id, &source_transcript_sha256)
+            .map_err(|_| "The saved speaker correction could not be verified.".to_string())?;
     let restored_source_label = replacement == source_speaker.as_deref().unwrap_or("Unattributed");
     if (restored_source_label && stored.contains_key(&source_speaker))
         || (!restored_source_label && stored.get(&source_speaker) != Some(&replacement))
@@ -5420,7 +5489,11 @@ fn correct_speaker_name_for(
         applied_turn_count,
         message: format!(
             "Speaker name updated for {applied_turn_count} transcript {}. The retained transcript was not changed.",
-            if applied_turn_count == 1 { "turn" } else { "turns" }
+            if applied_turn_count == 1 {
+                "turn"
+            } else {
+                "turns"
+            }
         ),
     })
 }
@@ -5468,12 +5541,7 @@ pub(crate) fn vocabulary_replacements_for(
         "Local meeting storage is unavailable. Reopen the app and try again.".to_string()
     })?;
     let directory = meeting_dir(&storage, &meeting_id.to_string()).map_err(error_text)?;
-    current_vocabulary_replacements(
-        &storage,
-        &directory,
-        meeting_id,
-        source_transcript_sha256,
-    )
+    current_vocabulary_replacements(&storage, &directory, meeting_id, source_transcript_sha256)
 }
 
 pub(crate) fn current_vocabulary_replacements(
@@ -5494,12 +5562,12 @@ pub(crate) fn current_vocabulary_replacements(
     if current.sha256 != source_transcript_sha256 || meeting.meeting_id != meeting_id.to_string() {
         return Err("The transcript changed. Refresh the meeting and try again.".into());
     }
-    let (turns, _) = load_transcript_projection(
-        meeting_directory,
-        &meeting_id.to_string(),
-        current,
-    )?;
-    let source_turns = turns.iter().map(|turn| turn.text.as_str()).collect::<Vec<_>>();
+    let (turns, _) =
+        load_transcript_projection(meeting_directory, &meeting_id.to_string(), current)?;
+    let source_turns = turns
+        .iter()
+        .map(|turn| turn.text.as_str())
+        .collect::<Vec<_>>();
     local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore::open(storage)
         .and_then(|vocabulary| vocabulary.project_turns(&source_turns))
         .map_err(|_| "Local vocabulary could not be verified, so the note was not replaced.".into())
@@ -5579,12 +5647,9 @@ fn main() {
             product_facade::regenerate_note
         ])
         .setup(|app| {
-            let settings = tauri::menu::MenuItemBuilder::with_id(
-                "open-settings",
-                "Settings…",
-            )
-            .accelerator("CmdOrCtrl+,")
-            .build(app)?;
+            let settings = tauri::menu::MenuItemBuilder::with_id("open-settings", "Settings…")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
             let app_menu = tauri::menu::SubmenuBuilder::new(app, "Yawn")
                 .about(None)
                 .separator()
@@ -5713,7 +5778,8 @@ fn initialize_application(app: AppHandle, retry: bool) {
         );
         return;
     }
-    if let Err(error) = reconcile_pending_transcript_deletions(&storage_context.storage, &coordination)
+    if let Err(error) =
+        reconcile_pending_transcript_deletions(&storage_context.storage, &coordination)
     {
         let _ = write_private_diagnostic(
             &storage_context.diagnostics,
@@ -7365,8 +7431,7 @@ fn project_current_transcript(
             }
         }
         Err(()) => warnings.push(
-            "Saved speaker corrections could not be read. Source speaker labels are shown."
-                .into(),
+            "Saved speaker corrections could not be read. Source speaker labels are shown.".into(),
         ),
     }
     Ok((turns, warnings))
@@ -7439,7 +7504,10 @@ fn parse_transcript_projection_with(
     let report = document.voiceprint.filter(|report| report.applied);
     // First, and before the count, because it is the only one of these that says
     // a person was removed rather than that some audio was.
-    if report.as_ref().is_some_and(|report| report.persistent_other) {
+    if report
+        .as_ref()
+        .is_some_and(|report| report.persistent_other)
+    {
         // The recurring voice's own seconds, not the gate's total. Dropped
         // rather than approximated when either factor is missing, the same way
         // the enrolment basis below is dropped rather than invented.
@@ -8170,10 +8238,7 @@ mod tests {
     #[test]
     fn tray_states_never_read_as_silently_recording() {
         use StartupState::*;
-        assert_eq!(
-            tray_presentation(Ready, CaptureState::Idle, false).0,
-            "○"
-        );
+        assert_eq!(tray_presentation(Ready, CaptureState::Idle, false).0, "○");
         assert_eq!(
             tray_presentation(Ready, CaptureState::Recording, false).0,
             "●"
@@ -8211,7 +8276,10 @@ mod tests {
             tray_presentation(Ready, CaptureState::RecoveredInterrupted, false).0,
             "×"
         );
-        assert_eq!(tray_presentation(Checking, CaptureState::Idle, false).0, "○");
+        assert_eq!(
+            tray_presentation(Checking, CaptureState::Idle, false).0,
+            "○"
+        );
         assert_eq!(
             tray_presentation(RuntimeMissing, CaptureState::Idle, false).0,
             "×"
@@ -8370,7 +8438,7 @@ mod tests {
                 sender,
             )
             .unwrap_err()
-                .contains("installation check")
+            .contains("installation check")
         );
         {
             let mut model = state.model.lock().unwrap();
@@ -9724,12 +9792,8 @@ mod tests {
         )
         .unwrap();
 
-        let (turns, warnings) = load_transcript_projection(
-            directory,
-            &meeting_id.to_string(),
-            &reference,
-        )
-        .unwrap();
+        let (turns, warnings) =
+            load_transcript_projection(directory, &meeting_id.to_string(), &reference).unwrap();
         assert!(warnings.is_empty());
         assert_eq!(turns[0].speaker.as_deref(), Some("Me"));
         assert!(!turns[0].speaker_corrected);
@@ -9739,7 +9803,11 @@ mod tests {
         assert_eq!(turns[2].source_speaker.as_deref(), Some("Them"));
         assert!(turns[1].speaker_corrected && turns[2].speaker_corrected);
         let source_bytes = fs::read(transcript_path).unwrap();
-        assert!(String::from_utf8(source_bytes).unwrap().contains("\"speaker\": \"Them\""));
+        assert!(
+            String::from_utf8(source_bytes)
+                .unwrap()
+                .contains("\"speaker\": \"Them\"")
+        );
     }
 
     #[test]
@@ -9786,12 +9854,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(saved.applied_turn_count, 2);
-        let (corrected, _) = load_transcript_projection(
-            directory,
-            &meeting_id.to_string(),
-            &reference,
-        )
-        .unwrap();
+        let (corrected, _) =
+            load_transcript_projection(directory, &meeting_id.to_string(), &reference).unwrap();
         assert_eq!(corrected[1].speaker.as_deref(), Some("Alex"));
         assert!(corrected[1].speaker_corrected);
 
@@ -9803,22 +9867,20 @@ mod tests {
             &state,
         )
         .unwrap();
-        let (restored, _) = load_transcript_projection(
-            directory,
-            &meeting_id.to_string(),
-            &reference,
-        )
-        .unwrap();
+        let (restored, _) =
+            load_transcript_projection(directory, &meeting_id.to_string(), &reference).unwrap();
         assert_eq!(restored[1].speaker.as_deref(), Some("Them"));
         assert!(!restored[1].speaker_corrected);
-        assert!(correct_speaker_name_for(
-            meeting_id,
-            "b".repeat(64),
-            Some("Them".into()),
-            "Taylor".into(),
-            &state,
-        )
-        .is_err());
+        assert!(
+            correct_speaker_name_for(
+                meeting_id,
+                "b".repeat(64),
+                Some("Them".into()),
+                "Taylor".into(),
+                &state,
+            )
+            .is_err()
+        );
     }
 
     fn vocabulary_command_state(storage: &StorageRoot) -> ApplicationState {
@@ -9898,7 +9960,8 @@ mod tests {
         // count from the immutable, digest-bound projection.
         drop(state);
         let restarted = vocabulary_command_state(&storage);
-        let after_restart = local_vocabulary_list_for_test(meeting_id, &reference.sha256, &restarted).unwrap();
+        let after_restart =
+            local_vocabulary_list_for_test(meeting_id, &reference.sha256, &restarted).unwrap();
         assert_eq!(after_restart.entries.len(), 2);
         assert_eq!(after_restart.entries[1].applied_turn_count, 1);
 
@@ -9934,20 +9997,28 @@ mod tests {
         .unwrap();
         assert!(enabled.entries[0].enabled);
         assert_eq!(enabled.entries[0].applied_turn_count, 2);
-        let deleted = local_vocabulary_delete_for_test(meeting_id, &reference.sha256, second_id, &restarted).unwrap();
+        let deleted =
+            local_vocabulary_delete_for_test(meeting_id, &reference.sha256, second_id, &restarted)
+                .unwrap();
         assert_eq!(deleted.entries.len(), 1);
         assert_eq!(sha256_file(&transcript_path).unwrap(), source_digest);
 
-        assert!(local_vocabulary_add_for_test(
-            meeting_id,
-            &"b".repeat(64),
-            "Other",
-            "Other preferred",
-            &restarted,
-        )
-        .is_err());
+        assert!(
+            local_vocabulary_add_for_test(
+                meeting_id,
+                &"b".repeat(64),
+                "Other",
+                "Other preferred",
+                &restarted,
+            )
+            .is_err()
+        );
 
-        fs::write(storage.path().join("local-vocabulary.json"), b"not a vocabulary document").unwrap();
+        fs::write(
+            storage.path().join("local-vocabulary.json"),
+            b"not a vocabulary document",
+        )
+        .unwrap();
         assert!(local_vocabulary_list_for_test(meeting_id, &reference.sha256, &restarted).is_err());
         assert_eq!(sha256_file(&transcript_path).unwrap(), source_digest);
     }
@@ -9968,7 +10039,9 @@ mod tests {
         state: &ApplicationState,
     ) -> Result<LocalVocabularySheetResponse, String> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
-            vocabulary.add(source, replacement).map_err(local_vocabulary_error)?;
+            vocabulary
+                .add(source, replacement)
+                .map_err(local_vocabulary_error)?;
             local_vocabulary_sheet_response(vocabulary, turns)
         })
     }
@@ -9982,7 +10055,9 @@ mod tests {
         state: &ApplicationState,
     ) -> Result<LocalVocabularySheetResponse, String> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
-            vocabulary.edit(id, source, replacement).map_err(local_vocabulary_error)?;
+            vocabulary
+                .edit(id, source, replacement)
+                .map_err(local_vocabulary_error)?;
             local_vocabulary_sheet_response(vocabulary, turns)
         })
     }
@@ -9995,7 +10070,9 @@ mod tests {
         state: &ApplicationState,
     ) -> Result<LocalVocabularySheetResponse, String> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
-            vocabulary.set_enabled(id, enabled).map_err(local_vocabulary_error)?;
+            vocabulary
+                .set_enabled(id, enabled)
+                .map_err(local_vocabulary_error)?;
             local_vocabulary_sheet_response(vocabulary, turns)
         })
     }
@@ -10067,7 +10144,10 @@ mod tests {
         );
         let (_turns, warnings) =
             parse_transcript_projection_with(&document, &BTreeSet::new()).unwrap();
-        assert!(warnings[0].contains("keeps returning as one voice"), "{warnings:?}");
+        assert!(
+            warnings[0].contains("keeps returning as one voice"),
+            "{warnings:?}"
+        );
         assert!(!warnings[0].contains("seconds"), "{warnings:?}");
         assert!(!warnings[0].contains("100"), "{warnings:?}");
     }
@@ -10084,10 +10164,16 @@ mod tests {
             parse_transcript_projection_with(&document, &BTreeSet::new()).unwrap();
         let disclosure = warnings.last().expect("a disclosure");
         assert!(disclosure.contains("not on meeting audio"), "{warnings:?}");
-        assert!(disclosure.contains("3 enrolment sitting(s)"), "{warnings:?}");
+        assert!(
+            disclosure.contains("3 enrolment sitting(s)"),
+            "{warnings:?}"
+        );
         assert!(disclosure.contains("5%"), "{warnings:?}");
         // No alert, because the dropped speech was not one recurring voice.
-        assert!(!warnings.iter().any(|line| line.contains("one voice")), "{warnings:?}");
+        assert!(
+            !warnings.iter().any(|line| line.contains("one voice")),
+            "{warnings:?}"
+        );
     }
 
     #[test]
@@ -10100,8 +10186,14 @@ mod tests {
         );
         let (_turns, warnings) =
             parse_transcript_projection_with(&document, &BTreeSet::new()).unwrap();
-        assert!(!warnings.iter().any(|line| line.contains("threshold")), "{warnings:?}");
-        assert!(!warnings.iter().any(|line| line.contains("one voice")), "{warnings:?}");
+        assert!(
+            !warnings.iter().any(|line| line.contains("threshold")),
+            "{warnings:?}"
+        );
+        assert!(
+            !warnings.iter().any(|line| line.contains("one voice")),
+            "{warnings:?}"
+        );
     }
 
     #[test]

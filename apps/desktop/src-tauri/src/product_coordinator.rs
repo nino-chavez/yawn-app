@@ -34,8 +34,8 @@ use local_meeting_notes_session_core::note_generation::{
     NoteWorkerResult,
 };
 use local_meeting_notes_session_core::note_projector_process::{
-    GENERATE_MANIFEST_FILE, GenerateNoteRequest, NoteGenerationChildOutcome,
-    ProcessNoteGenerator, admit_note_generator, parse_note_generation_result,
+    GENERATE_MANIFEST_FILE, GenerateNoteRequest, NoteGenerationChildOutcome, ProcessNoteGenerator,
+    admit_note_generator, parse_note_generation_result,
 };
 use local_meeting_notes_session_core::operations::{
     NoteCreateWorkerArgs, NoteCreateWorkerFailure, NoteCreateWorkerFailureCode,
@@ -184,11 +184,7 @@ impl WorkerProcessNoteGenerationBridge {
     }
 
     fn admitted_generator(&self) -> Option<ProcessNoteGenerator> {
-        let context = self
-            .storage
-            .lock()
-            .ok()?
-            .clone()?;
+        let context = self.storage.lock().ok()?.clone()?;
         let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).ok()?;
         let catalog = crate::verified_model_catalog(&context.manifest_path, &manifest).ok()??;
         admit_note_generator(
@@ -232,8 +228,8 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
                 }));
             }
         };
-        let mut create_arguments = serde_json::to_value(arguments)
-            .map_err(|_| NoteGenerationWorkerError::Unavailable)?;
+        let mut create_arguments =
+            serde_json::to_value(arguments).map_err(|_| NoteGenerationWorkerError::Unavailable)?;
         let Some(fields) = create_arguments.as_object_mut() else {
             return Err(NoteGenerationWorkerError::Unavailable);
         };
@@ -841,8 +837,11 @@ mod tests {
             .storage
             .resolve(&Path::new("meetings").join(fixture.meeting_id.to_string()))
             .unwrap();
-        std::fs::write(meeting_dir.join("speaker-corrections.json"), b"{not corrections")
-            .unwrap();
+        std::fs::write(
+            meeting_dir.join("speaker-corrections.json"),
+            b"{not corrections",
+        )
+        .unwrap();
         let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
         let coordinator = coordinator_for(&fixture, port.clone());
 

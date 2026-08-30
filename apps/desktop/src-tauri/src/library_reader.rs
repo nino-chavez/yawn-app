@@ -18,7 +18,9 @@ use local_meeting_notes_session_core::meeting::{
     verify_record_artifacts, verify_record_static_artifacts,
 };
 use local_meeting_notes_session_core::meeting_title;
-use local_meeting_notes_session_core::note_projection::{ClaimType, NoteProjector, UnavailableProjector};
+use local_meeting_notes_session_core::note_projection::{
+    ClaimType, NoteProjector, UnavailableProjector,
+};
 use local_meeting_notes_session_core::retention::meeting_dir;
 use local_meeting_notes_session_core::storage::StorageRoot;
 use local_meeting_notes_session_core::transcript_deletion::transcript_deletion_completed;
@@ -1315,14 +1317,11 @@ impl LibraryReader {
     /// reader's generation with the visible detail view and dies when it is
     /// spent, a new snapshot is minted, or the library revalidates differently.
     pub(crate) fn retain_operator_note_handle(&mut self, meeting_id: &str) -> Option<String> {
-        self.projection
-            .meeting_handle(meeting_id)
-            .ok()
-            .map(|hit| {
-                let handle = Uuid::new_v4().to_string();
-                self.operator_note_handles.insert(handle.clone(), hit);
-                handle
-            })
+        self.projection.meeting_handle(meeting_id).ok().map(|hit| {
+            let handle = Uuid::new_v4().to_string();
+            self.operator_note_handles.insert(handle.clone(), hit);
+            handle
+        })
     }
 
     fn meeting_has_transcript(&self, meeting_id: &str) -> bool {
@@ -2142,11 +2141,10 @@ mod tests {
 
         let generic_handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
         let called = Cell::new(false);
-        let generic_refused = reader.open_operator_note_bound(
-            &generic_handle,
-            &HashSet::new(),
-            |_, _| called.set(true),
-        );
+        let generic_refused =
+            reader.open_operator_note_bound(&generic_handle, &HashSet::new(), |_, _| {
+                called.set(true)
+            });
         assert_eq!(generic_refused.unwrap_err().state, "stale");
         assert!(!called.get());
 

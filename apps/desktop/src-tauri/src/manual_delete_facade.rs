@@ -118,7 +118,6 @@ fn map_core_error(error: ManualAudioDeletionError) -> ManualAudioDeletionFacadeE
     }
 }
 
-
 /// The reviewed confirmation for removing a whole meeting.
 ///
 /// Deliberately a distinct type from [`AudioDeletionReview`] rather than a reuse

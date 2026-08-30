@@ -29,6 +29,6 @@ pub mod runtime;
 pub mod sitting_evidence;
 pub mod storage;
 pub mod supervision;
-pub mod transcript_restoration;
 pub mod transcript_deletion;
+pub mod transcript_restoration;
 pub mod transcript_retry;
