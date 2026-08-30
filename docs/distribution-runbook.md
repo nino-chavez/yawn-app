@@ -719,7 +719,25 @@ never a distribution candidate. The operator's admission verdict
 the admitted ONNX encoder in the runtime. The transferred-build Gatekeeper
 check was waived in that ruling; the first cohort download of an
 encoder-carrying DMG supplies the field receipt and should be noted in
-RESULTS.md when it arrives. Admission of the encoder is not admission of
+RESULTS.md when it arrives.
+
+**Correction, 2026-08-30: the released DMG does not carry the encoder.** The
+public `Yawn-0.5.9-macos-arm64.dmg` was downloaded from the landing site,
+byte-count and SHA-256 matched the 0.5.9 receipt above, and its mounted
+`app-runtime.json` names `encoder-unavailable.identity` with no
+`models/speaker-encoder/` in the bundle. The installed 0.5.7 shows the same.
+So the release lane has been building plain `build-alpha`, and the bolded
+ruling above stopped describing the shipped artifact somewhere between 0.2.2
+and 0.5.7 — the superseded DMGs were deleted per the receipts, so the exact
+release where it decayed is not recoverable. What bounds the damage today:
+no enrollment command is registered in the shipped app's `generate_handler!`
+list, so a cohort operator cannot create a non-zero profile and the
+placeholder gate cannot fire for them. The exposure is the developer path —
+a profile adopted through dev tooling makes `transcript.create` refuse in
+the installed placeholder app against the same data directory, which is
+exactly the cost `docs/speaker-gate-slice.md` § "Fork 1" priced as landing
+on nobody. Either the release lane returns to `build-alpha-encoder` before
+enrollment registers, or the two claims stay corrected. Admission of the encoder is not admission of
 enrolment: the recorder and profile operations stay unregistered until their
 own operator decisions.
 

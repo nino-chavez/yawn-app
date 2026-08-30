@@ -67,6 +67,14 @@ with `worker/build_runtime.sh build-alpha-encoder` and carries the admitted ONNX
 encoder (runbook, "Encoder-candidate lane"; true since 0.2.2). It lands on
 developer builds of the transcript-only lane, which is the right place for it.
 
+> **Stale as of 2026-08-30.** The released 0.5.9 DMG was pulled and checked
+> against its receipt: it is a placeholder-encoder build
+> (`encoder-unavailable.identity`, no packaged encoder). The paragraph above
+> was true when written and is not true of the current release; the cost
+> analysis is bounded only because enrollment is not registered in the shipped
+> app. Details and evidence: distribution runbook, "Encoder-candidate lane",
+> correction of the same date.
+
 ### "Installed" is a size, and the first version got that wrong
 
 `<root>/profile/voiceprint.json` **always exists**. Rust owns its lifecycle and
