@@ -213,6 +213,43 @@ none of this claims a sequence ahead of the open Order 0–4 gates.
 | I8 | Export ships as one compact archive and one plain per-item form | Joplin, Quiver | The claim→evidence structure survives export; an export is a local file, not sharing |
 | I9 | Deleting a meeting or retry is recoverable within a window | QOwnNotes, Anytype | Local trash only; the no-recovery-past-window disclosure is stated plainly |
 
+**Intake Wave 1 status (2026-08-31):** I1, I2, and I3 are implemented and
+merged to main from three isolated worktree packets, with the combined suites
+green after integration (session-core, desktop, UI, worker pytest, Swift
+capture tests). Implemented and merged is the claim — packaged, installed,
+and shipped remain separate states, and a real recorded meeting is still owed
+before any of the three counts as proven in use. Facts the merge established:
+
+- Pause is a true hardware release: the audio engine stops and macOS's mic
+  indicator goes off while paused; silence-while-paused is test-proven against
+  fake sources. Pauses land in the worker-attested capture receipt as an
+  additive `capture-pauses/1` block (wall-clock sample offsets), written
+  inside finalize so the receipt digest covers it; receipts without the block
+  read as "not paused" everywhere, and the no-pause writer output is
+  byte-identical to before.
+- **Semantic change:** `capture_elapsed_samples` (and `capture_elapsed_s` in
+  the health block) now means recorded span net of pauses, not wall clock.
+  Without this, any pause over ~2 s would fail the
+  `leg_ended_before_capture_stop` integrity floor. The floor interaction is
+  not exercisable by the test lanes — it is a live-run checkpoint.
+- The note-capture hotkey (⌃⌥Y) is armed only while capture is active and
+  disarms on stop and on every capture-failure path; a failed registration is
+  logged and the meeting proceeds without the hotkey, never claiming it armed.
+- Pre-meeting context is a `meeting-context/1` sidecar mirroring the
+  operator-note module; it rides the durable generation request (crash
+  recovery replays it), a no-context request stays byte-identical, and a
+  context-only assertion cannot become a claim (test-proven; enforcement is
+  structural — context never receives an evidence alias).
+- Known gaps carried forward: context is only editable from Arming onward (no
+  meeting directory exists in Idle; a draft-staging decision is open), context
+  is not yet displayed on the read-only library surface, and the worker
+  pytest suite showed one non-reproducing flake (tracked separately).
+- Finding for a later packet: `note_validator.py`'s evidence gate is not
+  uniform across claim types — decision/action claims require an
+  agreement-signal match in the cited excerpt, while summary/proposal/question
+  claims require only a resolvable alias, leaving their prose unchecked
+  against the excerpt.
+
 I1–I3 change what the operator can do during and around capture; I4–I9 harden
 trust in what already exists and can travel as independent packets. Two
 boundaries from the same review:
