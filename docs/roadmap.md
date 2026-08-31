@@ -233,9 +233,15 @@ plugin ecosystems — matched the brief's banned list by name and stays out.
 A second pass over the same forty apps reviewed information architecture,
 journeys, trust surfaces, interaction, and look and feel against the brief's
 interface rules. Evidence class: described — vendor pages, docs, and design
-press fetched in-session, no installs, no screenshots. That is weaker than
-both "observed" and "verified in source"; Bear, Craft, Agenda, and OATS each
-need an hour hands-on before their specifics harden into specs.
+press fetched in-session — except where a same-day hands-on pass upgraded a
+claim to observed: Bear (no-ceremony first run; typography defaults 15 pt,
+1.5 em line height, 48 em measure — via its own bespoke face, not the system
+stack), Agenda (default view shows notes fully expanded in one chronological
+scroll, which strengthens D1; the empty "On the Agenda" sidebar slot is the
+manual-attention decay D7 predicts, observed live), and Craft (hard account
+wall before any note exists — its polish claims stay described, so D5's
+hover-preview rests on MarginNote's documented model). OATS remains described
+pending a drivable session.
 
 The orienting finding: OATS documents install, record, and a summary landing
 in a flat library, and describes no review or editing journey at all. Yawn's
