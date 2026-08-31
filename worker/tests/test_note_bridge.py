@@ -890,18 +890,32 @@ def batches():
             return
         request = json.loads(line)
         if request.get("schema") == "note-synthesis-request/1":
+            # Only lines that look like the alias JSON objects, not the header
+            # or (when pre-meeting context is present) the labeled context
+            # section and its blank-line separator ahead of them.
             aliases = [
                 json.loads(source_line)["id"]
-                for source_line in request["user"].splitlines()[1:]
-                if source_line.strip()
+                for source_line in request["user"].splitlines()
+                if source_line.strip().startswith("{")
             ]
+            # Roadmap intake I3: echo the operator's own context text (not the
+            # label around it) into the first overview row when a labeled
+            # context section is present, bounded well under the claim-text
+            # ceiling, so a test can assert on what actually reached the model
+            # without a bespoke stub protocol.
+            context_marker = ""
+            if "OPERATOR-PROVIDED MEETING CONTEXT" in request["user"]:
+                after_label = request["user"].split("):\\n", 1)[1]
+                context_text = after_label.split("\\n\\n", 1)[0]
+                context_marker = " CONTEXT_SEEN:" + context_text[:80]
             proposal = {
                 "overview": [
                     {
-                        "text": f"Summary grounded in selected excerpt {alias}.",
+                        "text": f"Summary grounded in selected excerpt {alias}."
+                        + (context_marker if index == 0 else ""),
                         "evidence_ids": [alias],
                     }
-                    for alias in aliases[:4]
+                    for index, alias in enumerate(aliases[:4])
                 ],
                 "items": [],
             }
@@ -1054,6 +1068,51 @@ for index, (request, ids) in enumerate(batches()):
         else:
             Path(MARKER).write_text("corrected-vocabulary")
     answer(verdicts(ids, lambda position: "KEEP" if index % 20 == 0 else "ABSTAIN"))
+"""
+
+# Roadmap intake I3, decision 5's invariant. This does not use `batches()`'s
+# shared synthesis auto-answer at all: exactly one candidate is kept -- real
+# transcript evidence exists and is offered to the model as alias E01 -- but
+# the one overview row this proposes names no evidence_ids at all, the shape
+# a model would produce if it treated the labeled context section as citable
+# content instead of framing rather than citing the real evidence it was
+# given. Proves the claim cannot be admitted regardless of what the model
+# says or what evidence happened to be available, because `_decode_synthesis`
+# requires a valid alias on the row itself and this row offers none.
+STUB_SYNTHESIZES_A_CONTEXT_ONLY_CLAIM = """import json, sys
+
+
+def _write(value):
+    sys.stdout.write(json.dumps(value) + chr(10))
+    sys.stdout.flush()
+
+
+kept_one = False
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    request = json.loads(line)
+    if request.get("schema") == "note-synthesis-request/1":
+        proposal = {
+            "overview": [{
+                "text": "The meeting was about renewing the lease.",
+                "evidence_ids": [],
+            }],
+            "items": [],
+        }
+        _write({"content": json.dumps(proposal)})
+        continue
+    schema = request["response_format"]["properties"]["items"]["items"]
+    enum = schema["properties"]["candidate_id"]["enum"]
+    verdicts = []
+    for value in enum:
+        if not kept_one:
+            verdicts.append({"candidate_id": value, "verdict": "KEEP"})
+            kept_one = True
+        else:
+            verdicts.append({"candidate_id": value, "verdict": "ABSTAIN"})
+    _write({"items": verdicts})
 """
 
 
@@ -1231,6 +1290,7 @@ class NoteGenerateBridgeTests(unittest.TestCase):
     def _generate_command(self, **overrides) -> tuple[str, bytes]:
         speaker_label_overrides = overrides.pop("speaker_label_overrides", None)
         vocabulary_replacements = overrides.pop("vocabulary_replacements", None)
+        pre_meeting_context = overrides.pop("pre_meeting_context", None)
         request_id = str(uuid.uuid4())
         arguments = {
             "meeting_id": self.meeting_id,
@@ -1240,6 +1300,8 @@ class NoteGenerateBridgeTests(unittest.TestCase):
             arguments["speaker_label_overrides"] = speaker_label_overrides
         if vocabulary_replacements is not None:
             arguments["vocabulary_replacements"] = vocabulary_replacements
+        if pre_meeting_context is not None:
+            arguments["pre_meeting_context"] = pre_meeting_context
         arguments.update({"model_directory": self.MODEL_DIRECTORY, "deadline_s": 20})
         arguments.update(overrides)
         command = {
@@ -1429,6 +1491,65 @@ class NoteGenerateBridgeTests(unittest.TestCase):
                     locator["text_sha256"],
                 )
 
+    def test_generate_includes_pre_meeting_context_as_a_labeled_prompt_section(self) -> None:
+        """Roadmap intake I3. The operator's own framing reaches the model in
+        a section clearly labeled as context, not as a transcript excerpt --
+        and every claim the run still produces cites real transcript evidence,
+        proving context changed what the model saw without becoming a claim
+        of its own.
+        """
+        context_text = "Deciding whether to renew the office lease."
+        result, returncode, error, _ = self._run(pre_meeting_context=context_text)
+        self.assertEqual((returncode, error), (0, b""))
+        self.assertEqual(result["outcome"], "generated")
+        claims = result["generation"]["claims"]
+        self.assertTrue(
+            any(f"CONTEXT_SEEN:{context_text}" in claim["claim"] for claim in claims),
+            "the labeled context section must reach the synthesis prompt verbatim",
+        )
+        turns = self._transcript_turns()
+        for claim in claims:
+            for locator in claim["locators"]:
+                text = turns[locator["turn"]]["text"][locator["start"]:locator["end"]]
+                self.assertEqual(
+                    hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    locator["text_sha256"],
+                    "every claim, context or not, still needs transcript-verified evidence",
+                )
+
+    def test_absent_pre_meeting_context_leaves_the_synthesis_prompt_unchanged(self) -> None:
+        """Decision 6's gate at the worker layer: with no `pre_meeting_context`
+        key at all, the labeled section never appears, and generation behaves
+        exactly as the baseline happy-path test proves.
+        """
+        result, returncode, error, _ = self._run()
+        self.assertEqual((returncode, error), (0, b""))
+        self.assertEqual(result["outcome"], "generated")
+        for claim in result["generation"]["claims"]:
+            self.assertNotIn("CONTEXT_SEEN", claim["claim"])
+
+    def test_context_only_assertion_cannot_become_a_claim(self) -> None:
+        """Decision 5's invariant, exercised end to end. A synthesis response
+        that names claim text but no valid transcript evidence is dropped by
+        `_decode_synthesis`'s alias resolution regardless of whether that text
+        happens to echo the operator's context, and a run left with no
+        evidence-linked overview refuses rather than publishing anything.
+        """
+        self._write_generator(STUB_SYNTHESIZES_A_CONTEXT_ONLY_CLAIM)
+        self._write_generate_manifest()
+        result, returncode, error, request_id = self._run(
+            pre_meeting_context="The real reason we met: renew the lease.",
+        )
+        self.assertEqual((returncode, error), (0, b""))
+        self.assertEqual(result["request_id"], request_id)
+        self.assertEqual(result["outcome"], "transcript-only")
+        self.assertIsNone(result["generation"])
+        self.assertEqual(result["failure"]["code"], "no-model-summary")
+        self.assertTrue(result["failure"]["recoverable"])
+        # The refusal receipt must not leak the context text either.
+        frame = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn("renew the lease", frame)
+
     def test_stale_out_of_range_and_oversized_vocabulary_overlays_refuse_before_model_launch(self) -> None:
         original = self._transcript_turns()[0]["text"]
         start = original.index("packaging")
@@ -1458,6 +1579,21 @@ class NoteGenerateBridgeTests(unittest.TestCase):
                     result["failure"]["code"],
                     "vocabulary-overlay" if label != "oversized" else "invalid-request",
                 )
+
+    def test_malformed_or_oversized_pre_meeting_context_refuses_before_model_launch(self) -> None:
+        cases = {
+            "empty": "",
+            "oversized": "x" * (16 * 1024 + 1),
+            "control-character": "line one\x00line two",
+        }
+        for label, context_text in cases.items():
+            self.marker.unlink(missing_ok=True)
+            result, returncode, error, _ = self._run(pre_meeting_context=context_text)
+            with self.subTest(label=label):
+                self.assertEqual((returncode, error), (0, b""))
+                self.assertEqual(result["outcome"], "transcript-only")
+                self.assertFalse(self.marker.exists())
+                self.assertEqual(result["failure"]["code"], "invalid-request")
 
     def test_generated_locators_resolve_to_the_transcripts_own_bytes(self) -> None:
         result, _, _, _ = self._run()

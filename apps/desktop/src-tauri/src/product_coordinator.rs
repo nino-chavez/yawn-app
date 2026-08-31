@@ -243,6 +243,7 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
             transcript_sha256: arguments.source_transcript_sha256.clone(),
             speaker_label_overrides: arguments.speaker_label_overrides.clone(),
             vocabulary_replacements: arguments.vocabulary_replacements.clone(),
+            pre_meeting_context: arguments.pre_meeting_context.clone(),
         };
         let frame = generator
             .generate(&request)
@@ -606,6 +607,24 @@ impl ProductOperationCoordinator for DesktopProductCoordinator {
                         "local vocabulary changed",
                     ));
                 }
+                // Same re-attestation shape as the two overlays above, for the
+                // operator's pre-meeting context sidecar: the Tauri command
+                // derived `args.pre_meeting_context` from `meeting-context.json`
+                // before this call, and a fresh read under the lease must still
+                // agree with it before the worker sees it.
+                let current_context = crate::meeting_context::read(meeting_dir);
+                if current_context.unreadable {
+                    return Err(NoteGenerationCoordinatorError::Ambiguous(
+                        "meeting context could not be read",
+                    ));
+                }
+                let current_context_value =
+                    (!current_context.text.is_empty()).then_some(current_context.text);
+                if current_context_value != args.pre_meeting_context {
+                    return Err(NoteGenerationCoordinatorError::Ambiguous(
+                        "meeting context changed",
+                    ));
+                }
                 Ok(())
             })
             .map_err(|error| match error {
@@ -913,6 +932,7 @@ mod tests {
                 source_transcript_sha256: "f".repeat(64),
                 speaker_label_overrides: Vec::new(),
                 vocabulary_replacements: Vec::new(),
+                pre_meeting_context: None,
             }),
             Err(CoordinatorError::Unavailable)
         );
@@ -1300,6 +1320,7 @@ mod tests {
                 source_transcript_sha256: fixture.transcript_sha256.clone(),
                 speaker_label_overrides: Vec::new(),
                 vocabulary_replacements: Vec::new(),
+                pre_meeting_context: None,
             }),
             Err(CoordinatorError::Unavailable)
         );
@@ -1321,6 +1342,7 @@ mod tests {
                     replacement: "Alex".into(),
                 }],
                 vocabulary_replacements: Vec::new(),
+                pre_meeting_context: None,
             }),
             Err(CoordinatorError::Refused)
         );
@@ -1360,6 +1382,7 @@ mod tests {
                 source_transcript_sha256: fixture.transcript_sha256.clone(),
                 speaker_label_overrides: Vec::new(),
                 vocabulary_replacements: Vec::new(),
+                pre_meeting_context: None,
             }),
             Err(CoordinatorError::Refused)
         );
@@ -1393,6 +1416,42 @@ mod tests {
                 source_transcript_sha256: fixture.transcript_sha256.clone(),
                 speaker_label_overrides: Vec::new(),
                 vocabulary_replacements: Vec::new(),
+                pre_meeting_context: None,
+            }),
+            Err(CoordinatorError::Refused)
+        );
+        assert!(port.requests.lock().unwrap().is_empty());
+    }
+
+    /// The same re-attestation gate this packet adds, mirroring
+    /// `regeneration_refuses_a_vocabulary_overlay_the_current_store_does_not_attest`:
+    /// a caller-supplied context that disagrees with what is on disk right now
+    /// must refuse before the worker is touched, exactly like a stale
+    /// vocabulary or speaker overlay.
+    #[test]
+    fn regeneration_refuses_a_context_value_the_current_sidecar_does_not_attest() {
+        let fixture = runtime_fixture(gated_turns());
+        let meeting_dir = fixture
+            .state
+            .storage
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .storage
+            .resolve(&Path::new("meetings").join(fixture.meeting_id.to_string()))
+            .unwrap();
+        crate::meeting_context::write(&meeting_dir, "the real, current framing").unwrap();
+
+        let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
+        let coordinator = coordinator_for(&fixture, port.clone());
+        assert_eq!(
+            coordinator.accept_regeneration(&RegenerateNoteUiArgs {
+                meeting_id: fixture.meeting_id,
+                source_transcript_sha256: fixture.transcript_sha256.clone(),
+                speaker_label_overrides: Vec::new(),
+                vocabulary_replacements: Vec::new(),
+                pre_meeting_context: Some("a stale value the caller still believes".into()),
             }),
             Err(CoordinatorError::Refused)
         );

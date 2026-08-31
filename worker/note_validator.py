@@ -843,9 +843,35 @@ def synthesize_note(
     points: list[dict],
     overlay,
     ask: Callable[[dict], str],
+    pre_meeting_context: str | None = None,
 ) -> list[dict]:
+    """Roadmap intake I3. `pre_meeting_context` is the operator's own labeled
+    framing, typed before or during capture -- never transcript-backed, and
+    absent on every call site that predates this parameter. When absent the
+    `user` prompt this builds is byte-identical to what it was before this
+    parameter existed; the section below is prepended only when present.
+
+    The governing constraint, verbatim: context is a labeled operator input;
+    it never appears as transcript-backed generated content. This function
+    cannot enforce that by itself -- the model still receives free text and
+    could ignore the instruction below -- so the actual enforcement is
+    `_decode_synthesis`'s alias resolution and, one layer up, Rust's
+    `note_projection.rs::parse_claim`: every claim still needs 1-3 locators
+    whose `text_sha256` verifies against the retained transcript, and context
+    never enters `sources` (the only alias-bearing rows `ask` is offered), so
+    it can supply no `evidence_ids` a claim could cite. A context-only
+    assertion has nothing to resolve against and is dropped exactly like any
+    other unsupported row.
+    """
     sources = _synthesis_source_rows(manifest, kept, transcript, overlay)
-    user = "SELECTED TRANSCRIPT EXCERPTS:\n" + "\n".join(
+    context_section = ""
+    if isinstance(pre_meeting_context, str) and pre_meeting_context:
+        context_section = (
+            "OPERATOR-PROVIDED MEETING CONTEXT (framing only -- never meeting"
+            " content, never evidence, never quotable as either; use only to judge"
+            " which excerpts below matter more):\n" + pre_meeting_context + "\n\n"
+        )
+    user = context_section + "SELECTED TRANSCRIPT EXCERPTS:\n" + "\n".join(
         json.dumps(
             {"id": row["alias"], "text": row["text"]},
             ensure_ascii=False,
@@ -931,7 +957,10 @@ def generate(
             raise GenerationRefused("no-generatable-transcript", True)
         manifest, kept = _classify_candidates(transcript, overlay, ask)
         points = locate_kept_candidates(manifest, kept, transcript)
-        claims = synthesize_note(transcript, manifest, kept, points, overlay, ask)
+        claims = synthesize_note(
+            transcript, manifest, kept, points, overlay, ask,
+            pre_meeting_context=arguments.get("pre_meeting_context"),
+        )
         _require_links(directories, files)
         _require_snapshot(transcript_file, transcript_bytes, transcript_id)
         _require_links(directories, files)

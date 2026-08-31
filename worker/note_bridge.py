@@ -1028,6 +1028,29 @@ def _validate_speaker_label_overrides(value: object) -> None:
         previous = rank
 
 
+def _validate_pre_meeting_context(value: object) -> None:
+    """Bound the operator's pre-meeting framing text before it reaches a prompt.
+
+    Free text, not a structured overlay, so only the byte ceiling and control
+    characters are policed here; multi-line is legitimate context, so newline
+    and tab are the two control characters this allows. The 16 KiB ceiling
+    mirrors the desktop sidecar's own cap
+    (`apps/desktop/src-tauri/src/meeting_context.rs::MAX_TEXT_BYTES`); this
+    bridge does not read that file, so the bound is restated here rather than
+    shared.
+    """
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value.encode("utf-8")) > 16 * 1024
+        or any(
+            unicodedata.category(character) == "Cc" and character not in "\n\t"
+            for character in value
+        )
+    ):
+        raise InvalidArguments("pre-meeting context is invalid")
+
+
 def _validate_vocabulary_replacements(value: object) -> None:
     """Close source-span replacements before the validator imports a model.
 
@@ -1099,6 +1122,8 @@ def _parse_command(frame: bytes, role: str) -> tuple[str, dict]:
             expected.append("speaker_label_overrides")
         if "vocabulary_replacements" in arguments:
             expected.append("vocabulary_replacements")
+        if "pre_meeting_context" in arguments:
+            expected.append("pre_meeting_context")
         expected.extend(("model_directory", "deadline_s"))
     if not isinstance(arguments, dict) or list(arguments) != expected:
         raise InvalidArguments("note arguments have the wrong shape")
@@ -1121,6 +1146,8 @@ def _parse_command(frame: bytes, role: str) -> tuple[str, dict]:
                 _validate_speaker_label_overrides(arguments["speaker_label_overrides"])
             if "vocabulary_replacements" in arguments:
                 _validate_vocabulary_replacements(arguments["vocabulary_replacements"])
+            if "pre_meeting_context" in arguments:
+                _validate_pre_meeting_context(arguments["pre_meeting_context"])
         _safe_digest(arguments["transcript_id"], "transcript ID")
     except BridgeRefused as exc:
         raise InvalidArguments(str(exc)) from exc

@@ -506,6 +506,11 @@ pub struct GenerateNoteRequest {
     /// worker re-derives every range and digest from the retained transcript;
     /// candidate locators and note provenance never point at replacement text.
     pub vocabulary_replacements: Vec<VocabularyRangeReplacement>,
+    /// The operator's own labeled framing for this meeting. Prompt-only, like
+    /// the overlays above: it may shift which retained excerpts the child
+    /// emphasizes, and it can mint no locator, no claim, and no evidence of
+    /// its own. See `operations::NoteCreateWorkerArgs::pre_meeting_context`.
+    pub pre_meeting_context: Option<String>,
 }
 
 /// The `note.generate` transport: the same hardened one-shot child as the
@@ -1992,10 +1997,28 @@ fn validate_generate_request(request: &GenerateNoteRequest) -> Result<(), Intern
         || !valid_digest(&request.transcript_sha256)
         || !speaker_label_overrides_are_valid(&request.speaker_label_overrides)
         || !vocabulary_range_replacements_are_valid(&request.vocabulary_replacements)
+        || !pre_meeting_context_is_valid(&request.pre_meeting_context)
     {
         return Err(InternalOutcome::Unavailable);
     }
     Ok(())
+}
+
+/// Mirrors `operations::validate_pre_meeting_context` -- duplicated rather
+/// than shared because that function is private to its module and this one
+/// runs before the command frame is built, not as part of the UI/durable
+/// contract checks. Both bounds must move together if the ceiling changes.
+fn pre_meeting_context_is_valid(value: &Option<String>) -> bool {
+    match value {
+        None => true,
+        Some(text) => {
+            !text.is_empty()
+                && text.len() <= 16 * 1024
+                && !text
+                    .chars()
+                    .any(|character| character.is_control() && character != '\n' && character != '\t')
+        }
+    }
 }
 
 fn speaker_label_overrides_are_valid(overrides: &[SpeakerLabelOverride]) -> bool {
@@ -2100,6 +2123,8 @@ struct GenerateArguments<'a> {
     speaker_label_overrides: Option<&'a [SpeakerLabelOverride]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vocabulary_replacements: Option<&'a [VocabularyRangeReplacement]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pre_meeting_context: Option<&'a str>,
     model_directory: &'a str,
     deadline_s: u64,
 }
@@ -2119,6 +2144,7 @@ fn generate_command(
                 .then_some(request.speaker_label_overrides.as_slice()),
             vocabulary_replacements: (!request.vocabulary_replacements.is_empty())
                 .then_some(request.vocabulary_replacements.as_slice()),
+            pre_meeting_context: request.pre_meeting_context.as_deref(),
             model_directory,
             deadline_s: GENERATE_DEADLINE_SECONDS,
         },
@@ -2804,6 +2830,7 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             transcript_sha256: "c".repeat(64),
             speaker_label_overrides: Vec::new(),
             vocabulary_replacements: Vec::new(),
+            pre_meeting_context: None,
         }
     }
 
@@ -3026,6 +3053,53 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             )
             .into_bytes()
         );
+    }
+
+    #[test]
+    fn generate_command_carries_the_operators_pre_meeting_context() {
+        let mut request = generate_request();
+        request.pre_meeting_context = Some("Deciding the Q3 roadmap.".into());
+
+        assert_eq!(
+            generate_command(&request, "models/note.d/m/r").unwrap(),
+            format!(
+                "{{\"schema\":\"note-bridge-command/1\",\"request_id\":\"11111111-1111-4111-8111-111111111111\",\"operation\":\"note.generate\",\"arguments\":{{\"meeting_id\":\"meeting-a\",\"transcript_id\":\"{}\",\"pre_meeting_context\":\"Deciding the Q3 roadmap.\",\"model_directory\":\"models/note.d/m/r\",\"deadline_s\":3600}}}}\n",
+                "c".repeat(64)
+            )
+            .into_bytes()
+        );
+    }
+
+    /// Decision 6's gate at this layer: a request with no pre-meeting context
+    /// must still produce exactly the frame `generate_command_is_closed_and_bounded`
+    /// pins, with no `pre_meeting_context` key at all.
+    #[test]
+    fn absent_pre_meeting_context_leaves_the_generate_command_unchanged() {
+        let request = generate_request();
+        assert!(request.pre_meeting_context.is_none());
+        assert_eq!(
+            generate_command(&request, "models/note.d/m/r").unwrap(),
+            format!(
+                "{{\"schema\":\"note-bridge-command/1\",\"request_id\":\"11111111-1111-4111-8111-111111111111\",\"operation\":\"note.generate\",\"arguments\":{{\"meeting_id\":\"meeting-a\",\"transcript_id\":\"{}\",\"model_directory\":\"models/note.d/m/r\",\"deadline_s\":3600}}}}\n",
+                "c".repeat(64)
+            )
+            .into_bytes()
+        );
+    }
+
+    #[test]
+    fn malformed_or_oversized_pre_meeting_context_refuses_before_launch() {
+        let fixture = generative_fixture("descriptor-binding");
+        let generator = note_generator(&fixture, 2_000, 2_000);
+        for invalid in [Some(String::new()), Some("x".repeat(16 * 1024 + 1))] {
+            let mut malformed = generate_request();
+            malformed.pre_meeting_context = invalid;
+            assert_eq!(
+                generator.generate(&malformed),
+                Err(ProjectTransportError::Unavailable)
+            );
+        }
+        assert!(!fixture.storage_root.join("bound-command").exists());
     }
 
     #[test]

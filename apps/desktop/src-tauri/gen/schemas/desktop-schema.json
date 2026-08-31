@@ -351,6 +351,12 @@
           "markdownDescription": "Enables the local_vocabulary_set_enabled command without any pre-configured scope."
         },
         {
+          "description": "Enables the meeting_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-meeting-context",
+          "markdownDescription": "Enables the meeting_context command without any pre-configured scope."
+        },
+        {
           "description": "Enables the note_model_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-note-model-settings",
@@ -517,6 +523,12 @@
           "type": "string",
           "const": "allow-retry-startup",
           "markdownDescription": "Enables the retry_startup command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the save_meeting_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-save-meeting-context",
+          "markdownDescription": "Enables the save_meeting_context command without any pre-configured scope."
         },
         {
           "description": "Enables the save_operator_note command without any pre-configured scope.",
@@ -741,6 +753,12 @@
           "markdownDescription": "Denies the local_vocabulary_set_enabled command without any pre-configured scope."
         },
         {
+          "description": "Denies the meeting_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-meeting-context",
+          "markdownDescription": "Denies the meeting_context command without any pre-configured scope."
+        },
+        {
           "description": "Denies the note_model_settings command without any pre-configured scope.",
           "type": "string",
           "const": "deny-note-model-settings",
@@ -907,6 +925,12 @@
           "type": "string",
           "const": "deny-retry-startup",
           "markdownDescription": "Denies the retry_startup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the save_meeting_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-save-meeting-context",
+          "markdownDescription": "Denies the save_meeting_context command without any pre-configured scope."
         },
         {
           "description": "Denies the save_operator_note command without any pre-configured scope.",

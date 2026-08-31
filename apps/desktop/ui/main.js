@@ -36,6 +36,12 @@ const state = {
   audioPlayback: { state: "idle", source: null, message: "No recording is playing." },
   busyAction: "",
   consent: { participantsConsented: false, headphones: false, operatorAlone: false },
+  contextDraft: "",
+  contextLoadedFor: "",
+  contextLoading: false,
+  contextSaveQueue: Promise.resolve(),
+  contextSaveState: "local",
+  contextUnreadable: false,
   error: "",
   library: null,
   generatingMeetingId: "",
@@ -65,6 +71,7 @@ const state = {
 
 let noteSaveTimer;
 let libraryNoteSaveTimer;
+let contextSaveTimer;
 let permissionsRefreshTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
@@ -136,6 +143,13 @@ function noteSaveCopy() {
   return "Stored on this Mac";
 }
 
+function contextSaveCopy() {
+  if (state.contextUnreadable) return "Not editable";
+  if (state.contextSaveState === "saving") return "Saving…";
+  if (state.contextSaveState === "saved") return "Saved on this Mac";
+  return "Stored on this Mac";
+}
+
 function permissionAction(permission) {
   if (!permission || permission.probeUnavailable) return { action: "open-settings", label: "Open Settings" };
   if (permission.microphone === "not-determined") return { action: "request-microphone", label: "Allow microphone" };
@@ -197,7 +211,7 @@ function render() {
 function captureEditorFocus() {
   const active = document.activeElement;
   const field = active?.dataset?.field;
-  if (!["operator-note", "library-operator-note", "transcript-search", "vocabulary-before", "vocabulary-after"].includes(field)) return null;
+  if (!["operator-note", "meeting-context", "library-operator-note", "transcript-search", "vocabulary-before", "vocabulary-after"].includes(field)) return null;
   if (!active.dataset.meetingId) return null;
   return {
     field,
@@ -373,6 +387,7 @@ function renderCapture() {
   const presentation = capturePresentation(snapshot);
   const terminal = ["transcript-ready", "transcription-failed", "recovered-interrupted"].includes(snapshot.capture);
   const disabled = state.noteUnreadable || !snapshot.meeting_id;
+  const contextDisabled = state.contextUnreadable || !snapshot.meeting_id;
   const context = snapshot.error || snapshot.warnings?.[0] || "";
   return `
     <section class="session-workspace" aria-labelledby="capture-title">
@@ -394,6 +409,13 @@ function renderCapture() {
       </div>
       ${renderActivityMonitor(snapshot)}
       ${context ? `<p class="message-card ${presentation.tone === "attention" ? "attention" : ""}">${escapeHtml(context)}</p>` : ""}
+      <article class="note-workbench context-workbench">
+        <div class="note-editor-head"><strong>What is this meeting for? (optional)</strong><span class="save-state" id="context-save-state">${escapeHtml(contextSaveCopy())}</span></div>
+        <textarea class="note-editor" data-field="meeting-context" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="What is this meeting for? Optional." placeholder="What is this meeting for? What must get decided?" ${contextDisabled ? "disabled" : ""}>${escapeHtml(state.contextDraft)}</textarea>
+        <div class="capture-foot">
+          <p>${state.contextUnreadable ? "This context could not be read, so Yawn will not overwrite it." : "Your context, used to guide the generated note. Not a transcript."}</p>
+        </div>
+      </article>
       <article class="note-workbench">
         <div class="note-editor-head"><strong>Your notes</strong><span class="save-state" id="note-save-state">${escapeHtml(noteSaveCopy())}</span></div>
         <textarea class="note-editor" data-field="operator-note" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${disabled ? "disabled" : ""}>${escapeHtml(state.noteDraft)}</textarea>
@@ -1276,6 +1298,11 @@ function setNoteSaveCopy() {
   if (target) target.textContent = noteSaveCopy();
 }
 
+function setContextSaveCopy() {
+  const target = document.querySelector("#context-save-state");
+  if (target) target.textContent = contextSaveCopy();
+}
+
 function setLibraryNoteSaveCopy() {
   const selection = state.selected;
   const target = document.querySelector("#library-note-save-state");
@@ -1307,6 +1334,15 @@ function clearCurrentNote() {
   state.transcriptActionStatus = { ...state.transcriptActionStatus, current: "" };
 }
 
+function clearCurrentContext() {
+  clearTimeout(contextSaveTimer);
+  contextSaveTimer = undefined;
+  state.contextDraft = "";
+  state.contextLoadedFor = "";
+  state.contextSaveState = "local";
+  state.contextUnreadable = false;
+}
+
 function canReadCurrentNote(snapshot) {
   return ["recording", "stopping", "captured", "transcribing", "transcript-ready", "transcription-failed", "recovered-interrupted"].includes(snapshot?.capture);
 }
@@ -1315,8 +1351,9 @@ async function refreshSnapshot({ shouldRender = true } = {}) {
   const oldMeetingId = state.snapshot?.meeting_id;
   state.snapshot = await invoke("app_snapshot");
   const meetingId = state.snapshot.meeting_id;
-  if (!meetingId && oldMeetingId) clearCurrentNote();
+  if (!meetingId && oldMeetingId) { clearCurrentNote(); clearCurrentContext(); }
   if (meetingId && meetingId !== state.noteLoadedFor && canReadCurrentNote(state.snapshot)) void loadCurrentNote(meetingId);
+  if (meetingId && meetingId !== state.contextLoadedFor && canReadCurrentNote(state.snapshot)) void loadCurrentContext(meetingId);
   if (state.snapshot.capture === "idle" && state.activeView === "capture") state.activeView = "home";
   if (shouldRender) render();
 }
@@ -1336,6 +1373,24 @@ async function loadCurrentNote(meetingId) {
     // The meeting directory can briefly be unavailable while capture arms.
   } finally {
     state.noteLoading = false;
+  }
+}
+
+async function loadCurrentContext(meetingId) {
+  if (state.contextLoading || state.contextLoadedFor === meetingId || state.contextDraft) return;
+  state.contextLoading = true;
+  try {
+    const context = await invoke("meeting_context");
+    if (state.snapshot?.meeting_id !== meetingId || state.contextDraft) return;
+    state.contextLoadedFor = meetingId;
+    state.contextDraft = context.text || "";
+    state.contextUnreadable = context.unreadable === true;
+    state.contextSaveState = context.unreadable ? "unreadable" : context.text ? "saved" : "local";
+    render();
+  } catch {
+    // The meeting directory can briefly be unavailable while capture arms.
+  } finally {
+    state.contextLoading = false;
   }
 }
 
@@ -1397,6 +1452,7 @@ async function startRecording() {
       attestation: state.consent,
     });
     clearCurrentNote();
+    clearCurrentContext();
     state.activeView = "capture";
     state.modal = "";
     state.selected = null;
@@ -1422,8 +1478,10 @@ async function recordAnother() {
 async function leaveCurrentCapture({ startAnother = false } = {}) {
   await runBusy(startAnother ? "record-another" : "dismiss", async () => {
     await flushPendingNoteSave();
+    await flushPendingContextSave();
     state.snapshot = await invoke("dismiss_meeting");
     clearCurrentNote();
+    clearCurrentContext();
     state.activeView = "home";
     state.selected = null;
     await refreshLibrary();
@@ -1837,6 +1895,36 @@ function scheduleNoteSave() {
   }, 600);
 }
 
+function queueContextSave(text = state.contextDraft, meetingId = state.snapshot?.meeting_id) {
+  if (!meetingId || state.contextUnreadable) return Promise.resolve();
+  state.contextSaveQueue = state.contextSaveQueue.catch(() => undefined).then(async () => {
+    if (state.snapshot?.meeting_id !== meetingId) return;
+    state.contextSaveState = "saving";
+    setContextSaveCopy();
+    const saved = await invoke("save_meeting_context", { text });
+    if (state.snapshot?.meeting_id === meetingId && state.contextDraft === text) {
+      state.contextUnreadable = saved.unreadable === true;
+      state.contextSaveState = saved.unreadable ? "unreadable" : "saved";
+      setContextSaveCopy();
+    }
+  }).catch((error) => {
+    state.contextSaveState = "local";
+    state.error = errorRecoveryPresentation(error || "Yawn could not save this context.", {
+      hasSelectedMeeting: Boolean(state.selected?.row?.meetingId),
+    });
+    render();
+  });
+  return state.contextSaveQueue;
+}
+
+function scheduleContextSave() {
+  clearTimeout(contextSaveTimer);
+  contextSaveTimer = setTimeout(() => {
+    contextSaveTimer = undefined;
+    void queueContextSave();
+  }, 600);
+}
+
 function queueSelectedNoteSave(text = state.selected?.operatorNoteDraft, selection = state.selected) {
   if (!selection?.row?.meetingId || selection.note?.operatorNote?.unreadable) return Promise.resolve();
   selection.operatorNoteSaveQueue = (selection.operatorNoteSaveQueue || Promise.resolve())
@@ -1883,6 +1971,15 @@ async function flushPendingNoteSave() {
     await queueNoteSave();
   }
   await state.noteSaveQueue;
+}
+
+async function flushPendingContextSave() {
+  if (contextSaveTimer !== undefined) {
+    clearTimeout(contextSaveTimer);
+    contextSaveTimer = undefined;
+    await queueContextSave();
+  }
+  await state.contextSaveQueue;
 }
 
 async function flushSelectedNoteSave() {
@@ -2092,6 +2189,12 @@ function handleInput(event) {
     setNoteSaveCopy();
     scheduleNoteSave();
   }
+  if (event.target.dataset.field === "meeting-context") {
+    state.contextDraft = event.target.value;
+    state.contextSaveState = "local";
+    setContextSaveCopy();
+    scheduleContextSave();
+  }
   if (event.target.dataset.field === "library-operator-note") {
     if (!state.selected) return;
     state.selected.operatorNoteDraft = event.target.value;
@@ -2127,6 +2230,7 @@ function handleChange(event) {
     render();
   }
   if (event.target.dataset.field === "operator-note") void flushPendingNoteSave();
+  if (event.target.dataset.field === "meeting-context") void flushPendingContextSave();
   if (event.target.dataset.field === "library-operator-note") void flushSelectedNoteSave();
 }
 
