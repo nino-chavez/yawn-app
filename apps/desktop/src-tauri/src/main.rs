@@ -31,6 +31,11 @@ mod model_download;
 // Managed as state so the facade commands can be registered in one move once
 // the operator widens the packaged admission; the commands stay unregistered.
 mod product_coordinator;
+// Roadmap intake I2: a global hotkey that summons operator-note capture
+// while a meeting is recording. Owns the shortcut binding, its
+// register/unregister lifecycle, and the frontend focus event — nothing
+// else. See the module docs for the governing constraint.
+mod capture_shortcut;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -1879,6 +1884,13 @@ fn start_meeting(
             clear_capture_task(&app.state::<ApplicationState>(), &spawn_failure_meeting_id);
             "The recording task could not start.".to_string()
         })?;
+    // Arms the note-capture hotkey for the lifetime of this attempt. Framed
+    // against the attempt starting (Arming), not the later CaptureState::
+    // Recording transition inside run_capture_task's own thread, since that
+    // transition is internal to a sibling packet's owned code. Any failure
+    // between here and Recording still ends the attempt through
+    // fail_capture_task, which disarms it.
+    capture_shortcut::activate(&app);
     Ok(snapshot)
 }
 
@@ -1916,6 +1928,9 @@ fn stop_meeting(app: AppHandle) -> Result<AppSnapshot, String> {
         return Err("No recording is ready to stop.".into());
     }
     transition_capture(&mut model, CaptureState::Stopping)?;
+    // The operator explicitly asked to stop; disarm now rather than waiting
+    // for the eventual Idle transition deep in the capture task.
+    capture_shortcut::deactivate(&app);
     let send_result = state
         .capture_task
         .lock()
@@ -6177,6 +6192,10 @@ fn main() {
             transcript_retry_decide
         ])
         .setup(|app| {
+            // Only teaches the plugin what to do if the note-capture
+            // shortcut is ever registered; it is not armed at launch. See
+            // capture_shortcut::activate, called from start_meeting.
+            capture_shortcut::install(app.handle())?;
             let settings = tauri::menu::MenuItemBuilder::with_id("open-settings", "Settings…")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
@@ -8482,6 +8501,11 @@ fn fail_capture_task(
     detail: &str,
     user_message: &str,
 ) {
+    // A failure anywhere between arming and stopping ends the attempt, so
+    // this shared helper is also where the note-capture hotkey comes down —
+    // covers every call site, including the ones inside run_capture_task's
+    // own thread that this packet does not otherwise touch.
+    capture_shortcut::deactivate(app);
     let state = app.state::<ApplicationState>();
     write_diagnostic(&state, code, detail);
     {

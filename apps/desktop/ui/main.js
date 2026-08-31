@@ -12,6 +12,7 @@ import {
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
+  noteCaptureFocusSelection,
   noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
@@ -30,6 +31,12 @@ import {
 
 const root = document.querySelector("#app");
 const invoke = window.__TAURI__?.core?.invoke;
+const tauriListen = window.__TAURI__?.event?.listen;
+
+// Roadmap intake I2: fired from the Rust side (capture_shortcut.rs) when the
+// operator presses the global note-capture hotkey during an active
+// recording. Must match capture_shortcut::NOTE_CAPTURE_FOCUS_EVENT exactly.
+const NOTE_CAPTURE_FOCUS_EVENT = "note-capture-hotkey";
 
 const state = {
   activeView: "home",
@@ -61,6 +68,7 @@ const state = {
   vocabulary: null,
   transcriptActionStatus: {},
   transcriptQuery: "",
+  noteCaptureFocusPending: false,
 };
 
 let noteSaveTimer;
@@ -188,6 +196,7 @@ function render() {
     </div>
   `;
   restoreEditorFocus(editorFocus);
+  if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
 }
 
@@ -218,6 +227,36 @@ function restoreEditorFocus(focus) {
   const start = Math.min(focus.start, target.value.length);
   const end = Math.min(Math.max(start, focus.end), target.value.length);
   target.setSelectionRange(start, end, focus.direction);
+}
+
+// Roadmap intake I2: the Rust side already brought the window forward and
+// requested focus (capture_shortcut.rs); this is the frontend half — find
+// the operator-note editor already in the capture view and put the caret at
+// the end. If the editor is not in the DOM yet (the poll-driven render()
+// that owns it hasn't run since the hotkey fired) or is disabled, this
+// leaves the request pending so the next render() retries it. No new
+// window, no overlay: only the existing operator canvas.
+function focusOperatorNoteFromHotkey() {
+  const target = root.querySelector('[data-field="operator-note"]');
+  if (!target || target.disabled) return;
+  target.focus({ preventScroll: true });
+  const selection = noteCaptureFocusSelection(target.value);
+  if (typeof target.setSelectionRange === "function") {
+    target.setSelectionRange(selection.start, selection.end, selection.direction);
+  }
+  state.noteCaptureFocusPending = false;
+}
+
+function listenForNoteCaptureHotkey() {
+  if (!tauriListen) return;
+  tauriListen(NOTE_CAPTURE_FOCUS_EVENT, () => {
+    state.noteCaptureFocusPending = true;
+    focusOperatorNoteFromHotkey();
+  }).catch(() => {
+    // No listener means no in-meeting hotkey focus-jump; the meeting itself
+    // is unaffected, so this stays silent rather than raising a toast for a
+    // convenience feature.
+  });
 }
 
 function renderBrowserNotice() {
@@ -2160,6 +2199,7 @@ function handleSubmit(event) {
 async function initialize() {
   render();
   if (!invoke) return;
+  listenForNoteCaptureHotkey();
   try {
     await Promise.all([
       refreshSnapshot({ shouldRender: false }),

@@ -94,6 +94,12 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-transcript-retry-start",
     "allow-transcript-retry-pending",
     "allow-transcript-retry-decide",
+    // Roadmap intake I2: lets the frontend listen for the note-capture
+    // hotkey's focus event (capture_shortcut::NOTE_CAPTURE_FOCUS_EVENT).
+    // Emitting from Rust needs no permission; only the frontend's listen
+    // side is gated.
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
 ];
 
 fn permissions(source: &str) -> Vec<String> {

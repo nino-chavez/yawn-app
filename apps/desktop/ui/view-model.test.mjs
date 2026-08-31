@@ -17,6 +17,7 @@ import {
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
+  noteCaptureFocusSelection,
   noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
@@ -580,4 +581,29 @@ test("meeting detail exposes only explicit retained-audio controls and polls the
   assert.match(source, /response\.state === "completed"[\s\S]*reopenSelectedMeeting\(meetingId\)/);
   assert.match(source, /response\.state !== "playing"[\s\S]*Retained audio is unavailable\. Reopen Library and try again\./);
   assert.doesNotMatch(source, /state\.error = String\(error\)/);
+});
+
+test("note-capture hotkey focus always lands at the end of the current draft", () => {
+  assert.deepEqual(noteCaptureFocusSelection("already typed"), {
+    start: "already typed".length,
+    end: "already typed".length,
+    direction: "forward",
+  });
+  assert.deepEqual(noteCaptureFocusSelection(""), { start: 0, end: 0, direction: "forward" });
+  assert.deepEqual(noteCaptureFocusSelection(undefined), { start: 0, end: 0, direction: "forward" });
+});
+
+test("the roadmap I2 hotkey lands only in the existing operator canvas, never a new surface", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // Matches capture_shortcut::NOTE_CAPTURE_FOCUS_EVENT in main.rs exactly;
+  // a drift here would silently break the whole feature.
+  assert.match(source, /const NOTE_CAPTURE_FOCUS_EVENT = "note-capture-hotkey";/);
+  assert.match(source, /tauriListen\(NOTE_CAPTURE_FOCUS_EVENT, \(\) => \{/);
+  // No new window, no overlay: it must only touch the existing operator-note
+  // field already rendered by renderCapture().
+  assert.match(source, /root\.querySelector\('\[data-field="operator-note"\]'\)/);
+  assert.doesNotMatch(source, /WebviewWindow|new Window\(/);
+  // A missing or disabled editor must leave the request pending, never throw
+  // or force a state the product brief forbids.
+  assert.match(source, /if \(!target \|\| target\.disabled\) return;/);
 });
