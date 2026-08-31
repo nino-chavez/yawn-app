@@ -189,6 +189,80 @@ A focused independent review checked the committed probe, dormant command,
 shell exclusion, and current title, transcript, and claim-evidence routes. It
 reported zero material findings in this no-ship decision.
 
+## Category-review intake — 2026-08-31
+
+A review of the forty apps in awesome-mac's note-taking list, each read from
+its own site or repository and filtered against the product brief, produced
+nine adoptable capabilities. Evidence class: fetched vendor and repository
+documentation, not observed installs — weaker than "observed" in the table
+above, and OATS in particular deserves a hands-on install before its README is
+treated as its ceiling.
+
+These enter the roadmap as proposed work. The brief remains the contract, and
+none of this claims a sequence ahead of the open Order 0–4 gates.
+
+| # | Proposed outcome | Source pattern | Governing constraint |
+|---|---|---|---|
+| I1 | A recording can pause and resume without ending the session | OATS | A pause is a capture-integrity event: the gap lands in the receipt and shows plainly in review |
+| I2 | A global hotkey summons operator-note capture during a meeting | Stik, Quick Note, SideNotes, nuttyartist/notes | Notes land only in the operator canvas; no floating sticky-note surface, no new data model |
+| I3 | Pre-meeting context notes inform the generated overview | Notion AI Meeting Notes | Context is a labeled operator input; it never appears as transcript-backed generated content |
+| I4 | A transcript turn shows which generated claims cite it | MarginNote 4 | Extends the existing claim→source link on the existing surface; no cross-meeting linking |
+| I5 | A meeting can be locked, with re-auth on export and audio playback | Bear, Standard Notes | State the honest claim — a local-access deterrent — unless encryption at rest actually ships |
+| I6 | Restore never overwrites: every history feature copies out | Joplin, Standard Notes | Already true of keep-or-promote; becomes the standing rule for any future editing surface |
+| I7 | The on-disk meeting record is readable without Yawn installed | Knopo, Notable, Noteship, FSNotes | Byte-stable re-serialization; an app-independent format; plain-file trust stated in product copy |
+| I8 | Export ships as one compact archive and one plain per-item form | Joplin, Quiver | The claim→evidence structure survives export; an export is a local file, not sharing |
+| I9 | Deleting a meeting or retry is recoverable within a window | QOwnNotes, Anytype | Local trash only; the no-recovery-past-window disclosure is stated plainly |
+
+I1–I3 change what the operator can do during and around capture; I4–I9 harden
+trust in what already exists and can travel as independent packets. Two
+boundaries from the same review:
+
+- Cross-meeting **exact** full-text search surfaced as a candidate and
+  deliberately did not enter this table. It is adjacent to the closed Wave 3
+  decision — exact rather than semantic, but still an expansion of the named
+  recognition paths — and needs its own product decision first.
+- The Quiver-sourced half of I8 rests on snippet-only evidence (its repository
+  was unfetchable); verify against the app before building to its specifics.
+
+Everything else the category competes on — folders, tags, saved views,
+calendar coupling, tasks, dashboards, sync, accounts, engagement mechanics,
+plugin ecosystems — matched the brief's banned list by name and stays out.
+
+### Design-lens pass — 2026-08-31
+
+A second pass over the same forty apps reviewed information architecture,
+journeys, trust surfaces, interaction, and look and feel against the brief's
+interface rules. Evidence class: described — vendor pages, docs, and design
+press fetched in-session, no installs, no screenshots. That is weaker than
+both "observed" and "verified in source"; Bear, Craft, Agenda, and OATS each
+need an hour hands-on before their specifics harden into specs.
+
+The orienting finding: OATS documents install, record, and a summary landing
+in a flat library, and describes no review or editing journey at all. Yawn's
+primary journey is the competitor's silent gap. The design intake below
+serves that difference.
+
+| # | Proposed design outcome | Source pattern | Governing constraint |
+|---|---|---|---|
+| D1 | A meeting row previews the note's outcome, not only its title | Agenda's reviewed weakness, inverted | Real generated content only; never a placeholder line |
+| D2 | Recording presence is ambient: menu-bar pill plus hotkey entry, one consent-gated action, a stated seconds budget | OATS, Quick Note, Stik | The pill speaks the existing status vocabulary; entry never bypasses consent |
+| D3 | Privacy is legible in-product: a what-happens table and "processed on this Mac" as live status copy | OATS's backend table; Anytype/Standard Notes/Noteship trust register | Mechanism and checkable fact only; no claim that cannot be verified |
+| D4 | Show source behaves as identity: exact span, scrolled and highlighted, durable across reopen | MarginNote's card model | The claim and its transcript span are one stored unit, never a render-time lookup |
+| D5 | Evidence disclosure has three depths: hover preview, split view, synced scroll | Craft, MarginNote, MiaoYan | The note stays primary at every depth; affordances reveal on intent, not as chrome |
+| D6 | Retry comparison shows word-level diff before keep-or-promote | Inkdrop's timeline shape plus the diff it lacks | The delta is visible before the choice; browsing versions alone is not comparison |
+| D7 | "Needs attention" is always system-derived | Agenda's decayed manual flag, inverted | No operator-curated pins or stars; attention states come from evidence |
+| D8 | Note and transcript reading measure is a designed decision | Bear, MiaoYan | Fixed defaults, not user typography settings; settings stay small |
+| D9 | Every webview text field passes the native-text test | Knopo's stated bar | Word-select, option-arrow, smart quotes, spellcheck, context menu — a checkable QA list |
+
+Standing refusals confirmed with named counter-examples: decorative color in
+the library (Zoho's random card colors), theme pickers (Inkdrop, Quiver, and
+Bear's nine themes are not a target), default-maximal chrome and calm-mode
+toggles (QOwnNotes's six panels, Notable's Zen mode), tab and split-window
+furniture (VNote), and the router tell — when a palette or module nav becomes
+necessary, the surface has already sprawled (massCode). Performance is a
+design property: synced evidence and diff views hold frame rate or retreat to
+tabs, so it gates release for D5 and D6.
+
 ### Drift controls
 
 - Every packet starts from the same verified commit in its own linked worktree
