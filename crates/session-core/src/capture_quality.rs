@@ -139,6 +139,12 @@ impl CapturePauseProjection {
             message: message.into(),
         }
     }
+
+    /// For a caller that could not reach the meeting record at all. It says the
+    /// check did not happen, which is the honest reading — never "no pauses".
+    pub fn unchecked() -> Self {
+        Self::unavailable("Yawn could not check whether this recording was paused.")
+    }
 }
 
 impl CaptureQualityProjection {

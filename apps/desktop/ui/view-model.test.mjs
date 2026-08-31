@@ -491,6 +491,13 @@ test("the recorder offers pause beside stop and stops straight from a pause", as
   assert.match(source, /if \(state\.snapshot\?\.capture !== "paused"\) return;/);
   // The gap shows where capture evidence already shows, beside quality.
   assert.match(source, /renderRetryCapturePauses\(retry\.pauses\)/);
+  // And on the ordinary path, which never opens a retry: the meeting the
+  // operator reads after stopping.
+  assert.match(source, /renderMeetingCapturePauses\(note\?\.capturePauses\)/);
+  // A meeting still loading its note must not read as unverifiable.
+  assert.match(source, /function renderMeetingCapturePauses\(pauses\) \{\s*if \(!pauses\) return "";/);
+  // An uninterrupted recording stays quiet rather than announcing an absence.
+  assert.match(source, /if \(presentation\.state === "not-paused"\) return "";/);
 });
 
 test("startup keeps polling until the app is ready", () => {

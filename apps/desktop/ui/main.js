@@ -757,6 +757,7 @@ function renderMeeting() {
         </div>
         <div class="meeting-meta"><span>${escapeHtml(dateLabel(row.createdAtEpochSeconds))}</span><span>${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</span></div>
         <p class="meeting-storage-note">${escapeHtml(retentionMessage)}</p>
+        ${renderMeetingCapturePauses(note?.capturePauses)}
       </header>
       ${renderMeetingRecovery(recovery)}
       ${!recovery && note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="message-card ${note.state === "summary-failed" ? "attention" : ""}">${escapeHtml(note.message)}</p>` : ""}
@@ -780,6 +781,20 @@ function renderMeeting() {
       </div>
     </article>
   `;
+}
+
+// A gap in the audio changes how the transcript should be read, so it is stated
+// next to where this meeting's record is described.
+//
+// An uninterrupted recording is the ordinary case and says nothing; a gap, or a
+// gap Yawn could not check for, is what the reader needs told. Nothing renders
+// until the note response has actually arrived, so a meeting still loading
+// never reads as unverifiable.
+function renderMeetingCapturePauses(pauses) {
+  if (!pauses) return "";
+  const presentation = capturePausePresentation(pauses);
+  if (presentation.state === "not-paused") return "";
+  return `<p class="message-card attention" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
 }
 
 function renderRetainedAudioPlayback(playback) {

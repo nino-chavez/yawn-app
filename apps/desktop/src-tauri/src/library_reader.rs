@@ -243,6 +243,13 @@ pub(crate) struct LibraryNoteResponse {
     pub(crate) regeneration_source_sha256: Option<String>,
     pub(crate) claims: Vec<LibraryClaim>,
     pub(crate) audio_retention: LibraryAudioRetention,
+    /// Whether this recording was held open with nothing being captured.
+    ///
+    /// It sits on every read of a meeting rather than only on a retry
+    /// comparison, because a gap in the audio changes how the transcript
+    /// should be read whether or not the operator ever retries it.
+    pub(crate) capture_pauses:
+        local_meeting_notes_session_core::capture_quality::CapturePauseProjection,
     /// The operator's own note (§ D), carried here so it stays reachable after
     /// the meeting is dismissed.
     ///
@@ -869,6 +876,7 @@ impl LibraryReader {
         .then_some(row_transcript_sha256)
         .flatten();
         let audio_retention = self.audio_retention(&meeting_id);
+        let capture_pauses = Self::capture_pauses(&self.storage, &meeting_id);
         let operator_note = self.operator_note(&meeting_id);
         let operator_note_handle = (!operator_note.unreadable)
             .then(|| self.retain_operator_note_handle(&meeting_id))
@@ -910,6 +918,7 @@ impl LibraryReader {
                     regeneration_source_sha256,
                     claims: Vec::new(),
                     audio_retention,
+                    capture_pauses: capture_pauses.clone(),
                     operator_note,
                     message: "A note was not produced. Retained transcript text remains available."
                         .into(),
@@ -931,6 +940,7 @@ impl LibraryReader {
                     regeneration_source_sha256,
                     claims: Vec::new(),
                     audio_retention,
+                    capture_pauses: capture_pauses.clone(),
                     operator_note,
                     message: if transcript_handle.is_some() {
                         "No admitted note is available. Retained transcript text remains available."
@@ -985,6 +995,7 @@ impl LibraryReader {
             regeneration_source_sha256: None,
             claims,
             audio_retention,
+            capture_pauses,
             operator_note,
             message: "Claim words can be opened against their exact transcript locators.".into(),
         }
@@ -1176,6 +1187,8 @@ impl LibraryReader {
             regeneration_source_sha256: None,
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
+            capture_pauses:
+                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
             operator_note: crate::operator_note::OperatorNote::none(),
             message: UNAVAILABLE_MESSAGE.into(),
         }
@@ -1519,6 +1532,29 @@ impl LibraryReader {
         Self::read_audio_retention(&self.storage, meeting_id)
     }
 
+    /// Reads the pause record from the meeting's own capture receipt.
+    ///
+    /// A meeting whose record cannot be opened, or whose receipt bytes no
+    /// longer verify, reports that the check did not happen. It never falls
+    /// back to "not paused", which would state an absence Yawn did not confirm.
+    fn capture_pauses(
+        storage: &StorageRoot,
+        meeting_id: &str,
+    ) -> local_meeting_notes_session_core::capture_quality::CapturePauseProjection {
+        meeting_dir(storage, meeting_id)
+            .ok()
+            .and_then(|directory| {
+                let meeting = load_meeting(&directory).ok()?;
+                local_meeting_notes_session_core::capture_quality::project_capture_pauses(
+                    &directory, &meeting,
+                )
+                .ok()
+            })
+            .unwrap_or_else(
+                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked,
+            )
+    }
+
     /// Opens the current meeting record and proves that the requested source
     /// is still retained, regular, non-symlinked, and digest-valid. The core
     /// verifier covers the full record; the returned ref identifies just the
@@ -1732,6 +1768,8 @@ impl LibraryReader {
             regeneration_source_sha256: None,
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
+            capture_pauses:
+                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
             operator_note: crate::operator_note::OperatorNote::none(),
             message: STALE_MESSAGE.into(),
         }
