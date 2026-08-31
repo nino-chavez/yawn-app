@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "preview-window",
-  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording, transcript, or whole-meeting deletion, and regenerating a meeting note from its current transcript. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording, transcript, or whole-meeting deletion, regenerating a meeting note from its current transcript, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "preview"
   ],
@@ -50,6 +50,8 @@
     "allow-regenerate-note",
     "allow-transcript-retry-start",
     "allow-transcript-retry-pending",
-    "allow-transcript-retry-decide"
+    "allow-transcript-retry-decide",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
   ]
 }

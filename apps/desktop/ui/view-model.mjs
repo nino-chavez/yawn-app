@@ -704,3 +704,14 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
 
   return null;
 }
+
+// Roadmap intake I2: the global hotkey summons the operator-note editor and
+// always places the caret at the end of whatever is already written, never
+// mid-text. This is the one pure fact in that path — where the caret and
+// selection land, given the current text — so it is the one part of the
+// hotkey's frontend handling exercised by a headless test. The DOM focus
+// call itself needs a live textarea and is not covered here.
+export function noteCaptureFocusSelection(text) {
+  const end = typeof text === "string" ? text.length : 0;
+  return { start: end, end, direction: "forward" };
+}
