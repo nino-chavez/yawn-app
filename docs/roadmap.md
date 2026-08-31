@@ -240,8 +240,14 @@ stack), Agenda (default view shows notes fully expanded in one chronological
 scroll, which strengthens D1; the empty "On the Agenda" sidebar slot is the
 manual-attention decay D7 predicts, observed live), and Craft (hard account
 wall before any note exists — its polish claims stay described, so D5's
-hover-preview rests on MarginNote's documented model). OATS remains described
-pending a drivable session.
+hover-preview rests on MarginNote's documented model). OATS 0.20.0's home is
+observed via operator screenshot: a Today/Meetings/Todo hub with ⌘K search, a
+"No upcoming meetings" scheduling slot, a mascot prompt in engagement register,
+two recording entries with no visible consent step — and, on a fresh install,
+"Could not load meetings." as bare text with no retry: an empty state rendered
+as a failure, the anti-pattern Order 4's exact-repair work exists to prevent,
+live on the competitor's first screen. Its recording and review journeys
+remain unobserved; the review-gap finding stands.
 
 The orienting finding: OATS documents install, record, and a summary landing
 in a flat library, and describes no review or editing journey at all. Yawn's
