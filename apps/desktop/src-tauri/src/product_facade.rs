@@ -392,6 +392,7 @@ pub(crate) fn regenerate_note(
                 &source_transcript_sha256,
                 &app,
             )?,
+            pre_meeting_context: crate::pre_meeting_context_for(meeting_id, &app)?,
             source_transcript_sha256,
         })
         .map_err(ProductOperationFacadeError::safe_copy)

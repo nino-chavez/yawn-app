@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-meeting-context"
+description = "Enables the save_meeting_context command without any pre-configured scope."
+commands.allow = ["save_meeting_context"]
+
+[[permission]]
+identifier = "deny-save-meeting-context"
+description = "Denies the save_meeting_context command without any pre-configured scope."
+commands.deny = ["save_meeting_context"]

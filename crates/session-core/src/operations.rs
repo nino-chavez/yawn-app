@@ -47,6 +47,15 @@ pub struct RegenerateNoteUiArgs {
     /// Prompt-only text substitutions tied to exact retained-source spans.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vocabulary_replacements: Vec<VocabularyRangeReplacement>,
+    /// The operator's own labeled framing for this meeting, re-derived by the
+    /// caller from `meeting-context.json` immediately before this call.
+    ///
+    /// Never transcript-backed and never a claim: it may only widen or narrow
+    /// which retained excerpts the generator emphasizes. Absent when the
+    /// operator left it blank, which keeps a no-context request byte-identical
+    /// to the request shape before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_meeting_context: Option<String>,
 }
 
 /// The browser may name only the transcript it is comparing. The desktop
@@ -88,6 +97,11 @@ pub struct NoteCreateWorkerArgs {
     pub speaker_label_overrides: Vec<SpeakerLabelOverride>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub vocabulary_replacements: Vec<VocabularyRangeReplacement>,
+    /// Forwarded into the sandboxed generate child's request; the worker's
+    /// `note.create` assembler does not read it back, since generation has
+    /// already run by the time this reaches it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_meeting_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +195,11 @@ pub struct NoteGenerationRequest {
     pub vocabulary_replacements: Vec<VocabularyRangeReplacement>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prior_note: Option<NoteRevisionRef>,
+    /// Carried verbatim from `RegenerateNoteUiArgs` so a crash-recovered
+    /// replay reissues the same generation the operator asked for. See that
+    /// field's doc comment for what it may and may not do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_meeting_context: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -300,7 +319,8 @@ impl RegenerateNoteUiArgs {
     pub fn validate(&self) -> Result<(), OperationContractError> {
         validate_digest(&self.source_transcript_sha256)?;
         validate_speaker_label_overrides(&self.speaker_label_overrides)?;
-        validate_vocabulary_replacements(&self.vocabulary_replacements)
+        validate_vocabulary_replacements(&self.vocabulary_replacements)?;
+        validate_pre_meeting_context(&self.pre_meeting_context)
     }
 }
 
@@ -320,7 +340,8 @@ impl NoteCreateWorkerArgs {
     pub fn validate(&self) -> Result<(), OperationContractError> {
         validate_digest(&self.source_transcript_sha256)?;
         validate_speaker_label_overrides(&self.speaker_label_overrides)?;
-        validate_vocabulary_replacements(&self.vocabulary_replacements)
+        validate_vocabulary_replacements(&self.vocabulary_replacements)?;
+        validate_pre_meeting_context(&self.pre_meeting_context)
     }
 }
 
@@ -401,6 +422,7 @@ impl NoteGenerationRequest {
         validate_digest(&self.source_transcript_sha256)?;
         validate_speaker_label_overrides(&self.speaker_label_overrides)?;
         validate_vocabulary_replacements(&self.vocabulary_replacements)?;
+        validate_pre_meeting_context(&self.pre_meeting_context)?;
         match (self.schema, &self.prior_note) {
             (NoteGenerationRequestSchema::V1, Some(_)) => Err(OperationContractError::Malformed(
                 "request/1 cannot replace a prior note",
@@ -963,6 +985,30 @@ fn validate_vocabulary_replacements(
     }
 }
 
+/// Mirrors the sidecar's own 16 KiB ceiling
+/// (`apps/desktop/src-tauri/src/meeting_context.rs::MAX_TEXT_BYTES`). The two
+/// bounds are not shared code -- this crate does not depend on the desktop
+/// crate -- so this is defense in depth against a caller that skipped the
+/// sidecar's own limit, not the primary enforcement point.
+const MAX_PRE_MEETING_CONTEXT_BYTES: usize = 16 * 1024;
+
+fn validate_pre_meeting_context(value: &Option<String>) -> Result<(), OperationContractError> {
+    let Some(text) = value else {
+        return Ok(());
+    };
+    if text.is_empty()
+        || text.len() > MAX_PRE_MEETING_CONTEXT_BYTES
+        || text.chars().any(|character| {
+            character.is_control() && character != '\n' && character != '\t'
+        })
+    {
+        return Err(OperationContractError::Malformed(
+            "pre-meeting context is invalid",
+        ));
+    }
+    Ok(())
+}
+
 fn digest_pretty<T: Serialize>(value: &T) -> Result<String, OperationContractError> {
     let bytes = serde_json::to_vec_pretty(value)
         .map_err(|_| OperationContractError::Malformed("contract cannot be serialized"))?;
@@ -1397,12 +1443,18 @@ mod tests {
             source_transcript_sha256: "a".repeat(64),
             speaker_label_overrides: Vec::new(),
             vocabulary_replacements: Vec::new(),
+            pre_meeting_context: None,
         };
         arguments.validate().unwrap();
         assert!(
             !serde_json::to_string(&arguments)
                 .unwrap()
                 .contains("speaker_label_overrides")
+        );
+        assert!(
+            !serde_json::to_string(&arguments)
+                .unwrap()
+                .contains("pre_meeting_context")
         );
         assert!(
             !serde_json::to_string(&arguments)
@@ -1439,6 +1491,107 @@ mod tests {
         );
         arguments.vocabulary_replacements[0].char_end = 1;
         assert!(arguments.validate().is_err());
+    }
+
+    /// Decision 6's gate: a request with no pre-meeting context must serialize
+    /// to the exact bytes it did before this field existed, for every wire
+    /// shape it crosses -- the UI args, the durable request, and the worker
+    /// args. Absent, not null, and not an empty string: the field must not
+    /// appear on the wire at all when the operator left it blank.
+    #[test]
+    fn absent_context_is_byte_identical_to_the_pre_context_wire_shape() {
+        let no_context = NoteCreateWorkerArgs {
+            meeting_id: Uuid::new_v4(),
+            source_transcript_sha256: "a".repeat(64),
+            speaker_label_overrides: Vec::new(),
+            vocabulary_replacements: Vec::new(),
+            pre_meeting_context: None,
+        };
+        no_context.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(&no_context).unwrap(),
+            serde_json::json!({
+                "meeting_id": no_context.meeting_id,
+                "source_transcript_sha256": no_context.source_transcript_sha256,
+            }),
+            "no-context worker args must carry no pre_meeting_context key"
+        );
+
+        let ui_args = RegenerateNoteUiArgs {
+            meeting_id: Uuid::new_v4(),
+            source_transcript_sha256: "a".repeat(64),
+            speaker_label_overrides: Vec::new(),
+            vocabulary_replacements: Vec::new(),
+            pre_meeting_context: None,
+        };
+        ui_args.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(&ui_args).unwrap(),
+            serde_json::json!({
+                "meetingId": ui_args.meeting_id,
+                "sourceTranscriptSha256": ui_args.source_transcript_sha256,
+            }),
+            "no-context UI args must carry no preMeetingContext key"
+        );
+
+        let request = NoteGenerationRequest {
+            schema: NoteGenerationRequestSchema::V1,
+            operation_id: Uuid::new_v4(),
+            meeting_id: Uuid::new_v4(),
+            requested_at_epoch_seconds: 1,
+            source_transcript_sha256: "a".repeat(64),
+            speaker_label_overrides: Vec::new(),
+            vocabulary_replacements: Vec::new(),
+            prior_note: None,
+            pre_meeting_context: None,
+        };
+        request.validate().unwrap();
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            serde_json::json!({
+                "schema": "note-generation-request/1",
+                "operation_id": request.operation_id,
+                "meeting_id": request.meeting_id,
+                "requested_at_epoch_seconds": 1,
+                "source_transcript_sha256": request.source_transcript_sha256,
+            }),
+            "no-context durable request must carry no pre_meeting_context key"
+        );
+    }
+
+    /// A present context must round-trip and be readable back off the wire,
+    /// on both the UI args and the worker args this packet adds it to.
+    #[test]
+    fn present_context_serializes_and_round_trips_on_every_wire_shape_it_crosses() {
+        let mut worker_args = NoteCreateWorkerArgs {
+            meeting_id: Uuid::new_v4(),
+            source_transcript_sha256: "a".repeat(64),
+            speaker_label_overrides: Vec::new(),
+            vocabulary_replacements: Vec::new(),
+            pre_meeting_context: Some("Deciding the Q3 roadmap.".into()),
+        };
+        worker_args.validate().unwrap();
+        let wire = serde_json::to_value(&worker_args).unwrap();
+        assert_eq!(wire["pre_meeting_context"], "Deciding the Q3 roadmap.");
+        let round_tripped: NoteCreateWorkerArgs = serde_json::from_value(wire).unwrap();
+        assert_eq!(round_tripped, worker_args);
+
+        // Empty string is not a legal present value -- an operator who typed
+        // nothing is represented as absent, not as `Some("")`.
+        worker_args.pre_meeting_context = Some(String::new());
+        assert!(worker_args.validate().is_err());
+
+        // The ceiling matches the desktop sidecar's own 16 KiB cap.
+        worker_args.pre_meeting_context = Some("x".repeat(16 * 1024));
+        worker_args.validate().unwrap();
+        worker_args.pre_meeting_context = Some("x".repeat(16 * 1024 + 1));
+        assert!(worker_args.validate().is_err());
+
+        // Multi-line context is legitimate; other control characters are not.
+        worker_args.pre_meeting_context = Some("Line one.\nLine two.".into());
+        worker_args.validate().unwrap();
+        worker_args.pre_meeting_context = Some("Has a null: \u{0}".into());
+        assert!(worker_args.validate().is_err());
     }
 
     #[test]

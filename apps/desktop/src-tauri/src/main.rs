@@ -21,6 +21,10 @@ mod first_run;
 // evidence: a fixed path in the meeting directory, replaced atomically, with the
 // frozen `meeting/2` contract untouched. See the module for why.
 mod operator_note;
+// Roadmap intake I3. Pre-meeting context, typed before or during capture.
+// Mirrors `operator_note` decision for decision -- see the module for why --
+// except that this one is allowed to reach a note-generation prompt.
+mod meeting_context;
 // § E1. Folders and the operator's own meeting titles — the five named
 // commands and their closed response shape. Registered, unlike the facades
 // above: `library/metadata.json` gained a writer on 2026-08-08 and the surface
@@ -3451,6 +3455,27 @@ fn save_operator_note(
     Ok(operator_note::read(&directory))
 }
 
+/// Roadmap intake I3. Mirrors `operator_note` exactly: reading is separate
+/// from the snapshot for the same reason, and the meeting this resolves is
+/// whatever the shell is currently in, never a caller-named one.
+#[tauri::command(async)]
+fn meeting_context(
+    state: State<'_, ApplicationState>,
+) -> Result<meeting_context::MeetingContext, String> {
+    Ok(meeting_context::read(&current_meeting_dir(&state)?))
+}
+
+#[tauri::command(async)]
+fn save_meeting_context(
+    state: State<'_, ApplicationState>,
+    text: String,
+) -> Result<meeting_context::MeetingContext, String> {
+    let directory = current_meeting_dir(&state)?;
+    meeting_context::write(&directory, &text)?;
+    // Same reasoning as `save_operator_note`: answer with what is now on disk.
+    Ok(meeting_context::read(&directory))
+}
+
 /// Resolves the one verified transcript artifact already selected by a meeting
 /// view. This stays entirely on the native side: the webview receives no path,
 /// digest, or filesystem authority, and Finder/TextEdit only receives a file
@@ -5930,6 +5955,30 @@ fn correct_speaker_name_for(
     })
 }
 
+/// Derive the note-generation context overlay from the same sidecar the
+/// pre-capture and capture surfaces edit. Unlike the two overlays below, this
+/// one is not bound to a transcript digest -- context is written before a
+/// transcript exists at all -- so there is no staleness check here beyond the
+/// unreadable-file protection `meeting_context::read` already carries. The
+/// coordinator re-reads and re-attests this same value under the meeting lease
+/// (`product_coordinator.rs::accept_regeneration`) before it reaches a prompt.
+pub(crate) fn pre_meeting_context_for(
+    meeting_id: Uuid,
+    state: &ApplicationState,
+) -> Result<Option<String>, String> {
+    let storage = preview_storage_clone(state).map_err(|_| {
+        "Local meeting storage is unavailable. Reopen the app and try again.".to_string()
+    })?;
+    let directory = meeting_dir(&storage, &meeting_id.to_string()).map_err(error_text)?;
+    let context = meeting_context::read(&directory);
+    if context.unreadable {
+        return Err(
+            "Saved meeting context could not be read, so the note was not replaced.".into(),
+        );
+    }
+    Ok((!context.text.is_empty()).then_some(context.text))
+}
+
 /// Derive the note-generation overlay from the same digest-bound correction
 /// sidecar that supplies the transcript screen. A malformed or stale sidecar
 /// has no fallback: the existing note remains current until a later request
@@ -6257,6 +6306,8 @@ fn main() {
             first_run_request_system_audio,
             operator_note,
             save_operator_note,
+            meeting_context,
+            save_meeting_context,
             open_current_transcript_file,
             library_snapshot,
             library_set_meeting_title,

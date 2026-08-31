@@ -43,6 +43,8 @@
     "allow-preview-delete-meeting",
     "allow-operator-note",
     "allow-save-operator-note",
+    "allow-meeting-context",
+    "allow-save-meeting-context",
     "allow-open-current-transcript-file",
     "allow-restore-withheld-turn",
     "allow-regenerate-note",

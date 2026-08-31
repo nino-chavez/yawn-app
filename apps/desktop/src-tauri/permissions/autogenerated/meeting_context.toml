@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-meeting-context"
+description = "Enables the meeting_context command without any pre-configured scope."
+commands.allow = ["meeting_context"]
+
+[[permission]]
+identifier = "deny-meeting-context"
+description = "Denies the meeting_context command without any pre-configured scope."
+commands.deny = ["meeting_context"]

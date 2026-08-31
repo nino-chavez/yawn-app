@@ -42,6 +42,10 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "preview_delete_meeting",
     "operator_note",
     "save_operator_note",
+    // Roadmap intake I3: labeled pre-meeting context, mirroring the operator
+    // note pair above.
+    "meeting_context",
+    "save_meeting_context",
     "open_current_transcript_file",
     "restore_withheld_turn",
     // Admitted with the generation invocation chain (docs/
@@ -92,6 +96,8 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-preview-delete-meeting",
     "allow-operator-note",
     "allow-save-operator-note",
+    "allow-meeting-context",
+    "allow-save-meeting-context",
     "allow-open-current-transcript-file",
     "allow-restore-withheld-turn",
     "allow-regenerate-note",
@@ -273,6 +279,7 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
     }
     assert!(!script.contains("preview_"));
     assert!(!script.contains("operator_note"));
+    assert!(!script.contains("meeting_context"));
 }
 
 #[test]
