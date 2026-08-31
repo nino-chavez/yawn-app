@@ -135,7 +135,10 @@ public final class SittingCaptureCoordinator: @unchecked Sendable {
       append(data, to: snapshot.1)
     case .stopping where snapshot.2:
       append(data, to: snapshot.1)
-    case .paused, .stopping, .terminal:
+    // A setup sitting has no pause control, so the suspended states are
+    // unreachable here. They refuse audio rather than accept it, which is the
+    // safe direction if that ever stops being true.
+    case .paused, .suspending, .suspended, .resuming, .stopping, .terminal:
       break
     }
   }

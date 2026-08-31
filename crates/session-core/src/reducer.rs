@@ -21,6 +21,11 @@ pub enum CaptureState {
     Idle,
     Arming,
     Recording,
+    /// Recording is held open with no audio being acquired. The capture helper
+    /// has released the microphone and the system tap, and the retained audio
+    /// files contain nothing for the span this state covers. A pause is a
+    /// capture-integrity event, so the span is recorded rather than hidden.
+    Paused,
     Stopping,
     Captured,
     Transcribing,
@@ -135,6 +140,13 @@ impl Reducer {
                 | (CaptureState::Arming, CaptureState::RecoveredInterrupted)
                 | (CaptureState::Recording, CaptureState::Stopping)
                 | (CaptureState::Recording, CaptureState::RecoveredInterrupted)
+                | (CaptureState::Recording, CaptureState::Paused)
+                | (CaptureState::Paused, CaptureState::Recording)
+                // Ending the meeting while paused is ordinary operator
+                // behavior, not an error path: the audio already captured is
+                // still a real take and is finalized the same way.
+                | (CaptureState::Paused, CaptureState::Stopping)
+                | (CaptureState::Paused, CaptureState::RecoveredInterrupted)
                 | (CaptureState::Stopping, CaptureState::Captured)
                 | (CaptureState::Captured, CaptureState::Idle)
                 | (CaptureState::Stopping, CaptureState::RecoveredInterrupted)
@@ -259,6 +271,101 @@ mod tests {
         ] {
             reducer.transition_capture(state).unwrap();
         }
+    }
+
+    #[test]
+    fn a_recording_may_pause_and_resume_without_ending_the_session() {
+        let mut reducer = Reducer::default();
+        reducer.transition_capture(CaptureState::Arming).unwrap();
+        reducer.transition_capture(CaptureState::Recording).unwrap();
+        reducer.transition_capture(CaptureState::Paused).unwrap();
+        assert_eq!(reducer.capture(), CaptureState::Paused);
+        reducer.transition_capture(CaptureState::Recording).unwrap();
+        reducer.transition_capture(CaptureState::Paused).unwrap();
+        reducer.transition_capture(CaptureState::Recording).unwrap();
+        reducer.transition_capture(CaptureState::Stopping).unwrap();
+        reducer.transition_capture(CaptureState::Captured).unwrap();
+    }
+
+    #[test]
+    fn a_paused_meeting_may_be_stopped_or_lost_without_resuming_first() {
+        let mut stopped = Reducer {
+            capture: CaptureState::Paused,
+            ..Reducer::default()
+        };
+        stopped.transition_capture(CaptureState::Stopping).unwrap();
+        stopped.transition_capture(CaptureState::Captured).unwrap();
+
+        let mut interrupted = Reducer {
+            capture: CaptureState::Paused,
+            ..Reducer::default()
+        };
+        interrupted
+            .transition_capture(CaptureState::RecoveredInterrupted)
+            .unwrap();
+    }
+
+    #[test]
+    fn pausing_is_reachable_only_from_an_established_recording() {
+        for from in [
+            CaptureState::Idle,
+            CaptureState::Arming,
+            CaptureState::Stopping,
+            CaptureState::Captured,
+            CaptureState::Transcribing,
+            CaptureState::TranscriptReady,
+            CaptureState::Summarizing,
+            CaptureState::Ready,
+            CaptureState::TranscriptionFailed,
+            CaptureState::SummaryFailed,
+            CaptureState::RecoveredInterrupted,
+        ] {
+            let mut reducer = Reducer {
+                capture: from,
+                ..Reducer::default()
+            };
+            assert_eq!(
+                reducer.transition_capture(CaptureState::Paused),
+                Err(ReducerError::InvalidCaptureTransition {
+                    from,
+                    to: CaptureState::Paused
+                }),
+                "pausing must be refused from {from:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paused_capture_never_skips_the_stopping_and_captured_steps() {
+        for to in [
+            CaptureState::Idle,
+            CaptureState::Arming,
+            CaptureState::Captured,
+            CaptureState::Transcribing,
+            CaptureState::TranscriptReady,
+            CaptureState::Summarizing,
+            CaptureState::Ready,
+            CaptureState::TranscriptionFailed,
+            CaptureState::SummaryFailed,
+        ] {
+            let mut reducer = Reducer {
+                capture: CaptureState::Paused,
+                ..Reducer::default()
+            };
+            assert!(
+                reducer.transition_capture(to).is_err(),
+                "a paused capture must not reach {to:?} directly"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paused_state_never_restores_from_startup() {
+        let mut reducer = Reducer::default();
+        reducer.transition_startup(StartupState::Checking).unwrap();
+        assert!(reducer
+            .restore_capture_projection(CaptureState::Paused)
+            .is_err());
     }
 
     #[test]

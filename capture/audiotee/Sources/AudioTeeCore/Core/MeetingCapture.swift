@@ -30,6 +30,10 @@ public struct MeetingCaptureReceipt: Codable, Equatable, Sendable {
 
 public enum MeetingCaptureUpdate: Equatable, Sendable {
   case recording
+  /// Both sources have been released and nothing is reaching the WAV pair.
+  case suspended
+  /// Both sources are acquiring again and audio is reaching the same WAV pair.
+  case resumed
   case finalized(MeetingCaptureReceipt)
   case failed(MeetingCaptureFault)
   case interrupted
@@ -49,9 +53,19 @@ public protocol MeetingAudioSource: AnyObject {
 }
 
 public enum MeetingCaptureState: Equatable, Sendable {
+  /// Before `activate`. The helper starts here so no hardware is opened until
+  /// the application has committed its ownership receipt.
   case paused
   case arming
   case recording
+  /// Releasing both sources for an operator pause. Audio is refused from every
+  /// leg here, including the remainder a source may hand back from `stop`.
+  case suspending
+  /// Held open mid-take with no source acquiring. Distinct from `paused`, which
+  /// is the pre-start state and is the only state `activate` accepts.
+  case suspended
+  /// Reacquiring both sources into the WAV pair opened at arming.
+  case resuming
   case stopping
   case terminal
 }
@@ -138,6 +152,54 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     }
   }
 
+  /// Releases the microphone and the system tap without ending the take.
+  ///
+  /// This is a real hardware release, not a discard filter: the engine stops,
+  /// the tap is torn down, and no audio is acquired for the span. The WAV pair
+  /// stays open, so what was recorded on either side of the gap remains one
+  /// continuous file and the gap itself occupies no samples.
+  @discardableResult
+  public func suspend() -> Bool {
+    controlQueue.sync {
+      guard transition(from: .recording, to: .suspending) else { return false }
+      // A source may hand back its buffered remainder synchronously from
+      // `stop`. A pause is an instruction about the present, so that remainder
+      // is dropped: `receive` refuses every leg while the state is suspending.
+      mic.stop()
+      system.stop()
+      readyLegs = []
+      lock.withLock { _state = .suspended }
+      onUpdate(.suspended)
+      return true
+    }
+  }
+
+  /// Reacquires both sources into the WAV pair opened at arming.
+  ///
+  /// The first block from each leg is discarded exactly as it is at arming, so
+  /// the resumed audio begins at a block boundary and the caller learns that
+  /// capture is live again only once both legs are actually producing.
+  public func resume() {
+    controlQueue.async { [self] in
+      guard transition(from: .suspended, to: .resuming) else {
+        fail(
+          MeetingCaptureFault(
+            code: "invalid_resume", detail: "capture resume is valid only while suspended"))
+        return
+      }
+      do {
+        try start(source: mic)
+        try start(source: system)
+      } catch let fault as MeetingCaptureFault {
+        fail(fault)
+      } catch {
+        fail(
+          MeetingCaptureFault(
+            code: "source_resume_failed", detail: String(describing: error)))
+      }
+    }
+  }
+
   /// Stops and promotes a healthy pair. This method waits for both source stop
   /// paths and both bounded writer queues to drain.
   @discardableResult
@@ -176,6 +238,11 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
       // Readiness work, including file creation, stays off the real-time audio
       // callback. Blocks arriving before the gate opens are intentionally lost.
       controlQueue.async { [weak self] in self?.markReady(leg) }
+    case .resuming:
+      // Same readiness rule as arming, without a second file-creation step:
+      // the first block from each leg proves the source is producing and is
+      // intentionally lost.
+      controlQueue.async { [weak self] in self?.markResumed(leg) }
     case .recording:
       append(data, to: leg, pair: snapshot.1)
     case .stopping where snapshot.2:
@@ -183,7 +250,7 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
       // stop(). Accept only while that exact leg's stop path is active; once
       // stop returns, callbacks from that leg are post-stop and are rejected.
       append(data, to: leg, pair: snapshot.1)
-    case .paused, .stopping, .terminal:
+    case .paused, .suspending, .suspended, .stopping, .terminal:
       break
     }
   }
@@ -243,6 +310,14 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
       fail(
         MeetingCaptureFault(code: "wav_open_failed", detail: String(describing: error)))
     }
+  }
+
+  private func markResumed(_ leg: MeetingCaptureLeg) {
+    guard state == .resuming else { return }
+    readyLegs.insert(leg)
+    guard readyLegs == Set(MeetingCaptureLeg.allCases) else { return }
+    lock.withLock { _state = .recording }
+    onUpdate(.resumed)
   }
 
   private func fail(_ fault: MeetingCaptureFault) {

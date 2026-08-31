@@ -1454,6 +1454,73 @@ def reconcile_capture_artifacts(out_dir: Path, health: dict) -> dict:
     return receipt
 
 
+PAUSES_SCHEMA = "capture-pauses/1"
+# One receipt may carry at most this many pause spans. A meeting paused more
+# often than this is not a pause pattern the receipt can usefully summarize, and
+# an unbounded list is an unbounded receipt.
+MAX_PAUSE_SPANS = 64
+MAX_CAPTURE_SAMPLES = 16_000 * 60 * 60 * 24
+
+
+def validate_pause_evidence(pauses: object, *, capture_elapsed_samples: int | None) -> dict:
+    """Check the closed shape of the recorded pause spans.
+
+    A pause is a capture-integrity event, so a malformed record refuses the
+    finalization outright rather than being normalized into a tidier one.
+
+    Both offsets are measured on the wall clock, from the moment recording
+    began, in samples at the capture rate. Wall clock rather than position in
+    the retained audio, because two pauses less than one capture block apart
+    occupy the same position in ``mic.wav`` and could not then be told apart;
+    on the wall clock they are strictly ordered by construction. The retained
+    position of a gap is still recoverable: subtract the pause time that
+    preceded it.
+
+    The wall-clock span is not sent directly. It is ``capture_elapsed_samples``,
+    which is already net of every pause, plus the total paused time — so a span
+    reaching past the end of the meeting is detectable here.
+    """
+    if not isinstance(pauses, dict):
+        raise ValueError("pause evidence must be one JSON object")
+    if set(pauses) != {"schema", "spans"}:
+        raise ValueError("pause evidence has unexpected or missing keys")
+    if pauses["schema"] != PAUSES_SCHEMA:
+        raise ValueError(f"pause evidence schema must be {PAUSES_SCHEMA!r}")
+    spans = pauses["spans"]
+    if not isinstance(spans, list):
+        raise ValueError("pause spans must be a list")
+    if len(spans) > MAX_PAUSE_SPANS:
+        raise ValueError(f"a capture may record at most {MAX_PAUSE_SPANS} pause spans")
+
+    previous_end = None
+    total = 0
+    for span in spans:
+        if not isinstance(span, dict) or set(span) != {
+            "paused_at_samples",
+            "resumed_at_samples",
+        }:
+            raise ValueError("each pause span needs exactly a start and an end")
+        start = span["paused_at_samples"]
+        end = span["resumed_at_samples"]
+        for name, value in (("paused_at_samples", start), ("resumed_at_samples", end)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"pause span {name} must be an integer sample count")
+        if start < 0 or end <= start:
+            raise ValueError("a pause span must start at or after zero and end after it starts")
+        if previous_end is not None and start < previous_end:
+            raise ValueError("pause spans must be ordered and may not overlap")
+        previous_end = end
+        total += end - start
+        if total > MAX_CAPTURE_SAMPLES:
+            raise ValueError("recorded pause time exceeds the supported capture duration")
+
+    if spans and capture_elapsed_samples is not None:
+        wall_clock_samples = capture_elapsed_samples + total
+        if previous_end > wall_clock_samples:
+            raise ValueError("a pause span ends after the meeting stopped")
+    return pauses
+
+
 def write_session_manifest(
     out_dir: Path,
     status: str,
@@ -1462,6 +1529,7 @@ def write_session_manifest(
     *,
     quality: dict | None = None,
     microphone: dict | None = None,
+    pauses: dict | None = None,
     no_overwrite: bool = False,
 ) -> dict:
     """Atomically mark whether one unique capture directory is usable.
@@ -1489,6 +1557,16 @@ def write_session_manifest(
             from capture_health import validate_microphone_identity
 
             validate_microphone_identity(microphone)
+        if pauses is not None:
+            timing = health.get("timing") if isinstance(health, dict) else None
+            validate_pause_evidence(
+                pauses,
+                capture_elapsed_samples=(
+                    timing.get("capture_elapsed_samples")
+                    if isinstance(timing, dict)
+                    else None
+                ),
+            )
     if status == "complete" and not usable:
         raise ValueError(
             "a capture cannot be complete without passing capture-health evidence"
@@ -1521,6 +1599,12 @@ def write_session_manifest(
         "reconciliation": reconciliation,
         "artifacts": artifacts,
     }
+    # A capture that was never paused writes exactly the receipt it wrote before
+    # pause existed, byte for byte. The key appears only when there is a gap to
+    # record, so every reader that predates it keeps working and no receipt
+    # gains a field asserting an absence.
+    if pauses is not None and pauses.get("spans"):
+        payload["pauses"] = pauses
     target = out_dir / "session.json"
     fd, temporary = tempfile.mkstemp(prefix=".session-", suffix=".json", dir=out_dir)
     try:
@@ -1557,6 +1641,7 @@ def finalize_session(
     *,
     microphone: dict | None = None,
     quality: dict | None = None,
+    pauses: dict | None = None,
     abandoned: bool = False,
     no_overwrite: bool = False,
 ) -> dict:
@@ -1575,6 +1660,7 @@ def finalize_session(
         health,
         quality=quality,
         microphone=microphone,
+        pauses=pauses,
         no_overwrite=no_overwrite,
     )
 

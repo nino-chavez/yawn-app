@@ -15,6 +15,8 @@ import {
   noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
+  capturePauseControlPresentation,
+  capturePausePresentation,
   retainedAudioPlaybackPresentation,
   retentionLabel,
   shouldPollSnapshot,
@@ -460,8 +462,16 @@ function syncActivityClock() {
 }
 
 function captureAction(snapshot, terminal) {
-  if (snapshot.capture === "recording") {
-    return `<button class="button button-record" type="button" data-action="stop-recording" ${state.busyAction === "stop" ? "disabled" : ""}>${state.busyAction === "stop" ? "Stopping…" : "Stop recording"}</button>`;
+  const pauseControl = capturePauseControlPresentation(snapshot);
+  if (pauseControl) {
+    // Stop stays available while paused: ending the meeting from a pause is
+    // ordinary, and the operator should never have to resume to stop.
+    const stopping = state.busyAction === "stop";
+    const changing = state.busyAction === "pause" || state.busyAction === "resume";
+    return `<div class="inline-actions" aria-label="Recording controls">
+      <button class="button button-quiet" type="button" data-action="${pauseControl.action}" ${pauseControl.disabled || changing || stopping ? "disabled" : ""}>${escapeHtml(pauseControl.label)}</button>
+      <button class="button button-record" type="button" data-action="stop-recording" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop recording"}</button>
+    </div>`;
   }
   if (terminal) {
     const leaving = ["dismiss", "record-another"].includes(state.busyAction);
@@ -1099,6 +1109,15 @@ function renderRetryQuality(quality) {
   `;
 }
 
+function renderRetryCapturePauses(pauses) {
+  const presentation = capturePausePresentation(pauses);
+  return `
+    <section class="retry-quality" data-state="${escapeHtml(presentation.state)}" aria-labelledby="retry-pauses-heading">
+      <div><h3 id="retry-pauses-heading">${escapeHtml(presentation.title)}</h3><p>${escapeHtml(presentation.detail)}</p></div>
+    </section>
+  `;
+}
+
 function renderRetryRecordingDevice(device) {
   const presentation = recordingDevicePresentation(device);
   return `
@@ -1145,6 +1164,7 @@ function renderTranscriptRetrySheet() {
           <button class="icon-button" type="button" data-action="decide-retry-later" aria-label="Decide later">×</button>
         </div>
         ${renderRetryQuality(retry.quality)}
+        ${renderRetryCapturePauses(retry.pauses)}
         ${renderRetryRecordingDevice(retry.recordingDevice)}
         <div class="retry-transcript-comparison">
           ${renderRetryComparisonTurns(retry.current?.turns, "current")}
@@ -1403,8 +1423,22 @@ async function startRecording() {
   });
 }
 
-async function stopRecording() {
+async function pauseRecording() {
   if (state.snapshot?.capture !== "recording") return;
+  await runBusy("pause", async () => {
+    state.snapshot = await invoke("pause_meeting");
+  });
+}
+
+async function resumeRecording() {
+  if (state.snapshot?.capture !== "paused") return;
+  await runBusy("resume", async () => {
+    state.snapshot = await invoke("resume_meeting");
+  });
+}
+
+async function stopRecording() {
+  if (!["recording", "paused"].includes(state.snapshot?.capture)) return;
   await runBusy("stop", async () => {
     state.snapshot = await invoke("stop_meeting");
     state.activeView = "capture";
@@ -2006,6 +2040,8 @@ function handleClick(event) {
   }
   else if (action === "start-recording") void startRecording();
   else if (action === "stop-recording") void stopRecording();
+  else if (action === "pause-recording") void pauseRecording();
+  else if (action === "resume-recording") void resumeRecording();
   else if (action === "dismiss-current") void dismissCurrent();
   else if (action === "record-another") void recordAnother();
   else if (action === "open-meeting") void openMeeting(control.dataset.handle);

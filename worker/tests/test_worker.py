@@ -481,6 +481,7 @@ class WorkerProtocolTests(unittest.TestCase):
                     "meeting_id": meeting_id,
                     "started_at_epoch_seconds": 946684800,
                     "capture_elapsed_samples": samples,
+                    "pauses": None,
                 },
             )
             self.assertTrue(finalized["ok"])
@@ -497,10 +498,157 @@ class WorkerProtocolTests(unittest.TestCase):
                     "meeting_id": meeting_id,
                     "started_at_epoch_seconds": 946684800,
                     "capture_elapsed_samples": samples,
+                    "pauses": None,
                 },
             )
             self.assertFalse(repeated["ok"])
             self.assertEqual((capture / "session.json").read_bytes(), original)
+        finally:
+            worker.close()
+
+    def _finalizable_capture(self, samples: int = 3_200) -> tuple[str, Path]:
+        meeting_id = str(uuid.uuid4())
+        capture = self.root / "meetings" / meeting_id / "capture"
+        capture.mkdir(mode=0o700, parents=True)
+        for leg in ("mic", "system"):
+            with (
+                open_private_binary(capture / f"{leg}.wav") as handle,
+                wave.open(handle, "wb") as wav,
+            ):
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(16_000)
+                wav.writeframes(b"\x01\0" * samples)
+        return meeting_id, capture
+
+    def test_capture_finalize_records_pause_spans_and_leaves_unpaused_receipts_unchanged(
+        self,
+    ) -> None:
+        samples = 3_200
+        absent_id, absent_capture = self._finalizable_capture(samples)
+        empty_id, empty_capture = self._finalizable_capture(samples)
+        paused_id, paused_capture = self._finalizable_capture(samples)
+
+        worker = WorkerProcess(self.root, self.manifest)
+        try:
+            def finalize(meeting_id: str, pauses: object) -> dict:
+                return worker.request(
+                    "capture.finalize",
+                    {
+                        "meeting_id": meeting_id,
+                        "started_at_epoch_seconds": 946684800,
+                        "capture_elapsed_samples": samples,
+                        "pauses": pauses,
+                    },
+                )
+
+            self.assertTrue(finalize(absent_id, None)["ok"])
+            self.assertTrue(
+                finalize(empty_id, {"schema": "capture-pauses/1", "spans": []})["ok"]
+            )
+
+            # A capture that was never paused writes the receipt it wrote before
+            # pause existed: no key claiming an absence, and the same shape
+            # whether the caller says None or says "no spans".
+            absent = json.loads((absent_capture / "session.json").read_text())
+            empty = json.loads((empty_capture / "session.json").read_text())
+            self.assertNotIn("pauses", absent)
+            self.assertNotIn("pauses", empty)
+            self.assertEqual(list(absent), list(empty))
+            self.assertEqual(
+                list(absent),
+                [
+                    "schema",
+                    "status",
+                    "started_at",
+                    "finalized_at",
+                    "health",
+                    "quality",
+                    "microphone",
+                    "reconciliation",
+                    "artifacts",
+                ],
+            )
+            # finalized_at is written from the clock, so the rest of the receipt
+            # is what has to agree.
+            absent.pop("finalized_at")
+            empty.pop("finalized_at")
+            self.assertEqual(absent, empty)
+
+            recorded = {
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 1_600, "resumed_at_samples": 1_600 + 16_000 * 30}],
+            }
+            self.assertTrue(finalize(paused_id, recorded)["ok"])
+            paused = json.loads((paused_capture / "session.json").read_text())
+            self.assertEqual(paused["pauses"], recorded)
+            verify_acquisition(paused_capture)
+        finally:
+            worker.close()
+
+    def test_capture_finalize_refuses_malformed_pause_evidence(self) -> None:
+        samples = 3_200
+        refused = [
+            {"schema": "capture-pauses/2", "spans": []},
+            {"schema": "capture-pauses/1"},
+            {"schema": "capture-pauses/1", "spans": [], "extra": True},
+            {
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 0, "resumed_at_samples": 0}],
+            },
+            {
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": -1, "resumed_at_samples": 16_000}],
+            },
+            # Ordered and non-overlapping on the wall clock.
+            {
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": 1_600, "resumed_at_samples": 17_600},
+                    {"paused_at_samples": 1_599, "resumed_at_samples": 17_600},
+                ],
+            },
+            # A pause cannot begin after the meeting stopped. The wall-clock
+            # span is the recorded span plus the total paused time, so a start
+            # past the recorded span puts the end past the meeting.
+            {
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": samples + 1, "resumed_at_samples": samples + 2}
+                ],
+            },
+            {
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 0, "resumed_at_samples": True}],
+            },
+            {
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": index * 4, "resumed_at_samples": index * 4 + 2}
+                    for index in range(65)
+                ],
+            },
+            [],
+            "none",
+        ]
+
+        worker = WorkerProcess(self.root, self.manifest)
+        try:
+            for pauses in refused:
+                meeting_id, capture = self._finalizable_capture(samples)
+                result = worker.request(
+                    "capture.finalize",
+                    {
+                        "meeting_id": meeting_id,
+                        "started_at_epoch_seconds": 946684800,
+                        "capture_elapsed_samples": samples,
+                        "pauses": pauses,
+                    },
+                )
+                self.assertFalse(result["ok"], msg=repr(pauses))
+                # A refused pause record refuses the whole finalization; it is
+                # never normalized into a receipt that omits the gap.
+                self.assertFalse((capture / "session.json").exists(), msg=repr(pauses))
         finally:
             worker.close()
 

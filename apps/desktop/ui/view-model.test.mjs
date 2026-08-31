@@ -10,6 +10,8 @@ import {
   captureActivityElapsedSeconds,
   captureIsInProgress,
   capturePresentation,
+  capturePauseControlPresentation,
+  capturePausePresentation,
   errorRecoveryPresentation,
   humanize,
   libraryRecoveryPresentation,
@@ -393,6 +395,102 @@ test("retry comparison redacts withheld text and keeps the summary before person
   assert.match(source, /function renderRetryWarnings\(warnings, label\)/);
   assert.match(source, /renderRetryRecordingDevice\(retry\.recordingDevice\)/);
   assert.doesNotMatch(source, /retry\.recordingDevice\.(name|index|hostapi|message)/);
+});
+
+test("a paused recording states plainly that nothing is being captured", () => {
+  const paused = capturePresentation({ capture: "paused" });
+  assert.equal(paused.eyebrow, "Paused");
+  assert.equal(paused.title, "Nothing is being recorded.");
+  // A paused meeting is attention-adjacent, not an error and not recording.
+  // The recording tone would assert that audio is still being captured.
+  assert.equal(paused.tone, "attention");
+  assert.notEqual(paused.tone, "recording");
+  // The fallback presentation is the one that says Yawn could not read the
+  // state. Reaching it would mean pause renders as a fault.
+  assert.notEqual(paused.detail, "The current recording state could not be read.");
+
+  const activity = captureActivity({ capture: "paused" });
+  assert.equal(activity.label, "Paused");
+  assert.equal(activity.tone, "attention");
+
+  // Polling has to continue while paused, or the surface never learns that the
+  // operator resumed.
+  assert.equal(captureIsInProgress({ capture: "paused" }), true);
+  assert.equal(shouldPollSnapshot({ startup: "ready", capture: "paused" }), true);
+});
+
+test("the pause control never claims a state the capture helper has not confirmed", () => {
+  assert.equal(capturePauseControlPresentation({ capture: "idle" }), null);
+  assert.equal(capturePauseControlPresentation({ capture: "arming" }), null);
+  assert.equal(capturePauseControlPresentation({ capture: "transcript-ready" }), null);
+
+  assert.deepEqual(capturePauseControlPresentation({ capture: "recording" }), {
+    action: "pause-recording",
+    label: "Pause",
+    disabled: false,
+  });
+  assert.deepEqual(capturePauseControlPresentation({ capture: "paused" }), {
+    action: "resume-recording",
+    label: "Resume",
+    disabled: false,
+  });
+  assert.deepEqual(
+    capturePauseControlPresentation({ capture: "recording", capture_pause_change_pending: true }),
+    { action: "pause-recording", label: "Pausing…", disabled: true },
+  );
+  assert.deepEqual(
+    capturePauseControlPresentation({ capture: "paused", capture_pause_change_pending: true }),
+    { action: "resume-recording", label: "Resuming…", disabled: true },
+  );
+});
+
+test("a meeting's gaps read from the receipt, and a legacy receipt reads as uninterrupted", () => {
+  assert.deepEqual(capturePausePresentation({ state: "not-paused", count: 0, totalPausedSeconds: 0 }), {
+    state: "not-paused",
+    title: "Recording was not paused",
+    detail: "The retained audio for this meeting runs without a gap.",
+  });
+  // A receipt written before pause existed carries no field at all, and the
+  // native projection reports that as not-paused. It must never surface as a
+  // warning or as missing evidence.
+  assert.deepEqual(
+    capturePausePresentation({ state: "not-paused" }),
+    capturePausePresentation({ state: "not-paused", count: 0, totalPausedSeconds: 0 }),
+  );
+
+  const paused = capturePausePresentation({
+    state: "paused",
+    count: 2,
+    totalPausedSeconds: 90,
+    message: "Recording was paused 2 times, for 1:30 in total. Nothing was captured during those gaps.",
+  });
+  assert.equal(paused.title, "Recording was paused");
+  assert.match(paused.detail, /paused 2 times, for 1:30 in total/);
+
+  // An unverifiable pause record says so; it never reads as no pauses.
+  for (const shape of [null, {}, { state: "unavailable" }, { state: "not-a-state" }]) {
+    const projection = capturePausePresentation(shape);
+    assert.equal(projection.state, "unavailable");
+    assert.equal(projection.title, "Pauses could not be checked");
+  }
+  // Backend copy is only used for a state this mapping recognizes.
+  assert.equal(
+    capturePausePresentation({ state: "nonsense", message: "Private receipt text" }).detail,
+    "Yawn could not verify whether this recording was paused.",
+  );
+});
+
+test("the recorder offers pause beside stop and stops straight from a pause", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /invoke\("pause_meeting"\)/);
+  assert.match(source, /invoke\("resume_meeting"\)/);
+  assert.match(source, /data-action="\$\{pauseControl\.action\}"/);
+  // Stop stays reachable while paused: the operator must never have to resume
+  // a meeting in order to end it.
+  assert.match(source, /if \(!\["recording", "paused"\]\.includes\(state\.snapshot\?\.capture\)\) return;/);
+  assert.match(source, /if \(state\.snapshot\?\.capture !== "paused"\) return;/);
+  // The gap shows where capture evidence already shows, beside quality.
+  assert.match(source, /renderRetryCapturePauses\(retry\.pauses\)/);
 });
 
 test("startup keeps polling until the app is ready", () => {
