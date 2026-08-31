@@ -124,6 +124,161 @@ final class MeetingCaptureTests: XCTestCase {
     XCTAssertEqual(updates.values.last, .finalized(receipt!))
   }
 
+  func testPauseReleasesBothSourcesAndWritesNothingUntilBothResume() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let suspended = expectation(description: "suspended")
+    let resumed = expectation(description: "resumed")
+    let finalized = expectation(description: "finalized")
+    let updates = LockedUpdates()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      updates.append(update)
+      if update == .recording { recording.fulfill() }
+      if update == .suspended { suspended.fulfill() }
+      if update == .resumed { resumed.fulfill() }
+      if case .finalized = update { finalized.fulfill() }
+    }
+
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([0x01, 0x00]))
+    system.emit(Data([0x02, 0x00]))
+    wait(for: [recording], timeout: 2)
+
+    mic.emit(Data([0x11, 0x00]))
+    system.emit(Data([0x21, 0x00]))
+
+    // Pausing releases both sources. A source handing back its buffered
+    // remainder from stop() must not reach the file: the operator asked for
+    // the recording to stop now, not after the buffer.
+    mic.stopTail = Data([0xEE, 0x00])
+    system.stopTail = Data([0xEE, 0x00])
+    XCTAssertTrue(coordinator.suspend())
+    wait(for: [suspended], timeout: 2)
+    XCTAssertEqual(coordinator.state, .suspended)
+    XCTAssertEqual(mic.stopCount, 1)
+    XCTAssertEqual(system.stopCount, 1)
+
+    // Audio arriving while paused is refused outright, whichever leg sends it.
+    mic.stopTail = nil
+    system.stopTail = nil
+    mic.emit(Data([0xEE, 0x00, 0xEE, 0x00]))
+    system.emit(Data([0xEE, 0x00, 0xEE, 0x00]))
+
+    // Pausing twice is not a second pause.
+    XCTAssertFalse(coordinator.suspend())
+
+    let restarted = expectation(description: "sources restarted")
+    restarted.expectedFulfillmentCount = 2
+    mic.onStart = { restarted.fulfill() }
+    system.onStart = { restarted.fulfill() }
+    coordinator.resume()
+    wait(for: [restarted], timeout: 2)
+
+    // The readiness block is discarded on resume exactly as it is at arming,
+    // and one leg alone does not make the capture live again.
+    mic.emit(Data([0x03, 0x00]))
+    system.emit(Data([0x04, 0x00]))
+    wait(for: [resumed], timeout: 2)
+    XCTAssertEqual(coordinator.state, .recording)
+
+    mic.emit(Data([0x12, 0x00]))
+    system.emit(Data([0x22, 0x00]))
+    let receipt = coordinator.stop()
+    wait(for: [finalized], timeout: 2)
+
+    // One continuous file per leg, holding only what was captured on either
+    // side of the gap. The gap itself occupies no samples.
+    XCTAssertEqual(receipt, MeetingCaptureReceipt(micSamples: 2, systemSamples: 2))
+    XCTAssertEqual(try contents(), ["mic.wav", "system.wav"])
+    try assertWAV("mic.wav", frames: 2)
+    try assertPCM("mic.wav", equals: Data([0x11, 0x00, 0x12, 0x00]))
+    try assertPCM("system.wav", equals: Data([0x21, 0x00, 0x22, 0x00]))
+    XCTAssertEqual(
+      updates.values,
+      [.recording, .suspended, .resumed, .finalized(receipt!)])
+  }
+
+  func testAPausedCaptureStopsIntoAPromotedPairWithoutResuming() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let finalized = expectation(description: "finalized")
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      if update == .recording { recording.fulfill() }
+      if case .finalized = update { finalized.fulfill() }
+    }
+
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([0x01, 0x00]))
+    system.emit(Data([0x02, 0x00]))
+    wait(for: [recording], timeout: 2)
+    mic.emit(Data([0x11, 0x00]))
+    system.emit(Data([0x21, 0x00]))
+    XCTAssertTrue(coordinator.suspend())
+
+    let receipt = coordinator.stop()
+    wait(for: [finalized], timeout: 2)
+    XCTAssertEqual(receipt, MeetingCaptureReceipt(micSamples: 1, systemSamples: 1))
+    XCTAssertEqual(try contents(), ["mic.wav", "system.wav"])
+    XCTAssertEqual(coordinator.state, .terminal)
+  }
+
+  func testResumingSomethingThatIsNotPausedFailsTheCapture() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let failed = expectation(description: "invalid resume")
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      if update == .recording { recording.fulfill() }
+      if case .failed(let fault) = update, fault.code == "invalid_resume" { failed.fulfill() }
+    }
+
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([0x01, 0x00]))
+    system.emit(Data([0x02, 0x00]))
+    wait(for: [recording], timeout: 2)
+
+    coordinator.resume()
+    wait(for: [failed], timeout: 2)
+    XCTAssertEqual(coordinator.state, .terminal)
+    // A protocol violation closes the partials readable and promotes nothing,
+    // the same as any other mid-capture failure.
+    XCTAssertEqual(try contents(), [".mic.wav.partial", ".system.wav.partial"])
+  }
+
+  func testActivatingAPausedCaptureIsRefusedRatherThanReopeningTheWAVPair() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let failed = expectation(description: "invalid start")
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      if update == .recording { recording.fulfill() }
+      if case .failed(let fault) = update, fault.code == "invalid_start" { failed.fulfill() }
+    }
+
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([0x01, 0x00]))
+    system.emit(Data([0x02, 0x00]))
+    wait(for: [recording], timeout: 2)
+    XCTAssertTrue(coordinator.suspend())
+
+    // Resume is the only way back. Reusing the pre-start activation path would
+    // re-enter arming and try to create a second WAV pair over the open one.
+    coordinator.activate()
+    wait(for: [failed], timeout: 2)
+    XCTAssertEqual(coordinator.state, .terminal)
+    XCTAssertEqual(try contents(), [".mic.wav.partial", ".system.wav.partial"])
+  }
+
   func testExistingFinalArtifactFailsBeforeAnyPartialIsCreated() throws {
     let marker = Data("keep".utf8)
     try marker.write(to: temporary.appendingPathComponent("mic.wav"))

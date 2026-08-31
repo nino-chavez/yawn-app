@@ -574,6 +574,11 @@ struct CaptureSessionReceipt {
     _quality: Option<Value>,
     #[serde(default, rename = "microphone")]
     _microphone: Option<Value>,
+    /// Spans where the operator held the recording open with no audio being
+    /// acquired. Absent on every receipt written before pause existed, which
+    /// reads as "no pauses" rather than as an unreadable receipt.
+    #[serde(default, rename = "pauses")]
+    _pauses: Option<Value>,
     reconciliation: Value,
     artifacts: Vec<CaptureReceiptArtifact>,
 }
@@ -981,6 +986,10 @@ mod tests {
                 "index": 4,
                 "name": "Fixture microphone"
             },
+            "pauses": {
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 16_000, "resumed_at_samples": 48_000}]
+            },
             "reconciliation": {"legs": {}},
             "artifacts": [
                 {
@@ -1010,6 +1019,7 @@ mod tests {
         let mut legacy = receipt.clone();
         legacy.as_object_mut().unwrap().remove("quality");
         legacy.as_object_mut().unwrap().remove("microphone");
+        legacy.as_object_mut().unwrap().remove("pauses");
         private_file(
             &capture_dir.join("session.json"),
             serde_json::to_string_pretty(&legacy).unwrap().as_bytes(),

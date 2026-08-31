@@ -117,6 +117,11 @@ const ATTEMPT_MAX_BYTES: u64 = 256 * 1024;
 const TRANSCRIPT_MAX_BYTES: u64 = 16 * 1024 * 1024;
 const CAPTURE_ARM_TIMEOUT: Duration = Duration::from_secs(120);
 const CAPTURE_STOP_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long a pause or resume may stay unconfirmed by the capture helper.
+/// Shorter than arming, which waits on a permission prompt a person may answer:
+/// pausing releases hardware the helper already holds, and resuming reacquires
+/// it with permission already granted.
+const CAPTURE_PAUSE_TIMEOUT: Duration = Duration::from_secs(20);
 /// One hour of the helper's 16 kHz mono s16le sitting stream. A dedicated
 /// enrolment sitting runs minutes, not hours; this stops a runaway stream
 /// long before the store's own 1 GiB raw bound would refuse the finalize
@@ -390,6 +395,12 @@ struct AppModel {
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
+    /// A pause or resume the operator asked for, which the capture helper has
+    /// not confirmed yet. The reducer stays on the state that is still true
+    /// until the helper reports the change, so this is what the recorder
+    /// surface reads to say the request is in flight rather than claiming a
+    /// recording is paused before the audio has actually stopped.
+    capture_pause_change_pending: bool,
     mic_state: Option<String>,
     system_state: Option<String>,
     turns: Vec<TranscriptTurn>,
@@ -419,6 +430,7 @@ impl Default for AppModel {
             background_transcription_active: false,
             background_transcription_queued_count: 0,
             degraded: false,
+            capture_pause_change_pending: false,
             mic_state: None,
             system_state: None,
             turns: Vec::new(),
@@ -446,6 +458,7 @@ impl AppModel {
             background_transcription_active: self.background_transcription_active,
             background_transcription_queued_count: self.background_transcription_queued_count,
             degraded: self.degraded,
+            capture_pause_change_pending: self.capture_pause_change_pending,
             mic_state: self.mic_state.clone(),
             system_state: self.system_state.clone(),
             turns: self.turns.clone(),
@@ -461,6 +474,7 @@ impl AppModel {
         self.capture_state_started_at_epoch_seconds = None;
         self.transcription_last_worker_heartbeat_at_epoch_seconds = None;
         self.degraded = false;
+        self.capture_pause_change_pending = false;
         self.mic_state = None;
         self.system_state = None;
         self.turns.clear();
@@ -485,6 +499,7 @@ struct AppSnapshot {
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
+    capture_pause_change_pending: bool,
     mic_state: Option<String>,
     system_state: Option<String>,
     turns: Vec<TranscriptTurn>,
@@ -647,6 +662,10 @@ struct RetryComparisonResponse {
     candidate: RetryTranscriptProjection,
     quality: local_meeting_notes_session_core::capture_quality::CaptureQualityProjection,
     recording_device: local_meeting_notes_session_core::capture_quality::RecordingDeviceProjection,
+    /// Whether this recording was held open with nothing being captured. It
+    /// rides beside the quality evidence because a gap in the audio changes how
+    /// a transcript should be read, whichever transcript wins the comparison.
+    pauses: local_meeting_notes_session_core::capture_quality::CapturePauseProjection,
 }
 
 #[derive(Deserialize)]
@@ -1102,6 +1121,10 @@ impl Drop for CaptureTaskRegistration {
 }
 
 enum CaptureTaskCommand {
+    /// Release both audio sources without ending the take.
+    Pause,
+    /// Reacquire both sources into the same take.
+    Resume,
     Stop,
 }
 
@@ -1213,8 +1236,14 @@ impl std::fmt::Display for WorkerCallError {
 
 #[derive(Debug, PartialEq, Eq)]
 enum CaptureEvent {
+    /// The helper's pre-start safe state, before it has opened any hardware.
+    /// Distinct from `Suspended`, which is an operator pause mid-take.
     Paused,
     Recording,
+    /// Both sources released mid-take; nothing is reaching the audio files.
+    Suspended,
+    /// Both sources reacquired into the same audio files.
+    Resumed,
     Finalized {
         mic_samples: u64,
         system_samples: u64,
@@ -1786,12 +1815,16 @@ fn handle_sitting_event(
             "sitting_capture_interrupted",
             "capture helper reported interruption",
         )),
-        CaptureEvent::Paused | CaptureEvent::Recording | CaptureEvent::Finalized { .. } => {
-            Err(sitting_failure(
-                "sitting_helper_protocol_violation",
-                "capture helper emitted an event outside the sitting protocol",
-            ))
-        }
+        // A setup sitting has no pause control, so Suspended and Resumed are
+        // as much a protocol violation here as a two-leg finalize would be.
+        CaptureEvent::Paused
+        | CaptureEvent::Recording
+        | CaptureEvent::Suspended
+        | CaptureEvent::Resumed
+        | CaptureEvent::Finalized { .. } => Err(sitting_failure(
+            "sitting_helper_protocol_violation",
+            "capture helper emitted an event outside the sitting protocol",
+        )),
     }
 }
 
@@ -1822,7 +1855,10 @@ fn start_meeting(
     }
     let meeting_id = Uuid::new_v4().to_string();
     let attempt_id = Uuid::new_v4().to_string();
-    let (sender, receiver) = mpsc::sync_channel(1);
+    // Room for a Stop to queue behind a pause change the helper has not
+    // confirmed yet. Ending a meeting must never be refused because the
+    // operator paused a moment earlier.
+    let (sender, receiver) = mpsc::sync_channel(4);
     let snapshot = {
         let mut model = state.model.lock().expect("application model lock");
         if model.reducer.startup() != StartupState::Ready
@@ -1906,16 +1942,72 @@ fn transcription_capacity_full(state: &ApplicationState) -> bool {
         .unwrap_or(true)
 }
 
+/// Releases both audio sources without ending the meeting.
+///
+/// The reducer is not moved here. The capture task moves it when the helper
+/// confirms that both sources are released, so the recorder never shows
+/// "Paused" over a microphone that is still open.
+#[tauri::command]
+fn pause_meeting(app: AppHandle) -> Result<AppSnapshot, String> {
+    send_pause_change(app, CaptureTaskCommand::Pause)
+}
+
+/// Reacquires both audio sources into the same meeting.
+///
+/// The reducer moves back to recording only once the helper reports audio
+/// flowing again, for the same reason pausing waits.
+#[tauri::command]
+fn resume_meeting(app: AppHandle) -> Result<AppSnapshot, String> {
+    send_pause_change(app, CaptureTaskCommand::Resume)
+}
+
+fn send_pause_change(app: AppHandle, command: CaptureTaskCommand) -> Result<AppSnapshot, String> {
+    let state = app.state::<ApplicationState>();
+    let _command_lock = state.command_lock.lock().expect("command lock");
+    let mut model = state.model.lock().expect("application model lock");
+    let (required, refusal) = match command {
+        CaptureTaskCommand::Pause => (CaptureState::Recording, "No recording is ready to pause."),
+        CaptureTaskCommand::Resume => (CaptureState::Paused, "No recording is ready to resume."),
+        CaptureTaskCommand::Stop => return Err("Use Stop to end this meeting.".into()),
+    };
+    if model.reducer.capture() != required {
+        return Err(refusal.into());
+    }
+    if model.capture_pause_change_pending {
+        return Err("Wait for the last pause change to finish.".into());
+    }
+    let send_result = state
+        .capture_task
+        .lock()
+        .expect("capture task lock")
+        .as_ref()
+        .ok_or_else(|| "The recording task is unavailable.".to_string())?
+        .sender
+        .try_send(command);
+    if send_result.is_err() {
+        model.error = Some("The recording did not accept that change.".into());
+        return Err("The recording did not accept that change.".into());
+    }
+    model.capture_pause_change_pending = true;
+    Ok(model.snapshot())
+}
+
 #[tauri::command]
 fn stop_meeting(app: AppHandle) -> Result<AppSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
     stop_owned_audio_playback(&state);
     let mut model = state.model.lock().expect("application model lock");
-    if model.reducer.capture() != CaptureState::Recording {
+    // Ending the meeting while paused is ordinary operator behavior: the audio
+    // already captured is a real take and finalizes the same way.
+    if !matches!(
+        model.reducer.capture(),
+        CaptureState::Recording | CaptureState::Paused
+    ) {
         return Err("No recording is ready to stop.".into());
     }
     transition_capture(&mut model, CaptureState::Stopping)?;
+    model.capture_pause_change_pending = false;
     let send_result = state
         .capture_task
         .lock()
@@ -1991,6 +2083,10 @@ fn tray_presentation(
                     ("●", "Recording")
                 }
             }
+            // The hollow glyph is the load-bearing part: a paused meeting is
+            // still open, but nothing is being captured, and the filled glyph
+            // would assert the opposite.
+            CaptureState::Paused => ("○", "Paused — the meeting is open, nothing is recording"),
             CaptureState::Arming => ("○", "Preparing to record. Nothing is recording yet"),
             CaptureState::Captured | CaptureState::Transcribing | CaptureState::Summarizing => {
                 ("◐", "Transcribing the finished recording")
@@ -5954,6 +6050,14 @@ fn retry_comparison_response(
             "Recording-device evidence changed while opening this retry. Reopen the meeting and try again."
                 .to_string()
         })?;
+    let pauses = local_meeting_notes_session_core::capture_quality::project_capture_pauses(
+        &directory,
+        &meeting,
+    )
+    .map_err(|_| {
+        "Pause evidence changed while opening this retry. Reopen the meeting and try again."
+            .to_string()
+    })?;
     Ok(RetryComparisonResponse {
         meeting_id: operation.meeting_id,
         operation_id: operation.operation_id,
@@ -5969,6 +6073,7 @@ fn retry_comparison_response(
         },
         quality,
         recording_device,
+        pauses,
     })
 }
 
@@ -6136,6 +6241,8 @@ fn main() {
             app_snapshot,
             open_settings_window,
             start_meeting,
+            pause_meeting,
+            resume_meeting,
             stop_meeting,
             dismiss_meeting,
             retry_startup,
@@ -7296,9 +7403,52 @@ fn run_capture_task(
         model.system_state = Some("Active".into());
     }
 
+    let mut ledger = PauseLedger::new(recording_started);
+    // A pause or resume the helper has not confirmed yet. The reducer is not
+    // moved until it does, so the recorder never claims a state the audio has
+    // not reached; if the helper goes quiet the capture fails rather than
+    // leaving the operator looking at a request that will never land.
+    let mut pause_change_deadline: Option<Instant> = None;
+    // Stop is honored, but not mid-handshake: the helper still owes a suspended
+    // or resumed event, and consuming it as if it were the finalize would fail
+    // an otherwise healthy take. The deadline above bounds the wait.
+    let mut stop_requested = false;
     loop {
+        if stop_requested && pause_change_deadline.is_none() {
+            break;
+        }
         match commands.try_recv() {
-            Ok(CaptureTaskCommand::Stop) => break,
+            Ok(CaptureTaskCommand::Pause) => {
+                pause_change_deadline = Some(Instant::now() + CAPTURE_PAUSE_TIMEOUT);
+                if let Err(error) = helper.send(b'P') {
+                    fail_capture_task(
+                        &app,
+                        Some(&meeting_id),
+                        recovery_required,
+                        true,
+                        "capture_pause_signal_failed",
+                        &error,
+                        "The recording could not be paused.",
+                    );
+                    return;
+                }
+            }
+            Ok(CaptureTaskCommand::Resume) => {
+                pause_change_deadline = Some(Instant::now() + CAPTURE_PAUSE_TIMEOUT);
+                if let Err(error) = helper.send(b'R') {
+                    fail_capture_task(
+                        &app,
+                        Some(&meeting_id),
+                        recovery_required,
+                        true,
+                        "capture_resume_signal_failed",
+                        &error,
+                        "The recording could not be resumed.",
+                    );
+                    return;
+                }
+            }
+            Ok(CaptureTaskCommand::Stop) => stop_requested = true,
             Err(mpsc::TryRecvError::Disconnected) => {
                 fail_capture_task(
                     &app,
@@ -7313,8 +7463,80 @@ fn run_capture_task(
             }
             Err(mpsc::TryRecvError::Empty) => {}
         }
+        if stop_requested && pause_change_deadline.is_none() {
+            break;
+        }
+        if pause_change_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            fail_capture_task(
+                &app,
+                Some(&meeting_id),
+                recovery_required,
+                true,
+                "capture_pause_change_timeout",
+                "capture helper did not confirm the pause change",
+                "The recording did not confirm the pause. Nothing was marked complete.",
+            );
+            return;
+        }
         match helper.receive_briefly(Duration::from_millis(100)) {
             Ok(None) => {}
+            Ok(Some(CaptureEvent::Suspended)) => {
+                pause_change_deadline = None;
+                // The ledger records what the audio did regardless of what the
+                // operator did next: the gap is real even if Stop is already
+                // waiting behind it.
+                ledger.begin_pause(Instant::now());
+                if stop_requested {
+                    // The operator stopped while the pause was still settling,
+                    // so the reducer is already on Stopping. Moving it to
+                    // Paused here would refuse and discard a healthy take.
+                    continue;
+                }
+                let mut model = state.model.lock().expect("application model lock");
+                if transition_capture(&mut model, CaptureState::Paused).is_err() {
+                    drop(model);
+                    fail_capture_task(
+                        &app,
+                        Some(&meeting_id),
+                        recovery_required,
+                        true,
+                        "capture_pause_transition_failed",
+                        "application state changed while the recording was pausing",
+                        "The paused state could not be confirmed.",
+                    );
+                    return;
+                }
+                model.capture_pause_change_pending = false;
+                // Both channels are released, so neither is active. Saying
+                // "Paused" rather than blanking the fact keeps the recorder
+                // surface describing what the hardware is actually doing.
+                model.mic_state = Some("Paused".into());
+                model.system_state = Some("Paused".into());
+            }
+            Ok(Some(CaptureEvent::Resumed)) => {
+                pause_change_deadline = None;
+                ledger.end_pause(Instant::now());
+                if stop_requested {
+                    continue;
+                }
+                let mut model = state.model.lock().expect("application model lock");
+                if transition_capture(&mut model, CaptureState::Recording).is_err() {
+                    drop(model);
+                    fail_capture_task(
+                        &app,
+                        Some(&meeting_id),
+                        recovery_required,
+                        true,
+                        "capture_resume_transition_failed",
+                        "application state changed while the recording was resuming",
+                        "The recording state could not be confirmed.",
+                    );
+                    return;
+                }
+                model.capture_pause_change_pending = false;
+                model.mic_state = Some("Active".into());
+                model.system_state = Some("Active".into());
+            }
             Ok(Some(CaptureEvent::Failed { code })) => {
                 fail_capture_task(
                     &app,
@@ -7354,7 +7576,11 @@ fn run_capture_task(
         }
     }
 
-    let capture_elapsed_samples = match elapsed_samples(recording_started.elapsed()) {
+    ledger.finish(Instant::now());
+    // Recorded elapsed time, not wall clock. The audio files hold nothing for a
+    // paused span, so wall clock would read as both legs having ended early and
+    // `capture-health` would refuse anything past its startup-skew allowance.
+    let capture_elapsed_samples = match elapsed_samples(ledger.recorded_elapsed()) {
         Ok(samples) => samples,
         Err(error) => {
             fail_capture_task(
@@ -7449,6 +7675,21 @@ fn run_capture_task(
     }
     drop(helper);
 
+    let pauses = match ledger.receipt() {
+        Ok(pauses) => pauses,
+        Err(error) => {
+            fail_capture_task(
+                &app,
+                Some(&meeting_id),
+                recovery_required,
+                true,
+                "capture_pause_record_invalid",
+                &error,
+                "The record of when this recording was paused could not be written.",
+            );
+            return;
+        }
+    };
     let capture_result = request_worker(
         &state,
         Operation::CaptureFinalize,
@@ -7456,6 +7697,7 @@ fn run_capture_task(
             "meeting_id": meeting_id,
             "started_at_epoch_seconds": started_at_epoch_seconds,
             "capture_elapsed_samples": capture_elapsed_samples,
+            "pauses": pauses,
         }),
         WORKER_REQUEST_TIMEOUT,
     );
@@ -8488,7 +8730,10 @@ fn fail_capture_task(
         let mut model = state.model.lock().expect("application model lock");
         if matches!(
             model.reducer.capture(),
-            CaptureState::Arming | CaptureState::Recording | CaptureState::Stopping
+            CaptureState::Arming
+                | CaptureState::Recording
+                | CaptureState::Paused
+                | CaptureState::Stopping
         ) {
             let _ = transition_capture(&mut model, CaptureState::RecoveredInterrupted);
         }
@@ -8496,6 +8741,7 @@ fn fail_capture_task(
             let _ = transition_startup(&mut model, StartupState::DiagnosticWritten);
         }
         model.error = Some(user_message.into());
+        model.capture_pause_change_pending = false;
         model.mic_state = None;
         model.system_state = None;
     }
@@ -8538,6 +8784,10 @@ fn transition_capture(model: &mut AppModel, target: CaptureState) -> Result<(), 
         model.capture_state_started_at_epoch_seconds = match target {
             CaptureState::Arming
             | CaptureState::Recording
+            // The recorder shows elapsed time per step, and a pause is its own
+            // step: the clock restarts so it reads how long this pause has
+            // lasted, not how long the meeting has been open.
+            | CaptureState::Paused
             | CaptureState::Stopping
             | CaptureState::Captured
             | CaptureState::Transcribing
@@ -8599,6 +8849,12 @@ fn parse_capture_event(frame: &[u8]) -> Result<CaptureEvent, String> {
     match object.get("event").and_then(Value::as_str) {
         Some("paused") if exact_object_keys(object, &["schema", "event"]) => {
             Ok(CaptureEvent::Paused)
+        }
+        Some("suspended") if exact_object_keys(object, &["schema", "event"]) => {
+            Ok(CaptureEvent::Suspended)
+        }
+        Some("resumed") if exact_object_keys(object, &["schema", "event"]) => {
+            Ok(CaptureEvent::Resumed)
         }
         Some("recording") if exact_object_keys(object, &["schema", "event", "format"]) => {
             let format = object["format"]
@@ -8729,6 +8985,120 @@ fn signal_process_group(process_group_id: i32, signal: i32) -> io::Result<()> {
     } else {
         Err(error)
     }
+}
+
+/// Wall-clock bookkeeping for one recording that may be paused.
+///
+/// Two numbers leave this struct and they answer different questions. The
+/// recorded elapsed time is how much audio the take actually contains, and it
+/// is what `capture.finalize` receives: the audio files hold nothing for a
+/// paused span, and `capture-health` refuses a leg that ended materially before
+/// capture stopped, so sending wall-clock time would fail any pause longer than
+/// its startup-skew allowance. The pause spans are wall-clock offsets from the
+/// moment recording began, which is what makes them strictly ordered.
+///
+/// The two reconcile: wall clock = recorded elapsed + total paused.
+#[derive(Debug)]
+struct PauseLedger {
+    /// Recording segments already closed out, excluding any running segment.
+    recorded: Duration,
+    /// Pause spans already closed out.
+    paused: Duration,
+    /// Start of the running recording segment, or `None` while paused.
+    segment_started: Option<Instant>,
+    /// Start of the running pause, or `None` while recording.
+    paused_since: Option<Instant>,
+    /// Closed pause spans as wall-clock offsets from the start of recording.
+    spans: Vec<(Duration, Duration)>,
+}
+
+impl PauseLedger {
+    fn new(recording_started: Instant) -> Self {
+        Self {
+            recorded: Duration::ZERO,
+            paused: Duration::ZERO,
+            segment_started: Some(recording_started),
+            paused_since: None,
+            spans: Vec::new(),
+        }
+    }
+
+    /// Where the wall clock stands, measured from the start of recording, with
+    /// neither the running segment nor the running pause counted.
+    fn closed_wall_clock(&self) -> Duration {
+        self.recorded + self.paused
+    }
+
+    fn begin_pause(&mut self, now: Instant) {
+        let Some(started) = self.segment_started.take() else {
+            return;
+        };
+        self.recorded += now.saturating_duration_since(started);
+        self.paused_since = Some(now);
+    }
+
+    fn end_pause(&mut self, now: Instant) {
+        let Some(since) = self.paused_since.take() else {
+            return;
+        };
+        let start = self.closed_wall_clock();
+        let held = now.saturating_duration_since(since);
+        self.spans.push((start, start + held));
+        self.paused += held;
+        self.segment_started = Some(now);
+    }
+
+    /// Closes whichever span is running. Stopping while paused is ordinary
+    /// operator behavior, and that trailing pause is still time the operator
+    /// held the meeting open with nothing being captured, so it is recorded.
+    fn finish(&mut self, now: Instant) {
+        if self.paused_since.is_some() {
+            self.end_pause(now);
+            self.segment_started = None;
+        } else if let Some(started) = self.segment_started.take() {
+            self.recorded += now.saturating_duration_since(started);
+        }
+    }
+
+    fn recorded_elapsed(&self) -> Duration {
+        self.recorded
+    }
+
+    /// The pause record for the capture receipt, or `None` when the recording
+    /// was never paused. A capture with no gap writes the receipt it wrote
+    /// before pause existed rather than a field asserting an absence.
+    fn receipt(&self) -> Result<Option<Value>, String> {
+        if self.spans.is_empty() {
+            return Ok(None);
+        }
+        if self.spans.len() > MAX_PAUSE_SPANS {
+            return Err("the recording was paused more times than a receipt can record".into());
+        }
+        let mut spans = Vec::with_capacity(self.spans.len());
+        for (start, end) in &self.spans {
+            spans.push(json!({
+                "paused_at_samples": pause_offset_samples(*start)?,
+                "resumed_at_samples": pause_offset_samples(*end)?,
+            }));
+        }
+        Ok(Some(json!({"schema": "capture-pauses/1", "spans": spans})))
+    }
+}
+
+/// The largest number of pause spans one capture receipt may carry. The worker
+/// enforces the same bound at the persistence boundary; this one keeps the
+/// application from building a request it knows will be refused.
+const MAX_PAUSE_SPANS: usize = 64;
+
+/// A wall-clock offset in samples. Unlike `elapsed_samples` this accepts zero,
+/// because the first pause of a recording legitimately begins at offset zero.
+fn pause_offset_samples(offset: Duration) -> Result<u64, String> {
+    let samples = offset.as_secs_f64() * 16_000.0;
+    let maximum = (16_000 * 60 * 60 * 24) as f64;
+    if !samples.is_finite() || samples < 0.0 || samples > maximum {
+        return Err("a pause offset is outside the supported range".into());
+    }
+    Ok(samples.round() as u64)
 }
 
 fn elapsed_samples(duration: Duration) -> Result<u64, String> {
@@ -10320,6 +10690,89 @@ mod tests {
         }
     }
 
+    /// The load-bearing accounting: what the receipt says about pauses and what
+    /// the worker is told about elapsed time have to describe the same meeting.
+    /// Nothing in the merge gate reaches the Python integrity floor that depends
+    /// on this, so the arithmetic is pinned here.
+    #[test]
+    fn a_paused_recording_reports_recorded_time_and_the_gaps_reconcile() {
+        let start = Instant::now();
+        let mut ledger = PauseLedger::new(start);
+        ledger.begin_pause(start + Duration::from_secs(10));
+        ledger.end_pause(start + Duration::from_secs(40));
+        ledger.begin_pause(start + Duration::from_secs(55));
+        ledger.end_pause(start + Duration::from_secs(70));
+        ledger.finish(start + Duration::from_secs(80));
+
+        // 10 + 15 + 10 recorded, 30 + 15 paused, 80 on the wall clock.
+        assert_eq!(ledger.recorded_elapsed(), Duration::from_secs(35));
+        let receipt = ledger.receipt().unwrap().expect("two gaps were recorded");
+        assert_eq!(
+            receipt,
+            json!({
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": 160_000, "resumed_at_samples": 640_000},
+                    {"paused_at_samples": 880_000, "resumed_at_samples": 1_120_000}
+                ]
+            })
+        );
+
+        let recorded = elapsed_samples(ledger.recorded_elapsed()).unwrap();
+        let paused: u64 = receipt["spans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|span| {
+                span["resumed_at_samples"].as_u64().unwrap()
+                    - span["paused_at_samples"].as_u64().unwrap()
+            })
+            .sum();
+        assert_eq!(recorded + paused, 80 * 16_000);
+        // Every span sits inside the wall clock the two numbers imply, which is
+        // the bound the capture receipt is validated against.
+        assert!(receipt["spans"].as_array().unwrap().iter().all(|span| {
+            span["resumed_at_samples"].as_u64().unwrap() <= recorded + paused
+        }));
+    }
+
+    #[test]
+    fn an_unpaused_recording_records_no_pause_field_at_all() {
+        let start = Instant::now();
+        let mut ledger = PauseLedger::new(start);
+        ledger.finish(start + Duration::from_secs(12));
+        assert_eq!(ledger.recorded_elapsed(), Duration::from_secs(12));
+        assert_eq!(ledger.receipt().unwrap(), None);
+    }
+
+    #[test]
+    fn stopping_while_paused_still_records_the_gap_the_operator_held_open() {
+        let start = Instant::now();
+        let mut ledger = PauseLedger::new(start);
+        ledger.begin_pause(start + Duration::from_secs(5));
+        ledger.finish(start + Duration::from_secs(25));
+
+        // The trailing pause is time the operator held the meeting open with
+        // nothing being captured, so it is evidence even though no audio
+        // follows it.
+        assert_eq!(ledger.recorded_elapsed(), Duration::from_secs(5));
+        assert_eq!(
+            ledger.receipt().unwrap().unwrap()["spans"],
+            json!([{"paused_at_samples": 80_000, "resumed_at_samples": 400_000}])
+        );
+    }
+
+    #[test]
+    fn a_recording_paused_past_the_receipt_bound_refuses_rather_than_truncating() {
+        let start = Instant::now();
+        let mut ledger = PauseLedger::new(start);
+        for index in 0..(MAX_PAUSE_SPANS as u64 + 1) {
+            ledger.begin_pause(start + Duration::from_secs(index * 2));
+            ledger.end_pause(start + Duration::from_secs(index * 2 + 1));
+        }
+        assert!(ledger.receipt().is_err());
+    }
+
     #[test]
     fn capture_events_are_closed_and_format_bound() {
         assert_eq!(
@@ -10333,10 +10786,22 @@ mod tests {
             .unwrap(),
             CaptureEvent::Recording
         );
+        assert_eq!(
+            parse_capture_event(br#"{"schema":"capture-event/1","event":"suspended"}"#).unwrap(),
+            CaptureEvent::Suspended
+        );
+        assert_eq!(
+            parse_capture_event(br#"{"schema":"capture-event/1","event":"resumed"}"#).unwrap(),
+            CaptureEvent::Resumed
+        );
         assert!(
             parse_capture_event(br#"{"schema":"capture-event/1","event":"paused","extra":true}"#)
                 .is_err()
         );
+        assert!(parse_capture_event(
+            br#"{"schema":"capture-event/1","event":"suspended","extra":true}"#
+        )
+        .is_err());
         assert!(
             parse_capture_event(
                 br#"{"schema":"capture-event/1","event":"recording","format":{"encoding":"pcm_f32le","sample_rate":16000,"channels":1}}"#

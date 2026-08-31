@@ -17,6 +17,12 @@ const CAPTURE_COPY = Object.freeze({
     detail: "Add a short note whenever something matters.",
     tone: "recording",
   },
+  paused: {
+    eyebrow: "Paused",
+    title: "Nothing is being recorded.",
+    detail: "The meeting is still open. Your notes are still saved. Resume when you are ready.",
+    tone: "attention",
+  },
   stopping: {
     eyebrow: "Stopping capture",
     title: "Finishing the recording.",
@@ -77,6 +83,11 @@ const CAPTURE_ACTIVITY_COPY = Object.freeze({
     label: "Recording locally",
     detail: "Both audio sources are being captured on this Mac.",
     tone: "recording",
+  },
+  paused: {
+    label: "Paused",
+    detail: "Both audio sources are released. Nothing is reaching this Mac while this lasts.",
+    tone: "attention",
   },
   stopping: {
     label: "Stopping recording",
@@ -175,7 +186,7 @@ export function mergePermissions(previous, received) {
 }
 
 export function captureIsInProgress(snapshot) {
-  return ["arming", "recording", "stopping", "captured", "transcribing", "summarizing"].includes(snapshot?.capture);
+  return ["arming", "recording", "paused", "stopping", "captured", "transcribing", "summarizing"].includes(snapshot?.capture);
 }
 
 export function shouldPollSnapshot(snapshot) {
@@ -286,6 +297,7 @@ export function errorRecoveryPresentation(error, { hasSelectedMeeting = false } 
     "That speaker group is no longer available. Reopen the meeting and try again.",
     "Recording-quality evidence changed while opening this retry. Reopen the meeting and try again.",
     "Recording-device evidence changed while opening this retry. Reopen the meeting and try again.",
+    "Pause evidence changed while opening this retry. Reopen the meeting and try again.",
     "The retry candidate changed. Reopen the meeting and try again.",
     "Retained audio is unavailable. Reopen Library and try again.",
     "Recording deletion is unavailable. Reopen Library and try again.",
@@ -499,6 +511,62 @@ export function transcriptRetryQualityPresentation(quality = null) {
       }))
       : [];
   return { state, message, observations };
+}
+
+// The pause control the operator sees beside Stop.
+//
+// The reducer is only moved once the capture helper confirms the change, so a
+// request in flight is its own label rather than a state claim: the surface
+// never says "Paused" over a microphone that is still open, or "Recording" over
+// one that has not reopened yet.
+export function capturePauseControlPresentation(snapshot) {
+  const capture = snapshot?.capture;
+  if (capture !== "recording" && capture !== "paused") return null;
+  const pending = snapshot?.capture_pause_change_pending === true;
+  if (capture === "recording") {
+    return {
+      action: "pause-recording",
+      label: pending ? "Pausing…" : "Pause",
+      disabled: pending,
+    };
+  }
+  return {
+    action: "resume-recording",
+    label: pending ? "Resuming…" : "Resume",
+    disabled: pending,
+  };
+}
+
+// Whether a finished meeting has a gap in its audio, for the surface that
+// already shows capture evidence.
+//
+// A receipt written before pause existed describes a recording that could not
+// have been paused, so it reads as uninterrupted rather than as unknown. The
+// native projection authors the sentence; this keeps the mapping closed and
+// never invents one from a state it does not recognize.
+export function capturePausePresentation(pauses = null) {
+  const state = typeof pauses?.state === "string" ? pauses.state : "unavailable";
+  if (state === "not-paused") {
+    return {
+      state,
+      title: "Recording was not paused",
+      detail: "The retained audio for this meeting runs without a gap.",
+    };
+  }
+  if (state === "paused") {
+    return {
+      state,
+      title: "Recording was paused",
+      detail: typeof pauses?.message === "string" && pauses.message
+        ? pauses.message
+        : "This recording was paused, so its audio has a gap.",
+    };
+  }
+  return {
+    state: "unavailable",
+    title: "Pauses could not be checked",
+    detail: "Yawn could not verify whether this recording was paused.",
+  };
 }
 
 // The native projection deliberately withholds device names and metadata. Keep

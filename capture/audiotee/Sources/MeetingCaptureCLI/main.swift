@@ -408,6 +408,11 @@ private final class MicrophoneMeetingAudioSource: MeetingAudioSource, @unchecked
       engine = nil
       observer = nil
       failureHandler = nil
+      // A stopped engine ends its sample timeline. Carrying the old expectation
+      // into a later start would read the new engine's first buffer as a gap
+      // and fail the capture, so the source forgets it here rather than at
+      // start, where a fresh instance would also have to know to clear it.
+      expectedSampleTime = nil
       return values
     }
     if let observer = active.1 { NotificationCenter.default.removeObserver(observer) }
@@ -587,6 +592,15 @@ private func run() throws -> Int32 {
       terminal.set(2)
     }
   }
+  // The product word for this is "paused", but the event vocabulary already
+  // spends "paused" on the pre-start safe state the helper emits before it has
+  // opened anything. These two name the mid-take gap instead.
+  @Sendable func emitSuspended() {
+    if !events.emit(event: "suspended") { terminal.set(2) }
+  }
+  @Sendable func emitResumed() {
+    if !events.emit(event: "resumed") { terminal.set(2) }
+  }
   @Sendable func emitFinalized(legs: [String: Any]) {
     let sent = events.emit(event: "finalized", extra: ["legs": legs])
     terminal.set(sent ? 0 : 2)
@@ -603,6 +617,8 @@ private func run() throws -> Int32 {
   }
 
   let activate: () -> Void
+  let suspendCapture: () -> Void
+  let resumeCapture: () -> Void
   let stopCapture: () -> Void
   let interrupt: () -> Void
   let abort: (MeetingCaptureFault) -> Void
@@ -618,6 +634,10 @@ private func run() throws -> Int32 {
       switch update {
       case .recording:
         emitRecording()
+      case .suspended:
+        emitSuspended()
+      case .resumed:
+        emitResumed()
       case .finalized(let receipt):
         emitFinalized(legs: [
           "mic": ["samples": receipt.micSamples],
@@ -630,6 +650,15 @@ private func run() throws -> Int32 {
       }
     }
     activate = { coordinator.activate() }
+    suspendCapture = {
+      guard coordinator.suspend() else {
+        coordinator.abort(
+          MeetingCaptureFault(
+            code: "invalid_control", detail: "pause is valid only while recording"))
+        return
+      }
+    }
+    resumeCapture = { coordinator.resume() }
     stopCapture = { _ = coordinator.stop() }
     interrupt = { coordinator.interrupt() }
     abort = { coordinator.abort($0) }
@@ -653,6 +682,18 @@ private func run() throws -> Int32 {
       }
     }
     activate = { coordinator.activate() }
+    // Pause belongs to a meeting, not to a setup sitting. Refusing here keeps
+    // the control protocol single-valued rather than silently ignored.
+    suspendCapture = {
+      coordinator.abort(
+        MeetingCaptureFault(
+          code: "invalid_control", detail: "a setup recording cannot be paused"))
+    }
+    resumeCapture = {
+      coordinator.abort(
+        MeetingCaptureFault(
+          code: "invalid_control", detail: "a setup recording cannot be resumed"))
+    }
     stopCapture = { _ = coordinator.stop() }
     interrupt = { coordinator.interrupt() }
     abort = { coordinator.abort($0) }
@@ -693,6 +734,10 @@ private func run() throws -> Int32 {
       switch command {
       case Character("S").asciiValue:
         activate()
+      case Character("P").asciiValue:
+        suspendCapture()
+      case Character("R").asciiValue:
+        resumeCapture()
       case Character("X").asciiValue:
         stopCapture()
       default:

@@ -391,11 +391,20 @@ def _wav_samples(path: Path) -> int:
 def capture_finalize(root: Path, arguments: object) -> dict[str, str]:
     values = _exact_arguments(
         arguments,
-        {"meeting_id", "started_at_epoch_seconds", "capture_elapsed_samples"},
+        {
+            "meeting_id",
+            "started_at_epoch_seconds",
+            "capture_elapsed_samples",
+            "pauses",
+        },
     )
     meeting_id = opaque_id(values["meeting_id"], "meeting_id")
     started_at = values["started_at_epoch_seconds"]
+    # Net of any paused time: the application stops sending audio while paused,
+    # so wall-clock elapsed would read as both legs having ended early and would
+    # fail the capture-health integrity floor.
     elapsed = values["capture_elapsed_samples"]
+    pauses = values["pauses"]
     if (
         isinstance(started_at, bool)
         or not isinstance(started_at, int)
@@ -406,6 +415,14 @@ def capture_finalize(root: Path, arguments: object) -> dict[str, str]:
         or elapsed > 16_000 * 60 * 60 * 24
     ):
         raise AdapterRefused("capture timing is outside the closed schema")
+
+    from dual_capture import validate_pause_evidence
+
+    if pauses is not None:
+        try:
+            validate_pause_evidence(pauses, capture_elapsed_samples=elapsed)
+        except ValueError as exc:
+            raise AdapterRefused(f"capture pause evidence is invalid ({exc})") from None
 
     capture_dir = _meeting_capture(root, meeting_id)
     names = {path.name for path in capture_dir.iterdir()}
@@ -436,6 +453,7 @@ def capture_finalize(root: Path, arguments: object) -> dict[str, str]:
         capture_dir,
         timestamp,
         health,
+        pauses=pauses,
         no_overwrite=True,
     )
     verify_acquisition(capture_dir)

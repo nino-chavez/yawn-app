@@ -375,6 +375,12 @@
           "markdownDescription": "Enables the operator_note command without any pre-configured scope."
         },
         {
+          "description": "Enables the pause_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pause-meeting",
+          "markdownDescription": "Enables the pause_meeting command without any pre-configured scope."
+        },
+        {
           "description": "Enables the preview_delete_meeting command without any pre-configured scope.",
           "type": "string",
           "const": "allow-preview-delete-meeting",
@@ -511,6 +517,12 @@
           "type": "string",
           "const": "allow-restore-withheld-turn",
           "markdownDescription": "Enables the restore_withheld_turn command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the resume_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-resume-meeting",
+          "markdownDescription": "Enables the resume_meeting command without any pre-configured scope."
         },
         {
           "description": "Enables the retry_startup command without any pre-configured scope.",
@@ -765,6 +777,12 @@
           "markdownDescription": "Denies the operator_note command without any pre-configured scope."
         },
         {
+          "description": "Denies the pause_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pause-meeting",
+          "markdownDescription": "Denies the pause_meeting command without any pre-configured scope."
+        },
+        {
           "description": "Denies the preview_delete_meeting command without any pre-configured scope.",
           "type": "string",
           "const": "deny-preview-delete-meeting",
@@ -901,6 +919,12 @@
           "type": "string",
           "const": "deny-restore-withheld-turn",
           "markdownDescription": "Denies the restore_withheld_turn command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the resume_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-resume-meeting",
+          "markdownDescription": "Denies the resume_meeting command without any pre-configured scope."
         },
         {
           "description": "Denies the retry_startup command without any pre-configured scope.",

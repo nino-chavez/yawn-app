@@ -93,6 +93,60 @@ impl RecordingDeviceProjection {
     }
 }
 
+/// Reader-safe projection of the spans where the operator held a recording open
+/// with nothing being captured.
+///
+/// A pause is a capture-integrity event, so this is deliberately not part of the
+/// quality guidance above: quality describes the signal that was recorded, while
+/// this describes the time that was not. `NotPaused` covers both a capture that
+/// was never paused and every receipt written before pause existed — in each
+/// case the retained audio is continuous, which is the fact a reader needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapturePauseState {
+    NotPaused,
+    Paused,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapturePauseProjection {
+    pub state: CapturePauseState,
+    /// How many times the operator paused. Zero whenever the state is not
+    /// `Paused`, so a reader never has to interpret a count against a state.
+    pub count: u64,
+    /// Total time nothing was captured, in whole seconds.
+    pub total_paused_seconds: u64,
+    pub message: String,
+}
+
+impl CapturePauseProjection {
+    fn not_paused() -> Self {
+        Self {
+            state: CapturePauseState::NotPaused,
+            count: 0,
+            total_paused_seconds: 0,
+            message: "Recording was not paused during this meeting.".into(),
+        }
+    }
+
+    fn unavailable(message: impl Into<String>) -> Self {
+        Self {
+            state: CapturePauseState::Unavailable,
+            count: 0,
+            total_paused_seconds: 0,
+            message: message.into(),
+        }
+    }
+
+    /// For a caller that could not reach the meeting record at all. It says the
+    /// check did not happen, which is the honest reading — never "no pauses".
+    pub fn unchecked() -> Self {
+        Self::unavailable("Yawn could not check whether this recording was paused.")
+    }
+}
+
 impl CaptureQualityProjection {
     fn unavailable(message: impl Into<String>) -> Self {
         Self {
@@ -301,6 +355,129 @@ pub fn project_recording_device(
         message: "Yawn verified that a microphone identity was recorded for this meeting. This does not confirm it was the audio input you intended to use.".into(),
         next_action: None,
     })
+}
+
+/// Sample rate every retained capture leg is normalized to. Pause spans are
+/// measured in the same unit as `capture_elapsed_samples` so the two can be
+/// reconciled without a second time base.
+const CAPTURE_RATE: u64 = 16_000;
+
+/// The largest number of pause spans one capture receipt may carry. This is the
+/// reader's half of the bound the capture writer enforces; a longer list is a
+/// receipt this reader will not summarize.
+const MAX_PAUSE_SPANS: usize = 64;
+
+/// Returns how often and how long a recording was held open with nothing being
+/// captured.
+///
+/// The pause record binds to the capture receipt rather than to the retained
+/// audio, so this stays readable after audio retention deletes the WAV pair.
+/// Only the receipt's own bytes are verified before anything is projected.
+pub fn project_capture_pauses(
+    meeting_dir: &Path,
+    meeting: &MeetingRecord,
+) -> Result<CapturePauseProjection, MeetingError> {
+    let Some(session) = meeting.artifacts.capture_session.as_ref() else {
+        return Ok(CapturePauseProjection::unavailable(
+            "Yawn could not check whether this recording was paused.",
+        ));
+    };
+    verify_artifact_ref(meeting_dir, session)?;
+    let bytes = read_private_bytes(
+        &resolve_artifact(meeting_dir, &session.relative_path)?,
+        MAX_RECEIPT_BYTES,
+    )?;
+    let receipt: Value = serde_json::from_slice(&bytes)?;
+
+    let Some(receipt_object) = receipt.as_object() else {
+        return Ok(malformed_pause_projection());
+    };
+    if receipt_object.get("schema").and_then(Value::as_str) != Some("capture-session/2") {
+        return Ok(malformed_pause_projection());
+    }
+    // A receipt written before pause existed describes a capture that could not
+    // have been paused. It reads as an uninterrupted recording, which is true,
+    // rather than as missing evidence.
+    let Some(pauses) = receipt_object.get("pauses").filter(|value| !value.is_null()) else {
+        return Ok(CapturePauseProjection::not_paused());
+    };
+    let Some(pauses) = pauses.as_object() else {
+        return Ok(malformed_pause_projection());
+    };
+    if pauses
+        .keys()
+        .any(|key| !matches!(key.as_str(), "schema" | "spans"))
+        || pauses.get("schema").and_then(Value::as_str) != Some("capture-pauses/1")
+    {
+        return Ok(malformed_pause_projection());
+    }
+    let Some(spans) = pauses.get("spans").and_then(Value::as_array) else {
+        return Ok(malformed_pause_projection());
+    };
+    if spans.len() > MAX_PAUSE_SPANS {
+        return Ok(malformed_pause_projection());
+    }
+
+    // Both offsets are wall-clock positions from the moment recording began.
+    // Spans are therefore ordered and non-overlapping; a receipt that says
+    // otherwise is not one this reader will summarize.
+    let mut total_samples: u64 = 0;
+    let mut previous_end: Option<u64> = None;
+    for span in spans {
+        let Some(span) = span.as_object() else {
+            return Ok(malformed_pause_projection());
+        };
+        if span
+            .keys()
+            .any(|key| !matches!(key.as_str(), "paused_at_samples" | "resumed_at_samples"))
+        {
+            return Ok(malformed_pause_projection());
+        }
+        let (Some(start), Some(end)) = (
+            span.get("paused_at_samples").and_then(Value::as_u64),
+            span.get("resumed_at_samples").and_then(Value::as_u64),
+        ) else {
+            return Ok(malformed_pause_projection());
+        };
+        if end <= start || previous_end.is_some_and(|previous| start < previous) {
+            return Ok(malformed_pause_projection());
+        }
+        previous_end = Some(end);
+        let Some(running) = total_samples.checked_add(end - start) else {
+            return Ok(malformed_pause_projection());
+        };
+        total_samples = running;
+    }
+
+    if spans.is_empty() {
+        return Ok(CapturePauseProjection::not_paused());
+    }
+    let count = spans.len() as u64;
+    let seconds = total_samples / CAPTURE_RATE;
+    Ok(CapturePauseProjection {
+        state: CapturePauseState::Paused,
+        count,
+        total_paused_seconds: seconds,
+        message: format!(
+            "Recording was paused {} {}, for {} in total. Nothing was captured during {}.",
+            count,
+            if count == 1 { "time" } else { "times" },
+            clock_label(seconds),
+            if count == 1 { "that gap" } else { "those gaps" },
+        ),
+    })
+}
+
+/// Renders a whole-second duration as the same m:ss shape the recording surface
+/// already uses, so a gap reads in the units the operator watched it in.
+fn clock_label(seconds: u64) -> String {
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+fn malformed_pause_projection() -> CapturePauseProjection {
+    CapturePauseProjection::unavailable(
+        "Yawn could not verify whether this recording was paused.",
+    )
 }
 
 fn malformed_projection() -> CaptureQualityProjection {
@@ -553,6 +730,198 @@ mod tests {
         assert!(!serde_json::to_string(&extra)
             .unwrap()
             .contains("unrecognized"));
+    }
+
+    /// Rewrites the fixture receipt and returns the meeting bound to the new
+    /// bytes, so each pause case verifies against a receipt it actually wrote.
+    fn with_receipt(
+        meeting_dir: &Path,
+        meeting: &mut MeetingRecord,
+        edit: impl FnOnce(&mut Value),
+    ) {
+        let session_path = meeting_dir.join("capture/session.json");
+        let mut receipt: Value = serde_json::from_slice(&fs::read(&session_path).unwrap()).unwrap();
+        edit(&mut receipt);
+        private_file(&session_path, &serde_json::to_vec(&receipt).unwrap());
+        meeting.artifacts.capture_session =
+            Some(artifact_ref(meeting_dir, "capture/session.json").unwrap());
+    }
+
+    #[test]
+    fn a_receipt_without_the_pause_field_reads_as_an_uninterrupted_recording() {
+        let (temporary, meeting) = fixture();
+        let meeting_dir = temporary.path().join("meeting-a");
+
+        // The fixture receipt predates pause and carries no `pauses` key at all.
+        let legacy = project_capture_pauses(&meeting_dir, &meeting).unwrap();
+        assert_eq!(legacy.state, CapturePauseState::NotPaused);
+        assert_eq!(legacy.count, 0);
+        assert_eq!(legacy.total_paused_seconds, 0);
+        assert_eq!(
+            legacy.message,
+            "Recording was not paused during this meeting."
+        );
+        assert_eq!(
+            serde_json::to_value(&legacy).unwrap(),
+            serde_json::json!({
+                "state": "not-paused",
+                "count": 0,
+                "totalPausedSeconds": 0,
+                "message": "Recording was not paused during this meeting."
+            })
+        );
+
+        // An explicitly empty span list is the same fact, stated by a writer
+        // that knows about pause. It must not read differently.
+        let mut empty = meeting.clone();
+        with_receipt(&meeting_dir, &mut empty, |receipt| {
+            receipt["pauses"] =
+                serde_json::json!({"schema": "capture-pauses/1", "spans": []});
+        });
+        assert_eq!(
+            project_capture_pauses(&meeting_dir, &empty).unwrap(),
+            legacy
+        );
+    }
+
+    #[test]
+    fn recorded_pauses_project_a_count_and_a_total() {
+        let (temporary, meeting) = fixture();
+        let meeting_dir = temporary.path().join("meeting-a");
+
+        let mut once = meeting.clone();
+        with_receipt(&meeting_dir, &mut once, |receipt| {
+            receipt["pauses"] = serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 16_000, "resumed_at_samples": 16_000 * 46}]
+            });
+        });
+        let single = project_capture_pauses(&meeting_dir, &once).unwrap();
+        assert_eq!(single.state, CapturePauseState::Paused);
+        assert_eq!(single.count, 1);
+        assert_eq!(single.total_paused_seconds, 45);
+        assert_eq!(
+            single.message,
+            "Recording was paused 1 time, for 0:45 in total. Nothing was captured during that gap."
+        );
+
+        let mut twice = meeting.clone();
+        with_receipt(&meeting_dir, &mut twice, |receipt| {
+            receipt["pauses"] = serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": 16_000, "resumed_at_samples": 16_000 * 46},
+                    {"paused_at_samples": 16_000 * 60, "resumed_at_samples": 16_000 * 105}
+                ]
+            });
+        });
+        let pair = project_capture_pauses(&meeting_dir, &twice).unwrap();
+        assert_eq!(pair.count, 2);
+        assert_eq!(pair.total_paused_seconds, 90);
+        assert_eq!(
+            pair.message,
+            "Recording was paused 2 times, for 1:30 in total. Nothing was captured during those gaps."
+        );
+    }
+
+    #[test]
+    fn an_unreadable_pause_record_is_never_summarized_as_no_pauses() {
+        let (temporary, meeting) = fixture();
+        let meeting_dir = temporary.path().join("meeting-a");
+
+        let malformed = [
+            serde_json::json!({"schema": "capture-pauses/2", "spans": []}),
+            serde_json::json!({"schema": "capture-pauses/1"}),
+            serde_json::json!({"schema": "capture-pauses/1", "spans": [], "extra": true}),
+            serde_json::json!({"schema": "capture-pauses/1", "spans": {}}),
+            // A zero-length gap is not a pause that happened.
+            serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 0, "resumed_at_samples": 0}]
+            }),
+            // Offsets must advance: two gaps cannot sit at the same place in
+            // the retained audio.
+            serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [
+                    {"paused_at_samples": 320_000, "resumed_at_samples": 336_000},
+                    {"paused_at_samples": 16_000, "resumed_at_samples": 32_000}
+                ]
+            }),
+            serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 0, "resumed_at_samples": -4}]
+            }),
+            serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 0, "resumed_at_samples": 16_000, "why": "no"}]
+            }),
+            serde_json::json!([]),
+        ];
+        for shape in malformed {
+            let mut broken = meeting.clone();
+            with_receipt(&meeting_dir, &mut broken, |receipt| {
+                receipt["pauses"] = shape.clone();
+            });
+            let projection = project_capture_pauses(&meeting_dir, &broken).unwrap();
+            assert_eq!(
+                projection.state,
+                CapturePauseState::Unavailable,
+                "{shape} must not be summarized"
+            );
+            assert_eq!(projection.count, 0);
+            assert!(projection.message.contains("could not verify"));
+        }
+
+        let mut too_many = meeting.clone();
+        with_receipt(&meeting_dir, &mut too_many, |receipt| {
+            let spans = (0..=MAX_PAUSE_SPANS)
+                .map(|index| {
+                    serde_json::json!({
+                        "paused_at_samples": index * 32_000,
+                        "resumed_at_samples": index * 32_000 + 16_000
+                    })
+                })
+                .collect::<Vec<_>>();
+            receipt["pauses"] =
+                serde_json::json!({"schema": "capture-pauses/1", "spans": spans});
+        });
+        assert_eq!(
+            project_capture_pauses(&meeting_dir, &too_many)
+                .unwrap()
+                .state,
+            CapturePauseState::Unavailable
+        );
+    }
+
+    #[test]
+    fn pause_evidence_survives_deleted_audio_but_not_changed_receipt_bytes() {
+        // Retention deletes the WAV pair; the capture-integrity record of what
+        // was never recorded still has to read.
+        let (temporary, mut meeting) = fixture();
+        let meeting_dir = temporary.path().join("meeting-a");
+        with_receipt(&meeting_dir, &mut meeting, |receipt| {
+            receipt["pauses"] = serde_json::json!({
+                "schema": "capture-pauses/1",
+                "spans": [{"paused_at_samples": 16_000, "resumed_at_samples": 48_000}]
+            });
+        });
+        meeting.artifacts.microphone_audio = None;
+        meeting.artifacts.system_audio = None;
+        let projection = project_capture_pauses(&meeting_dir, &meeting).unwrap();
+        assert_eq!(projection.state, CapturePauseState::Paused);
+        assert_eq!(projection.total_paused_seconds, 2);
+
+        let (temporary, meeting) = fixture();
+        let meeting_dir = temporary.path().join("meeting-a");
+        private_file(&meeting_dir.join("capture/session.json"), b"changed");
+        assert!(project_capture_pauses(&meeting_dir, &meeting).is_err());
+
+        let mut missing = meeting.clone();
+        missing.artifacts.capture_session = None;
+        let unavailable = project_capture_pauses(&meeting_dir, &missing).unwrap();
+        assert_eq!(unavailable.state, CapturePauseState::Unavailable);
+        assert!(unavailable.message.contains("could not check"));
     }
 
     #[test]

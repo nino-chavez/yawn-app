@@ -13,6 +13,8 @@
     "allow-app-snapshot",
     "allow-open-settings-window",
     "allow-start-meeting",
+    "allow-pause-meeting",
+    "allow-resume-meeting",
     "allow-stop-meeting",
     "allow-dismiss-meeting",
     "allow-retry-startup",

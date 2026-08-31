@@ -32,6 +32,8 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "app_snapshot",
     "open_settings_window",
     "start_meeting",
+    "pause_meeting",
+    "resume_meeting",
     "stop_meeting",
     "dismiss_meeting",
     "retry_startup",
