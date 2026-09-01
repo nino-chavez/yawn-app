@@ -13,7 +13,7 @@ use local_meeting_notes_session_core::corpus_index::CorpusIndex;
 use local_meeting_notes_session_core::library_read::FolderFilter;
 use local_meeting_notes_session_core::library_read::{
     ClaimEvidenceState, LibraryFilter, LibraryHit, LibraryProjection, LibraryReadError, LibraryRow,
-    OpenedLibraryHit, ReadLimits,
+    OpenedClaimLocator, OpenedLibraryHit, ReadLimits,
 };
 use local_meeting_notes_session_core::meeting::{
     ArtifactRef, AudioRetentionRule, AudioState, MeetingLifecycle, load_meeting, open_private_file,
@@ -579,6 +579,36 @@ pub(crate) struct LibraryClaim {
     pub(crate) claim: String,
     pub(crate) evidence_state: &'static str,
     pub(crate) locator_count: usize,
+    /// Design intake D5's hover-preview depth: every one of this claim's
+    /// locators, already resolved to the same digest-quoted transcript text
+    /// `preview_library_open_evidence` proves one locator at a time -- gathered
+    /// once here instead.
+    ///
+    /// This is not a new authority. `renderTranscript` already sends the
+    /// webview every retained turn's full text over `library_open_transcript`;
+    /// `spans` is a narrower slice of the same already-disclosed turns, quoted
+    /// once so a hover does not have to spend a single-use claim handle (see
+    /// `open_evidence_current`'s `self.handles.clear()`, which invalidates
+    /// every other claim's handle the moment one is opened -- exactly the cost
+    /// a 350ms hover must not pay). A claim whose locator count exceeds
+    /// `spans.len()` had at least one locator this reader could not currently
+    /// re-slice (see `claim_locator_spans`); the shell renders those claims
+    /// with whatever spans did resolve rather than withholding the claim
+    /// entirely.
+    pub(crate) spans: Vec<LibraryClaimSpan>,
+}
+
+/// One locator's already-quoted transcript text, batched onto `LibraryClaim`
+/// rather than fetched per hover. `sourceTurnIndex` is the same identity
+/// `turnsCited` and the transcript reader already key on, so the browser needs
+/// no second turn-lookup scheme to show a speaker or timestamp beside it.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LibraryClaimSpan {
+    pub(crate) source_turn_index: u32,
+    pub(crate) start: u64,
+    pub(crate) end: u64,
+    pub(crate) text: String,
 }
 
 /// One located claim as `meeting_export` needs it: the claim text plus every
@@ -1335,6 +1365,24 @@ impl LibraryReader {
             Ok(handles) => handles,
             Err(_) => return Self::stale_note(&meeting_id),
         };
+        // Batched once, before any locator loop, and turned into owned text so
+        // the borrow of `self.projection` ends here -- `self.retain_handle`
+        // below needs `&mut self`. One pass over this meeting's own turns
+        // (already read to answer this same request) is the whole cost; no
+        // extra file or projection read per locator.
+        let turn_texts: HashMap<u32, (String, bool)> = self
+            .projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == meeting_id)
+            .map(|row| {
+                row.derived()
+                    .turns
+                    .iter()
+                    .map(|turn| (turn.index, (turn.text.to_string(), turn.gated)))
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut claims = Vec::new();
         // Gathered alongside `claims`, from the exact locators this response
         // just opened -- not looked up separately -- then folded into
@@ -1355,6 +1403,7 @@ impl LibraryReader {
                     for locator in &locators {
                         turn_citations.push((locator.source_turn_index, claim_ordinal));
                     }
+                    let spans = claim_locator_spans(&locators, &turn_texts);
                     claims.push(LibraryClaim {
                         handle,
                         ordinal: claim_ordinal,
@@ -1362,6 +1411,7 @@ impl LibraryReader {
                         claim,
                         evidence_state: evidence_state_name(evidence_state),
                         locator_count: locators.len(),
+                        spans,
                     })
                 }
                 Ok(_) | Err(_) => return Self::stale_note(&meeting_id),
@@ -2547,6 +2597,71 @@ fn turns_cited(citations: &[(u32, u64)]) -> Vec<TurnCitation> {
         .collect()
 }
 
+/// Re-slices every locator's already-verified turn text, batched for one
+/// claim rather than fetched one locator at a time (design intake D5,
+/// decision 2).
+///
+/// A locator is silently skipped -- never turns this whole note `stale`, and
+/// never panics -- when its turn cannot currently be re-sliced: gated,
+/// missing, or an out-of-range scalar span. Verified (not merely asserted):
+/// every one of these three is unreachable through this crate's own
+/// projector API, by construction, not by convention --
+/// `note_projection::parse_locator` already rejects an out-of-range span or a
+/// digest mismatch at claim-projection time, before a claim is ever stored,
+/// and `source_turn_index` is assigned only from a turn's `visible_index`,
+/// which a gated turn never has. A transcript rewrite that could otherwise
+/// desync a stored locator from its turn changes `transcript_sha256`, which
+/// fails this response's own snapshot-authority check first. This function
+/// stays defensive anyway, matching `open_claim_evidence_excluding`'s own
+/// gated check: cheap, and the honest fallback if any of those upstream
+/// invariants is ever relaxed. Confirmed empirically while developing this: a
+/// projector fixture emitting an out-of-range locator fails
+/// `LibraryProjection::rebuild_with_projector` itself with
+/// `LibraryReadError::ArtifactUnavailable`, well before this function would
+/// ever run.
+fn claim_locator_spans(
+    locators: &[OpenedClaimLocator],
+    turn_texts: &HashMap<u32, (String, bool)>,
+) -> Vec<LibraryClaimSpan> {
+    let mut spans = Vec::with_capacity(locators.len());
+    for locator in locators {
+        let Some((text, gated)) = turn_texts.get(&locator.source_turn_index) else {
+            continue;
+        };
+        if *gated {
+            continue;
+        }
+        let Some(sliced) = library_claim_span_slice(text, locator.start, locator.end) else {
+            continue;
+        };
+        spans.push(LibraryClaimSpan {
+            source_turn_index: locator.source_turn_index,
+            start: locator.start,
+            end: locator.end,
+            text: sliced,
+        });
+    }
+    spans
+}
+
+/// Mirrors `session-core`'s private `scalar_slice` exactly (char-indexed, not
+/// byte-indexed, matching how every stored locator's `start`/`end` was
+/// produced). Duplicated rather than exposed as `pub` from that crate: this
+/// batched read stays local to one reader's note response, re-slicing text
+/// this same reader already holds current and validated, not a second digest
+/// check or a new cross-crate authority.
+fn library_claim_span_slice(text: &str, start: u64, end: u64) -> Option<String> {
+    if start >= end || end > text.chars().count() as u64 {
+        return None;
+    }
+    Some(
+        text.chars()
+            .skip(start as usize)
+            .take((end - start) as usize)
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -2958,6 +3073,63 @@ mod tests {
         assert!(
             stale.turns_cited.is_empty(),
             "a stale note must carry no reverse citations, exactly like it carries no claims"
+        );
+    }
+
+    // Design intake D5, decision 2: every claim's locators arrive with their
+    // quoted transcript text already batched onto the note response, so a
+    // hover preview needs no per-claim round trip and burns no single-use
+    // evidence handle.
+    #[test]
+    fn claim_spans_batch_every_locator_quoted_text_by_source_turn() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(TurnCitationProjector),
+        )
+        .unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        let handle = snapshot.rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new(), None);
+        assert_eq!(note.state, "note");
+
+        // The decision claim (ordinal 0) cites one locator, source turn 0
+        // ("alpha"). Its span text is the exact retained transcript text this
+        // reader already validated -- not re-derived, not truncated.
+        let decision = note
+            .claims
+            .iter()
+            .find(|claim| claim.ordinal == 0)
+            .expect("decision claim is present");
+        assert_eq!(decision.spans.len(), 1);
+        assert_eq!(decision.spans[0].source_turn_index, 0);
+        assert_eq!(decision.spans[0].start, 0);
+        assert_eq!(decision.spans[0].end, 5);
+        assert_eq!(decision.spans[0].text, "alpha");
+
+        // The point claim (ordinal 2) cites two locators across two source
+        // turns (0 "alpha" and 3 "delta"), proving spans batch every locator
+        // of a claim, not only its first.
+        let point = note
+            .claims
+            .iter()
+            .find(|claim| claim.ordinal == 2)
+            .expect("point claim is present");
+        assert_eq!(point.spans.len(), 2);
+        assert!(
+            point
+                .spans
+                .iter()
+                .any(|span| span.source_turn_index == 0 && span.text == "alpha")
+        );
+        assert!(
+            point
+                .spans
+                .iter()
+                .any(|span| span.source_turn_index == 3 && span.text == "delta")
         );
     }
 

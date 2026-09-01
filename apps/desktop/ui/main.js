@@ -23,6 +23,11 @@ import {
   recordingDevicePresentation,
   capturePauseControlPresentation,
   capturePausePresentation,
+  evidencePopoverPresentation,
+  evidenceSplitAllowed,
+  evidenceSyncTarget,
+  isManualTranscriptScroll,
+  nextEscapeTarget,
   retainedAudioPlaybackPresentation,
   retentionLabel,
   retryTurnDiffSegments,
@@ -103,6 +108,26 @@ let permissionsRefreshTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
 
+// Design intake D5's evidence-depth affordances. None of this lives in
+// `state`: the popover is a transient, cursor-anchored overlay outside the
+// patched tree entirely (see `showEvidencePopover`), and the sync-suppression
+// window and rAF batching flags are scheduling detail, not something any
+// render depends on. `state.selected.evidenceSplit` is the one piece that
+// *is* rendered (which column layout shows), and it lives there so it resets
+// with the rest of `state.selected` on every meeting load -- see
+// `loadSelectedMeeting`.
+let evidenceHoverTimer = null;
+let evidencePopoverEl = null;
+let evidencePopoverAnchor = null;
+let evidencePopoverOrdinal = null;
+let evidenceSyncSuppressedUntil = 0;
+let evidenceSyncRafPending = false;
+let evidenceSyncManualUntilNoteScroll = false;
+let evidenceSplitAllowedLast = null;
+let evidenceScrolledToTurnIndex = null;
+const EVIDENCE_HOVER_DELAY_MS = 350;
+const EVIDENCE_SYNC_SUPPRESS_MS = 500;
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -110,6 +135,19 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+// Design intake D5's split-view width gate reads the live window, not a
+// cached value, so a resize crossing the threshold is seen the next time
+// anything asks.
+function currentWindowWidth() {
+  return typeof window !== "undefined" && Number.isFinite(window.innerWidth) ? window.innerWidth : 0;
+}
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 function dateLabel(epochSeconds) {
@@ -237,6 +275,8 @@ function render() {
   restoreEditorFocus(editorFocus);
   if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
+  syncEvidenceSplitScroll();
+  dismissEvidencePopoverIfDetached();
 }
 
 // Snapshot polling keeps recording and transcription honest, but rebuilding the
@@ -619,7 +659,7 @@ function transcriptActionStatus(scope) {
   return state.transcriptActionStatus?.[scope] || "";
 }
 
-function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", exportAction = "", workspace = false, citations = null } = {}) {
+function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", exportAction = "", workspace = false, citations = null, targetTurnIndex = null } = {}) {
   const scope = copyAction.includes("library") ? "library" : "current";
   const copyBusy = state.busyAction === copyAction;
   const fileBusy = state.busyAction === openFileAction;
@@ -664,8 +704,15 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
     const citation = citations && !turn.withheld
       ? turnCitationPresentation(citations.turnsCited, citations.claims, turn.sourceTurnIndex)
       : null;
+    // Design intake D5, depth 3: the synced-scroll target is the one piece of
+    // per-turn visual state the split's transcript column carries, and it is
+    // rendered from `state` (via `targetTurnIndex`) rather than toggled as an
+    // imperative class -- an unrelated re-render (a keystroke elsewhere on
+    // the page) would otherwise wipe a class the template does not know
+    // about the next time `dom-patch.mjs` syncs this node's attributes.
+    const isSyncTarget = Number.isInteger(targetTurnIndex) && Number(turn.sourceTurnIndex) === targetTurnIndex;
     return `
-      <div class="transcript-line ${turn.withheld ? "withheld" : ""}">
+      <div class="transcript-line ${turn.withheld ? "withheld" : ""}${isSyncTarget ? " transcript-line-target" : ""}" data-turn-index="${escapeHtml(turn.sourceTurnIndex)}">
         <div class="transcript-line-meta">
           <time>${escapeHtml(timeLabel(turn.start))}</time>
           ${speakerLabel ? correctionAvailable
@@ -856,6 +903,71 @@ function renderTranscriptRetryAction(note, transcript, recovery) {
   `;
 }
 
+// Design intake D5's depth-2 split, and its own governing width fallback:
+// below `EVIDENCE_SPLIT_MIN_WINDOW_WIDTH` the surface renders exactly as it
+// did before this packet -- the full transcript stays a below-the-note
+// disclosure. Both branches render the workspace-mode transcript through the
+// same `renderTranscript` call, and never both at once: `renderTranscript`'s
+// workspace branch hardcodes ids (`transcript-heading`,
+// `transcript-search-input`, ...), so two live instances would collide under
+// the patcher's id-keying the moment either one re-rendered.
+function renderMeetingWorkspace({ note, transcript, recovery, claimEvidence, playback, operatorNote, selectedNoteCopy, noteEditable, row }) {
+  const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
+  const splitActive = Boolean(
+    evidenceSplit.open
+    && transcript?.turns?.length
+    && evidenceSplitAllowed(currentWindowWidth()),
+  );
+  const citations = note ? { turnsCited: note.turnsCited, claims: note.claims } : null;
+  return `
+      <div class="meeting-workspace" data-evidence-split="${splitActive ? "open" : "closed"}">
+        <main class="meeting-source-pane" id="meeting-source-pane">
+          ${renderMeetingNote(note, claimEvidence)}
+          ${renderGenerateNote(note, recovery)}
+          ${renderTranscriptRetryAction(note, transcript, recovery)}
+          ${splitActive ? "" : renderTranscriptDisclosure(transcript, recovery, note)}
+        </main>
+        ${splitActive ? renderEvidenceSplitColumn(transcript, citations, evidenceSplit.turnIndex) : ""}
+        <aside class="meeting-notes-pane">
+          ${renderRetainedAudioPlayback(playback)}
+          ${renderMeetingContextSection(note)}
+          <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
+          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="save-state" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
+          ${operatorNote?.unreadable
+            ? `<p class="message-card attention">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
+            : `<textarea class="note-editor meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
+              <p class="note-editor-help">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
+          </section>
+        </aside>
+      </div>`;
+}
+
+// The split column itself: a close affordance (Escape does the same, see
+// `handleKeydown`), then the exact same workspace-mode transcript the
+// below-the-note disclosure renders -- same citations, same search, same
+// speaker-correction affordances. Scrolling to and highlighting the target
+// turn happens after this markup is patched into the DOM (see `render`'s
+// tail and `syncEvidenceSplitScroll`), because the target element does not
+// exist yet while this string is being built.
+function renderEvidenceSplitColumn(transcript, citations, targetTurnIndex) {
+  return `
+    <section class="evidence-split-column" id="evidence-split-column" aria-label="Cited transcript">
+      <div class="evidence-split-head">
+        <p class="eyebrow">Cited transcript</p>
+        <button class="icon-button" type="button" data-action="close-evidence-split" aria-label="Close cited transcript">×</button>
+      </div>
+      ${renderTranscript(transcript.turns, "Source transcript", "Scrolled to the cited passage.", {
+        copyAction: "copy-library-transcript",
+        openFileAction: "open-library-transcript-file",
+        exportAction: "export-meeting",
+        workspace: true,
+        citations,
+        targetTurnIndex,
+      })}
+    </section>
+  `;
+}
+
 function renderMeeting() {
   const { row, note, transcript } = state.selected;
   const title = row.label || `Meeting · ${dateLabel(row.createdAtEpochSeconds)}`;
@@ -916,25 +1028,7 @@ function renderMeeting() {
       ${lock?.state === "locked" || lock?.state === "unreadable" ? "" : `
       ${renderMeetingRecovery(recovery)}
       ${!recovery && note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="message-card ${note.state === "summary-failed" ? "attention" : ""}">${escapeHtml(note.message)}</p>` : ""}
-      <div class="meeting-workspace">
-        <main class="meeting-source-pane">
-          ${renderMeetingNote(note, claimEvidence)}
-          ${renderGenerateNote(note, recovery)}
-          ${renderTranscriptRetryAction(note, transcript, recovery)}
-          ${renderTranscriptDisclosure(transcript, recovery, note)}
-        </main>
-        <aside class="meeting-notes-pane">
-          ${renderRetainedAudioPlayback(playback)}
-          ${renderMeetingContextSection(note)}
-          <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
-          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="save-state" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
-          ${operatorNote?.unreadable
-            ? `<p class="message-card attention">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
-            : `<textarea class="note-editor meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
-              <p class="note-editor-help">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
-          </section>
-        </aside>
-      </div>`}
+      ${renderMeetingWorkspace({ note, transcript, recovery, claimEvidence, playback, operatorNote, selectedNoteCopy, noteEditable, row })}`}
     </article>
   `;
 }
@@ -1039,8 +1133,19 @@ function renderClaimEvidence(claim, evidence) {
       </div>
     `;
   }
-  const action = `evidence-${claim.ordinal}`;
-  return `<button class="claim-source-button" type="button" data-action="open-claim-evidence" data-ordinal="${escapeHtml(claim.ordinal)}" ${state.busyAction === action ? "disabled" : ""}>${state.busyAction === action ? "Opening source…" : "Show source"}</button>`;
+  // Design intake D5, decision 2: `claim.spans` is already the digest-quoted
+  // transcript text for every one of this claim's locators, batched onto the
+  // note response -- see `library_reader.rs`'s `LibraryClaim.spans`. A claim
+  // whose locators could not currently be re-sliced (`spans` empty despite a
+  // nonzero `locatorCount`) says so rather than offering a control that would
+  // only reach a stale-evidence error.
+  if (!claim.spans?.length) {
+    return `<span class="claim-source-unavailable">This point’s exact wording could not be verified against the transcript.</span>`;
+  }
+  // `id` (not a positional match) is this button's identity across a render
+  // patch: the hover popover and the split-open action both need the same
+  // node reachable by ordinal regardless of where sibling claims shift it.
+  return `<button class="claim-source-button" type="button" id="claim-source-${escapeHtml(claim.ordinal)}" data-action="open-evidence-split" data-ordinal="${escapeHtml(claim.ordinal)}">Show source</button>`;
 }
 
 function renderStartSheet() {
@@ -1831,12 +1936,17 @@ async function loadSelectedMeeting(row, lockToken = null) {
     transcript,
     transcriptRetry: pendingRetry,
     claimEvidence: {},
+    // Design intake D5, depth 2/3: never persists across meetings, and reset
+    // here rather than surviving a same-meeting refresh, the same lifecycle
+    // `claimEvidence` already follows on this same object.
+    evidenceSplit: { open: false, ordinal: null, turnIndex: null },
     operatorNoteDraft: operatorNote.text || "",
     operatorNoteSaveQueue: Promise.resolve(),
     operatorNoteSaveState: operatorNote.unreadable ? "unreadable" : operatorNote.text ? "saved" : "local",
   };
   state.audioPlayback = { state: "idle", source: null, message: "No recording is playing." };
   state.activeView = "meeting";
+  dismissEvidencePopover();
 }
 
 async function playRetainedAudio(source) {
@@ -2213,6 +2323,227 @@ function navigateToClaim(ordinal) {
   target.scrollIntoView({ behavior: "smooth", block: "center" });
   target.classList.add("claim-item-navigated");
   window.setTimeout(() => target.classList.remove("claim-item-navigated"), 1600);
+}
+
+// Design intake D5: evidence disclosure's three depths. Depth 1 (hover
+// preview) and depths 2/3 (split view, synced scroll) are grouped together
+// here because they share the same anchor -- a claim's "Show source"
+// affordance -- and the same handle economy: every claim's locators already
+// arrived quoted (`claim.spans`, batched onto the note response by
+// `library_reader.rs`), so nothing below ever invokes a Tauri command.
+
+// -- Depth 1: hover / keyboard-focus preview --------------------------------
+//
+// The popover is a plain DOM node appended to `document.body`, entirely
+// outside the tree `patchInto` patches. That is deliberate, not an oversight:
+// a render tick firing mid-hover (the 900 ms poll, an unrelated keystroke)
+// must not disturb a transient overlay the reader is currently looking at,
+// and nothing outside `#app` is ever touched by `render()`. The only seam
+// between the two is `dismissEvidencePopoverIfDetached`, called from
+// `render()`'s tail, which drops the popover if its anchor button itself was
+// removed by that same patch (the claim it belonged to disappeared, not just
+// moved).
+
+function evidenceSourceButtonFromEvent(target) {
+  return target instanceof Element ? target.closest(".claim-source-button") : null;
+}
+
+function handleEvidenceHoverIn(event) {
+  const button = evidenceSourceButtonFromEvent(event.target);
+  if (button) scheduleEvidencePopover(button);
+}
+
+function handleEvidenceHoverOut(event) {
+  const button = evidenceSourceButtonFromEvent(event.target);
+  if (!button) return;
+  if (event.relatedTarget instanceof Node && button.contains(event.relatedTarget)) return;
+  dismissEvidencePopover();
+}
+
+function handleEvidenceFocusIn(event) {
+  const button = evidenceSourceButtonFromEvent(event.target);
+  if (button) scheduleEvidencePopover(button);
+}
+
+function handleEvidenceFocusOut(event) {
+  if (evidenceSourceButtonFromEvent(event.target)) dismissEvidencePopover();
+}
+
+function scheduleEvidencePopover(anchor) {
+  window.clearTimeout(evidenceHoverTimer);
+  const ordinal = Number(anchor.dataset.ordinal);
+  evidenceHoverTimer = window.setTimeout(() => showEvidencePopover(anchor, ordinal), EVIDENCE_HOVER_DELAY_MS);
+}
+
+function showEvidencePopover(anchor, ordinal) {
+  if (!document.contains(anchor)) return;
+  const claim = state.selected?.note?.claims?.find((candidate) => Number(candidate?.ordinal) === ordinal);
+  const presentation = evidencePopoverPresentation(claim, state.selected?.transcript?.turns);
+  if (!presentation) return;
+  dismissEvidencePopover();
+  const el = document.createElement("div");
+  el.className = "evidence-popover";
+  el.setAttribute("role", "note");
+  el.innerHTML = `
+    <p class="evidence-popover-meta">${escapeHtml(presentation.speaker)}${presentation.start !== null ? ` · ${escapeHtml(timeLabel(presentation.start))}` : ""}</p>
+    <p class="evidence-popover-text">${escapeHtml(presentation.text)}</p>
+  `;
+  document.body.appendChild(el);
+  positionEvidencePopover(el, anchor);
+  evidencePopoverEl = el;
+  evidencePopoverAnchor = anchor;
+  evidencePopoverOrdinal = ordinal;
+}
+
+function positionEvidencePopover(el, anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const width = el.offsetWidth || 320;
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  el.style.position = "fixed";
+  el.style.left = `${left}px`;
+  el.style.top = `${rect.bottom + 8}px`;
+}
+
+function dismissEvidencePopover() {
+  window.clearTimeout(evidenceHoverTimer);
+  evidenceHoverTimer = null;
+  evidencePopoverEl?.remove();
+  evidencePopoverEl = null;
+  evidencePopoverAnchor = null;
+  evidencePopoverOrdinal = null;
+}
+
+// `render()`'s tail calls this after every patch: the popover's anchor is
+// looked up fresh each time it is shown (never cached across a render), so
+// the only failure a patch can cause is the anchor button itself vanishing
+// (the claim it belonged to no longer renders at all) -- everything else
+// about `.claim-source-button` (see `renderClaimEvidence`) keeps the same
+// `id` across a patch, so an ordinary re-render never disturbs it.
+function dismissEvidencePopoverIfDetached() {
+  if (evidencePopoverAnchor && !document.contains(evidencePopoverAnchor)) dismissEvidencePopover();
+}
+
+// -- Depths 2 and 3: split view and synced scroll ---------------------------
+
+function openEvidenceSplit(ordinal) {
+  if (!state.selected || !Number.isFinite(ordinal)) return;
+  const claim = state.selected.note?.claims?.find((candidate) => Number(candidate?.ordinal) === ordinal);
+  const span = claim?.spans?.[0];
+  if (!span) return;
+  dismissEvidencePopover();
+  evidenceSyncManualUntilNoteScroll = false;
+  evidenceScrolledToTurnIndex = null;
+  state.selected.evidenceSplit = { open: true, ordinal, turnIndex: span.sourceTurnIndex };
+  render();
+}
+
+function closeEvidenceSplit() {
+  if (!state.selected?.evidenceSplit?.open) return;
+  state.selected.evidenceSplit = { open: false, ordinal: null, turnIndex: null };
+  evidenceSyncManualUntilNoteScroll = false;
+  evidenceScrolledToTurnIndex = null;
+  render();
+}
+
+// Called from `render()`'s tail on every render, not only ones this module
+// triggered: it is a no-op unless `evidenceSplit.turnIndex` actually changed
+// since the DOM last caught up, so an unrelated re-render (typing in the
+// operator-note textarea beside an open split) does not re-scroll or
+// re-animate anything.
+function syncEvidenceSplitScroll() {
+  const evidenceSplit = state.selected?.evidenceSplit;
+  if (!evidenceSplit?.open || !Number.isInteger(evidenceSplit.turnIndex)) {
+    evidenceScrolledToTurnIndex = null;
+    return;
+  }
+  if (evidenceSplit.turnIndex === evidenceScrolledToTurnIndex) return;
+  // The very first landing (opening the split) jumps straight there --
+  // there is no prior scroll position worth animating away from. Every
+  // later retarget (depth 3's live sync) animates, so the reader can follow
+  // the transcript moving rather than have it jump under their eyes.
+  const animate = evidenceScrolledToTurnIndex !== null;
+  evidenceScrolledToTurnIndex = evidenceSplit.turnIndex;
+  scrollEvidenceTranscriptToTurn(evidenceSplit.turnIndex, { animate });
+}
+
+function scrollEvidenceTranscriptToTurn(turnIndex, { animate = false } = {}) {
+  const container = root.querySelector("#evidence-split-column .transcript-scroll");
+  const target = container?.querySelector(`[data-turn-index="${turnIndex}"]`);
+  if (!container || !target) return;
+  const targetTop = Math.max(0, target.offsetTop - 12);
+  // Marks the window during which the transcript column's own `scroll`
+  // events are this call's doing, not the reader's -- see
+  // `isManualTranscriptScroll` and `handleEvidenceTranscriptScroll`.
+  evidenceSyncSuppressedUntil = Date.now() + EVIDENCE_SYNC_SUPPRESS_MS;
+  container.scrollTo({ top: targetTop, behavior: animate && !prefersReducedMotion() ? "smooth" : "auto" });
+}
+
+// The note column's currently fully-visible claims, topmost first -- the
+// geometry read `evidenceSyncTarget` (a pure function) needs but must not
+// perform itself.
+function topmostVisibleClaimOrdinals(notePane) {
+  const paneRect = notePane.getBoundingClientRect();
+  return Array.from(notePane.querySelectorAll("[data-claim-item]"))
+    .map((item) => ({ ordinal: Number(item.dataset.claimItem), rect: item.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.top >= paneRect.top - 0.5 && rect.bottom <= paneRect.bottom + 0.5)
+    .sort((a, b) => a.rect.top - b.rect.top)
+    .map(({ ordinal }) => ordinal);
+}
+
+function performEvidenceSync() {
+  const evidenceSplit = state.selected?.evidenceSplit;
+  if (!evidenceSplit?.open || evidenceSyncManualUntilNoteScroll) return;
+  const notePane = root.querySelector("#meeting-source-pane");
+  const claims = state.selected?.note?.claims;
+  if (!notePane || !Array.isArray(claims)) return;
+  const targetTurn = evidenceSyncTarget(topmostVisibleClaimOrdinals(notePane), claims);
+  if (targetTurn === null || targetTurn === evidenceSplit.turnIndex) return;
+  evidenceSplit.turnIndex = targetTurn;
+  render();
+}
+
+// rAF-batched: a scrollbar drag or a trackpad fling can fire dozens of
+// `scroll` events per second, and the geometry read above is not free.
+// However many land in one animation frame, only the last one is acted on.
+function scheduleEvidenceSyncFromNote() {
+  // Scrolling the note is depth 3's own resume trigger -- "no fighting the
+  // reader" (design decision 4) -- so this lifts a manual-scroll suspension
+  // before the frame that recomputes the target, not after.
+  evidenceSyncManualUntilNoteScroll = false;
+  if (evidenceSyncRafPending) return;
+  evidenceSyncRafPending = true;
+  window.requestAnimationFrame(() => {
+    evidenceSyncRafPending = false;
+    performEvidenceSync();
+  });
+}
+
+function handleEvidenceTranscriptScroll() {
+  if (isManualTranscriptScroll(Date.now(), evidenceSyncSuppressedUntil)) {
+    evidenceSyncManualUntilNoteScroll = true;
+  }
+}
+
+// `scroll` does not bubble, so this listens on `document` in the capture
+// phase, which still sees it: capture runs top-down before the (skipped)
+// bubble phase, so it is unaffected by `scroll`'s non-bubbling behavior.
+// That keeps this to one listener rather than one per scrollable element,
+// which would otherwise need re-attaching every time the split opens.
+function handleEvidenceGlobalScroll(event) {
+  if (!state.selected?.evidenceSplit?.open) return;
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.id === "meeting-source-pane") scheduleEvidenceSyncFromNote();
+  else if (target.classList.contains("transcript-scroll") && target.closest("#evidence-split-column")) {
+    handleEvidenceTranscriptScroll();
+  }
+}
+
+function handleEvidenceResize() {
+  const allowed = evidenceSplitAllowed(currentWindowWidth());
+  if (allowed === evidenceSplitAllowedLast) return;
+  evidenceSplitAllowedLast = allowed;
+  if (state.selected?.evidenceSplit?.open) render();
 }
 
 function queueNoteSave(text = state.noteDraft, meetingId = state.snapshot?.meeting_id) {
@@ -2611,6 +2942,8 @@ function handleClick(event) {
     queueMicrotask(() => root.querySelector("#speaker-name-input")?.focus());
   }
   else if (action === "open-claim-evidence") void openClaimEvidence(Number(control.dataset.ordinal));
+  else if (action === "open-evidence-split") openEvidenceSplit(Number(control.dataset.ordinal));
+  else if (action === "close-evidence-split") closeEvidenceSplit();
   else if (action === "navigate-to-claim") navigateToClaim(Number(control.dataset.ordinal));
   else if (action === "toggle-meeting-management") {
     state.meetingManagementOpen = !state.meetingManagementOpen;
@@ -2718,12 +3051,20 @@ function handleChange(event) {
 }
 
 function handleKeydown(event) {
-  if (event.key === "Escape" && state.modal) {
-    closeModal();
-    render();
-    return;
+  if (event.key === "Escape") {
+    // Design intake D5: the innermost, most transient surface closes first
+    // -- a popover dismissing under the reader's cursor must not also close
+    // a sheet or the split behind it.
+    const target = nextEscapeTarget({
+      popoverOpen: Boolean(evidencePopoverEl),
+      modalOpen: Boolean(state.modal),
+      splitOpen: Boolean(state.selected?.evidenceSplit?.open),
+    });
+    if (target === "popover") { dismissEvidencePopover(); return; }
+    if (target === "modal") { closeModal(); render(); return; }
+    if (target === "split") { closeEvidenceSplit(); return; }
+    if (state.meetingManagementOpen) { state.meetingManagementOpen = false; render(); return; }
   }
-  if (event.key === "Escape" && state.meetingManagementOpen) { state.meetingManagementOpen = false; render(); return; }
   if (!event.metaKey || event.altKey || event.ctrlKey) return;
   if (event.key.toLowerCase() === "r" && canOpenStart(state.snapshot, state.permissions)) {
     event.preventDefault();
@@ -2775,5 +3116,15 @@ window.addEventListener("focus", refreshPermissionsOnReturn);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) refreshPermissionsOnReturn();
 });
+// Design intake D5: hover/keyboard-focus preview (depth 1) and the split's
+// synced scroll (depth 3). `mouseover`/`mouseout`/`focusin`/`focusout` bubble
+// normally; `scroll` does not, hence the capture-phase listener -- see
+// `handleEvidenceGlobalScroll`'s own comment.
+document.addEventListener("mouseover", handleEvidenceHoverIn);
+document.addEventListener("mouseout", handleEvidenceHoverOut);
+document.addEventListener("focusin", handleEvidenceFocusIn);
+document.addEventListener("focusout", handleEvidenceFocusOut);
+document.addEventListener("scroll", handleEvidenceGlobalScroll, true);
+window.addEventListener("resize", handleEvidenceResize);
 
 void initialize();
