@@ -236,7 +236,7 @@ function render() {
 function captureEditorFocus() {
   const active = document.activeElement;
   const field = active?.dataset?.field;
-  if (!["operator-note", "meeting-context", "library-operator-note", "transcript-search", "vocabulary-before", "vocabulary-after"].includes(field)) return null;
+  if (!["operator-note", "meeting-context", "library-operator-note", "transcript-search", "vocabulary-before", "vocabulary-after", "library-search", "meeting-title", "speaker-name"].includes(field)) return null;
   if (!active.dataset.meetingId) return null;
   return {
     field,
@@ -391,7 +391,7 @@ function renderHome() {
     <section aria-labelledby="meetings-heading">
       <div class="section-heading">
         <h2 id="meetings-heading">Recent meetings</h2>
-        ${library?.total ? `<input class="search-input" type="search" data-field="library-search" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" />` : ""}
+        ${library?.total ? `<input class="search-input" type="search" data-field="library-search" data-meeting-id="library" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" autocorrect="off" spellcheck="false" />` : ""}
       </div>
       ${renderLibrary(library)}
       ${(() => {
@@ -684,7 +684,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
         </div>
         <div class="transcript-search-row">
           <label class="screen-reader-only" for="transcript-search-input">Find in transcript</label>
-          <input class="transcript-search" id="transcript-search-input" data-field="transcript-search" data-meeting-id="${escapeHtml(state.selected?.row?.meetingId || "")}" type="search" value="${escapeHtml(state.transcriptQuery)}" placeholder="Find in transcript" autocomplete="off" aria-describedby="transcript-search-status">
+          <input class="transcript-search" id="transcript-search-input" data-field="transcript-search" autocorrect="off" spellcheck="false" data-meeting-id="${escapeHtml(state.selected?.row?.meetingId || "")}" type="search" value="${escapeHtml(state.transcriptQuery)}" placeholder="Find in transcript" autocomplete="off" aria-describedby="transcript-search-status">
           ${query ? `<button class="button button-quiet button-small" type="button" data-action="clear-transcript-search">Clear</button>` : ""}
           <span class="transcript-search-status" id="transcript-search-status" role="status" aria-live="polite">${escapeHtml(queryStatus)}</span>
         </div>
@@ -1043,7 +1043,7 @@ function renderRenameMeetingSheet() {
         </div>
         <form data-form="rename-meeting">
           <label class="field-label" for="meeting-title-input">Meeting name
-            <input class="meeting-title-input" id="meeting-title-input" data-field="meeting-title" maxlength="120" value="${escapeHtml(state.renameDraft)}" placeholder="e.g. Q3 pricing review" autocomplete="off" />
+            <input class="meeting-title-input" id="meeting-title-input" data-field="meeting-title" data-meeting-id="${escapeHtml(state.selected?.row?.meetingId || "")}" maxlength="120" value="${escapeHtml(state.renameDraft)}" placeholder="e.g. Q3 pricing review" autocomplete="off" />
             <small>Leave this empty to use the opening line from the transcript again.</small>
           </label>
           <div class="sheet-actions">
@@ -1092,7 +1092,7 @@ function renderSpeakerCorrectionSheet() {
         <div class="speaker-correction-source"><span>Source label</span><strong>${escapeHtml(correction.sourceLabel)}</strong></div>
         <form data-form="speaker-correction">
           <label class="field-label" for="speaker-name-input">Speaker name
-            <input class="meeting-title-input" id="speaker-name-input" data-field="speaker-name" maxlength="80" value="${escapeHtml(state.speakerCorrectionDraft)}" placeholder="e.g. Alex" autocomplete="off" />
+            <input class="meeting-title-input" id="speaker-name-input" data-field="speaker-name" data-meeting-id="${escapeHtml(state.speakerCorrection?.meetingId || "")}" maxlength="80" value="${escapeHtml(state.speakerCorrectionDraft)}" placeholder="e.g. Alex" autocomplete="off" />
             <small>Every turn tied to this source label will use the same name in this meeting.</small>
           </label>
           <div class="speaker-correction-provenance"><strong>What stays preserved</strong><p>Yawn keeps the original label and records this as a separate local correction. Reopen this control and use the source label to undo it.</p></div>
@@ -1235,11 +1235,11 @@ function renderVocabularySheet() {
           <div class="vocabulary-form-head"><h3>${editing ? "Edit replacement" : "Add replacement"}</h3>${editing ? `<button class="text-button" type="button" data-action="cancel-vocabulary-edit">Cancel edit</button>` : ""}</div>
           <div class="vocabulary-fields">
             <label class="field-label" for="vocabulary-before-input">Before
-              <input class="meeting-title-input" id="vocabulary-before-input" data-field="vocabulary-before" data-meeting-id="${escapeHtml(vocabulary.meetingId)}" maxlength="256" value="${escapeHtml(vocabulary.sourcePhrase)}" placeholder="Exact transcript spelling" autocomplete="off" />
+              <input class="meeting-title-input" id="vocabulary-before-input" data-field="vocabulary-before" autocorrect="off" spellcheck="false" data-meeting-id="${escapeHtml(vocabulary.meetingId)}" maxlength="256" value="${escapeHtml(vocabulary.sourcePhrase)}" placeholder="Exact transcript spelling" autocomplete="off" />
             </label>
             <span class="vocabulary-arrow" aria-hidden="true">→</span>
             <label class="field-label" for="vocabulary-after-input">After
-              <input class="meeting-title-input" id="vocabulary-after-input" data-field="vocabulary-after" data-meeting-id="${escapeHtml(vocabulary.meetingId)}" maxlength="256" value="${escapeHtml(vocabulary.preferredReplacement)}" placeholder="Preferred spelling" autocomplete="off" />
+              <input class="meeting-title-input" id="vocabulary-after-input" data-field="vocabulary-after" autocorrect="off" spellcheck="false" data-meeting-id="${escapeHtml(vocabulary.meetingId)}" maxlength="256" value="${escapeHtml(vocabulary.preferredReplacement)}" placeholder="Preferred spelling" autocomplete="off" />
             </label>
           </div>
           <p class="vocabulary-help">Exact, case-sensitive matches only. Each phrase can be up to 256 characters.</p>
