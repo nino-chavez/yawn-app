@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "preview-window",
-  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording or transcript deletion, moving a confirmed meeting to local Trash and restoring one from it within its 30-day window, regenerating a meeting note from its current transcript, exporting a reviewed meeting as plain files and a compact archive written only inside that meeting's own directory, putting one meeting behind a local-access lock and removing that lock after macOS confirms the device owner, obtaining one single-use confirmation for one action on one locked meeting, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording or transcript deletion, moving a confirmed meeting to local Trash and restoring one from it within its 30-day window, regenerating a meeting note from its current transcript, exporting a reviewed meeting as plain files and a compact archive written only inside that meeting's own directory, putting one meeting behind a local-access lock and removing that lock after macOS confirms the device owner, obtaining one single-use confirmation for one action on one locked meeting, receiving the local note-capture-hotkey focus event while a meeting is recording, and searching across meetings only while the operator's local probe marker exists on this Mac. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "preview"
   ],
@@ -57,6 +57,8 @@
     "allow-transcript-retry-start",
     "allow-transcript-retry-pending",
     "allow-transcript-retry-decide",
+    "allow-preview-library-search",
+    "allow-preview-library-open-search-result",
     "core:event:allow-listen",
     "core:event:allow-unlisten"
   ]

@@ -1,10 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// The library reader is intentionally private and unregistered.  It maps an
-// already-built projection into closed DTOs, but does not create storage or
-// provide a Tauri command.
+// The library reader maps an already-built projection into closed DTOs. Most
+// of its surface remains private and unregistered. Two of its methods --
+// `search`/`search_filtered` and `open_search_result` -- do gain a Tauri
+// command each as of roadmap intake W8-B, but only behind the disposable
+// local flag in `search_probe.rs`: see that module and
+// `preview_library_search`/`preview_library_open_search_result` below.
 #[allow(dead_code)]
 mod library_reader;
+// Roadmap intake W8-B: the one-week local usage probe for the two
+// cross-meeting exact-search commands. Owns the disposable on/off marker file
+// and the append-only, content-free event log. See the module doc for why
+// the flag is read fresh per call rather than cached.
+mod search_probe;
 
 // The correction/regeneration facade is intentionally compiled but not wired
 // into the current internal-alpha command set.
@@ -3494,12 +3502,35 @@ fn library_set_meeting_title(
     })
 }
 
+/// Roadmap intake W8-B: the frontend has no other way to learn whether the
+/// operator's local probe marker exists, and it needs to know before it
+/// renders anything -- flag off must mean zero new UI, not a button that
+/// invokes and then refuses. `library_snapshot` is the one call the Home
+/// screen already makes on every load and on every search-box debounce, so
+/// piggybacking the flag bit here costs one more `Path::is_file` next to a
+/// storage-backed library rebuild that already runs on this exact call,
+/// rather than adding a third command whose only job is one boolean.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibrarySnapshotResponse {
+    #[serde(flatten)]
+    library: library_reader::LibrarySnapshot,
+    search_probe_enabled: bool,
+}
+
 #[tauri::command]
 fn library_snapshot(
     filter: Option<library_reader::LibraryFilterArgs>,
     state: State<'_, ApplicationState>,
-) -> library_reader::LibrarySnapshot {
-    library_snapshot_with(filter.unwrap_or_default(), &state)
+) -> LibrarySnapshotResponse {
+    let library = library_snapshot_with(filter.unwrap_or_default(), &state);
+    let search_probe_enabled = preview_storage_clone(&state)
+        .map(|storage| search_probe::enabled(&storage))
+        .unwrap_or(false);
+    LibrarySnapshotResponse {
+        library,
+        search_probe_enabled,
+    }
 }
 
 fn library_snapshot_for(state: &ApplicationState) -> library_reader::LibrarySnapshot {
@@ -5012,14 +5043,45 @@ fn preview_enrollment_build_profile_for(
     Ok(preview_profile_snapshot_for(state))
 }
 
+/// Roadmap intake W8-B. Registered, unlike the rest of `library_reader`'s
+/// surface, but its very first act is the probe flag check: with
+/// `search-probe.flag` absent from the storage root, this refuses exactly the
+/// way an unregistered command would have -- no library read, no handle
+/// mint, and (per the module doc on `search_probe`) no log line, because
+/// nothing ran. Only once the flag is present does this delegate to
+/// `LibraryReader::search`, the same W5-B-hardened path
+/// `library_reader.rs`'s own tests already prove excludes a locked meeting's
+/// every hit kind (see `search_current`'s doc comment there); this command
+/// adds the flag gate and the probe's own log line, and changes nothing about
+/// that exclusion.
 #[tauri::command]
 fn preview_library_search(
     query: String,
     state: State<'_, ApplicationState>,
 ) -> library_reader::LibrarySearchResponse {
+    preview_library_search_for(&query, &state)
+}
+
+fn preview_library_search_for(
+    query: &str,
+    state: &ApplicationState,
+) -> library_reader::LibrarySearchResponse {
+    let Ok(storage) = preview_storage_clone(state) else {
+        return library_reader::LibraryReader::unavailable_search();
+    };
+    if !search_probe::enabled(&storage) {
+        return library_reader::LibrarySearchResponse {
+            state: "probe-disabled",
+            results: Vec::new(),
+            total_matches: 0,
+            unavailable_count: 0,
+            message: search_probe::REFUSAL_MESSAGE.into(),
+        };
+    }
+    search_probe::record(&storage, search_probe::ProbeEvent::Invoked);
     let mut response = state.with_preview_library(
         library_reader::LibraryReader::unavailable_search,
-        |reader, active| reader.search(&query, active),
+        |reader, active| reader.search(query, active),
     );
     // Preview's active reader is deliberately transcript/title metadata only.
     // The broader projection contract also supports future claim readers, but
@@ -5043,11 +5105,48 @@ fn preview_library_search(
     response
 }
 
+/// Roadmap intake W8-B. Same flag-gate shape as `preview_library_search`
+/// above; see that command's doc comment. `open_search_result` already
+/// re-checks the lock at open time (roadmap intake I5's race guard -- a
+/// meeting unlocked when the search sealed this handle and relocked before it
+/// was opened), so this adds only the probe gate and its own log line, never
+/// a second exclusion decision.
 #[tauri::command]
 fn preview_library_open_search_result(
     handle: String,
     state: State<'_, ApplicationState>,
 ) -> library_reader::LibrarySearchOpenResponse {
+    preview_library_open_search_result_for(&handle, &state)
+}
+
+fn preview_library_open_search_result_for(
+    handle: &str,
+    state: &ApplicationState,
+) -> library_reader::LibrarySearchOpenResponse {
+    let Ok(storage) = preview_storage_clone(state) else {
+        return library_reader::LibrarySearchOpenResponse {
+            state: "unavailable",
+            transcript_handle: None,
+            meeting_id: None,
+            source_turn_index: None,
+            start: None,
+            end: None,
+            message: "The local Preview library is unavailable. Reopen the app and try again."
+                .into(),
+        };
+    };
+    if !search_probe::enabled(&storage) {
+        return library_reader::LibrarySearchOpenResponse {
+            state: "probe-disabled",
+            transcript_handle: None,
+            meeting_id: None,
+            source_turn_index: None,
+            start: None,
+            end: None,
+            message: search_probe::REFUSAL_MESSAGE.into(),
+        };
+    }
+    search_probe::record(&storage, search_probe::ProbeEvent::Opened);
     state.with_preview_library(
         || library_reader::LibrarySearchOpenResponse {
             state: "unavailable",
@@ -5059,7 +5158,7 @@ fn preview_library_open_search_result(
             message: "The local Preview library is unavailable. Reopen the app and try again."
                 .into(),
         },
-        |reader, active| reader.open_search_result(&handle, active),
+        |reader, active| reader.open_search_result(handle, active),
     )
 }
 
@@ -7163,7 +7262,15 @@ fn main() {
             product_facade::regenerate_note,
             transcript_retry_start,
             transcript_retry_pending,
-            transcript_retry_decide
+            transcript_retry_decide,
+            // Roadmap intake W8-B: the one-week local usage probe. Both
+            // commands refuse with a quiet, honest message whenever
+            // `search-probe.flag` is absent from the storage root -- see
+            // `search_probe.rs` -- so registering them here changes nothing
+            // about today's behavior until the operator creates that file by
+            // hand.
+            preview_library_search,
+            preview_library_open_search_result
         ])
         .setup(|app| {
             // Only teaches the plugin what to do if the note-capture
@@ -11979,6 +12086,86 @@ mod tests {
         };
         write_meeting(&directory, &meeting).unwrap();
         transcript_path
+    }
+
+    /// Roadmap intake W8-B's own gate, requirement 3: prove that the
+    /// *registered* command path -- `preview_library_search_for` and
+    /// `preview_library_open_search_result_for`, exactly what
+    /// `preview_library_search`/`preview_library_open_search_result` delegate
+    /// to -- inherits the W5-B lock exclusion rather than reimplementing it.
+    /// `library_reader.rs`'s own
+    /// `locking_a_meeting_removes_it_from_search_and_a_stale_hit_refuses_to_open`
+    /// already proves the exclusion itself at the `LibraryReader` layer; this
+    /// test proves the thin, flag-gated wrapper this packet adds does not
+    /// bypass it. It reuses the same reader instance across the lock
+    /// transition, unrebuilt, because `search_current` recomputes the locked
+    /// set from disk on every call -- the same shape the library_reader.rs
+    /// test relies on.
+    #[test]
+    fn the_registered_search_commands_inherit_the_w5_b_lock_exclusion() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "exact probe needle");
+        let state = vocabulary_command_state(&storage);
+        fs::write(storage.path().join(search_probe::FLAG_FILE), b"").unwrap();
+
+        // Populate `state.preview_library`, the same way the real Home screen
+        // does before ever calling a search command.
+        let snapshot = library_snapshot_for(&state);
+        assert_eq!(snapshot.state, "populated");
+
+        let before = preview_library_search_for("exact probe needle", &state);
+        assert_eq!(before.state, "results");
+        assert_eq!(before.results.len(), 1);
+        let stale_handle = before.results[0].handle.clone();
+
+        let directory = meeting_dir(&storage, &meeting_id).unwrap();
+        meeting_lock::write(&directory, true).unwrap();
+
+        // Same query, same unrebuilt reader -- only the lock file on disk
+        // changed. If the registered command reimplemented the exclusion
+        // instead of delegating to `LibraryReader::search`, this is exactly
+        // where that would show up as a leaked hit.
+        let after = preview_library_search_for("exact probe needle", &state);
+        assert_ne!(after.state, "results");
+        assert!(after.results.is_empty());
+
+        // And the handle sealed before the lock refuses rather than reopening
+        // the meeting it named.
+        let opened = preview_library_open_search_result_for(&stale_handle, &state);
+        assert_eq!(opened.state, "stale");
+        assert!(opened.meeting_id.is_none());
+    }
+
+    /// Requirement 1's flag mechanism, exercised through the registered
+    /// command functions rather than through `search_probe` directly: absent
+    /// the marker, both commands refuse with the exact quiet sentence the
+    /// packet names, and neither one touches the library at all (no handle,
+    /// no probe-log line -- covered separately in `search_probe`'s own
+    /// tests).
+    #[test]
+    fn the_registered_search_commands_refuse_with_the_quiet_sentence_while_the_flag_is_absent() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "exact probe needle");
+        let state = vocabulary_command_state(&storage);
+        // Deliberately no flag file written.
+
+        let search = preview_library_search_for("exact probe needle", &state);
+        assert_eq!(search.state, "probe-disabled");
+        assert_eq!(search.message, "Search across meetings is not enabled.");
+        assert!(search.results.is_empty());
+        // Refusing must not have populated the library or minted a handle --
+        // it is the same as an unregistered command, not merely one that
+        // answers "no results."
+        assert!(state.preview_library.lock().unwrap().is_none());
+
+        let opened = preview_library_open_search_result_for("anything", &state);
+        assert_eq!(opened.state, "probe-disabled");
+        assert_eq!(opened.message, "Search across meetings is not enabled.");
+        assert!(opened.meeting_id.is_none());
+
+        assert!(!storage.path().join(search_probe::LOG_FILE).exists());
     }
 
     #[test]

@@ -71,6 +71,13 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "transcript_retry_start",
     "transcript_retry_pending",
     "transcript_retry_decide",
+    // Roadmap intake W8-B: the one-week local usage probe for cross-meeting
+    // exact search. Registered, but both refuse with a quiet, honest message
+    // whenever `search-probe.flag` is absent from the storage root -- see
+    // `search_probe.rs`. The frontend only ever invokes them when
+    // `library_snapshot`'s `searchProbeEnabled` bit says the marker exists.
+    "preview_library_search",
+    "preview_library_open_search_result",
 ];
 
 const NATIVE_ONLY_COMMANDS: &[&str] = &[];
@@ -124,6 +131,8 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-transcript-retry-start",
     "allow-transcript-retry-pending",
     "allow-transcript-retry-decide",
+    "allow-preview-library-search",
+    "allow-preview-library-open-search-result",
     // Roadmap intake I2: lets the frontend listen for the note-capture
     // hotkey's focus event (capture_shortcut::NOTE_CAPTURE_FOCUS_EVENT).
     // Emitting from Rust needs no permission; only the frontend's listen
