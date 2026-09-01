@@ -358,20 +358,26 @@ export function libraryRecoveryPresentation(library) {
 // Roadmap packet W10 (product brief, "A first run must teach without
 // counterfeiting," amended 2026-09-01). The teaching empty state replaces the
 // old one-line "your meetings will appear here" copy whenever the library is
-// genuinely empty (not merely filtered to nothing by a title search) --
-// it states what pressing Record does, what exists afterward, and where it
-// appears, and carries the one quiet guided-recording invitation. A
-// search-filtered empty result keeps the narrower "no matches" copy and never
-// gets the invitation: that affordance is about a library with nothing in it
-// yet, not a query that happened to miss.
+// genuinely empty -- it states what pressing Record does, what exists
+// afterward, and where it appears, and carries the one quiet guided-recording
+// invitation. A filtered-to-zero result (a title search, in the only filter
+// the product surface exposes today) keeps the narrower "no matches" copy and
+// never gets the invitation: that affordance is about a library with nothing
+// in it yet, not a query that happened to miss.
+//
+// Genuinely empty is keyed on `library.total === 0` -- the same fact
+// `firstRunSheetVisible` gates on -- rather than on "no rows and no search
+// text," so the two share one definition of empty. `LibraryFilterArgs` also
+// carries a folder id and a date range; if either ever reaches the product
+// surface, a filter narrowing a non-empty library to zero rows must still
+// read as "no matches," never as the teaching copy.
 //
 // Callers must only reach this once `library` is a loaded, non-recovery
 // snapshot -- the same precondition `renderLibrary` already establishes by
 // checking `libraryLoadingPresentation`/`libraryRecoveryPresentation` first.
-export function libraryEmptyStatePresentation(library, searchQuery) {
+export function libraryEmptyStatePresentation(library) {
   if (library?.rows?.length) return null;
-  const trimmedQuery = String(searchQuery ?? "").trim();
-  if (trimmedQuery) {
+  if (Number(library?.total) !== 0) {
     return {
       variant: "no-matches",
       title: "No matching meetings",
@@ -384,7 +390,7 @@ export function libraryEmptyStatePresentation(library, searchQuery) {
   return {
     variant: "no-meetings",
     title: "No meetings yet",
-    message: "Press Record to start a private meeting. Yawn keeps your notes, the finished note, and the full transcript on this Mac. When it is ready, it appears right here.",
+    message: "Press Record to start a private meeting. Yawn saves your notes and the transcript on this Mac as it finishes, and you can generate a note from them. It all appears right here.",
     showGuidedInvite: true,
   };
 }

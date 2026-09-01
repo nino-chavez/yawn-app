@@ -670,7 +670,7 @@ function renderLibrary(library, stalled) {
   if (recovery) {
     return `<section class="empty-library recovery-card attention" aria-labelledby="library-recovery-title"><h3 id="library-recovery-title">${escapeHtml(recovery.title)}</h3><p>${escapeHtml(recovery.detail)}</p><button class="button button-primary button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button></section>`;
   }
-  const empty = libraryEmptyStatePresentation(library, state.search);
+  const empty = libraryEmptyStatePresentation(library);
   if (empty) {
     return `
       <div class="empty-library">
@@ -1423,7 +1423,7 @@ function renderFirstRunSheet() {
           </div>
           <div class="first-run-moment">
             <dt>After</dt>
-            <dd>Reopen a readable note with decisions and follow-ups. Every claim links back to the transcript. Everything stays on this Mac.</dd>
+            <dd>Generate a readable note with decisions and follow-ups, each pointing back to the transcript so you can check it. Everything stays on this Mac.</dd>
           </div>
         </dl>
         <div class="sheet-actions">
@@ -3453,6 +3453,15 @@ function handleKeydown(event) {
   if (!event.metaKey || event.altKey || event.ctrlKey) return;
   if (event.key.toLowerCase() === "r" && canOpenStart(state.snapshot, state.permissions)) {
     event.preventDefault();
+    // Roadmap packet W10: the first-run sheet is not tracked in `state.modal`,
+    // so ⌘R would otherwise set `state.modal = "start"` in the same tick the
+    // sheet is still showing -- two sheets landing in the same unkeyed
+    // `.modal-backdrop` slot within one render, which dom-patch would morph
+    // in place rather than re-insert, silently skipping the entrance
+    // animation W9-B guarantees every sheet plays once. Dismissing first and
+    // returning (mirroring the Escape branch above) keeps every sheet
+    // transition to one mount per tick; a second ⌘R then opens Start normally.
+    if (firstRunSheetShowing) { void closeFirstRunSheet(); return; }
     openStart();
   }
   if (event.key.toLowerCase() === "k" && state.snapshot?.capture === "idle") {
