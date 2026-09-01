@@ -693,6 +693,22 @@ impl AppDataWriterLock {
         }
     }
 
+    /// Authority for `trash-entry/1` — moving a whole meeting to local trash
+    /// and restoring one from it.
+    ///
+    /// Deliberately separate from [`Self::whole_meeting_deletion_authority`],
+    /// which still performs an immediate, unrecoverable removal. Holding one
+    /// does not imply the other: the desktop app's "Delete meeting" command
+    /// now reaches only this authority, and the older one is reachable solely
+    /// through `meeting_trash`'s own purge path once a trash entry's window
+    /// elapses.
+    pub fn meeting_trash_authority(&self) -> crate::meeting_trash::MeetingTrashAuthority<'_> {
+        crate::meeting_trash::MeetingTrashAuthority {
+            storage: &self.storage,
+            coordination: self.coordination.as_ref(),
+        }
+    }
+
     /// Authority for `transcript-deletion/1`, which removes derived text while
     /// preserving the capture evidence and the operator's own note.
     pub fn transcript_deletion_authority(
@@ -1050,6 +1066,53 @@ pub fn execute_due_retention_excluding(
             Ok(MeetingRetentionResult::AudioReleased) => RetentionOutcome::AudioReleased(id),
             Ok(MeetingRetentionResult::RecoveredRemoval) => RetentionOutcome::RecoveredRemoval(id),
             Err(_) => RetentionOutcome::Quarantined(id),
+        });
+    }
+    outcomes.extend(execute_due_retention_in_trash(storage, now_epoch_seconds)?);
+    Ok(outcomes)
+}
+
+/// Audio retention keeps running on a trashed meeting exactly as it would on
+/// a live one — trash is a location, not a reprieve from the retention
+/// promise, and this is the one line in the codebase where that boundary is
+/// enforced rather than merely asserted in a comment.
+///
+/// Only entries `meeting_trash::list_trash_entries` reports as stably
+/// `Trashed` are touched here. A meeting mid-move or mid-restore is never
+/// read by this scan: both operations hold the same meeting-storage sequence
+/// this scan also acquires (via the caller's `AppDataWriterLock`), so nothing
+/// here can observe a directory in transit.
+fn execute_due_retention_in_trash(
+    storage: &StorageRoot,
+    now_epoch_seconds: u64,
+) -> Result<Vec<RetentionOutcome>, RetentionError> {
+    let Ok(entries) = crate::meeting_trash::list_trash_entries(storage) else {
+        return Ok(Vec::new());
+    };
+    let mut outcomes = Vec::new();
+    for entry in entries {
+        let meeting_dir = match storage.resolve(
+            &Path::new(crate::meeting_trash::TRASH_DIR).join(&entry.meeting_id),
+        ) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        if !meeting_dir.is_dir() {
+            continue;
+        }
+        let result = (|| {
+            let mut meeting = load_meeting(&meeting_dir)?;
+            reconcile_meeting_retention(&meeting_dir, &mut meeting, now_epoch_seconds, true)
+        })();
+        outcomes.push(match result {
+            Ok(MeetingRetentionResult::NotDue) => RetentionOutcome::NotDue(entry.meeting_id),
+            Ok(MeetingRetentionResult::AudioReleased) => {
+                RetentionOutcome::AudioReleased(entry.meeting_id)
+            }
+            Ok(MeetingRetentionResult::RecoveredRemoval) => {
+                RetentionOutcome::RecoveredRemoval(entry.meeting_id)
+            }
+            Err(_) => RetentionOutcome::Quarantined(entry.meeting_id),
         });
     }
     Ok(outcomes)

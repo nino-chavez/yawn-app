@@ -92,12 +92,14 @@ enum MeetingDeletionState {
 /// A transcript's bytes are private meeting material and never appear here; its
 /// SHA-256 is the same class of record `audio-deletion/1` already keeps for
 /// audio, so the receipt stays content-free.
+/// Shared with `meeting_trash/1`: a trash entry's receipt records the same
+/// shape for the same reason — a digest and a size, never the bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct DeletedArtifact {
-    relative_name: String,
-    byte_size: u64,
-    sha256: String,
+pub(crate) struct DeletedArtifact {
+    pub(crate) relative_name: String,
+    pub(crate) byte_size: u64,
+    pub(crate) sha256: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,7 +217,9 @@ fn write_receipt(
 /// meeting storage means the tree is not what it claims to be, and removing it
 /// could reach outside the meeting — so the inventory refuses rather than
 /// following it.
-fn take_inventory(meeting_dir: &Path) -> Result<Vec<DeletedArtifact>, MeetingDeletionError> {
+pub(crate) fn take_inventory(
+    meeting_dir: &Path,
+) -> Result<Vec<DeletedArtifact>, MeetingDeletionError> {
     let mut artifacts = Vec::new();
     let mut stack = vec![meeting_dir.to_path_buf()];
     while let Some(current) = stack.pop() {
@@ -329,6 +333,40 @@ pub(crate) fn delete_meeting_wholly(
     coordination: &MeetingStorageCoordination,
     meeting_id: &str,
 ) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
+    remove_meeting_directory(storage, coordination, meeting_id, "meetings")
+}
+
+/// Runs this exact machine again, pointed at a trashed meeting instead of a
+/// live one.
+///
+/// `meeting_trash` moves a meeting to `<root>/trash/<id>/` and is the only
+/// route into a meeting's disappearance now; this function is what actually
+/// makes that trashed copy gone for good once its 30-day window elapses. It
+/// is not a second implementation of `meeting-deletion/1` — it is this one,
+/// called with a different directory, which is why the receipt, the ordering,
+/// and the crash-resumption story below are unchanged.
+pub(crate) fn purge_trashed_meeting(
+    storage: &StorageRoot,
+    coordination: &MeetingStorageCoordination,
+    meeting_id: &str,
+) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
+    remove_meeting_directory(storage, coordination, meeting_id, crate::meeting_trash::TRASH_DIR)
+}
+
+/// `default_root` names where a *fresh* removal (no receipt on disk yet) looks
+/// for its target: `"meetings"` for the original immediate-deletion caller,
+/// `meeting_trash::TRASH_DIR` for a purge. A *resumed* removal (receipt
+/// already on disk) ignores it and instead asks the filesystem which of the
+/// two locations still holds the directory — a meeting is never in both at
+/// once, so this is authoritative, and it is what lets one receipt directory
+/// and one startup reconciliation call correctly resume either kind of
+/// removal without knowing in advance which one crashed.
+fn remove_meeting_directory(
+    storage: &StorageRoot,
+    coordination: &MeetingStorageCoordination,
+    meeting_id: &str,
+    default_root: &str,
+) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
     if !valid_opaque_id(meeting_id) {
         return Err(MeetingError::Malformed("meeting identifier mismatch").into());
     }
@@ -345,8 +383,11 @@ pub(crate) fn delete_meeting_wholly(
     let _sequence = coordination.lock_sequence()?;
 
     let receipt_path = receipt_path(storage, meeting_id)?;
-    let meeting_dir = storage
+    let live_dir = storage
         .resolve(&Path::new("meetings").join(meeting_id))
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    let trashed_dir = storage
+        .resolve(&Path::new(crate::meeting_trash::TRASH_DIR).join(meeting_id))
         .map_err(|error| io::Error::other(error.to_string()))?;
 
     // An existing receipt is reconciled before any new authority is considered,
@@ -356,6 +397,14 @@ pub(crate) fn delete_meeting_wholly(
         if receipt.meeting_id != meeting_id {
             return Err(MeetingDeletionError::MalformedReceipt);
         }
+        // Whichever location still has bytes is the one this resumed removal
+        // must keep operating on; if neither does, the choice cannot matter —
+        // every remaining step below is a no-op against an absent directory.
+        let meeting_dir = if trashed_dir.exists() {
+            trashed_dir
+        } else {
+            live_dir
+        };
         if receipt.state == MeetingDeletionState::Removed && !meeting_dir.exists() {
             return Ok(MeetingDeletionOutcome::AlreadyRemoved);
         }
@@ -363,6 +412,11 @@ pub(crate) fn delete_meeting_wholly(
         return Ok(MeetingDeletionOutcome::RecoveredRemoval);
     }
 
+    let meeting_dir = if default_root == crate::meeting_trash::TRASH_DIR {
+        trashed_dir
+    } else {
+        live_dir
+    };
     if !meeting_dir.exists() {
         return Err(MeetingDeletionError::NoSuchMeeting);
     }
@@ -415,7 +469,7 @@ pub(crate) fn delete_meeting_wholly(
 /// either committed or has reached an ordinary terminal failure. Discovery is
 /// authoritative and errors refuse deletion rather than being treated as an
 /// absent queue.
-fn ensure_transcription_safe_for_destructive_work(
+pub(crate) fn ensure_transcription_safe_for_destructive_work(
     storage: &StorageRoot,
     meeting_id: &str,
 ) -> Result<(), MeetingDeletionError> {
