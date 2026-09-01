@@ -112,7 +112,7 @@ class NoteBridgeProcess:
         self._process.stdin.write(frame)
         self._process.stdin.close()
         line = self._process.stdout.readline()
-        self._process.wait(timeout=3)
+        self._process.wait(timeout=30)
         result = json.loads(line) if line else None
         error = self._process.stderr.read()
         return result, self._process.returncode, error
@@ -121,7 +121,7 @@ class NoteBridgeProcess:
         if self._write_fd >= 0:
             os.close(self._write_fd)
             self._write_fd = -1
-        self._process.wait(timeout=3)
+        self._process.wait(timeout=30)
         if self._process.stdin and not self._process.stdin.closed:
             self._process.stdin.close()
         if self._process.stdout:
