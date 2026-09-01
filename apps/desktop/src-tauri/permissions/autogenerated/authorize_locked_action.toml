@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-authorize-locked-action"
+description = "Enables the authorize_locked_action command without any pre-configured scope."
+commands.allow = ["authorize_locked_action"]
+
+[[permission]]
+identifier = "deny-authorize-locked-action"
+description = "Denies the authorize_locked_action command without any pre-configured scope."
+commands.deny = ["authorize_locked_action"]

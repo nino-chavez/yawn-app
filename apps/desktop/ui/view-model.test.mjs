@@ -15,10 +15,15 @@ import {
   errorRecoveryPresentation,
   humanize,
   libraryRecoveryPresentation,
+  libraryRowMetaPresentation,
   libraryRowPreview,
   localVocabularyPresentation,
+  lockedActionOutcome,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
+  meetingLockCopyIsHonest,
+  meetingLockPresentation,
+  meetingLockSheetCopy,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -867,7 +872,10 @@ test("meeting detail exposes only explicit retained-audio controls and polls the
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /Microphone and system audio are separate recordings\./);
   assert.match(source, /data-action="stop-retained-audio"/);
-  assert.match(source, /invoke\("library_play_retained_audio", \{ handle \}\)/);
+  // Roadmap intake I5 added `lockToken`: absent for an unlocked meeting,
+  // which is the ordinary case, and a fresh single-use confirmation for a
+  // locked one.
+  assert.match(source, /invoke\("library_play_retained_audio", \{ handle, lockToken \}\)/);
   assert.match(source, /invoke\("library_retained_audio_playback_status"\)/);
   assert.match(source, /invoke\("library_stop_retained_audio"\)/);
   assert.match(source, /async function stopRetainedAudio\(\)[\s\S]*reopenSelectedMeeting\(meetingId\)/);
@@ -958,4 +966,213 @@ test("main.js wires the Trash list, restore action, and confirmation copy throug
   // The link must be able to disappear entirely, not render an empty row.
   assert.match(source, /data-action="open-trash"/);
   assert.match(source, /data-action="restore-trash-entry"/);
+});
+
+// --- Roadmap intake I5: per-meeting lock ---------------------------------
+//
+// The governing constraint, verbatim: "State the honest claim -- a
+// local-access deterrent -- unless encryption at rest actually ships." It has
+// not shipped. These tests are what keeps the copy on the honest side of that
+// line as the file changes; a reviewer noticing a word is not a mechanism.
+
+test("the lock sheet says exactly what the lock is, and what it is not", () => {
+  const copy = meetingLockSheetCopy("lock");
+  assert.equal(copy.eyebrow, "Local barrier");
+  assert.equal(copy.heading, "Lock this meeting?");
+  assert.equal(copy.label, "Lock meeting");
+  assert.equal(copy.blocked, false);
+  // The three facts a reader must come away with: what closes, what reopens
+  // it, and that nothing on disk changed.
+  assert.match(copy.detail, /note, transcript, and audio will require Touch ID to open on this Mac/);
+  // The words the packet requires. Their absence is the failure this test
+  // exists to catch.
+  assert.match(copy.detail, /not encryption/);
+  assert.match(copy.detail, /the files on disk are unchanged/);
+});
+
+test("no lock copy anywhere claims encryption or security", () => {
+  const surfaces = [
+    meetingLockSheetCopy("lock"),
+    meetingLockSheetCopy("unlock"),
+    meetingLockSheetCopy("lock", { canConfirm: false }),
+    meetingLockPresentation({ state: "locked", lock: { locked: true, unreadable: false } }),
+    meetingLockPresentation({ state: "locked", lock: { locked: true, unreadable: true } }),
+    meetingLockPresentation({ state: "note", lock: { locked: true, unreadable: false } }),
+  ];
+  for (const surface of surfaces) {
+    for (const value of Object.values(surface)) {
+      if (typeof value !== "string") continue;
+      assert.ok(
+        meetingLockCopyIsHonest(value),
+        `lock copy claims more than a local barrier: ${value}`,
+      );
+    }
+  }
+});
+
+test("removing the lock restates that nothing was ever encrypted", () => {
+  const copy = meetingLockSheetCopy("unlock");
+  assert.equal(copy.heading, "Remove the lock?");
+  assert.equal(copy.label, "Remove lock");
+  assert.match(copy.detail, /never encrypted/);
+});
+
+test("a Mac that cannot confirm is not offered a lock, and is told why", () => {
+  // Decision 4 covers the machine that becomes unable to confirm later. This
+  // is the machine that never could: locking there would make a meeting this
+  // app can never reopen, so the sheet refuses instead of creating one.
+  const copy = meetingLockSheetCopy("lock", { canConfirm: false });
+  assert.equal(copy.blocked, true);
+  assert.match(copy.detail, /cannot confirm it's you \(no Touch ID or password available\)/);
+  assert.match(copy.detail, /could not be reopened here/);
+  // Removing an existing lock is never blocked by this: an unlock runs the
+  // check itself and reports its own outcome.
+  assert.equal(meetingLockSheetCopy("unlock", { canConfirm: false }).blocked, false);
+});
+
+test("a locked meeting detail shows the barrier and no meeting content", () => {
+  const presentation = meetingLockPresentation({
+    state: "locked",
+    lock: { locked: true, unreadable: false },
+  });
+  assert.equal(presentation.state, "locked");
+  assert.equal(presentation.heading, "This meeting is locked");
+  assert.match(presentation.detail, /not encryption/);
+  assert.deepEqual(presentation.action, {
+    action: "unlock-meeting-open",
+    label: "Confirm to open",
+  });
+});
+
+test("an unreadable lock is still a lock, and says removing it is the way out", () => {
+  // Failing closed on the read side has a copy consequence: the reader must
+  // be told that confirming will not help, because the file itself is the
+  // problem.
+  const presentation = meetingLockPresentation({
+    state: "locked",
+    lock: { locked: true, unreadable: true },
+  });
+  assert.equal(presentation.state, "unreadable");
+  assert.match(presentation.detail, /could not read this meeting's lock/);
+  assert.match(presentation.detail, /Removing the lock is the only way to open it here/);
+});
+
+test("a meeting opened for reading still says it is locked", () => {
+  // Without this the reader cannot understand why playing the audio asks
+  // again a moment later.
+  const presentation = meetingLockPresentation({
+    state: "note",
+    lock: { locked: true, unreadable: false },
+  });
+  assert.equal(presentation.state, "open");
+  assert.match(presentation.detail, /stays locked/);
+  assert.match(presentation.detail, /asks for Touch ID again/);
+  assert.equal(presentation.action, null);
+});
+
+test("an unlocked meeting shows no lock surface at all", () => {
+  const presentation = meetingLockPresentation({
+    state: "note",
+    lock: { locked: false, unreadable: false },
+  });
+  assert.equal(presentation.state, "unlocked");
+  assert.equal(presentation.action, null);
+  assert.equal(meetingLockPresentation(null), null);
+});
+
+test("a locked row keeps its title and date and drops preview and transcript detail", () => {
+  const unlocked = libraryRowMetaPresentation({
+    locked: false,
+    transcriptAvailable: true,
+    notePreview: "We agreed to ship on Friday.",
+  });
+  assert.deepEqual(unlocked, {
+    locked: false,
+    label: "transcript available",
+    preview: "We agreed to ship on Friday.",
+  });
+
+  // Bear's obscured previews. Both the generated preview and the
+  // transcript/note-only detail go; "Locked" replaces the detail rather than
+  // leaving the row saying nothing about itself.
+  const locked = libraryRowMetaPresentation({
+    locked: true,
+    transcriptAvailable: true,
+    notePreview: "We agreed to ship on Friday.",
+  });
+  assert.deepEqual(locked, { locked: true, label: "Locked", preview: null });
+});
+
+test("a row with no transcript still reads honestly when unlocked", () => {
+  assert.equal(
+    libraryRowMetaPresentation({ locked: false, transcriptAvailable: false }).label,
+    "note only",
+  );
+  assert.equal(libraryRowMetaPresentation(undefined).label, "note only");
+});
+
+test("the three confirmation failures stay three different answers", () => {
+  // "you cancelled", "this Mac cannot ask", and "that view is out of date"
+  // lead to three different next moves and must never collapse into one.
+  assert.deepEqual(
+    lockedActionOutcome({ state: "authorized", message: "Confirmed on this Mac." }),
+    { ok: true, state: "authorized", message: "Confirmed on this Mac." },
+  );
+  assert.equal(lockedActionOutcome({ state: "declined", message: "no" }).ok, false);
+  assert.equal(lockedActionOutcome({ state: "declined" }).state, "declined");
+  assert.equal(lockedActionOutcome({ state: "unavailable" }).state, "unavailable");
+  assert.equal(lockedActionOutcome({ state: "stale" }).state, "stale");
+  assert.equal(lockedActionOutcome({ state: "not-locked" }).state, "not-locked");
+  // An absent response is not a success.
+  assert.equal(lockedActionOutcome(undefined).ok, false);
+  assert.equal(lockedActionOutcome(null).state, "unavailable");
+});
+
+test("main.js gates every locked action through the Rust confirmation, not through hiding", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // The three commands, and the exact argument names the Rust side declares.
+  assert.match(source, /invoke\("lock_meeting", \{ handle: selection\.row\.handle \}\)/);
+  assert.match(source, /invoke\("unlock_meeting", \{ handle: selection\.row\.handle \}\)/);
+  assert.match(source, /invoke\("authorize_locked_action", \{ handle, action \}\)/);
+  // Every gated command carries a token field, so a locked meeting's refusal
+  // is the Rust command's, not this file declining to draw a button.
+  assert.match(source, /invoke\("library_open_note", \{ handle: row\.handle, lockToken \}\)/);
+  assert.match(source, /invoke\("library_play_retained_audio", \{ handle, lockToken \}\)/);
+  assert.match(source, /invoke\("library_export_meeting", \{ handle, lockToken \}\)/);
+  assert.match(source, /invoke\("library_open_transcript_file", \{ handle, lockToken \}\)/);
+  // Export and playback each ask for their own confirmation.
+  assert.match(source, /confirmLockedAction\(selection\.row\.handle, "export"\)/);
+  assert.match(source, /confirmLockedAction\(state\.selected\?\.row\?\.handle, "playback"\)/);
+  // The reading confirmation is spent and re-issued, so an ordinary refresh
+  // inside an open locked meeting does not ask again.
+  assert.match(source, /state\.selected\?\.note\?\.lockToken \|\| null/);
+  // The barrier and both sheet paths are reachable.
+  assert.match(source, /data-action="lock-meeting"/);
+  assert.match(source, /data-action="unlock-meeting"/);
+  // The barrier's button is rendered from the view model's own action name,
+  // so assert the wiring at both ends rather than a literal that does not
+  // appear in this file.
+  assert.equal(
+    meetingLockPresentation({ state: "locked", lock: { locked: true } }).action.action,
+    "unlock-meeting-open",
+  );
+  assert.match(source, /action === "unlock-meeting-open"/);
+  assert.match(source, /data-action="\$\{escapeHtml\(lock\.action\.action\)\}"/);
+  assert.match(source, /meetingLockSheetCopy\(unlock \? "unlock" : "lock"/);
+  assert.match(source, /meetingLockPresentation\(note\)/);
+  assert.match(source, /libraryRowMetaPresentation\(row\)/);
+  // Deletion is never gated: no lock check stands in front of the three
+  // deletion commands. Decision 7 -- blocking them would make a meeting
+  // nobody can confirm for permanently undeletable, and audio retention
+  // outranks the lock.
+  for (const command of [
+    "preview_delete_meeting_audio",
+    "preview_delete_meeting_transcript",
+    "preview_delete_meeting",
+  ]) {
+    const call = new RegExp(`invoke\\("${command}", \\{[^}]*\\}`);
+    const found = source.match(call);
+    assert.ok(found, `${command} is still invoked`);
+    assert.ok(!found[0].includes("lockToken"), `${command} must not be gated by the lock`);
+  }
 });

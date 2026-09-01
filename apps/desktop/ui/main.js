@@ -7,10 +7,13 @@ import {
   errorRecoveryPresentation,
   humanize,
   libraryRecoveryPresentation,
-  libraryRowPreview,
+  libraryRowMetaPresentation,
   localVocabularyPresentation,
+  lockedActionOutcome,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
+  meetingLockPresentation,
+  meetingLockSheetCopy,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -221,6 +224,7 @@ function render() {
       ${state.modal === "transcript-retry" ? renderTranscriptRetrySheet() : ""}
       ${state.modal === "vocabulary" ? renderVocabularySheet() : ""}
       ${["delete-recording", "delete-transcript", "delete-meeting"].includes(state.modal) ? renderMeetingDeletionSheet() : ""}
+      ${["lock-meeting", "unlock-meeting"].includes(state.modal) ? renderMeetingLockSheet() : ""}
       ${state.notice ? `<aside class="toast toast-notice" role="status"><button type="button" data-action="clear-notice" aria-label="Dismiss">×</button>${escapeHtml(state.notice)}</aside>` : ""}
       ${state.error ? `<aside class="toast" role="alert"><button type="button" data-action="clear-error" aria-label="Dismiss">×</button><span>${escapeHtml(state.error.message)}</span>${state.error.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(state.error.action.action)}">${escapeHtml(state.error.action.label)}</button>` : ""}</aside>` : ""}
     </div>
@@ -462,13 +466,17 @@ function renderLibrary(library) {
   return `
     <div class="meeting-list" role="list">
       ${library.rows.map((row) => {
-        const preview = libraryRowPreview(row);
+        // Roadmap intake I5 (a): a locked row keeps its title and date and
+        // drops both the note preview and the transcript detail. The preview
+        // is already absent from the backend response; this branch is the
+        // rendered half of the same suppression.
+        const meta = libraryRowMetaPresentation(row);
         return `
-        <button class="meeting-row" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}">
+        <button class="meeting-row" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}>
           <span>
             <span class="meeting-row-title">${escapeHtml(row.label || `Meeting · ${dateLabel(row.createdAtEpochSeconds)}`)}</span>
-            ${preview ? `<span class="meeting-row-preview">${escapeHtml(preview)}</span>` : ""}
-            <span class="meeting-row-meta">${escapeHtml(dateLabel(row.createdAtEpochSeconds))}${row.transcriptAvailable ? " · transcript available" : " · note only"}</span>
+            ${meta.preview ? `<span class="meeting-row-preview">${escapeHtml(meta.preview)}</span>` : ""}
+            <span class="meeting-row-meta">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meta.label)}</span>
           </span>
           <span class="meeting-row-arrow" aria-hidden="true">›</span>
         </button>
@@ -863,7 +871,13 @@ function renderMeeting() {
   const canDeleteRecording = Boolean(note?.audioDeletionHandle);
   const canDeleteTranscript = Boolean(note?.transcriptDeletionHandle);
   const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
-  const canManage = canDeleteRecording || canDeleteTranscript || canDeleteMeeting;
+  const lock = meetingLockPresentation(note);
+  // Roadmap intake I5. Locking is offered on any readable meeting; removing a
+  // lock is offered wherever one exists, including on the barrier screen
+  // itself, so an unreadable lock is never a dead end.
+  const canLock = lock?.state === "unlocked";
+  const canUnlock = Boolean(note?.lock?.locked);
+  const canManage = canDeleteRecording || canDeleteTranscript || canDeleteMeeting || canLock || canUnlock;
   const retentionMessage = note?.audioRetention?.message || "Audio-retention details are unavailable for this meeting.";
   const recovery = meetingRecoveryPresentation(note, transcript, state.generatingMeetingId);
   const playback = retainedAudioPlaybackPresentation(note, recovery, state.audioPlayback);
@@ -880,6 +894,8 @@ function renderMeeting() {
               <button class="button button-secondary button-small" type="button" data-action="toggle-meeting-management" aria-expanded="${state.meetingManagementOpen ? "true" : "false"}" aria-controls="meeting-manage-menu">Manage</button>
               ${state.meetingManagementOpen ? `<div class="meeting-manage-menu" id="meeting-manage-menu" role="group" aria-label="Manage this meeting">
                 <p>These actions affect only this meeting on this Mac.</p>
+                ${canLock ? `<button class="button button-secondary button-small" type="button" data-action="lock-meeting">Lock meeting…</button>` : ""}
+                ${canUnlock ? `<button class="button button-secondary button-small" type="button" data-action="unlock-meeting">Remove lock…</button>` : ""}
                 ${canDeleteRecording ? `<button class="button button-secondary button-small" type="button" data-action="delete-recording">Delete recording</button>` : ""}
                 ${canDeleteTranscript ? `<button class="button button-secondary button-small" type="button" data-action="delete-transcript">Delete transcript</button>` : ""}
                 ${canDeleteMeeting ? `<button class="button button-danger button-small" type="button" data-action="delete-meeting">Delete meeting…</button>` : ""}
@@ -891,6 +907,8 @@ function renderMeeting() {
         <p class="meeting-storage-note">${escapeHtml(retentionMessage)}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
       </header>
+      ${renderMeetingLock(lock)}
+      ${lock?.state === "locked" || lock?.state === "unreadable" ? "" : `
       ${renderMeetingRecovery(recovery)}
       ${!recovery && note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="message-card ${note.state === "summary-failed" ? "attention" : ""}">${escapeHtml(note.message)}</p>` : ""}
       <div class="meeting-workspace">
@@ -911,8 +929,30 @@ function renderMeeting() {
               <p class="note-editor-help">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
           </section>
         </aside>
-      </div>
+      </div>`}
     </article>
+  `;
+}
+
+// Roadmap intake I5. The barrier itself, and the "still locked" note above a
+// meeting that a confirmation opened for reading.
+//
+// A locked meeting renders this and nothing else -- there is no meeting
+// content behind it to hide, because the response carried none. The sentence
+// is the packet's honest claim, said where the reader meets the lock rather
+// than only in a confirmation sheet they may never reopen.
+function renderMeetingLock(lock) {
+  if (!lock || lock.state === "unlocked") return "";
+  if (lock.state === "open") {
+    return `<p class="message-card meeting-lock-open" data-lock-state="open">${escapeHtml(lock.detail)}</p>`;
+  }
+  const busy = state.busyAction === "unlock-meeting-open";
+  return `
+    <section class="empty-library recovery-card meeting-lock-card" data-lock-state="${escapeHtml(lock.state)}" aria-labelledby="meeting-lock-title">
+      <h3 id="meeting-lock-title">${escapeHtml(lock.heading)}</h3>
+      <p>${escapeHtml(lock.detail)}</p>
+      ${lock.action ? `<button class="button button-primary button-small" type="button" data-action="${escapeHtml(lock.action.action)}" ${busy ? "disabled" : ""}>${busy ? "Confirming…" : escapeHtml(lock.action.label)}</button>` : ""}
+    </section>
   `;
 }
 
@@ -1473,6 +1513,43 @@ function renderMeetingDeletionSheet() {
   `;
 }
 
+// Roadmap intake I5's confirmation sheet -- decision 5, the packet's soul.
+//
+// The detail sentence is the honest claim, and `meetingLockCopyIsHonest` in
+// the view model is what keeps it honest as this file changes: "not
+// encryption" stays, and no word from the forbidden list arrives.
+//
+// On a Mac that cannot run the device-owner check at all, the lock sheet says
+// so and offers no Lock button. Locking there would produce a meeting this app
+// could never reopen -- decision 4 covers the machine that becomes unable, and
+// this covers the one that never could.
+function renderMeetingLockSheet() {
+  const selection = state.selected;
+  if (!selection) return "";
+  const unlock = state.modal === "unlock-meeting";
+  const action = unlock ? "confirm-unlock-meeting" : "confirm-lock-meeting";
+  const busy = state.busyAction === action;
+  const title = selection.row.label || `Meeting · ${dateLabel(selection.row.createdAtEpochSeconds)}`;
+  const copy = meetingLockSheetCopy(unlock ? "unlock" : "lock", {
+    canConfirm: selection.note?.canConfirmOperator !== false,
+  });
+  return `
+    <div class="modal-backdrop" role="presentation">
+      <section class="start-sheet meeting-lock-sheet" role="dialog" aria-modal="true" aria-labelledby="meeting-lock-sheet-title">
+        <div class="sheet-head">
+          <div><p class="eyebrow">${escapeHtml(copy.eyebrow)}</p><h2 id="meeting-lock-sheet-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
+          <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
+        </div>
+        <p class="destructive-target">${escapeHtml(title)}</p>
+        <div class="sheet-actions">
+          <button class="button button-quiet" type="button" data-action="close-modal">Cancel</button>
+          ${copy.blocked ? "" : `<button class="button button-primary" type="button" data-action="${action}" ${busy ? "disabled" : ""}>${busy ? "Confirming…" : escapeHtml(copy.label)}</button>`}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function attestation(name, label) {
   return `<label class="check-row"><input type="checkbox" data-field="attestation" data-attestation="${name}" ${state.consent[name] ? "checked" : ""} /><span>${escapeHtml(label)}</span></label>`;
 }
@@ -1693,18 +1770,49 @@ async function leaveCurrentCapture({ startAnother = false } = {}) {
   });
 }
 
+// Roadmap intake I5. A locked row asks for the device-owner check before the
+// meeting is opened, so nothing about it is read until the check passes. The
+// Rust side would refuse the open anyway; asking first is what makes the
+// refusal a door rather than an error.
+async function confirmLockedAction(handle, action) {
+  const response = await invoke("authorize_locked_action", { handle, action });
+  const outcome = lockedActionOutcome(response);
+  if (outcome.state === "not-locked") return { proceed: true, token: null };
+  if (!outcome.ok) {
+    state.notice = outcome.message;
+    return { proceed: false, token: null };
+  }
+  return { proceed: true, token: response.token };
+}
+
 async function openMeeting(handle) {
   const row = state.library?.rows?.find((candidate) => candidate.handle === handle);
   if (!row) return;
   await flushSelectedNoteSave();
   await runBusy("meeting", async () => {
-    await loadSelectedMeeting(row);
+    let lockToken = null;
+    if (row.locked) {
+      const confirmed = await confirmLockedAction(handle, "open");
+      if (!confirmed.proceed) {
+        // Still show the meeting, so the reader lands on the barrier and its
+        // sentence rather than on a list with a toast they may have missed.
+        await loadSelectedMeeting(row, null);
+        return;
+      }
+      lockToken = confirmed.token;
+    }
+    await loadSelectedMeeting(row, lockToken);
   });
 }
 
-async function loadSelectedMeeting(row) {
+// `lockToken` is roadmap intake I5's reading authority: a single-use
+// confirmation for this exact meeting. `library_open_note` spends it and, when
+// the read succeeds on a still-locked meeting, hands back a fresh one on
+// `note.lockToken`. That is what `reopenSelectedMeeting` carries forward, so a
+// refresh inside an open locked meeting does not ask again.
+async function loadSelectedMeeting(row, lockToken = null) {
   state.transcriptActionStatus = { ...state.transcriptActionStatus, library: "" };
-  const note = await invoke("library_open_note", { handle: row.handle });
+  const note = await invoke("library_open_note", { handle: row.handle, lockToken });
   const transcript = note.transcriptHandle
     ? await invoke("library_open_transcript", { handle: note.transcriptHandle })
     : null;
@@ -1735,7 +1843,16 @@ async function playRetainedAudio(source) {
       : "";
   if (!handle) return;
   await runBusy(`play-${source}`, async () => {
-    const response = await invoke("library_play_retained_audio", { handle });
+    // Roadmap intake I5 (c): a locked meeting asks again for playback, even
+    // though a confirmation is already holding it open to read. Standard
+    // Notes' action-scoped re-auth -- one check, one action.
+    let lockToken = null;
+    if (note?.lock?.locked) {
+      const confirmed = await confirmLockedAction(state.selected?.row?.handle, "playback");
+      if (!confirmed.proceed) return;
+      lockToken = confirmed.token;
+    }
+    const response = await invoke("library_play_retained_audio", { handle, lockToken });
     state.audioPlayback = response;
     if (response.state !== "playing") throw new Error(response.message || "Retained audio is unavailable. Reopen Library and try again.");
   });
@@ -1854,6 +1971,12 @@ async function decideTranscriptRetry(decision) {
 }
 
 async function reopenSelectedMeeting(meetingId) {
+  // Held before `refreshLibrary` replaces `state.selected`'s row: the re-issued
+  // reading confirmation belongs to the meeting being reopened, and losing it
+  // here would drop the reader back at the barrier after an ordinary refresh.
+  const carried = state.selected?.note?.meetingId === meetingId
+    ? state.selected?.note?.lockToken || null
+    : null;
   await refreshLibrary();
   const row = state.library?.rows?.find((candidate) => candidate.meetingId === meetingId);
   if (!row) {
@@ -1861,7 +1984,7 @@ async function reopenSelectedMeeting(meetingId) {
     state.activeView = "home";
     return;
   }
-  await loadSelectedMeeting(row);
+  await loadSelectedMeeting(row, carried);
 }
 
 async function generateSelectedNote() {
@@ -2327,7 +2450,15 @@ async function openTranscriptFile(scope) {
     const selection = state.selected;
     const handle = selection?.transcript?.transcriptFileHandle;
     if (!handle) throw new Error("Reopen this meeting before opening its transcript file.");
-    const opened = await invoke("library_open_transcript_file", { handle });
+    // Same `export` scope as `library_export_meeting`: both put this meeting's
+    // transcript in front of something outside Yawn.
+    let lockToken = null;
+    if (selection?.note?.lock?.locked) {
+      const confirmed = await confirmLockedAction(selection.row.handle, "export");
+      if (!confirmed.proceed) return;
+      lockToken = confirmed.token;
+    }
+    const opened = await invoke("library_open_transcript_file", { handle, lockToken });
     if (state.selected !== selection || !selection.transcript) return;
     selection.transcript = {
       ...selection.transcript,
@@ -2342,7 +2473,15 @@ async function exportSelectedMeeting() {
     const selection = state.selected;
     const handle = selection?.transcript?.transcriptFileHandle;
     if (!handle) throw new Error("Reopen this meeting before exporting it.");
-    const exported = await invoke("library_export_meeting", { handle });
+    // Roadmap intake I5 (c). Export puts this meeting's contents somewhere the
+    // lock does not reach, so it asks for its own confirmation.
+    let lockToken = null;
+    if (selection?.note?.lock?.locked) {
+      const confirmed = await confirmLockedAction(selection.row.handle, "export");
+      if (!confirmed.proceed) return;
+      lockToken = confirmed.token;
+    }
+    const exported = await invoke("library_export_meeting", { handle, lockToken });
     if (state.selected !== selection || !selection.transcript) return;
     selection.transcript = {
       ...selection.transcript,
@@ -2354,6 +2493,52 @@ async function exportSelectedMeeting() {
         ? `Exported. Not included: ${exported.withheld.length === 1 ? "1 item" : `${exported.withheld.length} items`} (see README.txt).`
         : "Exported. Opened the export folder on this Mac.",
     };
+  });
+}
+
+// Roadmap intake I5. Locking asks nothing -- it only takes access away -- and
+// the confirmation sheet is the whole ceremony. Afterwards the meeting is
+// reopened, which now lands on the barrier: the reader sees immediately what
+// they just did, and every capability the previous view held is gone with the
+// reader the Rust side dropped.
+async function lockSelectedMeeting() {
+  const selection = state.selected;
+  if (!selection) return;
+  await flushSelectedNoteSave();
+  await runBusy("confirm-lock-meeting", async () => {
+    const response = await invoke("lock_meeting", { handle: selection.row.handle });
+    const outcome = lockedActionOutcome(response);
+    closeModal();
+    state.notice = outcome.message;
+    await reopenSelectedMeeting(selection.row.meetingId);
+  });
+}
+
+// The only path that clears the flag, and the reason the device-owner check
+// exists. A declined or unavailable check leaves the meeting locked and says
+// which of the two happened -- they are different facts and lead to different
+// next moves.
+async function unlockSelectedMeeting() {
+  const selection = state.selected;
+  if (!selection) return;
+  await runBusy("confirm-unlock-meeting", async () => {
+    const response = await invoke("unlock_meeting", { handle: selection.row.handle });
+    const outcome = lockedActionOutcome(response);
+    closeModal();
+    state.notice = outcome.message;
+    if (outcome.ok) await reopenSelectedMeeting(selection.row.meetingId);
+  });
+}
+
+// From the barrier screen: confirm once and read the meeting, without removing
+// its lock. Exporting it or playing its audio still asks again.
+async function confirmOpenLockedMeeting() {
+  const selection = state.selected;
+  if (!selection) return;
+  await runBusy("unlock-meeting-open", async () => {
+    const confirmed = await confirmLockedAction(selection.row.handle, "open");
+    if (!confirmed.proceed) return;
+    await loadSelectedMeeting(selection.row, confirmed.token);
   });
 }
 
@@ -2430,6 +2615,14 @@ function handleClick(event) {
   else if (action === "play-retained-audio") void playRetainedAudio(control.dataset.source);
   else if (action === "stop-retained-audio") void stopRetainedAudio();
   else if (action === "rename-meeting") openMeetingRename();
+  else if (action === "lock-meeting" || action === "unlock-meeting") {
+    state.meetingManagementOpen = false;
+    state.modal = action;
+    render();
+  }
+  else if (action === "confirm-lock-meeting") void lockSelectedMeeting();
+  else if (action === "confirm-unlock-meeting") void unlockSelectedMeeting();
+  else if (action === "unlock-meeting-open") void confirmOpenLockedMeeting();
   else if (action === "delete-recording") openMeetingDeletion("delete-recording");
   else if (action === "delete-transcript") openMeetingDeletion("delete-transcript");
   else if (action === "delete-meeting") openMeetingDeletion("delete-meeting");
