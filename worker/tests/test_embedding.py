@@ -20,6 +20,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "notes"))
@@ -108,6 +109,17 @@ class ArgumentTests(unittest.TestCase):
             broken = window("alpha")
             broken["text_sha256"] = bad
             self.refuses([broken], "lowercase sha256")
+
+    def test_argument_refusal_does_not_need_the_model_runtime(self) -> None:
+        """The class docstring says none of these get as far as a model; this
+        makes that claim mechanical. The boundary runtime packages no mlx wheel,
+        and until 2026-09-01 an import above the validation made these five
+        tests error there with ModuleNotFoundError — invisible on a dev machine
+        where mlx happens to be importable, which is why this pins it by
+        poisoning the import rather than trusting the environment."""
+        with mock.patch.dict(sys.modules, {"mlx_minilm": None}):
+            self.refuses([], "carries no windows")
+            self.refuses([{"unexpected": "field"}], "closed schema")
 
     def test_a_reply_fits_one_protocol_frame(self) -> None:
         """The batch cap is derived from `MAX_FRAME_BYTES`; this checks the
