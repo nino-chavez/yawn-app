@@ -594,26 +594,35 @@ const RETRY_DIFF_LEGEND = "Highlights show where the transcripts differ.";
 const RETRY_DIFF_SKIPPED_MESSAGE = "These transcripts are too long to highlight word differences.";
 const RETRY_DIFF_IDENTICAL_MESSAGE = "No word-level differences found.";
 
+// Keyed by the turn's position in that side's `turns` array (not
+// `sourceTurnIndex`), matching how the diff was built against that same
+// array order. Every visible turn gets an entry — `wordCount` is the count
+// Rust's tokenizer used to build `spans`, present even when spans is empty
+// (identical turn), because retryTurnDiffSegments needs it to check its own
+// tokenizer regardless of whether anything differs.
 function retryDiffSpansByTurn(side) {
   const map = new Map();
   if (!Array.isArray(side)) return map;
   for (const entry of side) {
     if (!entry || typeof entry.turnIndex !== "number") continue;
-    map.set(entry.turnIndex, Array.isArray(entry.spans) ? entry.spans : []);
+    map.set(entry.turnIndex, {
+      wordCount: typeof entry.wordCount === "number" ? entry.wordCount : null,
+      spans: Array.isArray(entry.spans) ? entry.spans : [],
+    });
   }
   return map;
 }
 
 // Anything other than an explicit "computed" state is treated the same as
 // "skipped": a diff that never ran must never be read as "these transcripts
-// are identical". `current`/`candidate` are Maps keyed by the turn's position
-// in that side's `turns` array (not `sourceTurnIndex`), matching how the diff
-// was built against that same array order.
+// are identical". A turn with no differences still gets a (spans-empty)
+// entry, so "differences exist" is decided by scanning every entry's spans,
+// not by whether the side has any entries at all.
 export function transcriptRetryDiffPresentation(diff = null) {
   const computed = diff?.state === "computed";
   const current = retryDiffSpansByTurn(diff?.current);
   const candidate = retryDiffSpansByTurn(diff?.candidate);
-  const hasSpans = current.size > 0 || candidate.size > 0;
+  const hasSpans = [...current.values(), ...candidate.values()].some((entry) => entry.spans.length > 0);
   const legend = !computed
     ? RETRY_DIFF_SKIPPED_MESSAGE
     : hasSpans
@@ -627,27 +636,42 @@ export function transcriptRetryDiffPresentation(diff = null) {
 // then marks each word segment highlighted when its word index falls inside
 // any of the given spans. Whitespace segments are never highlighted and are
 // rendered exactly as they appeared, so the visible spacing is unchanged.
-export function retryTurnDiffSegments(text, spans = []) {
+//
+// Fail-safe: `entry.wordCount` is the word count Rust's tokenizer counted
+// for this same text. If this function's own count disagrees (an unusual
+// whitespace character splitting differently here than in Rust's
+// `str::split_whitespace`, for example), every span's word indices are
+// suspect — the turn renders with no highlights rather than risk marking
+// the wrong words, which this packet's own honesty rule treats as worse
+// than not highlighting at all.
+export function retryTurnDiffSegments(text, entry = null) {
   const source = typeof text === "string" ? text : "";
-  const ranges = Array.isArray(spans) ? spans : [];
   if (!source) return [];
+  const spans = Array.isArray(entry?.spans) ? entry.spans : [];
+  const expectedWordCount = typeof entry?.wordCount === "number" ? entry.wordCount : null;
+
   const parts = source.split(/(\s+)/);
   const segments = [];
-  let wordIndex = 0;
+  let wordCount = 0;
   for (let i = 0; i < parts.length; i += 1) {
     const part = parts[i];
     if (part === "") continue;
     const isSeparator = i % 2 === 1;
     if (isSeparator) {
-      segments.push({ text: part, highlighted: false });
+      segments.push({ text: part, wordIndex: -1 });
       continue;
     }
-    const thisWord = wordIndex;
-    wordIndex += 1;
-    const highlighted = ranges.some((span) => thisWord >= span?.startWord && thisWord < span?.endWord);
-    segments.push({ text: part, highlighted });
+    segments.push({ text: part, wordIndex: wordCount });
+    wordCount += 1;
   }
-  return segments;
+
+  const tokenizationAgrees = expectedWordCount !== null && wordCount === expectedWordCount;
+  return segments.map(({ text: segmentText, wordIndex }) => ({
+    text: segmentText,
+    highlighted: wordIndex >= 0
+      && tokenizationAgrees
+      && spans.some((span) => wordIndex >= span?.startWord && wordIndex < span?.endWord),
+  }));
 }
 
 // The pause control the operator sees beside Stop.

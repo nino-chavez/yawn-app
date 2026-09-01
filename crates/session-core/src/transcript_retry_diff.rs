@@ -42,6 +42,8 @@
 //! that cannot tell skip and computed-identical apart, which is why they are
 //! distinct states.
 
+use std::collections::BTreeMap;
+
 /// One transcript turn as the diff needs it. Callers own the real turn
 /// representation (Rust or otherwise); this is the minimal projection.
 #[derive(Debug, Clone, Copy)]
@@ -100,6 +102,15 @@ pub struct WordSpan {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnDiffSpans {
     pub turn_index: u32,
+    /// This turn's total word count, exactly as `diff_transcript_turns`
+    /// counted it (`str::split_whitespace().count()`). The renderer must
+    /// tokenize the same turn text into the same number of words before it
+    /// trusts `spans`'s word indices against that text — see the module docs'
+    /// tokenization contract. A mismatch means the renderer's tokenizer
+    /// disagreed with this one (for example on an unusual whitespace
+    /// character), and the safe response is to render that turn's text plain
+    /// rather than risk a span landing on the wrong word.
+    pub word_count: u32,
     pub spans: Vec<WordSpan>,
 }
 
@@ -162,9 +173,34 @@ pub fn diff_transcript_turns(
 
     TranscriptRetryDiff {
         state: TranscriptRetryDiffState::Computed,
-        current: spans_from_flags(&current_positions, &current_flagged),
-        candidate: spans_from_flags(&candidate_positions, &candidate_flagged),
+        current: turn_diff_entries(current, &current_positions, &current_flagged),
+        candidate: turn_diff_entries(candidate, &candidate_positions, &candidate_flagged),
     }
+}
+
+/// Builds one entry per visible turn (word count plus any diff spans),
+/// including turns with no differences at all — the renderer needs every
+/// visible turn's word count to check its own tokenizer against this one,
+/// not just the turns that turned out to differ.
+fn turn_diff_entries(
+    turns: &[DiffTurnInput],
+    positions: &[Position],
+    flagged: &[usize],
+) -> Vec<TurnDiffSpans> {
+    let mut spans_by_turn = spans_map_from_flags(positions, flagged);
+    turns
+        .iter()
+        .enumerate()
+        .filter(|(_, turn)| !turn.withheld)
+        .map(|(turn_index, turn)| {
+            let turn_index = turn_index as u32;
+            TurnDiffSpans {
+                turn_index,
+                word_count: turn.text.split_whitespace().count() as u32,
+                spans: spans_by_turn.remove(&turn_index).unwrap_or_default(),
+            }
+        })
+        .collect()
 }
 
 // --- token sequence construction -------------------------------------------------
@@ -312,8 +348,8 @@ fn backtrack(a_len: isize, b_len: isize, trace: &[Vec<isize>], offset: isize) ->
 
 // --- span reconstruction -----------------------------------------------------------
 
-fn spans_from_flags(positions: &[Position], flagged: &[usize]) -> Vec<TurnDiffSpans> {
-    let mut result: Vec<TurnDiffSpans> = Vec::new();
+fn spans_map_from_flags(positions: &[Position], flagged: &[usize]) -> BTreeMap<u32, Vec<WordSpan>> {
+    let mut result: BTreeMap<u32, Vec<WordSpan>> = BTreeMap::new();
     let mut open: Option<(u32, u32, u32)> = None; // (turn_index, start_word, end_word)
 
     for &i in flagged {
@@ -348,22 +384,15 @@ fn spans_from_flags(positions: &[Position], flagged: &[usize]) -> Vec<TurnDiffSp
     result
 }
 
-fn push_span(result: &mut Vec<TurnDiffSpans>, turn_index: u32, start_word: u32, end_word: u32) {
-    if let Some(last) = result.last_mut() {
-        if last.turn_index == turn_index {
-            last.spans.push(WordSpan {
-                start_word,
-                end_word,
-            });
-            return;
-        }
-    }
-    result.push(TurnDiffSpans {
-        turn_index,
-        spans: vec![WordSpan {
-            start_word,
-            end_word,
-        }],
+fn push_span(
+    result: &mut BTreeMap<u32, Vec<WordSpan>>,
+    turn_index: u32,
+    start_word: u32,
+    end_word: u32,
+) {
+    result.entry(turn_index).or_default().push(WordSpan {
+        start_word,
+        end_word,
     });
 }
 
@@ -371,17 +400,35 @@ fn push_span(result: &mut Vec<TurnDiffSpans>, turn_index: u32, start_word: u32, 
 mod tests {
     use super::*;
 
-    fn spans_for(diff: &TranscriptRetryDiff, side: &str, turn_index: u32) -> Vec<(u32, u32)> {
-        let turns = if side == "current" {
+    fn side_turns<'a>(diff: &'a TranscriptRetryDiff, side: &str) -> &'a [TurnDiffSpans] {
+        if side == "current" {
             &diff.current
         } else {
             &diff.candidate
-        };
-        turns
+        }
+    }
+
+    fn spans_for(diff: &TranscriptRetryDiff, side: &str, turn_index: u32) -> Vec<(u32, u32)> {
+        side_turns(diff, side)
             .iter()
             .find(|t| t.turn_index == turn_index)
             .map(|t| t.spans.iter().map(|s| (s.start_word, s.end_word)).collect())
             .unwrap_or_default()
+    }
+
+    fn word_count_for(diff: &TranscriptRetryDiff, side: &str, turn_index: u32) -> Option<u32> {
+        side_turns(diff, side)
+            .iter()
+            .find(|t| t.turn_index == turn_index)
+            .map(|t| t.word_count)
+    }
+
+    // Every visible turn gets an entry (so the renderer always has a word
+    // count to check its own tokenizer against, even when nothing differs);
+    // "no differences" means every entry's spans are empty, not that the
+    // side's Vec itself is empty.
+    fn has_any_span(diff: &TranscriptRetryDiff, side: &str) -> bool {
+        side_turns(diff, side).iter().any(|t| !t.spans.is_empty())
     }
 
     #[test]
@@ -390,8 +437,12 @@ mod tests {
         let candidate = [DiffTurnInput::visible("we shipped the retry diff today")];
         let diff = diff_transcript_turns(&current, &candidate);
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
-        assert!(diff.current.is_empty());
-        assert!(diff.candidate.is_empty());
+        assert!(!has_any_span(&diff, "current"));
+        assert!(!has_any_span(&diff, "candidate"));
+        // The turn still gets an entry — just with an empty spans list — so
+        // the renderer has a word count to check its own tokenizer against.
+        assert_eq!(word_count_for(&diff, "current", 0), Some(6));
+        assert_eq!(word_count_for(&diff, "candidate", 0), Some(6));
     }
 
     #[test]
@@ -400,8 +451,13 @@ mod tests {
         let candidate = [DiffTurnInput::visible("ship the word diff")];
         let diff = diff_transcript_turns(&current, &candidate);
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
-        assert!(diff.current.is_empty(), "nothing was removed from current");
+        assert!(
+            !has_any_span(&diff, "current"),
+            "nothing was removed from current"
+        );
         assert_eq!(spans_for(&diff, "candidate", 0), vec![(2, 3)]);
+        assert_eq!(word_count_for(&diff, "current", 0), Some(3));
+        assert_eq!(word_count_for(&diff, "candidate", 0), Some(4));
     }
 
     #[test]
@@ -411,7 +467,10 @@ mod tests {
         let diff = diff_transcript_turns(&current, &candidate);
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
         assert_eq!(spans_for(&diff, "current", 0), vec![(2, 3)]);
-        assert!(diff.candidate.is_empty(), "nothing was added to candidate");
+        assert!(
+            !has_any_span(&diff, "candidate"),
+            "nothing was added to candidate"
+        );
     }
 
     #[test]
@@ -468,12 +527,12 @@ mod tests {
         ];
         let diff = diff_transcript_turns(&current, &candidate);
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
-        // No span ever references turn_index 1 (the withheld turn on either
-        // side), and the two sides otherwise read identical.
+        // The withheld turn (index 1) never gets an entry at all — not even
+        // an empty one — and the two visible turns otherwise read identical.
         assert!(diff.current.iter().all(|t| t.turn_index != 1));
         assert!(diff.candidate.iter().all(|t| t.turn_index != 1));
-        assert!(diff.current.is_empty());
-        assert!(diff.candidate.is_empty());
+        assert!(!has_any_span(&diff, "current"));
+        assert!(!has_any_span(&diff, "candidate"));
     }
 
     #[test]
@@ -493,8 +552,8 @@ mod tests {
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
         // The visible words match exactly regardless of the withheld turn's
         // position; the boundary tokens produce no spans.
-        assert!(diff.current.is_empty());
-        assert!(diff.candidate.is_empty());
+        assert!(!has_any_span(&diff, "current"));
+        assert!(!has_any_span(&diff, "candidate"));
     }
 
     #[test]
@@ -554,5 +613,17 @@ mod tests {
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
         assert_eq!(spans_for(&diff, "current", 0), vec![(1, 2), (3, 4)]);
         assert_eq!(spans_for(&diff, "candidate", 0), vec![(1, 2), (3, 4)]);
+    }
+
+    #[test]
+    fn word_count_matches_split_whitespace_across_irregular_spacing() {
+        // Multiple spaces and a tab still yield one word count per the
+        // documented tokenization contract; the renderer's own tokenizer is
+        // checked against exactly this number before it trusts a span.
+        let current = [DiffTurnInput::visible("alpha   bravo\tcharlie")];
+        let candidate = [DiffTurnInput::visible("alpha   bravo\tcharlie delta")];
+        let diff = diff_transcript_turns(&current, &candidate);
+        assert_eq!(word_count_for(&diff, "current", 0), Some(3));
+        assert_eq!(word_count_for(&diff, "candidate", 0), Some(4));
     }
 }

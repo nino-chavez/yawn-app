@@ -403,7 +403,8 @@ test("retry quality keeps canonical observation labels from the reader projectio
 });
 
 test("retry turn diff segments highlight only the word indices inside a span", () => {
-  const segments = retryTurnDiffSegments("the quarterly review starts monday", [{ startWord: 4, endWord: 5 }]);
+  const entry = { wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] };
+  const segments = retryTurnDiffSegments("the quarterly review starts monday", entry);
   assert.deepEqual(segments, [
     { text: "the", highlighted: false },
     { text: " ", highlighted: false },
@@ -418,38 +419,65 @@ test("retry turn diff segments highlight only the word indices inside a span", (
 });
 
 test("retry turn diff segments keep whitespace unhighlighted and support multiple spans", () => {
-  const segments = retryTurnDiffSegments("alpha bravo charlie delta echo", [
-    { startWord: 1, endWord: 2 },
-    { startWord: 3, endWord: 4 },
-  ]);
+  const entry = {
+    wordCount: 5,
+    spans: [
+      { startWord: 1, endWord: 2 },
+      { startWord: 3, endWord: 4 },
+    ],
+  };
+  const segments = retryTurnDiffSegments("alpha bravo charlie delta echo", entry);
   const highlightedWords = segments.filter((segment) => segment.highlighted).map((segment) => segment.text);
   assert.deepEqual(highlightedWords, ["bravo", "delta"]);
   assert.equal(segments.every((segment) => segment.text !== "" ), true);
 });
 
 test("retry turn diff segments are empty for empty text and default to no spans", () => {
-  assert.deepEqual(retryTurnDiffSegments("", [{ startWord: 0, endWord: 1 }]), []);
+  assert.deepEqual(retryTurnDiffSegments("", { wordCount: 1, spans: [{ startWord: 0, endWord: 1 }] }), []);
   assert.deepEqual(retryTurnDiffSegments("solo"), [{ text: "solo", highlighted: false }]);
+});
+
+test("retry turn diff segments render plain when the renderer's own word count disagrees with Rust's", () => {
+  // The span says word 0 differs, but the entry's wordCount (3) does not
+  // match what this renderer actually counts for this text (2 words) — a
+  // stand-in for a tokenizer disagreement (e.g. an unusual whitespace
+  // character). Every word must render unhighlighted rather than risk
+  // marking the wrong one.
+  const mismatched = { wordCount: 3, spans: [{ startWord: 0, endWord: 1 }] };
+  const segments = retryTurnDiffSegments("alpha bravo", mismatched);
+  assert.equal(segments.some((segment) => segment.highlighted), false);
+});
+
+test("retry turn diff segments render plain when no wordCount is present at all", () => {
+  const segments = retryTurnDiffSegments("alpha bravo", { spans: [{ startWord: 0, endWord: 1 }] });
+  assert.equal(segments.some((segment) => segment.highlighted), false);
 });
 
 test("retry diff presentation shows the legend when differences were computed", () => {
   const presentation = transcriptRetryDiffPresentation({
     state: "computed",
-    current: [{ turnIndex: 1, spans: [{ startWord: 4, endWord: 5 }] }],
-    candidate: [{ turnIndex: 1, spans: [{ startWord: 4, endWord: 5 }] }],
+    current: [{ turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] }],
+    candidate: [{ turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] }],
   });
   assert.equal(presentation.computed, true);
   assert.equal(presentation.legend, "Highlights show where the transcripts differ.");
-  assert.deepEqual(presentation.current.get(1), [{ startWord: 4, endWord: 5 }]);
-  assert.deepEqual(presentation.candidate.get(1), [{ startWord: 4, endWord: 5 }]);
+  assert.deepEqual(presentation.current.get(1), { wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] });
+  assert.deepEqual(presentation.candidate.get(1), { wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] });
 });
 
-test("retry diff presentation reports the identical sentence when computed with no spans", () => {
-  const presentation = transcriptRetryDiffPresentation({ state: "computed", current: [], candidate: [] });
+test("retry diff presentation reports the identical sentence when every turn's spans are empty", () => {
+  // Every visible turn still gets an entry (with its word count) even when
+  // nothing differs — "identical" is decided by scanning for any non-empty
+  // spans array, not by whether the side has entries at all.
+  const presentation = transcriptRetryDiffPresentation({
+    state: "computed",
+    current: [{ turnIndex: 0, wordCount: 6, spans: [] }],
+    candidate: [{ turnIndex: 0, wordCount: 6, spans: [] }],
+  });
   assert.equal(presentation.computed, true);
   assert.equal(presentation.legend, "No word-level differences found.");
-  assert.equal(presentation.current.size, 0);
-  assert.equal(presentation.candidate.size, 0);
+  assert.equal(presentation.current.size, 1);
+  assert.equal(presentation.candidate.size, 1);
 });
 
 test("retry diff presentation reports the skipped sentence and never claims identical", () => {
@@ -468,7 +496,7 @@ test("word-level diff highlighting stays inside the retry comparison and never t
   // Exactly one call site: renderRetryTurnBody, used only by the retry
   // comparison columns.
   assert.equal(source.split("retryTurnDiffSegments(").length - 1, 1);
-  assert.match(source, /function renderRetryTurnBody\(turn, spans\) \{[\s\S]*?retryTurnDiffSegments\(turn\.text, spans\)/);
+  assert.match(source, /function renderRetryTurnBody\(turn, entry\) \{[\s\S]*?retryTurnDiffSegments\(turn\.text, entry\)/);
   // The main, non-retry transcript turn render (shared .transcript-line
   // class) is unchanged: still a plain escapeHtml of the turn text, with no
   // diff segmentation in its own render path.

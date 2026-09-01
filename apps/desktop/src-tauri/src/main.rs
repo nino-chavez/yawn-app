@@ -705,6 +705,11 @@ struct RetryWordSpan {
 #[serde(rename_all = "camelCase")]
 struct RetryTurnDiffSpans {
     turn_index: u32,
+    /// The word count this side used when it built `spans`. The browser
+    /// tokenizes the same turn text independently and must compare its own
+    /// count against this one before trusting a span's word indices — see
+    /// `transcript_retry_diff`'s tokenization contract.
+    word_count: u32,
     spans: Vec<RetryWordSpan>,
 }
 
@@ -755,6 +760,7 @@ fn retry_diff_projection(
             side.into_iter()
                 .map(|turn| RetryTurnDiffSpans {
                     turn_index: turn.turn_index,
+                    word_count: turn.word_count,
                     spans: turn
                         .spans
                         .into_iter()

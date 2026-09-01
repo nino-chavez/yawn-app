@@ -1294,12 +1294,15 @@ function renderRetryRecordingDevice(device) {
 // D6: renders each turn's text with word-level diff highlighting so the
 // reader sees what differs between the two sides before the keep/promote
 // choice, instead of only being able to browse both transcripts side by
-// side. `spansByTurn` is keyed by the turn's position in this side's `turns`
-// array (see transcriptRetryDiffPresentation), matching how the Rust diff
-// built its per-side sequence.
-function renderRetryTurnBody(turn, spans) {
+// side. `entry` is this turn's `{wordCount, spans}` from
+// transcriptRetryDiffPresentation, keyed by the turn's position in this
+// side's `turns` array — matching how the Rust diff built its per-side
+// sequence. retryTurnDiffSegments does its own tokenizer-agreement check
+// against `entry.wordCount`; an absent entry (turn not in the map) renders
+// plain the same fail-safe way a mismatched count would.
+function renderRetryTurnBody(turn, entry) {
   if (turn.withheld) return "This turn was withheld by the voice check.";
-  return retryTurnDiffSegments(turn.text, spans)
+  return retryTurnDiffSegments(turn.text, entry)
     .map((segment) => segment.highlighted
       ? `<span class="retry-diff-word">${escapeHtml(segment.text)}</span>`
       : escapeHtml(segment.text))
@@ -1317,10 +1320,10 @@ function renderRetryComparisonTurns(turns, label) {
       <div class="retry-transcript-turns" tabindex="0" aria-label="${escapeHtml(label === "current" ? "Current transcript turns" : "Retry candidate transcript turns")}">
         ${rows.length ? rows.map((turn, index) => {
     const speaker = transcriptSpeakerLabel(turn);
-    const spans = spansByTurn.get(index) || [];
+    const entry = spansByTurn.get(index) || null;
     return `<div class="transcript-line ${turn.withheld ? "withheld" : ""}">
               <div class="transcript-line-meta"><time>${escapeHtml(timeLabel(turn.start))}</time>${speaker ? `<span>${escapeHtml(speaker)}</span>` : ""}</div>
-              <p>${renderRetryTurnBody(turn, spans)}</p>
+              <p>${renderRetryTurnBody(turn, entry)}</p>
             </div>`;
   }).join("") : `<p class="transcript-empty">No transcript turns are available for this comparison.</p>`}
       </div>
