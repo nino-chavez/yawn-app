@@ -62,6 +62,13 @@ const RESTORES_DIR: &str = "restores";
 
 /// One constant, no setting — settings stay small, and 30 days is the
 /// governing constraint's own number.
+///
+/// Every test exercising this constant supplies its own `now_epoch_seconds`;
+/// none observes real elapsed time. What is proven is the arithmetic
+/// (`purge_after = trashed_at + TRASH_WINDOW_SECONDS`) and the `<=` comparison
+/// `execute_due_trash_purge` makes against a caller-supplied `now` — not that
+/// the real 30-second scheduled tick actually reaches this constant's value
+/// in wall-clock time after 30 real days.
 pub const TRASH_WINDOW_SECONDS: u64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +82,13 @@ struct TrashEntryReceipt {
     /// What the library remembered about this meeting the moment it was
     /// trashed, so restore can bring it back rather than leaving it unfiled.
     organization: Option<TrashedOrganization>,
+    /// A snapshot taken once, at the moment of trashing — not revalidated
+    /// afterward. Audio retention keeps running on a trashed meeting (see
+    /// `retention::execute_due_retention_in_trash`), so this list can stop
+    /// matching what is actually on disk within the same trash window; the
+    /// purge that eventually removes the directory re-inventories it fresh
+    /// rather than trusting this field. Treat it as "what was trashed," not
+    /// "what remains."
     artifacts: Vec<DeletedArtifact>,
 }
 
@@ -180,6 +194,22 @@ pub enum MeetingRestoreError {
     /// this is checked before any mutation rather than assumed impossible.
     #[error("a meeting already exists at the restore destination")]
     DestinationExists,
+    /// A permanent-removal receipt already exists for this identifier and has
+    /// not reached `removed`. Restoring while a purge is actively unwinding
+    /// the same directory would race it, so this is refused outright rather
+    /// than guessed at.
+    #[error("this meeting is being purged from trash")]
+    PurgeInProgress,
+    /// The trash receipt read `Trashed`, but nothing was actually found at
+    /// either `trash/<id>` or `meetings/<id>` once this ran — almost always a
+    /// purge that finished (its own audit trail is `deletions/<id>.json`)
+    /// while this receipt still read `Trashed`, most likely because the
+    /// process crashed between the purge completing and this receipt being
+    /// cleaned up. There is nothing left to restore. The stale receipt is
+    /// removed as part of returning this error, so this cannot recur for the
+    /// same identifier.
+    #[error("this meeting was already purged and cannot be restored")]
+    AlreadyPurged,
 }
 
 /// One row for the quiet secondary "Trash" list. Only entries in the stable
@@ -462,6 +492,18 @@ pub(crate) fn restore_meeting_from_trash(
     if receipt.state == TrashEntryState::Trashing {
         return Err(MeetingRestoreError::TrashInProgress);
     }
+    // A permanent-removal receipt for this identifier means a purge is
+    // either actively unwinding `trash/<id>` right now or crashed partway
+    // through doing so. Racing that directory is refused outright; the
+    // `AlreadyPurged` path below is what catches a purge that finished
+    // cleanly while this receipt still read `Trashed`.
+    if meeting_deletion::pending_deletion_ids(storage)
+        .unwrap_or_default()
+        .iter()
+        .any(|id| id == meeting_id)
+    {
+        return Err(MeetingRestoreError::PurgeInProgress);
+    }
     let resumed = receipt.state == TrashEntryState::Restoring;
 
     let live_dir = storage
@@ -492,11 +534,26 @@ pub(crate) fn restore_meeting_from_trash(
         }
     }
 
-    // The meeting is fully back on disk. Only now does its remembered name
-    // reach the library — reinstating it earlier would let a reader see a row
-    // naming a meeting that is not there yet, which is the exact failure
-    // whole-meeting deletion's own row-first ordering exists to prevent, run
-    // in reverse.
+    // Nothing may proceed past this point on faith. If the meeting is not
+    // actually loadable here — the reachable case is a purge that finished
+    // (its audit trail is `deletions/<id>.json`, not this receipt) while this
+    // receipt still read `Trashed`, most likely because the process crashed
+    // between that purge completing and this receipt being cleaned up —
+    // there is nothing to restore. Reinstating a library row or reporting
+    // success here would be exactly the dangling-row failure whole-meeting
+    // deletion's row-first ordering exists to prevent, arriving through the
+    // inverse path.
+    match load_meeting(&live_dir) {
+        Ok(meeting) if meeting.meeting_id == meeting_id => {}
+        _ => {
+            let _ = fs::remove_file(&receipt_path);
+            return Err(MeetingRestoreError::AlreadyPurged);
+        }
+    }
+
+    // The meeting is fully back on disk and confirmed loadable. Only now does
+    // its remembered name reach the library — reinstating it earlier would
+    // let a reader see a row naming a meeting that is not there yet.
     if let Some(organization) = &receipt.organization {
         let _ = library_metadata::reinstate_meeting_organization(
             storage,
@@ -647,10 +704,34 @@ pub fn reconcile_pending_trash(
                     now_epoch_seconds,
                 ) {
                     Ok(_) => completed.push(receipt.meeting_id),
+                    // Not a reconciliation failure: `restore_meeting_from_trash`
+                    // already removed the stale receipt itself. Treating this
+                    // as fatal here would fail startup over a ghost this same
+                    // call just cleaned up.
+                    Err(MeetingRestoreError::AlreadyPurged) => {}
                     Err(error) => return Err(error.into()),
                 }
             }
-            TrashEntryState::Trashed => {}
+            TrashEntryState::Trashed => {
+                // A `Trashed` receipt whose directory is gone from
+                // `trash/<id>` is a ghost: the only way to reach this state is
+                // a purge that finished — its own audit trail lives in
+                // `deletions/<id>.json` — while this receipt still read
+                // `Trashed`, almost always because the process crashed
+                // between the purge completing and this receipt being
+                // cleaned up. Left alone it would keep offering a Restore
+                // button for a meeting that no longer exists anywhere, which
+                // is exactly what `restore_meeting_from_trash`'s own
+                // `AlreadyPurged` check refuses — this removes it proactively
+                // instead of waiting for that refusal to be the first sign of
+                // trouble.
+                let trashed_dir = storage
+                    .resolve(&Path::new(TRASH_DIR).join(&receipt.meeting_id))
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                if !trashed_dir.exists() {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
         }
     }
     Ok(completed)
@@ -1027,5 +1108,120 @@ mod tests {
             AudioState::Released,
             "a restored meeting must show the same honest audio-deleted state"
         );
+    }
+
+    /// The bug an earlier version of this file had: a `Trashed` receipt can
+    /// outlive the directory it names — a purge that finished while the
+    /// receipt still read `Trashed`, most likely because the process crashed
+    /// between the purge completing and the receipt being cleaned up.
+    /// Restoring that ghost must refuse, not reinstate a library row for a
+    /// meeting that is not on disk anywhere — which `library_read` would
+    /// treat as reason to quarantine every title and folder in the record,
+    /// not just this one's.
+    #[test]
+    fn restore_refuses_and_cleans_up_a_ghost_receipt_left_by_a_completed_purge() {
+        let (_temp, storage) = storage();
+        fixture(&storage, "ghost");
+        library_metadata::set_meeting_title(&storage, 0, "ghost", Some("Standup")).unwrap();
+        let coordination = MeetingStorageCoordination::default();
+        trash_meeting_wholly(&storage, &coordination, "ghost", 1_000).unwrap();
+
+        // Simulate a purge that fully removed the trashed directory (and
+        // wrote its own `deletions/ghost.json` audit receipt) but crashed
+        // before this file's own trash receipt could be cleaned up.
+        assert_eq!(
+            meeting_deletion::purge_trashed_meeting(&storage, &coordination, "ghost").unwrap(),
+            MeetingDeletionOutcome::MeetingRemoved
+        );
+        let trash_receipt = receipt_path(&storage, "ghost").unwrap();
+        assert!(
+            trash_receipt.exists(),
+            "precondition: the trash receipt outlives the purge in this scenario"
+        );
+
+        assert!(matches!(
+            restore_meeting_from_trash(&storage, &coordination, "ghost", 2_000),
+            Err(MeetingRestoreError::AlreadyPurged)
+        ));
+        assert!(
+            !trash_receipt.exists(),
+            "the ghost receipt must not survive a refused restore"
+        );
+        assert!(
+            !storage.resolve(&Path::new("meetings").join("ghost")).unwrap().exists(),
+            "a refused restore must not have created anything at meetings/<id>"
+        );
+        match library_metadata::read_library_metadata(&storage) {
+            library_metadata::MetadataState::Valid(document) => {
+                assert!(
+                    document.meetings.is_empty(),
+                    "a refused restore must never write a library row for a meeting that is not there"
+                );
+            }
+            other => panic!("expected a valid, empty record, got {other:?}", other = "unavailable"),
+        }
+    }
+
+    /// A permanent-removal receipt in flight — `deletions/<id>.json` present
+    /// and not yet `removed` — must block restore outright rather than race
+    /// the same directory the purge is unwinding.
+    #[test]
+    fn restore_refuses_while_a_permanent_purge_is_actively_in_progress() {
+        let (_temp, storage) = storage();
+        fixture(&storage, "mid-purge");
+        let coordination = MeetingStorageCoordination::default();
+        trash_meeting_wholly(&storage, &coordination, "mid-purge", 1_000).unwrap();
+        let trashed = storage.resolve(&Path::new(TRASH_DIR).join("mid-purge")).unwrap();
+        assert!(trashed.join("meeting.json").exists());
+
+        // Hand-write the exact `meeting-deletion/1` receipt shape
+        // `meeting_deletion.rs` produces mid-flight — its types are private to
+        // that module, so this pins the wire shape rather than importing it.
+        let deletions_dir = storage.resolve(Path::new("deletions")).unwrap();
+        create_private_dir(&deletions_dir).unwrap();
+        durable_create_new_fixture(
+            &deletions_dir.join("mid-purge.json"),
+            br#"{"schema":"meeting-deletion/1","meeting_id":"mid-purge","state":"deleting","artifacts":[]}"#,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            restore_meeting_from_trash(&storage, &coordination, "mid-purge", 2_000),
+            Err(MeetingRestoreError::PurgeInProgress)
+        ));
+        assert!(
+            trashed.join("meeting.json").exists(),
+            "a refused restore must not have touched the trashed directory"
+        );
+        assert!(
+            receipt_path(&storage, "mid-purge").unwrap().exists(),
+            "a refused restore must leave the trash receipt as it found it"
+        );
+    }
+
+    /// The startup path: `reconcile_pending_meeting_deletions` runs first and
+    /// can finish an interrupted purge; `reconcile_pending_trash` must then
+    /// drop the now-stale `Trashed` receipt itself rather than leaving a
+    /// Restore button pointed at nothing for the Trash list to keep offering.
+    #[test]
+    fn reconcile_drops_a_trashed_receipt_whose_directory_a_completed_purge_already_removed() {
+        let (_temp, storage) = storage();
+        fixture(&storage, "swept");
+        let coordination = MeetingStorageCoordination::default();
+        trash_meeting_wholly(&storage, &coordination, "swept", 1_000).unwrap();
+
+        // The purge itself completes (mirroring what
+        // `reconcile_pending_meeting_deletions` would do at startup for an
+        // interrupted one) without this file's own receipt being told.
+        meeting_deletion::purge_trashed_meeting(&storage, &coordination, "swept").unwrap();
+        assert_eq!(list_trash_entries(&storage).unwrap().len(), 1, "precondition: the ghost still lists");
+
+        reconcile_pending_trash(&storage, &coordination, 2_000).unwrap();
+
+        assert!(
+            list_trash_entries(&storage).unwrap().is_empty(),
+            "a ghost trash entry survived reconciliation"
+        );
+        assert!(!receipt_path(&storage, "swept").unwrap().exists());
     }
 }

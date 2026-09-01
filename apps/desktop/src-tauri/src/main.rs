@@ -5499,7 +5499,9 @@ fn preview_list_trash_for(state: &ApplicationState) -> TrashListResponse {
                 label: entry
                     .title
                     .clone()
-                    .unwrap_or_else(|| format!("Meeting · {}", &entry.meeting_id[..8])),
+                    .unwrap_or_else(|| {
+                        format!("Meeting · {}", entry.meeting_id.chars().take(8).collect::<String>())
+                    }),
                 meeting_id: entry.meeting_id,
                 deleted_at_epoch_seconds: entry.deleted_at_epoch_seconds,
                 purge_after_epoch_seconds: entry.purge_after_epoch_seconds,
@@ -5575,13 +5577,20 @@ fn restore_meeting_from_trash_for(
             "restored",
             "The interrupted restore was recovered and completed. The meeting is back in Meetings.",
         ),
-        Err(manual_delete_facade::MeetingRestoreFacadeError::NoSuchTrashEntry) => (
+        Err(
+            manual_delete_facade::MeetingRestoreFacadeError::NoSuchTrashEntry
+            | manual_delete_facade::MeetingRestoreFacadeError::AlreadyPurged,
+        ) => (
             "not-found",
             "This meeting is no longer in Trash.",
         ),
         Err(manual_delete_facade::MeetingRestoreFacadeError::DestinationExists) => (
             "unavailable",
             "Yawn could not restore this meeting because a meeting already occupies its place. Reopen Trash and try again.",
+        ),
+        Err(manual_delete_facade::MeetingRestoreFacadeError::PurgeInProgress) => (
+            "unavailable",
+            "This meeting is being permanently removed and can no longer be restored.",
         ),
         Err(
             manual_delete_facade::MeetingRestoreFacadeError::WriterLockUnavailable

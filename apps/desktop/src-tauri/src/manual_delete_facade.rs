@@ -359,6 +359,8 @@ pub(crate) enum MeetingRestoreFacadeError {
     WriterLockUnavailable,
     NoSuchTrashEntry,
     DestinationExists,
+    PurgeInProgress,
+    AlreadyPurged,
     StorageUnavailable,
 }
 
@@ -400,6 +402,8 @@ fn map_meeting_restore_error(
     match error {
         Core::NoSuchTrashEntry => MeetingRestoreFacadeError::NoSuchTrashEntry,
         Core::DestinationExists => MeetingRestoreFacadeError::DestinationExists,
+        Core::PurgeInProgress => MeetingRestoreFacadeError::PurgeInProgress,
+        Core::AlreadyPurged => MeetingRestoreFacadeError::AlreadyPurged,
         _ => MeetingRestoreFacadeError::StorageUnavailable,
     }
 }

@@ -1005,6 +1005,16 @@ pub(crate) fn forget_meeting(storage: &StorageRoot, meeting_id: &str) -> Result<
 /// A folder the operator deleted while the meeting sat in trash is dropped
 /// silently rather than refusing the whole restore: losing a folder
 /// assignment is a smaller failure than a meeting that cannot come back.
+///
+/// **Guarded on `meeting_is_present`, same as `set_meeting_title` and
+/// `assign_meeting_folder` above.** Skipping that guard was the actual bug: a
+/// caller that reinstates before confirming the meeting is really back on
+/// disk (for instance, after a purge finished mid-crash and left a `Trashed`
+/// receipt pointing at nothing) would otherwise write a row for a meeting
+/// that isn't there — which does not strand one title, it makes
+/// `library_read` quarantine every title and folder in the record at once.
+/// A caller-side check is not a substitute for this one; this is the only
+/// place that can refuse atomically with the write.
 pub(crate) fn reinstate_meeting_organization(
     storage: &StorageRoot,
     meeting_id: &str,
@@ -1013,6 +1023,9 @@ pub(crate) fn reinstate_meeting_organization(
 ) -> Result<(), ()> {
     if title.is_none() && folder_id.is_none() {
         return Ok(());
+    }
+    if !meeting_is_present(storage, meeting_id) {
+        return Err(());
     }
     let current = match read_library_metadata(storage) {
         MetadataState::Valid(document) => document.revision,
