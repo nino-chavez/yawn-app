@@ -23,3 +23,11 @@ For a frontend change, run `npm run test:ui` from `apps/desktop`. For a Rust
 contract change, also run the relevant `cargo test -p local-meeting-notes-desktop`
 lane. A successful automated check proves code behavior, not a real meeting or
 human-quality review.
+
+A changed surface is not done until a cold screen review of it exists under
+`docs/evidence/screen-reviews/` (`kind: cold`, by a reviewer who did not build
+it and has not read its rationale); passing `test:ui` does not satisfy this.
+Every closeout names what was removed, combined, demoted, or hidden, or says why
+nothing was. UI tests assert state and role, not label copy, until the copy is
+in `DIRECTION.md`'s content-reads table. Rule and review protocol:
+`tools/blueprint/template/docs/methodology/judged-screen-pattern.md`.
