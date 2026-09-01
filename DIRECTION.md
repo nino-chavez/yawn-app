@@ -1,10 +1,15 @@
 # Yawn — design direction
 
-design_intent: preserve
-<!-- A direction exists (the product brief's interface rules, 2026-08-10 reset)
-     and W10 shipped under it; the 2026-09-01 cold review of e7e96f9 decides
-     whether this becomes refit. Undeclared is not preserve; this line is the
-     declaration. -->
+design_intent: refit
+<!-- Set from the 2026-09-01 cold review of e7e96f9 (browser-render captures,
+     provisional): revise on 4 of 9 surfaces, including composition on a core
+     surface (two differently-styled Record affordances on Home). The
+     direction itself stands -- the primary journey surfaces (first-run,
+     capture, after, settings) passed cold, so this is refit, not rethink:
+     presentation changes inside the approved direction. Refit's owed
+     experience brief is this file's object/action/state matrix plus the
+     surface roster. Installed-app captures supersede these verdicts and may
+     move this back to preserve. -->
 
 This file promotes what [docs/product-brief.md](docs/product-brief.md) already
 says into the shape the judged-screen pattern reads, and adds the two things
@@ -64,8 +69,8 @@ did not produce (brief amendment, 2026-09-01).
 
 | id | verdict | device | cites the thesis by | rules |
 |---|---|---|---|---|
-| cold-e7e96f9 | see docs/evidence/screen-reviews/ | this Mac, packaged preview | blind -- reads only captures and the five job questions | judged-screen pattern, section 3a |
-| conformance-w10-e7e96f9 | see docs/evidence/screen-reviews/ | this Mac, packaged preview | the brief amendment of 2026-09-01 and this file | section 3b |
+| cold-e7e96f9 | 01/03/04/06/07 accept; 02/05/08/09 revise (PROVISIONAL, browser-render) | browser render, stubbed bridge (captures at 0155e2d) | blind -- read only captures and the five job questions | judged-screen pattern, section 3a |
+| conformance-w10-e7e96f9 | amendment honored; drifts: color budget (02, 07), note-ordering at 960px (04), prefers-contrast absent (09) (PROVISIONAL) | browser render, stubbed bridge (captures at 0155e2d) | the brief amendment of 2026-09-01 and this file | section 3b |
 
 ## Content reads
 
