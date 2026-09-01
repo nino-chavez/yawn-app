@@ -5883,6 +5883,13 @@ const CONFIRMATION_UNAVAILABLE_MESSAGE: &str =
 const CONFIRMATION_DECLINED_MESSAGE: &str =
     "Yawn could not confirm it's you. This meeting stays locked.";
 
+/// What macOS renders under the prompt when the operator asks to take the lock
+/// off. Removing a lock is not one of the three gated actions -- it changes the
+/// meeting rather than reaching into it -- so it carries its own sentence
+/// instead of borrowing `LockedAction::Open`'s, which would say "open a locked
+/// meeting" to someone who clicked Remove lock.
+const UNLOCK_CONFIRMATION_REASON: &str = "remove the lock from a meeting on this Mac";
+
 /// Runs the device-owner check off every lock this app holds.
 ///
 /// The prompt blocks on a person for as long as they take. `with_preview_library`
@@ -5891,11 +5898,14 @@ const CONFIRMATION_DECLINED_MESSAGE: &str =
 /// them would stall the app behind a panel the operator may never answer. Every
 /// caller here therefore follows the same three steps: resolve the meeting
 /// (holding locks), release, then confirm.
+///
+/// `reason` is product copy: macOS shows it inside its own panel, so it names
+/// the act the operator just asked for and never a meeting's title.
 fn confirm_operator(
     state: &State<'_, ApplicationState>,
-    action: meeting_lock::LockedAction,
+    reason: &str,
 ) -> operator_confirmation::Confirmation {
-    state.confirmation.confirm(action.reason())
+    state.confirmation.confirm(reason)
 }
 
 /// Locks one meeting the operator already opened in Library.
@@ -5987,7 +5997,7 @@ fn unlock_meeting(
         });
     }
     // No lock held from here to the answer.
-    match confirm_operator(&state, meeting_lock::LockedAction::Open) {
+    match confirm_operator(&state, UNLOCK_CONFIRMATION_REASON) {
         operator_confirmation::Confirmation::Confirmed => {}
         operator_confirmation::Confirmation::Declined => {
             return Ok(MeetingLockResponse {
@@ -6064,7 +6074,7 @@ fn authorize_locked_action(
             message: "This meeting is not locked.".into(),
         });
     }
-    match confirm_operator(&state, action) {
+    match confirm_operator(&state, action.reason()) {
         operator_confirmation::Confirmation::Confirmed => {}
         operator_confirmation::Confirmation::Declined => {
             return Ok(LockedActionAuthorizationResponse {
@@ -10040,6 +10050,7 @@ mod tests {
             CONFIRMATION_UNAVAILABLE_MESSAGE,
             CONFIRMATION_DECLINED_MESSAGE,
             library_reader::LOCKED_MESSAGE,
+            UNLOCK_CONFIRMATION_REASON,
             meeting_lock::LockedAction::Open.reason(),
             meeting_lock::LockedAction::Export.reason(),
             meeting_lock::LockedAction::Playback.reason(),
@@ -10049,6 +10060,89 @@ mod tests {
                 assert!(!lowered.contains(forbidden), "{sentence}");
             }
         }
+    }
+
+    /// Each prompt sentence names the act the operator just asked for.
+    ///
+    /// macOS renders these inside its own panel, so a mismatch is a lie on
+    /// screen: someone who clicked "Remove lock" being told Yawn wants to
+    /// "open a locked meeting" cannot tell what they are approving. The
+    /// forbidden-word test above cannot see this -- it checks what the
+    /// sentences must not claim, and this checks that they describe the right
+    /// act.
+    #[test]
+    fn every_confirmation_prompt_names_the_act_it_was_raised_for() {
+        assert!(UNLOCK_CONFIRMATION_REASON.contains("remove the lock"));
+        assert!(meeting_lock::LockedAction::Open.reason().contains("open"));
+        assert!(meeting_lock::LockedAction::Export.reason().contains("export"));
+        assert!(meeting_lock::LockedAction::Playback.reason().contains("play"));
+        // Removing a lock is not one of the three gated actions and must not
+        // borrow one of their sentences.
+        for action in [
+            meeting_lock::LockedAction::Open,
+            meeting_lock::LockedAction::Export,
+            meeting_lock::LockedAction::Playback,
+        ] {
+            assert_ne!(UNLOCK_CONFIRMATION_REASON, action.reason());
+        }
+        // And the command that removes a lock uses it. Read from source
+        // because the prompt itself cannot run here.
+        let source = include_str!("main.rs");
+        let start = source.find("fn unlock_meeting(").unwrap();
+        assert!(
+            source[start..start + 2_600].contains("confirm_operator(&state, UNLOCK_CONFIRMATION_REASON)")
+        );
+    }
+
+    /// The gate in front of export and of opening the transcript file
+    /// natively -- two of this packet's four refusal points, and the two that
+    /// put a locked meeting's contents somewhere the lock does not reach.
+    ///
+    /// `refuse_locked_meeting` is where both of them make the decision, so it
+    /// is tested directly rather than through the commands, which cannot be
+    /// invoked without a Tauri runtime.
+    #[test]
+    fn export_and_transcript_file_refuse_a_locked_meeting_without_a_confirmation() {
+        let temporary = TempDir::new().unwrap();
+        let protected = temporary.path().join("protected");
+        local_meeting_notes_session_core::storage::create_private_dir(&protected).unwrap();
+        let storage =
+            StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let meeting_id = "11111111-1111-4111-8111-111111111111";
+        let directory = storage.path().join("meetings").join(meeting_id);
+        local_meeting_notes_session_core::storage::create_private_dir(&directory).unwrap();
+
+        // Decision 3: the unlocked default path takes no friction, with or
+        // without a token in hand.
+        assert!(refuse_locked_meeting(&storage, meeting_id, None).is_ok());
+
+        meeting_lock::write(&directory, true).unwrap();
+        // Refuses without a confirmation, with the sentence every locked
+        // refusal uses.
+        assert_eq!(
+            refuse_locked_meeting(&storage, meeting_id, None).unwrap_err(),
+            library_reader::LOCKED_MESSAGE
+        );
+        // Refuses a confirmation minted for a different meeting. This is what
+        // stops a token the operator gave for a meeting they may read from
+        // exporting one they may not.
+        assert!(refuse_locked_meeting(&storage, meeting_id, Some("another-meeting")).is_err());
+        // Allows the meeting its own confirmation names.
+        assert!(refuse_locked_meeting(&storage, meeting_id, Some(meeting_id)).is_ok());
+
+        // A meeting whose directory cannot be resolved is not reported as
+        // locked: the surrounding command's own failure is the honest answer,
+        // and a lock message would name a barrier that is not what stopped it.
+        // `..` is what `StorageRoot::resolve` refuses, which is the only way
+        // to reach that branch from here.
+        assert!(
+            meeting_dir(&storage, "../escape").is_err(),
+            "this id must be the one storage refuses, or the branch below is untested"
+        );
+        assert!(refuse_locked_meeting(&storage, "../escape", None).is_ok());
+        // And a meeting that simply has no lock file is not locked either --
+        // the ordinary case, reached through the other branch.
+        assert!(refuse_locked_meeting(&storage, "not-a-meeting", None).is_ok());
     }
 
     /// The three commands run the device-owner check with no app lock held.
