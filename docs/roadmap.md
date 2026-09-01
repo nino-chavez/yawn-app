@@ -466,14 +466,23 @@ performClose: chain, verified in the vendored crate sources. The Dock-click
 round trip itself is live-run evidence and joins the receipt list.
 The remaining calls were decided by the operator on 2026-09-01:
 
-- Honest waiting states: dispatched (library stall affordance, first-run
-  tray glyph, transcript-ready tray state, locked-barrier wording), with
-  the error-string decoupling and the D2 timing receipts in the same wave.
+- Honest waiting states: merged. The library's loading line escalates to
+  honest stall copy with a retry after ten seconds; first-run model setup
+  gets a calm setup glyph instead of the failure mark; a finished, unread
+  meeting gets its own tray state ("Your meeting is ready to read");
+  the locked barrier's copy matches its actual actions. Error-recovery
+  actions now key on stable machine codes with a two-sided drift test
+  against a shared registry (user copy byte-identical). The D2 timing
+  receipts are merged: every successful start writes capture-timing/1
+  separating operator time from app latency; the budget gets stated from
+  live-run numbers.
 - Tray-menu scope: the tray becomes minimally state-aware — Open Yawn
   always, Stop recording only while Recording or Paused (the brief's "one
   obvious way to stop", reachable while the window is hidden), and a
   standard Quit. No pause from the tray; pause keeps the window's context.
-  Dispatched.
+  Merged: the tray inserts Stop recording within one tick of Recording or
+  Paused, routes through stop_meeting's own path off the main thread, and
+  Quit is the native terminate: selector by construction.
 - **Landing: Home-always, closed as deliberate.** The brief's
   open-to-next-action rule makes Home the landing; Bear-style place memory
   suits resuming writing, not reopening finished meetings, and the
@@ -481,7 +490,7 @@ The remaining calls were decided by the operator on 2026-09-01:
   No place memory and no window-frame persistence; revisit only if a
   live-run annoyance receipt argues otherwise.
 - Exact search: the memo's recommendation is adopted. The one-week local
-  usage probe is dispatched — the dormant commands registered but gated on
+  usage probe is merged — the dormant commands registered but gated on
   a local marker file, default-off and byte-identical to today without it,
   logging only invoked/opened timestamps, riding the existing search box,
   unavailable during capture, locked meetings excluded by the W5-B
