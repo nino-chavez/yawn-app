@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yawn type-scale calibration</title>
+    <!-- Loads the real shipped stylesheet unmodified. Every class used below
+         (.meeting-note, .meeting-note-summary-item, .transcript-line, etc.)
+         is the same markup shape main.js renders; only the three custom
+         properties named in each .cal-col[data-scale] block are overridden,
+         scoped to that column, so nothing here can drift from what the app
+         actually ships. -->
+    <link rel="stylesheet" href="../ui/styles.css" />
+    <style>
+      /* ---- harness chrome, not shipped UI --------------------------------- */
+      body {
+        background: #d8d8d2;
+        padding: 32px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .cal-intro {
+        max-width: 74ch;
+        margin: 0 0 28px;
+        padding: 14px 18px;
+        border: 1px solid #b9b9b0;
+        border-radius: 10px;
+        background: #fff;
+        color: #33332e;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .cal-intro strong { font-weight: 700; }
+
+      .cal-theme-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(340px, 1fr));
+        gap: 22px;
+        margin-bottom: 40px;
+      }
+
+      .cal-theme-label {
+        margin: 0 0 14px;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        color: #55554e;
+      }
+
+      /* Each column is its own isolated theme root: color-scheme plus every
+         token styles.css otherwise only sets inside
+         `@media (prefers-color-scheme: dark)` is re-declared here so both
+         palettes render side by side regardless of the OS/browser setting.
+         Values copied verbatim from ui/styles.css's dark block. */
+      .cal-col {
+        border-radius: var(--radius-md, 12px);
+        overflow: hidden;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+      }
+
+      .cal-col[data-theme="light"] {
+        color-scheme: light;
+      }
+
+      .cal-col[data-theme="dark"] {
+        color-scheme: dark;
+        --canvas: #191a18;
+        --paper: #20211e;
+        --paper-soft: #242522;
+        --ink: #f0f0eb;
+        --ink-soft: #b9b9b0;
+        --ink-faint: #909087;
+        --line: #343530;
+        --line-strong: #4a4b44;
+        --accent: #8eabff;
+        --accent-soft: #202b4a;
+        --record: #ef8879;
+        --record-soft: #472622;
+        --attention: #ecc36f;
+        --attention-soft: #41341e;
+      }
+
+      .cal-surface {
+        padding: 22px 22px 28px;
+        background: var(--canvas);
+      }
+
+      .cal-values {
+        margin: 0 0 16px;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm, 8px);
+        background: var(--paper-soft);
+        color: var(--ink-soft);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      .cal-values strong { color: var(--ink); font-weight: 700; }
+      .cal-values code {
+        padding: 0 3px;
+        border-radius: 4px;
+        background: var(--line);
+        color: var(--ink);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 10.5px;
+      }
+
+      /* the three treatments narrow the reading measure so the demo columns
+         don't force 1040px+ of horizontal scroll to prove a point about
+         measure -- the token values are what's under test, not the stage
+         width the real app happens to use. */
+      .cal-surface .meeting-note,
+      .cal-surface .transcript-panel {
+        max-width: 100%;
+      }
+
+      .cal-surface .transcript-panel { margin-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <p class="cal-intro">
+      <strong>Packet W9-A calibration sheet.</strong> Dev tool, not shipped UI —
+      opened directly in a browser (<code>open apps/desktop/ui-harness/calibration.html</code>
+      from the repo root; no server needed since it only loads a same-directory
+      stylesheet). Three typography treatments of the same fixture note and
+      transcript, each rendered in both themes so the operator can judge without
+      an OS dark-mode toggle. Content is the exact synthetic fixture at
+      <code>crates/session-core/src/bin/fixtures/note-meeting/</code>
+      (<code>note.md</code> + <code>source-turns.json</code>) — never lorem,
+      never a real meeting. Changing a treatment here changes nothing in
+      <code>ui/styles.css</code>; each column only overrides
+      <code>--measure-reading</code>, <code>--leading-reading</code>,
+      <code>--leading-transcript</code>, <code>--text-note-summary</code>,
+      <code>--text-note-item</code>, and <code>--text-transcript-body</code> on
+      itself.
+    </p>
+
+    <!-- ============================ TREATMENT A ============================ -->
+    <h2 class="cal-theme-label">A — current shipped values (measure 68ch, note leading 1.65, transcript leading 1.58)</h2>
+    <div class="cal-theme-row" data-treatment="current">
+      <div class="cal-col" data-theme="light" style="
+        --measure-reading: 68ch;
+        --leading-reading: 1.65;
+        --leading-transcript: 1.58;
+        --text-note-summary: 16px;
+        --text-note-item: 15px;
+        --text-transcript-body: 14px;
+      ">
+        <div class="cal-surface" id="cal-a-light"></div>
+      </div>
+      <div class="cal-col" data-theme="dark" style="
+        --measure-reading: 68ch;
+        --leading-reading: 1.65;
+        --leading-transcript: 1.58;
+        --text-note-summary: 16px;
+        --text-note-item: 15px;
+        --text-transcript-body: 14px;
+      ">
+        <div class="cal-surface" id="cal-a-dark"></div>
+      </div>
+    </div>
+
+    <!-- ============================ TREATMENT B ============================ -->
+    <h2 class="cal-theme-label">B — Bear reference (measure 58ch, body 15px, leading 1.5 throughout)</h2>
+    <div class="cal-theme-row" data-treatment="bear">
+      <div class="cal-col" data-theme="light" style="
+        --measure-reading: 58ch;
+        --leading-reading: 1.5;
+        --leading-transcript: 1.5;
+        --text-note-summary: 15px;
+        --text-note-item: 15px;
+        --text-transcript-body: 15px;
+      ">
+        <div class="cal-surface" id="cal-b-light"></div>
+      </div>
+      <div class="cal-col" data-theme="dark" style="
+        --measure-reading: 58ch;
+        --leading-reading: 1.5;
+        --leading-transcript: 1.5;
+        --text-note-summary: 15px;
+        --text-note-item: 15px;
+        --text-transcript-body: 15px;
+      ">
+        <div class="cal-surface" id="cal-b-dark"></div>
+      </div>
+    </div>
+
+    <!-- ============================ TREATMENT C ============================ -->
+    <h2 class="cal-theme-label">C — proposed intermediate (measure 62ch, note body unified to 15px, note leading 1.6, transcript 14px/1.55)</h2>
+    <div class="cal-theme-row" data-treatment="intermediate">
+      <div class="cal-col" data-theme="light" style="
+        --measure-reading: 62ch;
+        --leading-reading: 1.6;
+        --leading-transcript: 1.55;
+        --text-note-summary: 15px;
+        --text-note-item: 15px;
+        --text-transcript-body: 14px;
+      ">
+        <div class="cal-surface" id="cal-c-light"></div>
+      </div>
+      <div class="cal-col" data-theme="dark" style="
+        --measure-reading: 62ch;
+        --leading-reading: 1.6;
+        --leading-transcript: 1.55;
+        --text-note-summary: 15px;
+        --text-note-item: 15px;
+        --text-transcript-body: 14px;
+      ">
+        <div class="cal-surface" id="cal-c-dark"></div>
+      </div>
+    </div>
+
+    <script>
+      // Real-shaped synthetic content from the exact fixture the product's
+      // own rendered-review-fixture.rs embeds: note-meeting/note.md and
+      // note-meeting/source-turns.json. Copied by hand, byte-for-byte, from
+      // those two files -- nothing here is lorem or a real meeting.
+      const NOTE = {
+        overview: "Generated from the transcript. Use the source links to check anything that matters.",
+        summary: [
+          "Fixture: the team reviewed the launch checklist and confirmed next steps.",
+        ],
+        decisions: [
+          "Fixture: ship the retry review before Friday.",
+        ],
+      };
+
+      const TURNS = [
+        { time: "0:00", speaker: "Me", text: "We reviewed the fixture launch checklist today." },
+        { time: "0:01", speaker: "Them", text: "The next step is confirming the rendered comparison view." },
+        { time: "0:02", speaker: "Me", text: "Everyone agreed to ship the retry review before Friday." },
+        { time: "0:03", speaker: "Them", text: "I will write up the follow-up items after this call." },
+      ];
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function renderValuesLine(scaleEl) {
+        const style = getComputedStyle(scaleEl);
+        const read = (name) => style.getPropertyValue(name).trim();
+        return `
+          <p class="cal-values">
+            measure <code>${escapeHtml(read("--measure-reading"))}</code> ·
+            note leading <code>${escapeHtml(read("--leading-reading"))}</code> ·
+            transcript leading <code>${escapeHtml(read("--leading-transcript"))}</code> ·
+            summary <code>${escapeHtml(read("--text-note-summary"))}</code> ·
+            item <code>${escapeHtml(read("--text-note-item"))}</code> ·
+            transcript body <code>${escapeHtml(read("--text-transcript-body"))}</code>
+          </p>
+        `;
+      }
+
+      function renderNote() {
+        return `
+          <section class="meeting-note" aria-labelledby="cal-note-heading">
+            <header class="meeting-note-header">
+              <p class="eyebrow">Meeting note</p>
+              <h2 id="cal-note-heading">What happened and what comes next</h2>
+              <p>${escapeHtml(NOTE.overview)}</p>
+            </header>
+            <section class="meeting-note-section meeting-note-overview" aria-labelledby="cal-overview-heading">
+              <h3 id="cal-overview-heading">Overview</h3>
+              ${NOTE.summary.map((claim) => `<div class="meeting-note-summary-item"><p>${escapeHtml(claim)}</p></div>`).join("")}
+            </section>
+            <section class="meeting-note-section" aria-labelledby="cal-decisions-heading">
+              <h3 id="cal-decisions-heading">Decisions</h3>
+              <ul class="meeting-note-list">${NOTE.decisions.map((claim) => `<li class="meeting-note-item"><p>${escapeHtml(claim)}</p></li>`).join("")}</ul>
+            </section>
+          </section>
+        `;
+      }
+
+      function renderTranscript() {
+        return `
+          <section class="transcript-panel" aria-labelledby="cal-transcript-heading">
+            <div class="transcript-heading"><h3 id="cal-transcript-heading">Full transcript</h3></div>
+            ${TURNS.map((turn) => `
+              <div class="transcript-line">
+                <div class="transcript-line-meta"><time>${escapeHtml(turn.time)}</time><span>${escapeHtml(turn.speaker)}</span></div>
+                <p>${escapeHtml(turn.text)}</p>
+              </div>
+            `).join("")}
+          </section>
+        `;
+      }
+
+      document.querySelectorAll(".cal-surface").forEach((surface) => {
+        surface.innerHTML = renderValuesLine(surface) + renderNote() + renderTranscript();
+      });
+    </script>
+  </body>
+</html>

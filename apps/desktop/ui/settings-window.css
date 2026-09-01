@@ -9,6 +9,22 @@
   --accent-soft: #e2f0e8;
   --attention: #93611a;
   --attention-soft: #fff5df;
+
+  /* Packet W9-A: named type scale for this window's own literals -- a
+     separate token block from ui/styles.css because this stylesheet already
+     runs its own disjoint color system (green accent vs. the main window's
+     blue). The h1 "Settings" display size and its letter-spacing stay
+     literal, same exclusion reasoning as the main window's hero clamp()s. */
+  --text-meta: 11px;
+  --text-label: 12px;
+  --text-body: 13px;
+  --text-subtitle: 16px;
+  --weight-semibold: 680;
+  --weight-bold: 700;
+  --weight-heavy: 760;
+  --tracking-card-heading: -0.02em;
+  --tracking-eyebrow: 0.09em;
+
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -38,9 +54,9 @@ button:focus-visible {
 .eyebrow {
   margin: 0 0 8px;
   color: var(--accent);
-  font-size: 11px;
-  font-weight: 760;
-  letter-spacing: 0.09em;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-heavy);
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
 
@@ -55,8 +71,8 @@ h1 {
 
 h2 {
   margin-bottom: 5px;
-  font-size: 16px;
-  letter-spacing: -0.02em;
+  font-size: var(--text-subtitle);
+  letter-spacing: var(--tracking-card-heading);
 }
 
 header > p:last-child,
@@ -64,14 +80,14 @@ header > p:last-child,
 .permission-copy p {
   margin-bottom: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.5;
 }
 
 .model-copy p {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
@@ -99,8 +115,8 @@ header > p:last-child,
   border-radius: 999px;
   background: white;
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 680;
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
 }
 
 .quiet-button {
@@ -130,14 +146,14 @@ header > p:last-child,
 
 .privacy-row dt {
   margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--text-body);
+  font-weight: var(--weight-bold);
 }
 
 .privacy-row dd {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.5;
 }
 
@@ -171,12 +187,12 @@ header > p:last-child,
   gap: 9px;
 }
 
-.model-title-row strong { font-size: 13px; }
+.model-title-row strong { font-size: var(--text-body); }
 
 .model-size {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
 }
 
 .model-actions {
@@ -206,7 +222,7 @@ header > p:last-child,
   margin: 0;
   padding: 0 20px 16px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.4;
 }
 
@@ -222,7 +238,7 @@ button:disabled {
 .permission-copy strong {
   display: block;
   margin-bottom: 3px;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .state {
@@ -233,8 +249,8 @@ button:disabled {
   border-radius: 999px;
   color: var(--muted);
   background: #f1f3f0;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
 }
 
 .state[data-tone="ready"] {
@@ -251,7 +267,7 @@ button:disabled {
   min-height: 20px;
   margin: 16px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.4;
 }
 
