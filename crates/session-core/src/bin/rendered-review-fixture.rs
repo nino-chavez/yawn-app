@@ -13,9 +13,9 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use local_meeting_notes_session_core::meeting::{
-    AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts, MeetingLifecycle,
-    MeetingRecord, MeetingSchema, artifact_ref, load_meeting, retention_policy_sha256,
-    verify_record_artifacts, write_meeting,
+    ArtifactRef, AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts,
+    MeetingLifecycle, MeetingRecord, MeetingSchema, NoteRevisionRef, artifact_ref, load_meeting,
+    retention_policy_sha256, verify_record_artifacts, write_meeting,
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::model_store::{
@@ -42,6 +42,48 @@ const AUDIO_SAMPLE_RATE: u32 = 8_000;
 const AUDIO_FRAMES: usize = AUDIO_SAMPLE_RATE as usize * 8;
 #[cfg(target_os = "macos")]
 const RENAME_NOFOLLOW_ANY: libc::c_uint = 0x0000_0010;
+
+// --- Wave 2/3 state-expansion meeting identifiers -------------------------
+//
+// Each of these is a second, independent meeting seeded alongside the
+// original `MEETING_ID` above so a single fixture root can render every
+// packaged-preview review state the roadmap's "extend it before the next
+// release gate" note calls out (`docs/roadmap.md`), without reseeding or
+// archiving between them. Every identifier below is a fixed, synthetic v4
+// UUID shape — never derived from anything real — chosen only to be visually
+// distinct from `MEETING_ID` and from each other.
+
+/// A pending retry candidate with word-for-word identical turn text to the
+/// current transcript (bytes still differ, so it is a distinct candidate),
+/// exercising the diff engine's "no word-level differences found" state.
+const DIFF_IDENTICAL_MEETING_ID: &str = "44444444-4444-4444-8444-444444444444";
+const DIFF_IDENTICAL_OPERATION_ID: &str = "24444444-4444-4444-8444-444444444444";
+
+/// A pending retry candidate whose current/candidate turns are long enough
+/// and different enough to exceed the diff engine's edit-distance budget,
+/// exercising the "these transcripts are too long to highlight" skip state.
+const DIFF_SKIPPED_MEETING_ID: &str = "55555555-5555-4555-8555-555555555555";
+const DIFF_SKIPPED_OPERATION_ID: &str = "25555555-5555-4555-8555-555555555555";
+
+/// A meeting trashed via the real `MeetingTrashAuthority`, exercising the
+/// Trash list and restore action.
+const TRASH_MEETING_ID: &str = "66666666-6666-4666-8666-666666666666";
+
+/// A meeting whose retained transcript is tampered with after the meeting
+/// record is written, so its pinned digest no longer matches the bytes on
+/// disk. Exercises the export command's withheld-artifact manifest line.
+const EXPORT_TAMPERED_MEETING_ID: &str = "77777777-7777-4777-8777-777777777777";
+
+/// A meeting carrying a real, validator-passing generated note (claim types
+/// `summary` and `decision`), a pre-meeting context note, and one transcript
+/// turn no claim cites — exercising the library row preview, the reverse
+/// citation map, and the read-only pre-meeting context block.
+const NOTE_MEETING_ID: &str = "33333333-3333-4333-8333-333333333333";
+
+/// Sample rate the capture-pause schema is measured in (`capture_quality.rs`'s
+/// `CAPTURE_RATE`) — a normalized processing rate, independent of the
+/// fixture's own 8 kHz synthetic WAV sample rate above.
+const PAUSE_SAMPLE_RATE: u64 = 16_000;
 
 #[derive(Debug, thiserror::Error)]
 enum FixtureError {
@@ -238,7 +280,17 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
         "artifacts": [
             {"name":"mic.wav","bytes":mic.len(),"sha256":mic_ref.sha256,"mode":"0600"},
             {"name":"system.wav","bytes":system.len(),"sha256":system_ref.sha256,"mode":"0600"}
-        ]
+        ],
+        // W1-A: two non-overlapping pause spans, so both the meeting-detail
+        // pause sentence and the retry sheet's pause section render on the
+        // same meeting that also carries the pending retry comparison below.
+        "pauses": {
+            "schema": "capture-pauses/1",
+            "spans": [
+                {"paused_at_samples": 2 * PAUSE_SAMPLE_RATE, "resumed_at_samples": 3 * PAUSE_SAMPLE_RATE},
+                {"paused_at_samples": 6 * PAUSE_SAMPLE_RATE, "resumed_at_samples": 8 * PAUSE_SAMPLE_RATE}
+            ]
+        }
     });
     write_new(
         &meeting_dir.join("capture/session.json"),
@@ -301,6 +353,12 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
         },
     )?;
 
+    seed_diff_identical_meeting(&storage)?;
+    seed_diff_skipped_meeting(&storage)?;
+    seed_trash_meeting(&storage)?;
+    seed_export_tampered_meeting(&storage)?;
+    seed_note_meeting(&storage)?;
+
     let marker = json!({
         "schema": "synthetic-fixture-evidence/1",
         "bundle": BUNDLE_NAME,
@@ -309,12 +367,421 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
         "content": "deterministic invented review fixture",
         "meeting_id": MEETING_ID,
         "retry_operation_id": OPERATION_ID,
-        "covered_states": ["retained meeting", "verified audio", "quality and device projections", "pending transcript retry"],
-        "note": "No generated note is seeded; this fixture remains TranscriptReady and does not invoke a note worker."
+        "covered_states": [
+            "retained meeting",
+            "verified audio",
+            "quality and device projections",
+            "pending transcript retry",
+            "capture pauses",
+            "retry diff computed with differences",
+            "retry diff computed with no differences",
+            "retry diff skipped over budget",
+            "trashed meeting pending restore",
+            "export withheld-artifact manifest",
+            "generated note row preview and reverse citation map",
+            "read-only pre-meeting context"
+        ],
+        "note": "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time."
     });
     write_new(
         &storage.path().join("SYNTHETIC_FIXTURE.json"),
         &serde_json::to_vec_pretty(&marker)?,
+    )?;
+    Ok(())
+}
+
+/// Common capture-and-transcript shell shared by every meeting this fixture
+/// seeds beyond the original `MEETING_ID` above: attempt, ownership, a
+/// silent mic/system WAV pair, a `capture-session/2` receipt, and one
+/// transcript. Callers finish the meeting record themselves (lifecycle,
+/// current note, retry candidates) because those vary per state.
+struct PlainMeeting {
+    meeting_dir: PathBuf,
+    session_ref: ArtifactRef,
+    mic_ref: ArtifactRef,
+    system_ref: ArtifactRef,
+    current_ref: ArtifactRef,
+}
+
+fn seed_plain_meeting(
+    storage: &StorageRoot,
+    meeting_id: &str,
+    created_at: u64,
+    source_bytes: Vec<u8>,
+) -> Result<PlainMeeting, FixtureError> {
+    let meeting_dir = storage.path().join("meetings").join(meeting_id);
+    for child in ["", "capture", "transcript", "notes"] {
+        create_private_dir(&meeting_dir.join(child))?;
+    }
+
+    let rule = AudioRetentionRule::UntilManualDeletion;
+    let policy = retention_policy_sha256(&rule);
+    let attempt = json!({
+        "schema": "capture-attempt/1",
+        "meeting_id": meeting_id,
+        "attempt_id": meeting_id,
+        "created_at_epoch_seconds": created_at,
+        "application_build_sha256": "a".repeat(64),
+        "participant_notice_version": "internal-transcript-alpha/1",
+        "operator_attestation": {
+            "participantsConsented": true,
+            "headphones": true,
+            "operatorAlone": true,
+        },
+        "retention_policy_sha256": policy,
+    });
+    write_new(
+        &meeting_dir.join("attempt.json"),
+        &serde_json::to_vec_pretty(&attempt)?,
+    )?;
+    write_new(
+        &meeting_dir.join("ownership.json"),
+        br#"{"schema":"capture-ownership/1","source":"synthetic-fixture"}
+"#,
+    )?;
+
+    let mic = wav(AUDIO_FRAMES);
+    let system = wav(AUDIO_FRAMES);
+    write_new(&meeting_dir.join("capture/mic.wav"), &mic)?;
+    write_new(&meeting_dir.join("capture/system.wav"), &system)?;
+    let mic_ref = artifact_ref(&meeting_dir, "capture/mic.wav")?;
+    let system_ref = artifact_ref(&meeting_dir, "capture/system.wav")?;
+    let receipt = json!({
+        "schema": "capture-session/2",
+        "status": "complete",
+        "started_at": "2023-11-14T22:13:20+0000",
+        "finalized_at": "2023-11-14T22:13:21+0000",
+        "health": {"schema":"capture-health/1","usable":true},
+        "quality": {
+            "schema": "capture-quality/1",
+            "source": {"leg":"mic","artifact":"mic.wav","samples":AUDIO_FRAMES,"sha256":mic_ref.sha256},
+            "metrics": {"duration_s":8.0},
+            "observations": {
+                "silence":{"status":"not_observed","detail":"synthetic"},
+                "clipping":{"status":"not_observed","detail":"synthetic"},
+                "low_input":{"status":"not_observed","detail":"synthetic"},
+                "background_noise":{"status":"not_observed","detail":"synthetic"}
+            }
+        },
+        "microphone": {"schema":"capture-microphone/1","index":0,"name":"Synthetic microphone"},
+        "reconciliation": {"legs":{"mic":"complete","system":"complete"}},
+        "artifacts": [
+            {"name":"mic.wav","bytes":mic.len(),"sha256":mic_ref.sha256,"mode":"0600"},
+            {"name":"system.wav","bytes":system.len(),"sha256":system_ref.sha256,"mode":"0600"}
+        ]
+    });
+    write_new(
+        &meeting_dir.join("capture/session.json"),
+        &serde_json::to_vec_pretty(&receipt)?,
+    )?;
+    let session_ref = artifact_ref(&meeting_dir, "capture/session.json")?;
+
+    let source_digest = digest(&source_bytes);
+    let source_path = format!("transcript/{source_digest}.json");
+    write_new(&meeting_dir.join(&source_path), &source_bytes)?;
+    let current_ref = artifact_ref(&meeting_dir, &source_path)?;
+
+    Ok(PlainMeeting {
+        meeting_dir,
+        session_ref,
+        mic_ref,
+        system_ref,
+        current_ref,
+    })
+}
+
+/// Writes `meeting.json` for a [`PlainMeeting`] shell, in the given lifecycle
+/// and with the given optional current note.
+fn write_meeting_record(
+    shell: &PlainMeeting,
+    meeting_id: &str,
+    lifecycle: MeetingLifecycle,
+    current_note: Option<NoteRevisionRef>,
+) -> Result<(), FixtureError> {
+    let rule = AudioRetentionRule::UntilManualDeletion;
+    let policy = retention_policy_sha256(&rule);
+    let meeting = MeetingRecord {
+        schema: MeetingSchema::V2,
+        meeting_id: meeting_id.to_owned(),
+        lifecycle,
+        retention: AudioRetention {
+            rule,
+            policy_sha256: policy,
+            next_deletion_at_epoch_seconds: None,
+            state: AudioState::Retained,
+            deletion_receipt: None,
+        },
+        artifacts: MeetingArtifacts {
+            attempt: artifact_ref(&shell.meeting_dir, "attempt.json")?,
+            ownership: Some(artifact_ref(&shell.meeting_dir, "ownership.json")?),
+            capture_session: Some(shell.session_ref.clone()),
+            microphone_audio: Some(shell.mic_ref.clone()),
+            system_audio: Some(shell.system_ref.clone()),
+            current_transcript: Some(shell.current_ref.clone()),
+            current_note,
+        },
+        pending_storage_operation: None,
+    };
+    write_meeting(&shell.meeting_dir, &meeting)?;
+    Ok(())
+}
+
+/// W3-B: a pending retry candidate whose turn text is word-for-word
+/// identical to the current transcript, so the real diff engine
+/// (`transcript_retry_diff::diff_transcript_turns`, run at render time by the
+/// desktop app) computes the `Computed` state with zero spans on either
+/// side — the "No word-level differences found." legend.
+fn seed_diff_identical_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let turns: &[(&str, &str)] = &[
+        ("Me", "Fixture: the diff comparison turns are identical on both sides."),
+        ("Them", "Fixture: nothing was changed between the current transcript and this retry."),
+    ];
+    let source = transcript_bytes_tagged(turns, "synthetic-fixture-diff-identical-current");
+    let shell = seed_plain_meeting(
+        storage,
+        DIFF_IDENTICAL_MEETING_ID,
+        CREATED_AT + 1,
+        source.clone(),
+    )?;
+    write_meeting_record(
+        &shell,
+        DIFF_IDENTICAL_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    // Same turn text, different file bytes (a different `source` tag), so
+    // the candidate is a distinct content-addressed artifact even though it
+    // diffs identically against the current transcript.
+    let candidate = transcript_bytes_tagged(turns, "synthetic-fixture-diff-identical-candidate");
+    let coordination = MeetingStorageCoordination::default();
+    let authority = TranscriptRetryAuthority::new(storage, &coordination);
+    authority.create_candidate(
+        DIFF_IDENTICAL_MEETING_ID,
+        Uuid::parse_str(DIFF_IDENTICAL_OPERATION_ID).expect("fixed operation id"),
+        &candidate,
+        &TranscriptRetrySourceBinding {
+            source_transcript_sha256: shell.current_ref.sha256.clone(),
+            capture_session_sha256: shell.session_ref.sha256.clone(),
+            microphone_audio_sha256: shell.mic_ref.sha256.clone(),
+            system_audio_sha256: shell.system_ref.sha256.clone(),
+            candidate_transcript_sha256: digest(&candidate),
+        },
+    )?;
+    Ok(())
+}
+
+/// W3-B: a pending retry candidate whose current and candidate turns are
+/// long enough and different enough (each a single turn of ~4,200 disjoint
+/// words) to exceed `transcript_retry_diff::MAX_EDIT_BUDGET`, so the real
+/// diff engine returns `Skipped` with no spans on either side — the "These
+/// transcripts are too long to highlight word differences." legend. Chosen
+/// over the word-count bound (`MAX_DIFFABLE_WORDS`, ~20,001 words) because it
+/// is the smaller, more surgical way to cross a skip threshold.
+fn seed_diff_skipped_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    const OVER_BUDGET_WORDS: usize = 4_200;
+    let current_text: String = (0..OVER_BUDGET_WORDS)
+        .map(|index| format!("cur{index}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let candidate_text: String = (0..OVER_BUDGET_WORDS)
+        .map(|index| format!("cand{index}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = transcript_bytes_tagged(
+        &[("Me", current_text.as_str())],
+        "synthetic-fixture-diff-skipped-current",
+    );
+    let shell = seed_plain_meeting(
+        storage,
+        DIFF_SKIPPED_MEETING_ID,
+        CREATED_AT + 2,
+        source.clone(),
+    )?;
+    write_meeting_record(
+        &shell,
+        DIFF_SKIPPED_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    let candidate = transcript_bytes_tagged(
+        &[("Them", candidate_text.as_str())],
+        "synthetic-fixture-diff-skipped-candidate",
+    );
+    let coordination = MeetingStorageCoordination::default();
+    let authority = TranscriptRetryAuthority::new(storage, &coordination);
+    authority.create_candidate(
+        DIFF_SKIPPED_MEETING_ID,
+        Uuid::parse_str(DIFF_SKIPPED_OPERATION_ID).expect("fixed operation id"),
+        &candidate,
+        &TranscriptRetrySourceBinding {
+            source_transcript_sha256: shell.current_ref.sha256.clone(),
+            capture_session_sha256: shell.session_ref.sha256.clone(),
+            microphone_audio_sha256: shell.mic_ref.sha256.clone(),
+            system_audio_sha256: shell.system_ref.sha256.clone(),
+            candidate_transcript_sha256: digest(&candidate),
+        },
+    )?;
+    Ok(())
+}
+
+/// W2-B: a meeting moved into local trash through the real
+/// `MeetingTrashAuthority`, exercising the Trash list and its restore action
+/// with no product-code changes — this is the exact authority the desktop
+/// app's own "Delete meeting" command reaches (`retention.rs`'s
+/// `meeting_trash_authority`).
+fn seed_trash_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let turns: &[(&str, &str)] = &[
+        ("Me", "Fixture: this meeting was moved to trash for the review fixture."),
+        ("Them", "Fixture: it can be restored from the Trash list."),
+    ];
+    let source = transcript_bytes_tagged(turns, "synthetic-fixture-trash");
+    let shell = seed_plain_meeting(storage, TRASH_MEETING_ID, CREATED_AT + 3, source)?;
+    write_meeting_record(
+        &shell,
+        TRASH_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    let writer_lock = AppDataWriterLock::acquire(storage)?;
+    writer_lock
+        .library_organization_authority()
+        .set_meeting_title(0, TRASH_MEETING_ID, Some("Fixture: Trash review"))
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    writer_lock
+        .meeting_trash_authority()
+        .trash_meeting(TRASH_MEETING_ID, CREATED_AT + 3)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    Ok(())
+}
+
+/// W2-C: a meeting whose retained transcript is tampered with *after* the
+/// meeting record is written and verified, so its pinned digest no longer
+/// matches the bytes on disk — mirroring
+/// `meeting_export.rs`'s own
+/// `export_meeting_withholds_a_tampered_transcript_and_names_it_in_the_result`
+/// test fixture exactly. Exercises the real export command's
+/// withheld-artifact manifest line and README.txt entry when a reviewer
+/// clicks Export on this meeting; the sibling `MEETING_ID` above already
+/// exercises the ordinary "Export available" state (a verified transcript).
+fn seed_export_tampered_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let turns: &[(&str, &str)] = &[
+        ("Me", "Fixture: this transcript will be tampered with after the meeting record is written."),
+        ("Them", "Fixture: exporting this meeting must withhold transcript.md and name why."),
+    ];
+    let source = transcript_bytes_tagged(turns, "synthetic-fixture-export-tampered");
+    let shell = seed_plain_meeting(storage, EXPORT_TAMPERED_MEETING_ID, CREATED_AT + 4, source)?;
+    write_meeting_record(
+        &shell,
+        EXPORT_TAMPERED_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    // Tamper the retained transcript's bytes without touching meeting.json,
+    // so its recorded sha256 no longer matches what is on disk. This runs
+    // only after the meeting proved valid above, so the corruption is the
+    // one thing that changed.
+    fs::write(
+        shell.meeting_dir.join(&shell.current_ref.relative_path),
+        b"{ not the verified transcript",
+    )?;
+    Ok(())
+}
+
+/// W3-A / W2-A / I3: a meeting carrying a real, validator-passing generated
+/// note plus a read-only pre-meeting context note.
+///
+/// The transcript, `note.json`, and `note.md` bytes embedded under
+/// `fixtures/note-meeting/` are not hand-written: they were produced and
+/// independently re-verified offline by driving this repository's own
+/// note-assembly and note-validation code —
+/// `notes/summarize.py::candidate_note_document` (via a synthetic
+/// `note-generation/2` payload naming two real, deterministically-derived
+/// `candidate_first` candidates) to build them, then
+/// `worker/note_validator.py::_project_snapshot` (the exact function the
+/// packaged app's real subprocess note projector calls at read time) to
+/// confirm they validate byte-for-byte, using the packaged
+/// `python-runtime/bin/python3.12` interpreter. That re-derivation is not
+/// wired into `cargo test` — it depends on a Python interpreter this crate
+/// does not otherwise need — so this fixture treats the three files as
+/// frozen, pre-verified fixture data and only checks the one fact a future
+/// edit to either file could silently break: that the embedded transcript's
+/// digest is the one the embedded note actually cites.
+///
+/// The claim projection this note validates to cites transcript turns 0 and
+/// 2 (`summary` and `decision`); turns 1 and 3 are not cited by anything,
+/// giving the reverse citation map ("`turns_cited`") a real uncited turn.
+fn seed_note_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    // Named `source-turns.json` rather than `transcript.json`: the repo-wide
+    // `.gitignore` refuses any tracked file literally named `transcript.json`
+    // as a hard privacy boundary (`privacy_gate.py`'s filename check), and
+    // this fixture's synthetic bytes should go through that same boundary
+    // rather than around it. The bytes are written to the real runtime path
+    // (`transcript/<sha256>.json`, inside the untracked seeded app-data
+    // root) at seed time below; only the repo-tracked source file's name
+    // differs.
+    const TRANSCRIPT_BYTES: &[u8] = include_bytes!("fixtures/note-meeting/source-turns.json");
+    const NOTE_JSON_BYTES: &[u8] = include_bytes!("fixtures/note-meeting/note.json");
+    const NOTE_MARKDOWN_BYTES: &[u8] = include_bytes!("fixtures/note-meeting/note.md");
+    const TRANSCRIPT_SHA256: &str =
+        "56bfdb26765a804b83ce2e60752373c88ee2c853e30778e98d6b4c1d89c23193";
+    const NOTE_JSON_SHA256: &str =
+        "ead0a06c71c10461337b04afe5cbf13e594db471643bf166af4fa934bfe832a3";
+    const NOTE_MARKDOWN_SHA256: &str =
+        "89bc8e42c5bb1facc1f7b2d69b6103fcbafeecda836a8cb1822b301cbecc0951";
+
+    let shell = seed_plain_meeting(
+        storage,
+        NOTE_MEETING_ID,
+        CREATED_AT + 5,
+        TRANSCRIPT_BYTES.to_vec(),
+    )?;
+    if shell.current_ref.sha256 != TRANSCRIPT_SHA256 {
+        return Err(io::Error::other(
+            "embedded note-meeting transcript digest does not match the embedded note; \
+             the note.json/note.md/transcript.json trio under fixtures/note-meeting/ must be \
+             regenerated together",
+        )
+        .into());
+    }
+    write_new(
+        &shell.meeting_dir.join(format!("notes/{NOTE_JSON_SHA256}.json")),
+        NOTE_JSON_BYTES,
+    )?;
+    write_new(
+        &shell
+            .meeting_dir
+            .join(format!("notes/{NOTE_MARKDOWN_SHA256}.md")),
+        NOTE_MARKDOWN_BYTES,
+    )?;
+    let note = NoteRevisionRef {
+        json: ArtifactRef {
+            relative_path: format!("notes/{NOTE_JSON_SHA256}.json"),
+            sha256: NOTE_JSON_SHA256.to_owned(),
+        },
+        markdown: ArtifactRef {
+            relative_path: format!("notes/{NOTE_MARKDOWN_SHA256}.md"),
+            sha256: NOTE_MARKDOWN_SHA256.to_owned(),
+        },
+        source_transcript_sha256: TRANSCRIPT_SHA256.to_owned(),
+    };
+    write_meeting_record(&shell, NOTE_MEETING_ID, MeetingLifecycle::Ready, Some(note))?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    // W2-A / I3: a read-only pre-meeting context note, in the exact
+    // `meeting-context/1` shape `apps/desktop/src-tauri/src/meeting_context.rs`
+    // writes (that module is private to the desktop crate, so this fixture
+    // writes the file directly rather than importing it).
+    write_new(
+        &shell.meeting_dir.join("meeting-context.json"),
+        br#"{"schema":"meeting-context/1","text":"Fixture: pre-meeting context - evaluating the rendered retry-review rollout before the next release gate."}"#,
     )?;
     Ok(())
 }
@@ -682,9 +1149,17 @@ fn validate_synthetic_marker(root: &Path) -> Result<(), FixtureError> {
                 "verified audio",
                 "quality and device projections",
                 "pending transcript retry",
+                "capture pauses",
+                "retry diff computed with differences",
+                "retry diff computed with no differences",
+                "retry diff skipped over budget",
+                "trashed meeting pending restore",
+                "export withheld-artifact manifest",
+                "generated note row preview and reverse citation map",
+                "read-only pre-meeting context",
             ]
         || marker.note
-            != "No generated note is seeded; this fixture remains TranscriptReady and does not invoke a note worker."
+            != "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time."
     {
         return Err(FixtureError::InvalidMarker);
     }
@@ -883,6 +1358,17 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 fn transcript_bytes(turns: &[(&str, &str)]) -> Vec<u8> {
+    transcript_bytes_tagged(turns, "synthetic-fixture")
+}
+
+/// Same shape as [`transcript_bytes`], but with a caller-chosen `source` tag.
+///
+/// Used to mint a retry candidate whose turn text is word-for-word identical
+/// to its current transcript (so the word-level diff computes zero spans)
+/// while still producing a distinct file digest — content-addressed storage
+/// requires the two to be different files, and only `source` (never read by
+/// the diff engine) needs to differ to achieve that.
+fn transcript_bytes_tagged(turns: &[(&str, &str)], source_tag: &str) -> Vec<u8> {
     let turns = turns
         .iter()
         .enumerate()
@@ -898,7 +1384,7 @@ fn transcript_bytes(turns: &[(&str, &str)]) -> Vec<u8> {
         .collect::<Vec<_>>();
     serde_json::to_vec_pretty(&json!({
         "schema":"capture-transcript/1",
-        "source":"synthetic-fixture",
+        "source":source_tag,
         "attribution":"channel",
         "bleed":null,
         "voiceprint":null,
@@ -936,14 +1422,19 @@ mod tests {
     use tempfile::TempDir;
 
     use local_meeting_notes_session_core::capture_quality::{
-        CaptureQualityObservationKind, CaptureQualityObservationStatus, CaptureQualityState,
-        RecordingDeviceState, project_capture_quality, project_recording_device,
+        CapturePauseState, CaptureQualityObservationKind, CaptureQualityObservationStatus,
+        CaptureQualityState, RecordingDeviceState, project_capture_pauses, project_capture_quality,
+        project_recording_device,
     };
     use local_meeting_notes_session_core::meeting::verify_artifact_ref;
+    use local_meeting_notes_session_core::meeting_trash::list_trash_entries;
     use local_meeting_notes_session_core::model_store::{
         ModelCatalogSchema, TranscriptModel, TranscriptModelFile, active_model,
     };
     use local_meeting_notes_session_core::transcript_retry::TranscriptRetryState;
+    use local_meeting_notes_session_core::transcript_retry_diff::{
+        DiffTurnInput, TranscriptRetryDiffState, diff_transcript_turns,
+    };
     use std::os::unix::fs::PermissionsExt;
 
     fn target(temp: &TempDir) -> PathBuf {
@@ -1033,6 +1524,184 @@ mod tests {
         let marker = fs::read_to_string(root.join("SYNTHETIC_FIXTURE.json")).unwrap();
         assert!(marker.contains("private_data"));
         assert!(marker.contains("product_evidence"));
+    }
+
+    /// Loads a meeting's turn texts straight from its retained transcript
+    /// JSON, exactly as the desktop crate's `retry_diff_turn_inputs` would
+    /// project them (visible turns only; this fixture never gates a turn).
+    fn turn_texts(meeting_dir: &Path, relative_path: &str) -> Vec<String> {
+        let bytes = fs::read(meeting_dir.join(relative_path)).unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        document["turns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|turn| turn["text"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    fn diff_inputs(texts: &[String]) -> Vec<DiffTurnInput<'_>> {
+        texts.iter().map(|text| DiffTurnInput::visible(text)).collect()
+    }
+
+    /// Reads a pending retry's candidate turn texts by following its
+    /// `transcript-retry-candidate/1` receipt to the actual candidate
+    /// transcript file, exactly as `TranscriptRetryAuthority` lays a pending
+    /// retry out on disk (a receipt naming the candidate's real
+    /// `transcript/<sha>.json` path, not an inline copy).
+    fn candidate_texts(meeting_dir: &Path, operation_id: &str) -> Vec<String> {
+        let receipt_bytes = fs::read(
+            meeting_dir
+                .join("transcript-retry")
+                .join(operation_id)
+                .join("receipt.json"),
+        )
+        .unwrap();
+        let receipt: serde_json::Value = serde_json::from_slice(&receipt_bytes).unwrap();
+        let relative_path = receipt["candidate_transcript"]["relative_path"]
+            .as_str()
+            .unwrap();
+        turn_texts(meeting_dir, relative_path)
+    }
+
+    /// End-to-end proof that every Wave 2/3 state this packet stages is both
+    /// present on disk and produces the real product state a reviewer would
+    /// see: pause spans project to `Paused`, the diff engine actually
+    /// computes each of the three retry-diff states from the staged
+    /// transcripts (not merely "files exist"), the trashed meeting is the
+    /// only one `list_trash_entries` reports, the tampered transcript fails
+    /// its own digest check, and the note meeting's revision reference is
+    /// internally consistent.
+    #[test]
+    fn seed_produces_every_targeted_wave_2_3_state() {
+        let temp = TempDir::new().unwrap();
+        let root = target(&temp);
+        let repository = repo(&temp);
+        seed(&root, repository).unwrap();
+        let storage = StorageRoot::create(&root, &temp.path().join("repository")).unwrap();
+
+        // W1-A: capture pauses on the original retry-comparison meeting.
+        let meeting_dir = storage.path().join("meetings").join(MEETING_ID);
+        let meeting = load_meeting(&meeting_dir).unwrap();
+        let pauses = project_capture_pauses(&meeting_dir, &meeting).unwrap();
+        assert_eq!(pauses.state, CapturePauseState::Paused);
+        assert_eq!(pauses.count, 2);
+        assert_eq!(pauses.total_paused_seconds, 3);
+
+        // W3-B: the original meeting's pending retry actually diffs with
+        // real word-level spans on both sides (not merely "some difference
+        // exists" -- both sides must carry at least one span).
+        let candidate = candidate_texts(&meeting_dir, OPERATION_ID);
+        let current_texts = turn_texts(
+            &meeting_dir,
+            &meeting.artifacts.current_transcript.as_ref().unwrap().relative_path,
+        );
+        let diff = diff_transcript_turns(&diff_inputs(&current_texts), &diff_inputs(&candidate));
+        assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
+        assert!(
+            diff.current.iter().any(|turn| !turn.spans.is_empty())
+                || diff.candidate.iter().any(|turn| !turn.spans.is_empty()),
+            "the baseline retry meeting must exercise the 'computed with differences' state"
+        );
+
+        // W3-B: the identical-candidate meeting diffs to zero spans on both
+        // sides -- "No word-level differences found.", not merely "computed".
+        let identical_dir = storage
+            .path()
+            .join("meetings")
+            .join(DIFF_IDENTICAL_MEETING_ID);
+        let identical_meeting = load_meeting(&identical_dir).unwrap();
+        let identical_current = turn_texts(
+            &identical_dir,
+            &identical_meeting
+                .artifacts
+                .current_transcript
+                .as_ref()
+                .unwrap()
+                .relative_path,
+        );
+        let identical_candidate = candidate_texts(&identical_dir, DIFF_IDENTICAL_OPERATION_ID);
+        let identical_diff = diff_transcript_turns(
+            &diff_inputs(&identical_current),
+            &diff_inputs(&identical_candidate),
+        );
+        assert_eq!(identical_diff.state, TranscriptRetryDiffState::Computed);
+        assert!(
+            identical_diff.current.iter().all(|turn| turn.spans.is_empty())
+                && identical_diff.candidate.iter().all(|turn| turn.spans.is_empty()),
+            "identical turn text on both sides must diff to zero spans"
+        );
+
+        // W3-B: the over-budget meeting's pending retry actually exceeds the
+        // diff engine's edit budget and skips, rather than merely being long.
+        let skipped_dir = storage.path().join("meetings").join(DIFF_SKIPPED_MEETING_ID);
+        let skipped_meeting = load_meeting(&skipped_dir).unwrap();
+        let skipped_current = turn_texts(
+            &skipped_dir,
+            &skipped_meeting
+                .artifacts
+                .current_transcript
+                .as_ref()
+                .unwrap()
+                .relative_path,
+        );
+        let skipped_candidate = candidate_texts(&skipped_dir, DIFF_SKIPPED_OPERATION_ID);
+        let skipped_diff = diff_transcript_turns(
+            &diff_inputs(&skipped_current),
+            &diff_inputs(&skipped_candidate),
+        );
+        assert_eq!(skipped_diff.state, TranscriptRetryDiffState::Skipped);
+
+        // W2-B: exactly the one trashed meeting is reported, and it is no
+        // longer readable at `meetings/<id>`.
+        let entries = list_trash_entries(&storage).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].meeting_id, TRASH_MEETING_ID);
+        assert_eq!(entries[0].title.as_deref(), Some("Fixture: Trash review"));
+        assert!(
+            !storage
+                .path()
+                .join("meetings")
+                .join(TRASH_MEETING_ID)
+                .exists()
+        );
+
+        // W2-C: the tampered meeting's pinned transcript digest no longer
+        // matches the bytes on disk, exactly the failure `export_meeting`
+        // withholds and names.
+        let tampered_dir = storage
+            .path()
+            .join("meetings")
+            .join(EXPORT_TAMPERED_MEETING_ID);
+        let tampered_meeting = load_meeting(&tampered_dir).unwrap();
+        assert!(
+            verify_artifact_ref(
+                &tampered_dir,
+                tampered_meeting.artifacts.current_transcript.as_ref().unwrap()
+            )
+            .is_err(),
+            "the tampered transcript must fail verification"
+        );
+
+        // W3-A / W2-A: the note meeting is `Ready` with an internally
+        // consistent, digest-named current note bound to its own transcript.
+        let note_dir = storage.path().join("meetings").join(NOTE_MEETING_ID);
+        let note_meeting = load_meeting(&note_dir).unwrap();
+        assert_eq!(note_meeting.lifecycle, MeetingLifecycle::Ready);
+        let note = note_meeting.artifacts.current_note.as_ref().unwrap();
+        note.validate().unwrap();
+        assert_eq!(
+            note.source_transcript_sha256,
+            note_meeting.artifacts.current_transcript.as_ref().unwrap().sha256
+        );
+        verify_artifact_ref(&note_dir, &note.json).unwrap();
+        verify_artifact_ref(&note_dir, &note.markdown).unwrap();
+
+        // I3: the read-only pre-meeting context file is present and readable.
+        let context_bytes = fs::read(note_dir.join("meeting-context.json")).unwrap();
+        let context: serde_json::Value = serde_json::from_slice(&context_bytes).unwrap();
+        assert_eq!(context["schema"], "meeting-context/1");
+        assert!(context["text"].as_str().unwrap().starts_with("Fixture:"));
     }
 
     fn assert_silent_wav(bytes: &[u8]) {
