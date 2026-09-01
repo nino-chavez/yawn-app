@@ -3,7 +3,6 @@ import {
   canOpenStart,
   captureActivity,
   captureActivityElapsedSeconds,
-  captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
   humanize,
