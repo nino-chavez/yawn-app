@@ -47,6 +47,7 @@
 //! is on so a removed meeting's pages are overwritten rather than left legible
 //! in free space, which matches how audio is treated everywhere else here.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
@@ -267,6 +268,28 @@ impl CorpusIndex {
         &mut self,
         projection: &LibraryProjection,
     ) -> Result<SyncOutcome, CorpusIndexError> {
+        self.replace_from_projection_excluding(projection, &HashSet::new())
+    }
+
+    /// Same as [`Self::replace_from_projection`], but a meeting named in
+    /// `excluded_meeting_ids` is written nowhere in this index -- no
+    /// `meeting` row, no `turn`, no `corpus_window`, no `corpus_window_segment`
+    /// -- as if its directory were not present under `meetings/` at all.
+    ///
+    /// This is the roadmap-I5 corpus-exclusion hook: a locked meeting's caller
+    /// (`sync_corpus_index` in the desktop crate, which is the layer that can
+    /// read `meeting_lock`) passes its id here. Because the whole table set is
+    /// deleted and re-inserted every call, excluding a meeting that was
+    /// indexed on a previous sync also *removes* its existing rows -- there is
+    /// no separate "remove" path to keep in sync with this one. The stale
+    /// vector prune below runs unchanged: a locked meeting's windows disappear
+    /// from `corpus_window`, so its vectors fail the `NOT EXISTS` check and are
+    /// pruned with everyone else's.
+    pub fn replace_from_projection_excluding(
+        &mut self,
+        projection: &LibraryProjection,
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> Result<SyncOutcome, CorpusIndexError> {
         let transaction = self.connection.transaction()?;
         // Explicit, in dependency order, rather than leaning on `ON DELETE
         // CASCADE`: the cascade only fires while `PRAGMA foreign_keys` is on,
@@ -306,6 +329,14 @@ impl CorpusIndex {
             )?;
             for row in projection.rows() {
                 let derived: DerivedRow<'_> = row.derived();
+                if excluded_meeting_ids.contains(derived.meeting_id) {
+                    // A locked meeting (or whatever else this caller excludes)
+                    // leaves nothing behind for this call to remove later --
+                    // its rows, and any vector standing on its old windows,
+                    // are what the delete-then-reinsert above and the prune
+                    // below take care of by simple absence.
+                    continue;
+                }
                 insert_meeting.execute(params![
                     derived.meeting_id,
                     derived.created_at_epoch_seconds,
@@ -555,11 +586,24 @@ impl CorpusIndex {
     /// included, because a transcript digest determines its turns. So an equal
     /// corpus digest means an equal index, and a sync can be skipped without
     /// reading a single row.
-    fn corpus_digest(projection: &LibraryProjection) -> String {
+    ///
+    /// `excluded_meeting_ids` must be the exact set `replace_from_projection_excluding`
+    /// would be given, and for the same reason: an excluded meeting is hashed as
+    /// though it were not in the corpus at all, so a meeting crossing into or out
+    /// of the set changes this digest and forces the real resync that actually
+    /// adds or removes its rows. Folding the set in some other way (say, hashing
+    /// a marker byte instead of skipping the row) would still change the digest
+    /// today, but would stop doing so the day two different exclusion sets
+    /// happened to produce the same marker sequence -- skipping the row entirely
+    /// has no such coincidence to worry about.
+    fn corpus_digest(projection: &LibraryProjection, excluded_meeting_ids: &HashSet<String>) -> String {
         let mut hasher = Sha256::new();
         hasher.update(CORPUS_INDEX_SCHEMA.as_bytes());
         for row in projection.rows() {
             let derived = row.derived();
+            if excluded_meeting_ids.contains(derived.meeting_id) {
+                continue;
+            }
             for part in [
                 Some(derived.meeting_id),
                 Some(derived.meeting_record_sha256),
@@ -588,7 +632,24 @@ impl CorpusIndex {
         &mut self,
         projection: &LibraryProjection,
     ) -> Result<Option<SyncOutcome>, CorpusIndexError> {
-        let digest = Self::corpus_digest(projection);
+        self.sync_if_changed_excluding(projection, &HashSet::new())
+    }
+
+    /// Same as [`Self::sync_if_changed`], but a meeting named in
+    /// `excluded_meeting_ids` is treated as absent from the corpus for both the
+    /// short-circuit digest and the write it guards -- see
+    /// [`Self::replace_from_projection_excluding`] for what "absent" removes.
+    ///
+    /// Passing a changed exclusion set on an otherwise-unchanged corpus is
+    /// exactly the case this exists for: a meeting that just became locked has
+    /// moved into the set with no file underneath it touched, and the digest
+    /// still has to notice and force the write that drops its rows.
+    pub fn sync_if_changed_excluding(
+        &mut self,
+        projection: &LibraryProjection,
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> Result<Option<SyncOutcome>, CorpusIndexError> {
+        let digest = Self::corpus_digest(projection, excluded_meeting_ids);
         // The column is nullable, so it must be read as an `Option` — reading a
         // NULL into `String` is a type error, not an absence.
         let stored: Option<String> = self
@@ -603,7 +664,7 @@ impl CorpusIndex {
         if stored.as_deref() == Some(digest.as_str()) {
             return Ok(None);
         }
-        let outcome = self.replace_from_projection(projection)?;
+        let outcome = self.replace_from_projection_excluding(projection, excluded_meeting_ids)?;
         self.connection.execute(
             "UPDATE index_identity SET corpus_digest = ?1 WHERE id = 0",
             params![digest],
@@ -1774,6 +1835,152 @@ pub(crate) mod tests {
                 .as_deref(),
             Some("After")
         );
+    }
+
+    // --- roadmap intake I5: corpus-index exclusion ---
+
+    /// The direct write path: an excluded meeting leaves nothing behind, not
+    /// even its words in the raw file, exactly like the deletion case above.
+    #[test]
+    fn excluding_a_meeting_writes_none_of_its_rows_or_words() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 100, &["quarkbeetle luminance"]);
+        fixture.meeting("meeting-b", 200, &["ordinary text"]);
+        let mut index = CorpusIndex::open(&fixture.storage).unwrap();
+        let excluded: HashSet<String> = ["meeting-a".to_owned()].into_iter().collect();
+
+        let outcome = index
+            .replace_from_projection_excluding(&fixture.projection(), &excluded)
+            .unwrap();
+        assert_eq!(outcome.meetings, 1, "only meeting-b was written");
+        assert_eq!(index.meeting_count().unwrap(), 1);
+        let listed: Vec<_> = index
+            .list(&ListRequest::default())
+            .unwrap()
+            .rows
+            .into_iter()
+            .map(|row| row.meeting_id)
+            .collect();
+        assert_eq!(listed, vec!["meeting-b"]);
+
+        let path = index.path().to_path_buf();
+        drop(index);
+        let raw = std::fs::read(&path).unwrap();
+        assert!(
+            find_bytes(&raw, b"quarkbeetle").is_none(),
+            "an excluded meeting's words are still legible in the database file"
+        );
+    }
+
+    /// Roadmap intake I5's other named requirement: locking a meeting removes
+    /// whatever the index already holds for it, on the very next sync -- with
+    /// no file underneath that meeting touched at all. `sync_if_changed`'s
+    /// ordinary short-circuit exists exactly to skip a write when nothing
+    /// moved; this proves the exclusion set is itself something that "moves"
+    /// for that purpose.
+    #[test]
+    fn a_meeting_that_becomes_excluded_loses_its_already_synced_rows() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 100, &["alpha beta"]);
+        fixture.meeting("meeting-b", 200, &["gamma"]);
+        let mut index = CorpusIndex::open(&fixture.storage).unwrap();
+        let projection = fixture.projection();
+
+        assert!(index.sync_if_changed(&projection).unwrap().is_some());
+        assert_eq!(index.meeting_count().unwrap(), 2);
+
+        // Nothing on disk changed -- meeting-a merely became locked, which
+        // this test stands in for by handing the same meeting id as an
+        // exclusion on an otherwise identical projection.
+        let now_locked: HashSet<String> = ["meeting-a".to_owned()].into_iter().collect();
+        let outcome = index
+            .sync_if_changed_excluding(&projection, &now_locked)
+            .unwrap();
+        assert!(
+            outcome.is_some(),
+            "a newly locked meeting did not move the digest, so its rows were never removed"
+        );
+        assert_eq!(index.meeting_count().unwrap(), 1);
+        let turns: i64 = index
+            .connection
+            .query_row("SELECT COUNT(*) FROM turn WHERE meeting_id = 'meeting-a'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(turns, 0, "meeting-a's turns outlived its exclusion");
+
+        // And skips again once the exclusion set is unchanged, same as any
+        // other unchanged sync.
+        assert_eq!(
+            index
+                .sync_if_changed_excluding(&projection, &now_locked)
+                .unwrap(),
+            None
+        );
+    }
+
+    /// Unlocking re-admits the meeting on the next rebuild: lifting the
+    /// exclusion is exactly as much a corpus change as imposing it was.
+    #[test]
+    fn lifting_a_meetings_exclusion_re_admits_it_on_the_next_sync() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 100, &["alpha beta"]);
+        let mut index = CorpusIndex::open(&fixture.storage).unwrap();
+        let projection = fixture.projection();
+
+        let locked: HashSet<String> = ["meeting-a".to_owned()].into_iter().collect();
+        index
+            .sync_if_changed_excluding(&projection, &locked)
+            .unwrap();
+        assert_eq!(index.meeting_count().unwrap(), 0);
+
+        let outcome = index.sync_if_changed(&projection).unwrap();
+        assert!(
+            outcome.is_some(),
+            "lifting the exclusion did not move the digest, so the meeting stayed absent"
+        );
+        assert_eq!(index.meeting_count().unwrap(), 1);
+    }
+
+    /// A vector standing on an excluded meeting's window is pruned the same
+    /// way a vector standing on a deleted meeting's window already is
+    /// (`a_removed_meeting_leaves_no_vector_behind`, below) -- exclusion goes
+    /// through the identical delete-then-reinsert path, so this pins that the
+    /// two really do share the mechanism rather than merely looking alike.
+    #[test]
+    fn excluding_a_meeting_prunes_its_vectors_too() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 100, &["alpha beta"]);
+        fixture.meeting("meeting-b", 200, &["gamma delta"]);
+        let mut index = synced(&fixture);
+        let identity = EmbedderIdentity::measured();
+        let pending = index.pending_windows(&identity, 0).unwrap();
+        let batch: Vec<_> = pending
+            .iter()
+            .enumerate()
+            .map(|(position, window)| offer(window, axis(position)))
+            .collect();
+        index.store_window_vectors(&identity, &batch).unwrap();
+        assert_eq!(index.vector_coverage(&identity).unwrap().embedded, 2);
+
+        // Same shape as `a_meeting_that_becomes_excluded_loses_its_already_synced_rows`
+        // above: nothing on disk moved, only the exclusion set did.
+        let locked: HashSet<String> = ["meeting-a".to_owned()].into_iter().collect();
+        index
+            .sync_if_changed_excluding(&fixture.projection(), &locked)
+            .unwrap();
+
+        let coverage = index.vector_coverage(&identity).unwrap();
+        assert_eq!((coverage.windows, coverage.embedded), (1, 1));
+        let orphans: i64 = index
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM corpus_window_vector WHERE meeting_id = 'meeting-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphans, 0, "a locked meeting's vector outlived its window");
     }
 
     // --- windows and vectors ---

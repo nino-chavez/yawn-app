@@ -80,6 +80,13 @@ const EXPORT_TAMPERED_MEETING_ID: &str = "77777777-7777-4777-8777-777777777777";
 /// citation map, and the read-only pre-meeting context block.
 const NOTE_MEETING_ID: &str = "33333333-3333-4333-8333-333333333333";
 
+/// Roadmap Wave 4 / I5: a meeting locked via the real `meeting-lock/1`
+/// sidecar shape, exercising the locked library row — title and date
+/// visible, no note preview, the shell's "Locked" marker. See
+/// `seed_locked_meeting` for why this is a barrier-only fixture state, never
+/// an unlock.
+const LOCKED_MEETING_ID: &str = "88888888-8888-4888-8888-888888888888";
+
 /// Sample rate the capture-pause schema is measured in (`capture_quality.rs`'s
 /// `CAPTURE_RATE`) — a normalized processing rate, independent of the
 /// fixture's own 8 kHz synthetic WAV sample rate above.
@@ -358,6 +365,7 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
     seed_trash_meeting(&storage)?;
     seed_export_tampered_meeting(&storage)?;
     seed_note_meeting(&storage)?;
+    seed_locked_meeting(&storage)?;
 
     let marker = json!({
         "schema": "synthetic-fixture-evidence/1",
@@ -379,9 +387,10 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
             "trashed meeting pending restore",
             "export withheld-artifact manifest",
             "generated note row preview and reverse citation map",
-            "read-only pre-meeting context"
+            "read-only pre-meeting context",
+            "locked meeting behind the local barrier"
         ],
-        "note": "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time."
+        "note": "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time. One meeting (LOCKED_MEETING_ID) is locked via the meeting-lock/1 sidecar; this fixture can only show the locked barrier, never an unlock, because the real confirmation is Touch ID or the login password (live-run evidence by design) and its scripted stand-in is compiled only under cfg(test)."
     });
     write_new(
         &storage.path().join("SYNTHETIC_FIXTURE.json"),
@@ -786,6 +795,64 @@ fn seed_note_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     Ok(())
 }
 
+/// Roadmap Wave 4 / I5's fixture follow-up: a meeting locked via the real
+/// `meeting-lock/1` sidecar shape (`apps/desktop/src-tauri/src/meeting_lock.rs`
+/// — private to the desktop crate, so this fixture writes the file directly
+/// rather than importing it, exactly like the pre-meeting context sidecar
+/// above). Exercises the locked library row: title and date still visible
+/// (the first turn below is long enough to derive one — `meeting_title`'s
+/// `MIN_TITLE_WORDS` is 6 words), no note preview (this meeting carries no
+/// note at all, so there is nothing to suppress a *difference* against —
+/// see the doc comment below for what that leaves unproven), and the shell's
+/// "Locked" marker once `meeting_lock::read` sees the sidecar.
+///
+/// **This can only stage the barrier, never an unlock, and that is the
+/// honest, sufficient shape for a fixture.** The real confirmation
+/// (`operator_confirmation.rs`'s `DeviceOwnerConfirmation`) draws a system
+/// Touch ID/password panel and is deliberately live-run evidence only —
+/// nothing in this repository proves a finger was read. Its scripted stand-in
+/// (`ConfirmsOperator::fake::FakeConfirmation`) exists only to drive that
+/// trait in `cargo test` and is compiled under `#[cfg(test)]`, so it is not
+/// present in the packaged Fixture app this binary seeds for — there is no
+/// build-time seam here to wire it into a real `.app`. A reviewer who opens
+/// this meeting in the Fixture app sees the same locked barrier a real build
+/// would show and cannot get further, which is exactly what a lock is for.
+///
+/// One thing this fixture state does **not** independently prove: that
+/// unlocking would reveal a note preview a locked read currently suppresses
+/// (this meeting has no note, locked or not). That distinction — an unlocked
+/// row previewing its note and the identical meeting locked suppressing it —
+/// is proven directly against the real gate in
+/// `library_reader::tests::a_locked_row_carries_no_note_preview_while_the_same_meeting_unlocked_does`
+/// (`apps/desktop/src-tauri/src/library_reader.rs`), not by this fixture.
+fn seed_locked_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let turns: &[(&str, &str)] = &[
+        (
+            "Me",
+            "Fixture: this meeting is locked behind Yawn's local barrier.",
+        ),
+        (
+            "Them",
+            "Fixture: the title and date still show; the note preview does not.",
+        ),
+    ];
+    let source = transcript_bytes_tagged(turns, "synthetic-fixture-locked");
+    let shell = seed_plain_meeting(storage, LOCKED_MEETING_ID, CREATED_AT + 6, source)?;
+    write_meeting_record(
+        &shell,
+        LOCKED_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    write_new(
+        &shell.meeting_dir.join("meeting-lock.json"),
+        br#"{"schema":"meeting-lock/1","locked":true}"#,
+    )?;
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SyntheticFixtureMarker {
@@ -1157,9 +1224,10 @@ fn validate_synthetic_marker(root: &Path) -> Result<(), FixtureError> {
                 "export withheld-artifact manifest",
                 "generated note row preview and reverse citation map",
                 "read-only pre-meeting context",
+                "locked meeting behind the local barrier",
             ]
         || marker.note
-            != "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time."
+            != "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time. One meeting (LOCKED_MEETING_ID) is locked via the meeting-lock/1 sidecar; this fixture can only show the locked barrier, never an unlock, because the real confirmation is Touch ID or the login password (live-run evidence by design) and its scripted stand-in is compiled only under cfg(test)."
     {
         return Err(FixtureError::InvalidMarker);
     }
@@ -1427,6 +1495,7 @@ mod tests {
         project_recording_device,
     };
     use local_meeting_notes_session_core::meeting::verify_artifact_ref;
+    use local_meeting_notes_session_core::meeting_title::derived_title;
     use local_meeting_notes_session_core::meeting_trash::list_trash_entries;
     use local_meeting_notes_session_core::model_store::{
         ModelCatalogSchema, TranscriptModel, TranscriptModelFile, active_model,
@@ -1702,6 +1771,55 @@ mod tests {
         let context: serde_json::Value = serde_json::from_slice(&context_bytes).unwrap();
         assert_eq!(context["schema"], "meeting-context/1");
         assert!(context["text"].as_str().unwrap().starts_with("Fixture:"));
+    }
+
+    /// Roadmap Wave 4 / I5: the fixture's one locked meeting, checked against
+    /// the parts of the locked-row claim this crate can verify directly --
+    /// the real `meeting-lock/1` sidecar shape, a verifying transcript, and a
+    /// title `meeting_title::derived_title` (the same function the real
+    /// library row uses) actually produces, so "title visible" is a fact
+    /// about real product logic and not a hand-asserted one.
+    ///
+    /// What this test does not and cannot prove: that a locked read actually
+    /// suppresses a note preview, refuses to open, or shows the shell's
+    /// "Locked" marker. `meeting_lock::read`, `permits`, and the row's
+    /// `locked`/`note_preview` fields all live in the desktop crate, which
+    /// this session-core binary does not and should not depend on --
+    /// see the doc comment on `seed_locked_meeting` for exactly where that
+    /// gate is proven instead.
+    #[test]
+    fn seed_produces_the_wave_4_locked_meeting_state() {
+        let temp = TempDir::new().unwrap();
+        let root = target(&temp);
+        let repository = repo(&temp);
+        seed(&root, repository).unwrap();
+        let storage = StorageRoot::create(&root, &temp.path().join("repository")).unwrap();
+
+        let locked_dir = storage.path().join("meetings").join(LOCKED_MEETING_ID);
+        let locked_meeting = load_meeting(&locked_dir).unwrap();
+        assert_eq!(locked_meeting.lifecycle, MeetingLifecycle::TranscriptReady);
+        verify_record_artifacts(&locked_dir, &locked_meeting).unwrap();
+
+        // The real `meeting-lock/1` shape `meeting_lock.rs`'s `write` produces
+        // and `read` parses -- this fixture cannot call either function
+        // (private to the desktop crate), so it is pinned against the exact
+        // bytes on disk instead.
+        let lock_bytes = fs::read(locked_dir.join("meeting-lock.json")).unwrap();
+        let lock: serde_json::Value = serde_json::from_slice(&lock_bytes).unwrap();
+        assert_eq!(lock["schema"], "meeting-lock/1");
+        assert_eq!(lock["locked"], true);
+
+        // Title visible: run the real turn text through the real
+        // `derived_title`, rather than asserting the fixture "looks long
+        // enough" by eye.
+        let transcript = locked_meeting.artifacts.current_transcript.as_ref().unwrap();
+        let turns = turn_texts(&locked_dir, &transcript.relative_path);
+        let title = derived_title(turns.iter().map(|text| (text.as_str(), false)));
+        assert!(
+            title.is_some(),
+            "the locked meeting's first turn must be long enough to derive a title, \
+             so the locked row has a title to show rather than only a date"
+        );
     }
 
     fn assert_silent_wav(bytes: &[u8]) {
