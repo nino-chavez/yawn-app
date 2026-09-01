@@ -359,6 +359,16 @@ integration). Facts the merges established:
   wholesale, resetting WebKit undo history every 900 ms tick. That is now
   repaired by in-place DOM patching (ui/dom-patch.mjs) with a WKWebView
   verification harness at apps/desktop/ui-harness/.
+- Confirming that repair live in the packaged preview bundle (2026-09-01)
+  surfaced a second, independent D9 blocker: the app menu carried only the
+  Yawn submenu, so macOS had no key-equivalent route for cmd-Z/X/C/V/A into
+  the webview — undo stayed unreachable from the keyboard even with its
+  stack preserved. The standard Edit submenu (predefined items binding the
+  native selectors) is now installed in main.rs. Observed in the rebuilt
+  preview bundle: cmd-Z reverts typing across 900 ms poll ticks, including
+  native autocorrect reversal, and cmd-A selects all. The harness cannot
+  catch this class — it drives undo via execCommand, which bypasses menus —
+  so keyboard-route regressions stay a packaged-app check.
 - The packaged-preview fixture now stages the Wave 1–3 states (diff computed
   /identical/skipped, pause spans, a trashed meeting, export withholding, a
   validator-passing note with row preview, citations, and context), each
@@ -371,8 +381,10 @@ states — extend the fixture first); the real Touch ID prompt, password
 fallback, and cancel-returns-to-locked; a real recorded meeting exercising
 pause and the elapsed-vs-integrity-floor interaction; reopening a restored
 meeting from Trash; opening an export bundle with no Yawn installed; and the
-D9 audit's five-item live checklist (undo depth now expected to survive
-ticks — verify).
+D9 audit's five-item live checklist (undo across ticks was observed live in
+the preview bundle on 2026-09-01, Edit menu in place; the five listed items
+— word-select, option-arrow, smart quotes, spellcheck, context menu — remain
+owed).
 
 Remaining decisions and design intake: the cross-meeting exact-search call,
 D2's stated capture speed budget, D5 (three-depth evidence disclosure:
