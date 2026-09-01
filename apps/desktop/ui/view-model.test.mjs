@@ -15,6 +15,7 @@ import {
   errorRecoveryPresentation,
   humanize,
   libraryRecoveryPresentation,
+  libraryRowPreview,
   localVocabularyPresentation,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
@@ -615,6 +616,20 @@ test("unavailable library keeps its backend message and offers a real refresh", 
   assert.equal(recovery.detail, "The local library is unavailable. Reopen the app and try again.");
   assert.deepEqual(recovery.action, { action: "refresh-library", label: "Check again" });
   assert.equal(libraryRecoveryPresentation({ state: "empty", rows: [] }), null);
+});
+
+test("a row's preview is the backend's own sentence, trimmed, or nothing at all", () => {
+  // Design intake D1: real generated content only, never a placeholder line.
+  assert.equal(libraryRowPreview({ notePreview: "We reviewed Q3 pricing." }), "We reviewed Q3 pricing.");
+  assert.equal(libraryRowPreview({ notePreview: "  padded on both sides  " }), "padded on both sides");
+  // No admitted note, a blank field, or the field simply missing all read the
+  // same way: no preview line, never invented copy standing in for one.
+  assert.equal(libraryRowPreview({ notePreview: null }), null);
+  assert.equal(libraryRowPreview({ notePreview: "" }), null);
+  assert.equal(libraryRowPreview({ notePreview: "   " }), null);
+  assert.equal(libraryRowPreview({}), null);
+  assert.equal(libraryRowPreview(null), null);
+  assert.equal(libraryRowPreview(undefined), null);
 });
 
 test("only exact backend recovery errors receive contextual actions", () => {

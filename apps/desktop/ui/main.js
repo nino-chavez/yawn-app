@@ -7,6 +7,7 @@ import {
   errorRecoveryPresentation,
   humanize,
   libraryRecoveryPresentation,
+  libraryRowPreview,
   localVocabularyPresentation,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
@@ -458,15 +459,19 @@ function renderLibrary(library) {
   }
   return `
     <div class="meeting-list" role="list">
-      ${library.rows.map((row) => `
+      ${library.rows.map((row) => {
+        const preview = libraryRowPreview(row);
+        return `
         <button class="meeting-row" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}">
           <span>
             <span class="meeting-row-title">${escapeHtml(row.label || `Meeting · ${dateLabel(row.createdAtEpochSeconds)}`)}</span>
+            ${preview ? `<span class="meeting-row-preview">${escapeHtml(preview)}</span>` : ""}
             <span class="meeting-row-meta">${escapeHtml(dateLabel(row.createdAtEpochSeconds))}${row.transcriptAvailable ? " · transcript available" : " · note only"}</span>
           </span>
           <span class="meeting-row-arrow" aria-hidden="true">›</span>
         </button>
-      `).join("")}
+      `;
+      }).join("")}
     </div>
   `;
 }

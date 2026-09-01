@@ -161,6 +161,18 @@ pub(crate) struct LibrarySnapshotRow {
     pub(crate) folder_id: Option<String>,
     pub(crate) created_at_epoch_seconds: u64,
     pub(crate) transcript_available: bool,
+    /// Design intake D1: the first sentence of the note's own overview, so a
+    /// row previews the meeting's outcome and not only its title.
+    ///
+    /// `None` whenever this row has no current admitted note, or when the
+    /// same digest-verified projection its other fields already trust
+    /// cannot produce one -- never derived from the transcript, the
+    /// operator's own note, or pre-meeting context. Those are real content
+    /// about the meeting, but they are not the note's claimed outcome, and
+    /// this field exists to promise exactly that. The governing constraint
+    /// is "real generated content only; never a placeholder line", so an
+    /// absent field renders no preview line at all, not a filler sentence.
+    pub(crate) note_preview: Option<String>,
 }
 
 /// Operator title, then the meeting's own opening line, then nothing.
@@ -170,6 +182,89 @@ pub(crate) struct LibrarySnapshotRow {
 /// `library_metadata` has no writer for, so the fallback was never a fallback.
 fn label_for(row: &LibraryRow) -> (Option<String>, &'static str) {
     meeting_title::label(row.title(), row.derived_title())
+}
+
+/// Design intake D1's row preview, cut from the same digest-verified claim
+/// projection `open_note` already trusts.
+///
+/// `note_claims` returns the meeting's claims in ordinal order, and the
+/// worker admits every overview sentence (`ClaimType::Summary`) before any
+/// decision, follow-up, or open question (`worker/note_validator.py`'s
+/// `admit_note_claims`), so the first `Summary` this finds is the note's
+/// opening overview sentence. A meeting with no current admitted note
+/// returns no claims at all, and any verification failure along the way
+/// (a stale snapshot, an unopenable hit) returns `None` rather than a
+/// partial or stale-feeling preview — the same "field absent, not a
+/// placeholder" rule the row itself follows.
+fn note_preview_for(projection: &LibraryProjection, meeting_id: &str) -> Option<String> {
+    let hits = projection.note_claims(meeting_id).ok()?;
+    for hit in hits {
+        match projection.open_snapshot(&hit) {
+            Ok(OpenedLibraryHit::Claim {
+                claim_type: ClaimType::Summary,
+                claim,
+                ..
+            }) => return Some(first_sentence_preview(&claim)),
+            Ok(_) => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// A library row promises a preview short enough to read as a caption, not
+/// long enough to double as a second title.
+const NOTE_PREVIEW_MAX_CHARS: usize = 140;
+
+/// The claim's first sentence, then capped and cut at a word boundary.
+///
+/// Every admitted overview claim is already one short, plain sentence by
+/// construction (the worker's synthesis prompt asks for "2 to 4 plain
+/// sentences", one per claim), so this mostly returns the claim text
+/// unchanged. The sentence split exists as a guard against an unusually long
+/// or multi-sentence claim reaching the row, not as the primary shaping step.
+fn first_sentence_preview(claim_text: &str) -> String {
+    let trimmed = claim_text.trim();
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut end = chars.len();
+    for (index, ch) in chars.iter().enumerate() {
+        if matches!(ch, '.' | '!' | '?') {
+            let at_boundary = chars
+                .get(index + 1)
+                .is_none_or(|next| next.is_whitespace());
+            if at_boundary {
+                end = index + 1;
+                break;
+            }
+        }
+    }
+    let sentence: String = chars[..end].iter().collect();
+    truncate_at_word_boundary(sentence.trim(), NOTE_PREVIEW_MAX_CHARS)
+}
+
+/// Cuts `text` to at most `max_chars`, backing up to the previous word
+/// boundary rather than splitting a word, then marks the cut with an
+/// ellipsis. Text already within the cap is returned unchanged -- a complete
+/// sentence never gains a trailing ellipsis it did not earn.
+fn truncate_at_word_boundary(text: &str, max_chars: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max_chars {
+        return text.to_owned();
+    }
+    let mut cut = max_chars;
+    while cut > 0 && !chars[cut - 1].is_whitespace() {
+        cut -= 1;
+    }
+    if cut == 0 {
+        // No whitespace at all inside the cap (one very long word): a hard
+        // cut beats an empty preview.
+        cut = max_chars;
+    }
+    let mut truncated: String = chars[..cut].iter().collect();
+    let trimmed_len = truncated.trim_end().len();
+    truncated.truncate(trimmed_len);
+    truncated.push('…');
+    truncated
 }
 
 #[derive(Debug, Serialize)]
@@ -628,15 +723,32 @@ impl LibraryReader {
                 )
             })
             .collect();
+        // Design intake D1: every row's note preview is read before any
+        // snapshot handle is minted below. `note_claims` clears the
+        // projection's own sealed-hit store on every call -- documented on
+        // `open_note_current` as "opening a note establishes the next
+        // evidence-response boundary" -- so interleaving it with
+        // `meeting_handle` calls per row would clear the *previous* rows'
+        // just-minted handles the moment a later row's preview was read.
+        // Reading every preview first, then minting every handle afterward
+        // with no further clears to come, leaves that store in exactly the
+        // state it was in before this field existed.
+        let note_previews: Vec<Option<String>> = source_rows
+            .iter()
+            .map(|(meeting_id, ..)| note_preview_for(&self.projection, meeting_id))
+            .collect();
         let mut rows = Vec::new();
         for (
-            meeting_id,
-            label,
-            label_source,
-            folder_id,
-            created_at_epoch_seconds,
-            transcript_available,
-        ) in source_rows
+            (
+                meeting_id,
+                label,
+                label_source,
+                folder_id,
+                created_at_epoch_seconds,
+                transcript_available,
+            ),
+            note_preview,
+        ) in source_rows.into_iter().zip(note_previews)
         {
             let Ok(hit) = self.projection.meeting_handle(&meeting_id) else {
                 return Self::unavailable_snapshot();
@@ -649,6 +761,7 @@ impl LibraryReader {
                 folder_id,
                 created_at_epoch_seconds,
                 transcript_available,
+                note_preview,
             });
         }
         LibrarySnapshot {
@@ -2574,6 +2687,149 @@ mod tests {
             stale.turns_cited.is_empty(),
             "a stale note must carry no reverse citations, exactly like it carries no claims"
         );
+    }
+
+    /// Projects one overview (`summary`) claim ahead of one decision claim,
+    /// over [`claims_fixture`]'s transcript -- the same ordinal precedence
+    /// `worker/note_validator.py`'s `admit_note_claims` gives a real note
+    /// (every overview sentence admitted before any decision, action,
+    /// proposal, or question), which is what lets design intake D1's row
+    /// preview trust "first `Summary` claim" as "the overview's first
+    /// sentence."
+    struct SummaryProjector;
+
+    impl NoteProjector for SummaryProjector {
+        fn project(
+            &self,
+            request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+        ) -> Result<
+            Vec<u8>,
+            local_meeting_notes_session_core::note_projection::ProjectTransportError,
+        > {
+            let alpha_sha256 = format!("{:x}", sha2::Sha256::digest(b"alpha"));
+            let summary_text = "This meeting covered the alpha rollout timeline in detail. It also touched on staffing.";
+            let decision_text = "decide on alpha";
+            let summary_sha256 = format!("{:x}", sha2::Sha256::digest(summary_text.as_bytes()));
+            let decision_sha256 = format!("{:x}", sha2::Sha256::digest(decision_text.as_bytes()));
+            let locator_alpha =
+                format!("{{\"turn\":0,\"start\":0,\"end\":5,\"text_sha256\":\"{alpha_sha256}\"}}");
+            let claim_summary = format!(
+                "{{\"claim_ordinal\":0,\"claim_sha256\":\"{summary_sha256}\",\"claim_type\":\"summary\",\"evidence_state\":\"located\",\"claim\":\"{summary_text}\",\"locators\":[{locator_alpha}]}}"
+            );
+            let claim_decision = format!(
+                "{{\"claim_ordinal\":1,\"claim_sha256\":\"{decision_sha256}\",\"claim_type\":\"decision\",\"evidence_state\":\"located\",\"claim\":\"{decision_text}\",\"locators\":[{locator_alpha}]}}"
+            );
+            Ok(format!(
+                "{{\"schema\":\"note-projection-result/1\",\"request_id\":\"{}\",\"operation\":\"note.project\",\"outcome\":\"succeeded\",\"projection\":{{\"schema\":\"note-claim-projection/1\",\"note_json_sha256\":\"{}\",\"note_markdown_sha256\":\"{}\",\"transcript_sha256\":\"{}\",\"claims\":[{claim_summary},{claim_decision}]}},\"failure\":null}}\n",
+                request.request_id,
+                request.note_json_sha256,
+                request.note_markdown_sha256,
+                request.transcript_sha256,
+            )
+            .into_bytes())
+        }
+    }
+
+    /// Design intake D1, the present case: a row for a meeting with a current
+    /// admitted note carries the overview's first sentence, read from the
+    /// same digest-verified claim projection `open_note` already trusts.
+    #[test]
+    fn library_row_carries_the_note_overviews_first_sentence_as_its_preview() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(SummaryProjector),
+        )
+        .unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(
+            snapshot.rows[0].note_preview.as_deref(),
+            Some("This meeting covered the alpha rollout timeline in detail.")
+        );
+    }
+
+    /// Design intake D1, the absent case: a meeting with no current admitted
+    /// note (here, `TranscriptReady`, produced by [`fixture`] with no
+    /// `current_note`) carries no preview field at all -- never a
+    /// placeholder line standing in for one.
+    #[test]
+    fn library_row_carries_no_preview_when_the_meeting_has_no_current_note() {
+        let fixture = fixture(
+            AudioState::Released,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let row = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert_eq!(row.note_preview, None);
+    }
+
+    /// Design intake D1, the failed-verification case. A `Ready` meeting's
+    /// claims are projected and digest-verified once, at rebuild time --
+    /// there is no separate "list the row, then verify the note" step for a
+    /// preview to fall behind -- so a projection that cannot be verified
+    /// never reaches the point of producing a row with a blank or guessed
+    /// preview. It fails the whole rebuild instead.
+    #[test]
+    fn a_readys_meeting_note_that_cannot_be_verified_fails_the_whole_rebuild() {
+        let fixture = claims_fixture();
+        // The default projector (`UnavailableProjector`) always fails to
+        // transport, the same shape a broken or refused verification takes.
+        match LibraryProjection::rebuild(&fixture.storage, Default::default()) {
+            Err(error) => assert_eq!(error, LibraryReadError::ArtifactUnavailable),
+            Ok(_) => panic!("an unavailable projector must not silently produce an empty note"),
+        }
+    }
+
+    /// `note_preview_for` fails closed on a lookup it cannot resolve against
+    /// this exact snapshot, rather than guessing -- the same rule a stale or
+    /// mismatched handle follows everywhere else in this module.
+    #[test]
+    fn note_preview_for_returns_none_when_the_meeting_id_does_not_resolve() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(SummaryProjector),
+        )
+        .unwrap();
+        assert_eq!(note_preview_for(&projection, "not-a-real-meeting-id"), None);
+    }
+
+    #[test]
+    fn first_sentence_preview_leaves_a_short_single_sentence_claim_unchanged() {
+        assert_eq!(
+            first_sentence_preview("We reviewed Q3 pricing."),
+            "We reviewed Q3 pricing."
+        );
+    }
+
+    #[test]
+    fn first_sentence_preview_stops_at_the_first_sentence_terminator() {
+        assert_eq!(
+            first_sentence_preview(
+                "First point stands alone. Second point never appears here."
+            ),
+            "First point stands alone."
+        );
+    }
+
+    #[test]
+    fn first_sentence_preview_caps_a_long_run_on_claim_at_a_word_boundary_with_an_ellipsis() {
+        let long = "word ".repeat(40).trim().to_owned();
+        let preview = first_sentence_preview(&long);
+        assert!(preview.ends_with('…'));
+        assert!(preview.chars().count() <= NOTE_PREVIEW_MAX_CHARS + 1);
+        let without_ellipsis = preview.trim_end_matches('…');
+        assert!(
+            long.starts_with(without_ellipsis),
+            "the cut text must be an exact prefix of the source, never a mid-word slice"
+        );
+        assert!(!without_ellipsis.ends_with(' '));
     }
 
     #[test]
