@@ -36,6 +36,7 @@ case "$mode" in
   capture) run capture scenario.js ;;
   library) run library scenario.js ;;
   smoke) run library smoke.js ;;
+  sheets) run library sheets.js ;;
   all)
     echo "== capture: operator-note undo across poll ticks =="
     run capture scenario.js
@@ -43,6 +44,8 @@ case "$mode" in
     run library scenario.js
     echo "== smoke: interactive flows under the in-place patcher =="
     run library smoke.js
+    echo "== sheets: entrance animation fires once across repeated render ticks =="
+    run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|library|smoke|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|library|smoke|sheets|all]" >&2; exit 2 ;;
 esac

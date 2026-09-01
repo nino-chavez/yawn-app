@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|library|smoke|all]
+    ./run.sh [capture|library|smoke|sheets|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON
@@ -36,7 +36,13 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   select, meeting note autosave, rename and vocabulary sheets, view
   switches) and reports per-step booleans plus any page errors collected by
   the stub. Healthy: every step `ok`, `errors` empty.
-- `all` — the three in sequence.
+- `sheets` — W9-B's motion vocabulary: opens the start sheet, counts
+  `animationstart` events on `.modal-backdrop` / `.start-sheet`, then fires
+  six render() ticks (each attestation checkbox clicked twice) while the
+  sheet stays open. Healthy: `backdropAnimationStarts`/`dialogAnimationStarts`
+  both stay at 1 through `animationStartsAfterTicks`, both node identities
+  survive every tick, and the sheet closes with `.modal-backdrop` gone.
+- `all` — the four in sequence.
 
 ## Files
 
@@ -49,7 +55,7 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   active-recording snapshot; `?mode=library` serves an idle snapshot with one
   finished meeting and a two-turn transcript. Also collects page errors on
   `window.__errors`.
-- `scenario.js`, `smoke.js` — scenario bodies for the runner.
+- `scenario.js`, `smoke.js`, `sheets.js` — scenario bodies for the runner.
 
 ## Limits
 
