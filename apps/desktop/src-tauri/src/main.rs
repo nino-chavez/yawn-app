@@ -2286,38 +2286,73 @@ fn tray_presentation(
     }
 }
 
+/// Whether the tray's "Stop recording" item should be present — the same
+/// two `CaptureState` values `stop_meeting` itself requires (see its
+/// refusal there: "No recording is ready to stop."). Kept separate from
+/// `tray_presentation` (glyph/tooltip) so the two stay independently owned
+/// and independently testable.
+fn tray_shows_stop_recording(capture: CaptureState) -> bool {
+    matches!(capture, CaptureState::Recording | CaptureState::Paused)
+}
+
 /// Keeps the always-present menubar item current from the reducer. A 1 s
 /// poll over the model is deliberate: every state change already lands in
 /// the model under its lock, and the menubar only needs to follow it, not
 /// participate in it. AppKit updates run on the main thread.
-fn spawn_tray_updater(app: AppHandle, tray: tauri::tray::TrayIcon) {
+///
+/// W8-A: the same tick keeps the tray's "Stop recording" item in sync too,
+/// via `tray_shows_stop_recording`. It is inserted into or removed from
+/// `menu` only on the tick where that fact actually changes — the menu is
+/// never rebuilt from scratch, and `tray_presentation`'s own glyph/tooltip
+/// update below is untouched by this.
+fn spawn_tray_updater(
+    app: AppHandle,
+    tray: tauri::tray::TrayIcon,
+    menu: tauri::menu::Menu<tauri::Wry>,
+    stop_item: tauri::menu::MenuItem<tauri::Wry>,
+) {
     let _ = std::thread::Builder::new()
         .name("menubar-state".into())
         .spawn(move || {
             let mut last: Option<(&'static str, &'static str)> = None;
+            let mut last_shows_stop: Option<bool> = None;
             loop {
                 std::thread::sleep(Duration::from_secs(1));
                 let state = app.state::<ApplicationState>();
-                let presentation = {
+                let (presentation, shows_stop) = {
                     let Ok(model) = state.model.lock() else {
                         continue;
                     };
-                    tray_presentation(
-                        model.reducer.startup(),
-                        model.reducer.capture(),
-                        model.degraded,
+                    (
+                        tray_presentation(
+                            model.reducer.startup(),
+                            model.reducer.capture(),
+                            model.degraded,
+                        ),
+                        tray_shows_stop_recording(model.reducer.capture()),
                     )
                 };
-                if last == Some(presentation) {
-                    continue;
+                if last != Some(presentation) {
+                    last = Some(presentation);
+                    let tray = tray.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        let (glyph, words) = presentation;
+                        let _ = tray.set_title(Some(glyph));
+                        let _ = tray.set_tooltip(Some(words));
+                    });
                 }
-                last = Some(presentation);
-                let tray = tray.clone();
-                let _ = app.run_on_main_thread(move || {
-                    let (glyph, words) = presentation;
-                    let _ = tray.set_title(Some(glyph));
-                    let _ = tray.set_tooltip(Some(words));
-                });
+                if last_shows_stop != Some(shows_stop) {
+                    last_shows_stop = Some(shows_stop);
+                    let menu = menu.clone();
+                    let stop_item = stop_item.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        if shows_stop {
+                            let _ = menu.insert(&stop_item, 1);
+                        } else {
+                            let _ = menu.remove(&stop_item);
+                        }
+                    });
+                }
             }
         });
 }
@@ -7170,7 +7205,38 @@ fn main() {
                 true,
                 None::<&str>,
             )?;
-            let menu = tauri::menu::MenuBuilder::new(app).item(&open).build()?;
+            // W8-A: the tray becomes minimally state-aware. "Stop recording"
+            // is built once here but starts OUT of `menu` below — it is
+            // inserted or removed by `spawn_tray_updater` as CaptureState
+            // crosses the Recording/Paused boundary (`tray_shows_stop_recording`),
+            // so it is truly absent otherwise, not merely disabled (muda has
+            // no per-item visibility toggle, only membership). Its handler
+            // below calls `stop_meeting` directly — same validation, same
+            // capture-task Stop command, same honest failure handling as the
+            // in-window Stop action, which carries no confirmation sheet
+            // either (see `stopRecording` in apps/desktop/ui/main.js).
+            let stop = tauri::menu::MenuItem::with_id(
+                app,
+                "stop-recording",
+                "Stop recording",
+                true,
+                None::<&str>,
+            )?;
+            let menu = tauri::menu::MenuBuilder::new(app)
+                .item(&open)
+                .separator()
+                // The tray's Quit is not a second path that has to be kept
+                // in sync with ⌘Q — `.quit_with_text` builds the same
+                // native `muda::PredefinedMenuItem::quit` the app menu's
+                // `.quit()` above already uses, bound directly to macOS's
+                // `terminate:` action. No on_menu_event arm fires for it:
+                // the OS handles it before a Tauri menu event ever exists,
+                // so quit-during-recording behaves exactly as ⌘Q already
+                // does (interrupted-capture recovery on the next launch;
+                // see `scan_and_recover`) — this packet adds no new
+                // quit-time confirmation.
+                .quit_with_text("Quit Yawn")
+                .build()?;
             let tray = tauri::tray::TrayIconBuilder::with_id("menubar-item")
                 .title("○")
                 .tooltip("Nothing is recording")
@@ -7178,10 +7244,12 @@ fn main() {
                 .on_menu_event(|app, event| {
                     if event.id() == "open-window" {
                         show_and_focus_active_window(app);
+                    } else if event.id() == "stop-recording" {
+                        let _ = stop_meeting(app.clone());
                     }
                 })
                 .build(app)?;
-            spawn_tray_updater(app.handle().clone(), tray);
+            spawn_tray_updater(app.handle().clone(), tray, menu, stop);
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("meeting-runtime-startup".into())
@@ -10755,6 +10823,35 @@ mod tests {
         for capture in [CaptureState::Idle, CaptureState::TranscriptReady] {
             let (glyph, _) = tray_presentation(Ready, capture, false);
             assert_eq!(glyph, "○");
+        }
+    }
+
+    /// W8-A: "Stop recording" is present in the tray menu for exactly the
+    /// two states `stop_meeting` itself accepts — no more, no less. Every
+    /// other `CaptureState` (including `Stopping`, `Arming`, and the two
+    /// failure/recovery states) must read false, or the tray would offer a
+    /// stop that the command would then refuse.
+    #[test]
+    fn tray_shows_stop_recording_only_while_live() {
+        assert!(tray_shows_stop_recording(CaptureState::Recording));
+        assert!(tray_shows_stop_recording(CaptureState::Paused));
+        for capture in [
+            CaptureState::Idle,
+            CaptureState::Arming,
+            CaptureState::Stopping,
+            CaptureState::Captured,
+            CaptureState::Transcribing,
+            CaptureState::TranscriptReady,
+            CaptureState::Summarizing,
+            CaptureState::Ready,
+            CaptureState::TranscriptionFailed,
+            CaptureState::SummaryFailed,
+            CaptureState::RecoveredInterrupted,
+        ] {
+            assert!(
+                !tray_shows_stop_recording(capture),
+                "expected no Stop item for {capture:?}"
+            );
         }
     }
 
