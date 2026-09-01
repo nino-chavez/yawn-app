@@ -86,7 +86,7 @@ sign_bundle() {
   fi
   "$RESOURCES/python-runtime/bin/python3.12" -E -s -B \
     "$ROOT/worker/build_manifest.py" "$RESOURCES" --admission internal-alpha \
-    "${manifest_args[@]}"
+    ${manifest_args[@]+"${manifest_args[@]}"}
   # Sign the enclosing app last. Signing CFBundleExecutable as a standalone
   # path first makes it seal the surrounding bundle; replacing the outer
   # signature afterward then invalidates that inner resource seal.
