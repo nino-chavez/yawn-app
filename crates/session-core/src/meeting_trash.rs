@@ -497,8 +497,14 @@ pub(crate) fn restore_meeting_from_trash(
     // through doing so. Racing that directory is refused outright; the
     // `AlreadyPurged` path below is what catches a purge that finished
     // cleanly while this receipt still read `Trashed`.
+    // Propagated rather than defaulted: if we cannot tell which meetings are
+    // mid-purge, we do not know that this one is not. Swallowing the error
+    // here would fail open — a crashed purge plus an unreadable `deletions/`
+    // directory would let a restore proceed straight into a directory a
+    // purge may still be unwinding. Mirrors `retention.rs`'s identical
+    // propagate-don't-default handling of the same lookup.
     if meeting_deletion::pending_deletion_ids(storage)
-        .unwrap_or_default()
+        .map_err(|error| io::Error::other(error.to_string()))?
         .iter()
         .any(|id| id == meeting_id)
     {
