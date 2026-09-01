@@ -60,8 +60,30 @@
         box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
       }
 
+      /* styles.css swaps tokens with a bare prefers-color-scheme media query,
+         so on a dark-mode OS the dark values win page-wide; the light column
+         must therefore re-assert every light token, exactly as the dark
+         column asserts the dark ones. Values verbatim from styles.css :root. */
       .cal-col[data-theme="light"] {
         color-scheme: light;
+        --canvas: #f7f7f4;
+        --paper: #fff;
+        --paper-soft: #fbfbf9;
+        --ink: #1b1b18;
+        --ink-soft: #676760;
+        --ink-faint: #92928a;
+        --line: #e4e4de;
+        --line-strong: #cdcdc4;
+        --accent: #2859c5;
+        --accent-soft: #edf2ff;
+        --record: #d84e3c;
+        --record-soft: #fff0ed;
+        --attention: #9c6715;
+        --attention-soft: #fff6e4;
+        --link-hover: #19449e;
+        --status-record-text: #a83c2e;
+        --status-attention-text: #815313;
+        --toast-attention-text: #704809;
       }
 
       .cal-col[data-theme="dark"] {
@@ -80,6 +102,12 @@
         --record-soft: #472622;
         --attention: #ecc36f;
         --attention-soft: #41341e;
+      }
+
+      .cal-col {
+        /* Re-resolve inherited text color inside the themed scope; body's
+           color was computed against the page-level (OS) theme. */
+        color: var(--ink);
       }
 
       .cal-surface {
