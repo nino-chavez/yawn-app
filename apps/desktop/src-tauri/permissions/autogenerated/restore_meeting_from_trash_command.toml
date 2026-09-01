@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-meeting-from-trash-command"
+description = "Enables the restore_meeting_from_trash_command command without any pre-configured scope."
+commands.allow = ["restore_meeting_from_trash_command"]
+
+[[permission]]
+identifier = "deny-restore-meeting-from-trash-command"
+description = "Denies the restore_meeting_from_trash_command command without any pre-configured scope."
+commands.deny = ["restore_meeting_from_trash_command"]

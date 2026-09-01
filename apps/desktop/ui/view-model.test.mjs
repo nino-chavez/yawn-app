@@ -16,6 +16,7 @@ import {
   humanize,
   libraryRecoveryPresentation,
   localVocabularyPresentation,
+  meetingDeletionConfirmationCopy,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -34,6 +35,8 @@ import {
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
+  trashLinkPresentation,
+  trashListPresentation,
   withheldTurnPresentation,
 } from "./view-model.mjs";
 
@@ -711,4 +714,63 @@ test("the roadmap I2 hotkey lands only in the existing operator canvas, never a 
   // A missing or disabled editor must leave the request pending, never throw
   // or force a state the product brief forbids.
   assert.match(source, /if \(!target \|\| target\.disabled\) return;/);
+});
+
+// Roadmap intake I9: local trash for whole-meeting deletion.
+
+test("the Trash link is absent when empty and names the count when it is not", () => {
+  assert.equal(trashLinkPresentation(null), null);
+  assert.equal(trashLinkPresentation({ entries: [] }), null);
+  const link = trashLinkPresentation({ entries: [{ meetingId: "a" }, { meetingId: "b" }] });
+  assert.deepEqual(link, { count: 2, label: "Trash (2)" });
+});
+
+test("the quiet Trash list reports loading, empty, and populated states without artwork", () => {
+  assert.deepEqual(trashListPresentation(null), { state: "loading", entries: [] });
+  assert.deepEqual(trashListPresentation({ entries: [] }), { state: "empty", entries: [] });
+
+  const populated = trashListPresentation({
+    entries: [
+      { meetingId: "titled", label: "Kickoff", deletedAtEpochSeconds: 100, purgeAfterEpochSeconds: 200 },
+      { meetingId: "12345678-untitled", label: "", deletedAtEpochSeconds: 300, purgeAfterEpochSeconds: 400 },
+    ],
+  });
+  assert.equal(populated.state, "populated");
+  assert.equal(populated.entries[0].label, "Kickoff");
+  assert.equal(populated.entries[1].label, "Meeting · 12345678");
+  assert.equal(populated.entries[1].purgeAfterEpochSeconds, 400);
+});
+
+test("deleting a recording or a transcript keeps its permanent-deletion copy unchanged", () => {
+  const recording = meetingDeletionConfirmationCopy("delete-recording");
+  assert.equal(recording.eyebrow, "Permanent deletion");
+  assert.match(recording.detail, /permanently removes the saved microphone and system audio/);
+
+  const transcript = meetingDeletionConfirmationCopy("delete-transcript");
+  assert.equal(transcript.eyebrow, "Permanent deletion");
+  assert.match(transcript.detail, /permanently removes the transcript and generated points/);
+});
+
+test("deleting a whole meeting states the trash-and-recovery truth plainly", () => {
+  const copy = meetingDeletionConfirmationCopy("delete-meeting");
+  assert.equal(copy.eyebrow, "Moves to Trash");
+  assert.equal(copy.heading, "Delete this meeting?");
+  // The three load-bearing facts a reader must come away with: it is
+  // recoverable, for how long, and that past that window there is no
+  // server copy to fall back on — stated plainly, not in legalese.
+  assert.match(copy.detail, /moves to Trash/);
+  assert.match(copy.detail, /restore it from there for 30 days/);
+  assert.match(copy.detail, /no server copy, so it cannot be recovered/);
+});
+
+test("main.js wires the Trash list, restore action, and confirmation copy through the pure view-model", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /invoke\("preview_list_trash"\)/);
+  assert.match(source, /invoke\("restore_meeting_from_trash_command", \{ meetingId \}\)/);
+  assert.match(source, /trashLinkPresentation\(state\.trash\)/);
+  assert.match(source, /trashListPresentation\(state\.trash\)/);
+  assert.match(source, /meetingDeletionConfirmationCopy\(state\.modal\)/);
+  // The link must be able to disappear entirely, not render an empty row.
+  assert.match(source, /data-action="open-trash"/);
+  assert.match(source, /data-action="restore-trash-entry"/);
 });

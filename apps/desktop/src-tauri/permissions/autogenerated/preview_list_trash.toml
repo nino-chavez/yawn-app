@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-list-trash"
+description = "Enables the preview_list_trash command without any pre-configured scope."
+commands.allow = ["preview_list_trash"]
+
+[[permission]]
+identifier = "deny-preview-list-trash"
+description = "Denies the preview_list_trash command without any pre-configured scope."
+commands.deny = ["preview_list_trash"]

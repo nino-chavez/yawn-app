@@ -40,6 +40,11 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "preview_delete_meeting_audio",
     "preview_delete_meeting_transcript",
     "preview_delete_meeting",
+    // Roadmap intake I9: local trash for whole-meeting deletion. Listing is
+    // the quiet secondary surface; restoring is the recovery path within the
+    // 30-day window.
+    "preview_list_trash",
+    "restore_meeting_from_trash_command",
     "operator_note",
     "save_operator_note",
     // Roadmap intake I3: labeled pre-meeting context, mirroring the operator
@@ -94,6 +99,8 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-preview-delete-meeting-audio",
     "allow-preview-delete-meeting-transcript",
     "allow-preview-delete-meeting",
+    "allow-preview-list-trash",
+    "allow-restore-meeting-from-trash-command",
     "allow-operator-note",
     "allow-save-operator-note",
     "allow-meeting-context",

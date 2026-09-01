@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "preview-window",
-  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording, transcript, or whole-meeting deletion, regenerating a meeting note from its current transcript, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording or transcript deletion, moving a confirmed meeting to local Trash and restoring one from it within its 30-day window, regenerating a meeting note from its current transcript, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "preview"
   ],
@@ -41,6 +41,8 @@
     "allow-preview-delete-meeting-audio",
     "allow-preview-delete-meeting-transcript",
     "allow-preview-delete-meeting",
+    "allow-preview-list-trash",
+    "allow-restore-meeting-from-trash-command",
     "allow-operator-note",
     "allow-save-operator-note",
     "allow-meeting-context",

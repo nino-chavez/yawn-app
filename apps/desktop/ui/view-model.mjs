@@ -715,3 +715,61 @@ export function noteCaptureFocusSelection(text) {
   const end = typeof text === "string" ? text.length : 0;
   return { start: end, end, direction: "forward" };
 }
+
+// Roadmap intake I9: local trash for whole-meeting deletion. Trash is a
+// quiet secondary list, not a dashboard — it shows only as a "Trash (N)"
+// link when non-empty, and disappears entirely once empty rather than
+// leaving an empty-state row on the home screen.
+export function trashLinkPresentation(trash) {
+  const count = trash?.entries?.length || 0;
+  if (!count) return null;
+  return { count, label: `Trash (${count})` };
+}
+
+// The three states the quiet Trash view itself can be in. Loading and empty
+// are both plain text — no empty-state artwork, per the governing
+// constraint. `entries` carries a fallback label so a never-titled meeting
+// still reads as something in the list, not a bare identifier.
+export function trashListPresentation(trash) {
+  if (!trash) {
+    return { state: "loading", entries: [] };
+  }
+  const entries = (trash.entries || []).map((entry) => ({
+    meetingId: entry.meetingId,
+    label: entry.label && entry.label.trim() ? entry.label : `Meeting · ${String(entry.meetingId || "").slice(0, 8)}`,
+    deletedAtEpochSeconds: entry.deletedAtEpochSeconds,
+    purgeAfterEpochSeconds: entry.purgeAfterEpochSeconds,
+  }));
+  return { state: entries.length ? "populated" : "empty", entries };
+}
+
+// The exact confirmation copy for each of the three destructive-looking
+// meeting actions. Only whole-meeting deletion changed: recording and
+// transcript deletion stay immediate and permanent (roadmap intake I9's
+// scope boundary), so their copy is unchanged; deleting a meeting now states
+// the trash-and-recovery truth plainly instead of claiming permanence it no
+// longer has at the moment of the click.
+export function meetingDeletionConfirmationCopy(kind) {
+  if (kind === "delete-recording") {
+    return {
+      eyebrow: "Permanent deletion",
+      heading: "Delete this recording?",
+      detail: "This permanently removes the saved microphone and system audio from this Mac. The transcript and your personal notes stay.",
+      label: "Delete recording",
+    };
+  }
+  if (kind === "delete-transcript") {
+    return {
+      eyebrow: "Permanent deletion",
+      heading: "Delete this transcript?",
+      detail: "This permanently removes the transcript and generated points from this Mac. Any recording and your personal notes stay.",
+      label: "Delete transcript",
+    };
+  }
+  return {
+    eyebrow: "Moves to Trash",
+    heading: "Delete this meeting?",
+    detail: "This meeting moves to Trash. You can restore it from there for 30 days. After that, Yawn removes it permanently — there is no server copy, so it cannot be recovered.",
+    label: "Delete meeting",
+  };
+}

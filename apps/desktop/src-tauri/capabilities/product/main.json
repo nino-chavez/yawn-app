@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "The shipped meeting-notes window may run one local meeting flow: check readiness, request the two capture permissions, start, pause, resume, and stop a meeting, name a meeting, edit an operator note, record optional pre-meeting context, copy a transcript, manage exact local vocabulary replacements without rewriting retained transcript bytes, correct a displayed speaker name without rewriting the retained transcript, restore a verified withheld transcript turn without rewriting the source artifact, compare a source-bound retry candidate and either keep the current transcript or promote that candidate, open only the verified transcript file the operator selected, play only a freshly verified retained microphone or system recording through a fixed native player, release a selected recording, delete a confirmed transcript and its generated notes, delete a confirmed meeting, open local completed notes with retained source passages, regenerate a meeting note from its current transcript, and receive the local note-capture-hotkey focus event while a meeting is recording. It cannot use generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The shipped meeting-notes window may run one local meeting flow: check readiness, request the two capture permissions, start, pause, resume, and stop a meeting, name a meeting, edit an operator note, record optional pre-meeting context, copy a transcript, manage exact local vocabulary replacements without rewriting retained transcript bytes, correct a displayed speaker name without rewriting the retained transcript, restore a verified withheld transcript turn without rewriting the source artifact, compare a source-bound retry candidate and either keep the current transcript or promote that candidate, open only the verified transcript file the operator selected, play only a freshly verified retained microphone or system recording through a fixed native player, release a selected recording, delete a confirmed transcript and its generated notes, move a confirmed meeting to local Trash, list what is currently in Trash, restore a meeting from Trash within its 30-day window, open local completed notes with retained source passages, regenerate a meeting note from its current transcript, and receive the local note-capture-hotkey focus event while a meeting is recording. It cannot use generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "main"
   ],
@@ -41,6 +41,8 @@
     "allow-preview-delete-meeting-audio",
     "allow-preview-delete-meeting-transcript",
     "allow-preview-delete-meeting",
+    "allow-preview-list-trash",
+    "allow-restore-meeting-from-trash-command",
     "allow-operator-note",
     "allow-save-operator-note",
     "allow-meeting-context",
