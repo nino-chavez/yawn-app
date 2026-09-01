@@ -1,0 +1,364 @@
+{
+  "schema": "note/2",
+  "claim_evidence_contract": "candidate-synthesis-evidence/1",
+  "meeting": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "source": "synthetic-fixture",
+    "attribution": "channel",
+    "speakers": [
+      "Me",
+      "Them"
+    ],
+    "turns": 4,
+    "gated_turns": 0,
+    "duration_s": 3
+  },
+  "transcript": "../transcript/56bfdb26765a804b83ce2e60752373c88ee2c853e30778e98d6b4c1d89c23193.json",
+  "transform": null,
+  "note": "## Evidence-bound note\nEvery claim below is linked to retained meeting words.\n\n## Summary\n- Fixture: the team reviewed the launch checklist and confirmed next steps.\n  > We reviewed the fixture launch checklist today.\n\n## Decisions\n- Fixture: ship the retry review before Friday.\n  > Everyone agreed to ship the retry review before Friday.",
+  "render": {
+    "schema": "note-render/1",
+    "path": "89bc8e42c5bb1facc1f7b2d69b6103fcbafeecda836a8cb1822b301cbecc0951.md",
+    "encoding": "utf-8",
+    "line_ending": "LF",
+    "terminal_newline": true,
+    "note_sha256": "a75c114c028d92c023299bd938bbf28beeee9ee8ee21b15821d68491b1d466d1",
+    "markdown_sha256": "89bc8e42c5bb1facc1f7b2d69b6103fcbafeecda836a8cb1822b301cbecc0951"
+  },
+  "claims": [
+    {
+      "status": "located",
+      "claim": "Fixture: the team reviewed the launch checklist and confirmed next steps.",
+      "quote": "We reviewed the fixture launch checklist today.",
+      "at": 90,
+      "type": "summary",
+      "turn": 0,
+      "start": 0,
+      "candidate_ids": [
+        "cf-d2ba2f6adea2fc38be56737dcd3ac7ea2db481237d768b5bb6fa7a8e2c6e450f"
+      ],
+      "claim_sha256": "52d86a1a1f0283983f26d70a5d196465ea4a9b696c387d9b3bff1112e744160b",
+      "evidence_refs": [
+        {
+          "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+          "turn": 0,
+          "char_start": 0,
+          "char_end": 47,
+          "text_sha256": "9d76f6d4e981be098e630be8d93ebd9b3f93a4797c9ee55c2178f36e6532e75c"
+        }
+      ]
+    },
+    {
+      "status": "located",
+      "claim": "Fixture: ship the retry review before Friday.",
+      "quote": "Everyone agreed to ship the retry review before Friday.",
+      "at": 232,
+      "type": "decision",
+      "turn": 2,
+      "start": 2,
+      "candidate_ids": [
+        "cf-1294f294aae9a6c15bb13c64bd11a5f6c05470bbb276f3cceb349c868aaa1e78"
+      ],
+      "claim_sha256": "23ca85f097e726d47d00ae5af649205bcd5d7128d10ea27f7c5f8326939a6260",
+      "evidence_refs": [
+        {
+          "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+          "turn": 2,
+          "char_start": 0,
+          "char_end": 55,
+          "text_sha256": "0aef18146dd35ca8c485b9ca22d758f393b3e4e2d037e5b54c9a594890d0c931"
+        }
+      ]
+    }
+  ],
+  "evidence": {
+    "schema": "candidate-synthesis-evidence/1",
+    "transcript_view_sha256": "94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6",
+    "fragment_contract": {
+      "schema": "source-fragments/1",
+      "word_definition": "non-whitespace Unicode runs",
+      "target_words": 32,
+      "overlap_words": 8,
+      "merge_tail_under_words": 12,
+      "cross_turns": false,
+      "offsets": "Unicode code point indices [start,end)"
+    },
+    "fragment_contract_sha256": "2ea37109a924fb26bcc070836417c6fd822c8318c0b428d8dcf5cb5600ec727c",
+    "fragment_map_sha256": "3710e7506b9e8d0cffa9c636168767c34ad77b76a84cdb5aba97dcc73e87ea61",
+    "candidate_manifest_sha256": "90d43f9ab9be0b2269fb6a1ef17f6a370328798c7f48e27ae7030f97d404e10f",
+    "generator_contract_sha256": "12837961b98cc533b1a3c2f4ee3884bcf07c2b37e474b40af2fd696ca1adfe48",
+    "claims": [
+      {
+        "claim_ordinal": 0,
+        "claim_type": "summary",
+        "claim": "Fixture: the team reviewed the launch checklist and confirmed next steps.",
+        "claim_sha256": "52d86a1a1f0283983f26d70a5d196465ea4a9b696c387d9b3bff1112e744160b",
+        "candidate_ids": [
+          "cf-d2ba2f6adea2fc38be56737dcd3ac7ea2db481237d768b5bb6fa7a8e2c6e450f"
+        ],
+        "evidence_refs": [
+          {
+            "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+            "turn": 0,
+            "char_start": 0,
+            "char_end": 47,
+            "text_sha256": "9d76f6d4e981be098e630be8d93ebd9b3f93a4797c9ee55c2178f36e6532e75c"
+          }
+        ]
+      },
+      {
+        "claim_ordinal": 1,
+        "claim_type": "decision",
+        "claim": "Fixture: ship the retry review before Friday.",
+        "claim_sha256": "23ca85f097e726d47d00ae5af649205bcd5d7128d10ea27f7c5f8326939a6260",
+        "candidate_ids": [
+          "cf-1294f294aae9a6c15bb13c64bd11a5f6c05470bbb276f3cceb349c868aaa1e78"
+        ],
+        "evidence_refs": [
+          {
+            "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+            "turn": 2,
+            "char_start": 0,
+            "char_end": 55,
+            "text_sha256": "0aef18146dd35ca8c485b9ca22d758f393b3e4e2d037e5b54c9a594890d0c931"
+          }
+        ]
+      }
+    ]
+  },
+  "capture": null,
+  "capture_health": {
+    "schema": "capture-health/1",
+    "usable": true,
+    "requirements": {
+      "both_legs_reached_one_capture_block": true,
+      "continuous_timelines": true,
+      "tap_reported_no_errors": true,
+      "legs_cover_same_capture_span": true,
+      "both_legs_cover_observed_capture_span": true,
+      "transcript_written_when_requested": true
+    },
+    "legs": {
+      "mic": {
+        "samples": 128000,
+        "duration_s": 8.0,
+        "dropouts": []
+      },
+      "system": {
+        "samples": 128000,
+        "duration_s": 8.0,
+        "dropouts": [],
+        "tap_errors": []
+      }
+    },
+    "transcription": {
+      "requested": true,
+      "transcript_written": true
+    },
+    "timing": {
+      "capture_elapsed_samples": 128000,
+      "capture_elapsed_s": 8.0,
+      "leg_sample_difference": 0,
+      "allowed_leg_sample_difference": 32007,
+      "wall_shortfall_samples": {
+        "mic": 0,
+        "system": 0
+      },
+      "allowed_wall_shortfall_samples": 32007,
+      "clock_drift_ppm": 50
+    },
+    "blockers": []
+  },
+  "capture_integrity_unknown": false,
+  "capture_warnings": [],
+  "provenance": {
+    "model": "fixture-synthetic-model",
+    "model_identity": {
+      "requested": "fixture-synthetic-model",
+      "name": "fixture-synthetic-model",
+      "digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "elapsed_s": 1.0,
+    "passes": 2,
+    "slices": null,
+    "duplicates_removed": null,
+    "generated_at": "2026-08-31T21:39:28-0700",
+    "structured_stages": null,
+    "structured_contract": null,
+    "candidate_generation": {
+      "schema": "note-generation/2",
+      "transcript_sha256": "56bfdb26765a804b83ce2e60752373c88ee2c853e30778e98d6b4c1d89c23193",
+      "manifest_sha256": "90d43f9ab9be0b2269fb6a1ef17f6a370328798c7f48e27ae7030f97d404e10f",
+      "candidates": [
+        {
+          "candidate_id": "cf-d2ba2f6adea2fc38be56737dcd3ac7ea2db481237d768b5bb6fa7a8e2c6e450f",
+          "ordinal": 1,
+          "anchor_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+          "anchor_turn": 0,
+          "anchor_char_start": 0,
+          "anchor_char_end": 47,
+          "cue_type": null,
+          "cue_start": null,
+          "cue_end": null,
+          "visible_fragment_ids": [
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000001-c000000-000057",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055"
+          ]
+        },
+        {
+          "candidate_id": "cf-f40f8f0f8b751a30752ed8f6f15f9ba43d3c5b621bbcafc5741048f2f5968200",
+          "ordinal": 2,
+          "anchor_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000001-c000000-000057",
+          "anchor_turn": 1,
+          "anchor_char_start": 0,
+          "anchor_char_end": 57,
+          "cue_type": null,
+          "cue_start": null,
+          "cue_end": null,
+          "visible_fragment_ids": [
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000001-c000000-000057",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000003-c000000-000052"
+          ]
+        },
+        {
+          "candidate_id": "cf-1294f294aae9a6c15bb13c64bd11a5f6c05470bbb276f3cceb349c868aaa1e78",
+          "ordinal": 3,
+          "anchor_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+          "anchor_turn": 2,
+          "anchor_char_start": 0,
+          "anchor_char_end": 55,
+          "cue_type": null,
+          "cue_start": null,
+          "cue_end": null,
+          "visible_fragment_ids": [
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000001-c000000-000057",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000003-c000000-000052"
+          ]
+        },
+        {
+          "candidate_id": "cf-1f8c531f57ec6c05c0b1edc610a7d1ea2e70d68e90954e05559b7c5fa8b8d149",
+          "ordinal": 4,
+          "anchor_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000003-c000000-000052",
+          "anchor_turn": 3,
+          "anchor_char_start": 0,
+          "anchor_char_end": 52,
+          "cue_type": null,
+          "cue_start": null,
+          "cue_end": null,
+          "visible_fragment_ids": [
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000001-c000000-000057",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+            "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000003-c000000-000052"
+          ]
+        }
+      ]
+    },
+    "source_evidence": {
+      "schema": "candidate-synthesis-evidence/1",
+      "transcript_view_sha256": "94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6",
+      "fragment_contract_sha256": "2ea37109a924fb26bcc070836417c6fd822c8318c0b428d8dcf5cb5600ec727c",
+      "fragment_map_sha256": "3710e7506b9e8d0cffa9c636168767c34ad77b76a84cdb5aba97dcc73e87ea61"
+    }
+  },
+  "checks": {
+    "context": {
+      "ok": null,
+      "reason": "MLX synthesis uses the model context and a bounded output"
+    },
+    "attribution": {
+      "applies": true,
+      "ok": true,
+      "named_speakers": [],
+      "actor_phrases": []
+    },
+    "numbers": {
+      "ok": true,
+      "invented": []
+    },
+    "prompt_echo": {
+      "ok": true,
+      "echoed": []
+    },
+    "grounding": {
+      "applies": true,
+      "ok": true,
+      "reason": "every displayed claim resolves to selected transcript evidence"
+    },
+    "owner_grounding": {
+      "applies": false,
+      "ok": null
+    },
+    "recall": {
+      "applies": false,
+      "ok": null
+    },
+    "citations": {
+      "applies": true,
+      "ok": true,
+      "items": 2,
+      "cited": [
+        {
+          "claim": "Fixture: the team reviewed the launch checklist and confirmed next steps.",
+          "quote": "We reviewed the fixture launch checklist today.",
+          "at": 90,
+          "type": "summary",
+          "turn": 0,
+          "start": 0,
+          "candidate_ids": [
+            "cf-d2ba2f6adea2fc38be56737dcd3ac7ea2db481237d768b5bb6fa7a8e2c6e450f"
+          ],
+          "claim_sha256": "52d86a1a1f0283983f26d70a5d196465ea4a9b696c387d9b3bff1112e744160b",
+          "evidence_refs": [
+            {
+              "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000000-c000000-000047",
+              "turn": 0,
+              "char_start": 0,
+              "char_end": 47,
+              "text_sha256": "9d76f6d4e981be098e630be8d93ebd9b3f93a4797c9ee55c2178f36e6532e75c"
+            }
+          ]
+        },
+        {
+          "claim": "Fixture: ship the retry review before Friday.",
+          "quote": "Everyone agreed to ship the retry review before Friday.",
+          "at": 232,
+          "type": "decision",
+          "turn": 2,
+          "start": 2,
+          "candidate_ids": [
+            "cf-1294f294aae9a6c15bb13c64bd11a5f6c05470bbb276f3cceb349c868aaa1e78"
+          ],
+          "claim_sha256": "23ca85f097e726d47d00ae5af649205bcd5d7128d10ea27f7c5f8326939a6260",
+          "evidence_refs": [
+            {
+              "source_fragment_id": "sf-94873fd567b7c22c1e9db8f0eace0f3ab120e92c02627319cf612443e0175bf6-t000002-c000000-000055",
+              "turn": 2,
+              "char_start": 0,
+              "char_end": 55,
+              "text_sha256": "0aef18146dd35ca8c485b9ca22d758f393b3e4e2d037e5b54c9a594890d0c931"
+            }
+          ]
+        }
+      ],
+      "fabricated": [],
+      "unverifiable": [],
+      "uncited": [],
+      "template_echo": 0,
+      "layout": "next-line",
+      "separator": null,
+      "repeats": 0,
+      "reversed_locatable": 0,
+      "authority": "candidate-synthesis-evidence/1"
+    },
+    "extraction": {
+      "applies": false,
+      "ok": null
+    }
+  },
+  "passed": true
+}

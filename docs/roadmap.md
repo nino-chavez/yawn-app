@@ -305,8 +305,17 @@ Facts the merge established:
   diff trace can transiently allocate ~250 MB inside the comparison call
   while the storage lease is held — bounded, then skipped; tune
   MAX_EDIT_BUDGET down if a live run ever shows it. The packaged-preview
-  fixture does not yet exercise the diff states — extend it before the next
-  release gate. (D6)
+  fixture now *stages* all three diff states (computed with differences,
+  computed with none, and skipped over budget) plus capture pauses, a
+  trashed-and-restorable meeting, an export withheld-artifact manifest, a
+  real validator-passing generated note (row preview and reverse citation
+  map), and read-only pre-meeting context — `rendered-review-fixture`'s own
+  test suite proves each one against the real product code paths
+  (`transcript_retry_diff`, `capture_quality`, `meeting_trash`,
+  `verify_artifact_ref`, `NoteRevisionRef::validate`). No rendered walk of
+  the packaged app against these new states has been performed yet — that
+  observation, and its own dated receipt in this file, remain owed before
+  the next release gate. (D6)
 - Privacy is legible in-product: a three-row what-happens table in Settings
   ("Three facts about this Mac, not a policy promise") sitting directly
   above the model card its second row points at; one plain sentence on the
