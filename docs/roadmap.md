@@ -386,9 +386,39 @@ the preview bundle on 2026-09-01, Edit menu in place; the five listed items
 — word-select, option-arrow, smart quotes, spellcheck, context menu — remain
 owed).
 
-Remaining decisions and design intake: the cross-meeting exact-search call,
-D2's stated capture speed budget, D5 (three-depth evidence disclosure:
-hover preview, split view, synced scroll), and D7's enforcement note.
+**Wave 5 status (2026-09-01):** D5 and the lock-hardening follow-ups are
+implemented and merged (session-core 552, desktop 237, UI 94 all green after
+integration), and the exact-search decision memo is delivered. Facts the
+merges established:
+
+- Evidence disclosure has three depths (D5): hover or focus a claim's source
+  affordance and the cited span previews in place from span data batched with
+  the note response (chosen over per-locator fetches, which would have
+  rebuilt the entire library projection per call); Show source opens the
+  transcript beside the note at the highlighted span, falling back to the
+  single-column layout below ~1100 px; while both are visible the transcript
+  tracks the note's topmost fully-visible claim via rAF-batched geometry,
+  suspending for the reader's own transcript scrolls. Frame rate in the live
+  webview and split proportions at real window sizes remain live-run checks.
+  The old per-claim inline evidence path is retained unused for rollback and
+  owed a removal pass.
+- Locked meetings are structurally excluded from the corpus index (digest
+  treats an excluded meeting as absent, so lock and unlock transitions force
+  a real resync) and from the dormant search path — every hit kind filters
+  before counting, and a hit sealed before a lock refuses at open. The
+  search commands stay unregistered; the hardening exists so no future
+  registration decision can ship the bypass the decision memo found. The
+  fixture stages a locked meeting through the real sidecar shape and can
+  never fake an unlock — the fake confirmer is test-gated out of the
+  packaged app by design.
+- The cross-meeting exact-search decision memo is with the operator. Its
+  recommendation: hold until the (now-landed) lock exclusion, then decide on
+  a one-week local usage probe of the already-built dormant command. The
+  decision remains open.
+
+Remaining decisions and design intake: the exact-search call (memo
+delivered), D2's stated capture speed budget (live-run-shaped), and D7's
+enforcement note.
 
 I1–I3 change what the operator can do during and around capture; I4–I9 harden
 trust in what already exists and can travel as independent packets. Two
