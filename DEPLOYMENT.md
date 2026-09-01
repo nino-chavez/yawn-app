@@ -32,6 +32,9 @@ explicit incomplete-output fallback. Do not change its runtime admission to
 Stop and report the blocker instead of improvising when any of these is true:
 
 - the app source is dirty or the version values disagree;
+- the packaging lane refuses the staged runtime as stale or unstamped — the
+  source-freshness gate (`worker/source_digest.py`) means the staging predates
+  the sources; re-run `worker/build_runtime.sh`, never bypass the check;
 - the runtime build cannot find the pinned local embedding-model assets;
 - either hosted transcript model is missing, changed, or unreachable at its
   immutable catalog URL;

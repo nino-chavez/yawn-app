@@ -58,6 +58,10 @@ if [[ "$(uname -s)-$(uname -m)" != "Darwin-arm64" ]]; then
 fi
 
 verify() {
+  # Freshness first: a staging that predates its sources fails here with the
+  # rebuild instruction rather than passing content checks that only prove the
+  # staging is self-consistent, not current.
+  python3 "$REPO/worker/source_digest.py" check "$STAGE"
   [[ -x "$STAGE/python-runtime/bin/python3.12" ]]
   [[ -x "$STAGE/bin/audiotee" ]]
   [[ -x "$STAGE/bin/permission-probe" ]]
@@ -270,5 +274,6 @@ elif [[ "$mode" == "build-alpha" ]]; then
 else
   python3 "$REPO/worker/build_manifest.py" "$STAGE"
 fi
+python3 "$REPO/worker/source_digest.py" stamp "$STAGE"
 
 verify

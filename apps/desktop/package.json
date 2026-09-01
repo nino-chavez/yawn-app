@@ -6,11 +6,12 @@
     "test:ui": "node --test ui/*.test.mjs",
     "tauri": "tauri",
     "dev": "tauri dev",
-    "build": "tauri build && LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn.app\" ../../scripts/prepare-preview-bundle.sh sign",
+    "runtime-fresh": "python3 ../../worker/source_digest.py check runtime",
+    "build": "npm run runtime-fresh && tauri build && LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn.app\" ../../scripts/prepare-preview-bundle.sh sign",
     "preview": "tauri dev --config src-tauri/tauri.preview.conf.json --features preview-surface",
-    "preview-build": "tauri build --config src-tauri/tauri.preview.conf.json --features preview-surface && ../../scripts/prepare-preview-bundle.sh sign",
+    "preview-build": "npm run runtime-fresh && tauri build --config src-tauri/tauri.preview.conf.json --features preview-surface && ../../scripts/prepare-preview-bundle.sh sign",
     "preview-verify": "../../scripts/prepare-preview-bundle.sh verify",
-    "fixture-build": "tauri build --config src-tauri/tauri.fixture.conf.json --features preview-surface && LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh sign",
+    "fixture-build": "npm run runtime-fresh && tauri build --config src-tauri/tauri.fixture.conf.json --features preview-surface && LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh sign",
     "fixture-verify": "LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh verify"
   },
   "devDependencies": {

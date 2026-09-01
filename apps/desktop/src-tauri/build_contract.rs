@@ -213,6 +213,7 @@ fn has_exact_strings(value: Option<&Value>, expected: &[&str]) -> bool {
 fn production_resources() -> Value {
     serde_json::json!({
         "../runtime/app-runtime.json": "app-runtime.json",
+        "../runtime/source-digest.json": "source-digest.json",
         "../runtime/model-catalog.json": "model-catalog.json",
         "../runtime/bin": "bin",
         "../runtime/encoder-unavailable.identity": "encoder-unavailable.identity",
