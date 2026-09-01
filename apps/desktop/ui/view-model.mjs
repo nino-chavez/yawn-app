@@ -259,6 +259,50 @@ export function libraryRowPreview(row) {
   return preview || null;
 }
 
+// Desktop-design audit (2026-09-01), fix 1: the library's "loading" line
+// rendered identically at 200 ms and forever -- no honest signal that a
+// wait had gone on too long. After a bounded wait with no snapshot, the
+// copy escalates once, plus one Try-again action reusing the existing
+// refresh idiom (`refresh-library` / `refreshLibraryFromRecovery`). Copy and
+// one action, no spinner. `stalled` must come from `state` in main.js (see
+// `armLibraryStallTimer`), never from how long a DOM node has existed --
+// the DOM gets patched in place on every render tick and cannot be trusted
+// to remember when a wait started.
+export function libraryLoadingPresentation(library, stalled) {
+  if (library) return null;
+  if (stalled) {
+    return {
+      stalled: true,
+      message: "Still loading meetings. This is taking longer than usual.",
+      action: { action: "refresh-library", label: "Try again" },
+    };
+  }
+  return {
+    stalled: false,
+    message: "Loading meetings saved on this Mac…",
+    action: null,
+  };
+}
+
+// Pure transition table for the library-stall timer. main.js is the only
+// caller that touches a real setTimeout; this function decides what phase
+// that timeout should produce, so the escalation logic itself is testable
+// without faking a clock.
+//
+//   idle    -- no load in flight, nothing pending.
+//   waiting -- a load started; the bounded wait has not elapsed yet.
+//   stalled -- the bounded wait elapsed before the load settled.
+//
+// "stall-elapsed" only moves "waiting" -> "stalled"; it is a no-op from any
+// other phase, so a timer that fires after its load already settled (a slow
+// callback racing a fast response) cannot resurrect a stalled state.
+export function libraryStallTransition(phase, event) {
+  if (event === "load-start") return "waiting";
+  if (event === "load-settled") return "idle";
+  if (event === "stall-elapsed") return phase === "waiting" ? "stalled" : phase;
+  return phase;
+}
+
 // The library owns its state and message. Do not turn an unavailable or stale
 // snapshot into the same empty-state promise used for a genuinely empty list.
 export function libraryRecoveryPresentation(library) {
@@ -490,8 +534,12 @@ export function meetingLockCopyIsHonest(text) {
 //   locked      -- the gate refused this open: show the barrier, offer to
 //                  confirm, and render no meeting content at all.
 //   unreadable  -- locked, and Yawn could not read the lock file. Same
-//                  refusal, different sentence: removing the lock is the only
-//                  way forward and the reader should be told that plainly.
+//                  refusal, but the sentence must match the actions actually
+//                  offered here: Confirm-to-open (read-only, same button as
+//                  the "locked" case) and Remove-lock, reachable from Manage
+//                  even on this barrier screen -- not "removing the lock is
+//                  the only way," which was never true once Confirm-to-open
+//                  sat right beside it.
 //   unlocked    -- read normally. `lockable` is what the Manage menu offers.
 //   open        -- locked, and open for reading because a confirmation was
 //                  spent. Says so, because a reader who does not know the
@@ -505,7 +553,7 @@ export function meetingLockPresentation(note) {
       state: lock.unreadable ? "unreadable" : "locked",
       heading: "This meeting is locked",
       detail: lock.unreadable
-        ? "Yawn could not read this meeting's lock, so it stays locked. Removing the lock is the only way to open it here."
+        ? "Yawn could not read this meeting's lock, so it stays locked. Confirm to open it for reading, or remove the lock from Manage."
         : "Its note, transcript, and audio stay closed until Touch ID confirms it's you on this Mac. This is a local barrier, not encryption — the files on disk are unchanged.",
       action: { action: "unlock-meeting-open", label: "Confirm to open" },
     };
