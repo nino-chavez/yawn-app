@@ -122,6 +122,9 @@ use local_meeting_notes_session_core::supervision::{
 use local_meeting_notes_session_core::transcript_deletion::reconcile_pending_transcript_deletions;
 use local_meeting_notes_session_core::transcript_restoration::resolve_stored_transcript_primed;
 use local_meeting_notes_session_core::transcript_retry::TranscriptRetryOutcome;
+use local_meeting_notes_session_core::transcript_retry_diff::{
+    DiffTurnInput, TranscriptRetryDiffState, diff_transcript_turns,
+};
 use local_meeting_notes_session_core::transcription_queue::{
     TranscriptionQueue, TranscriptionRequest,
 };
@@ -685,6 +688,98 @@ struct RetryComparisonResponse {
     /// rides beside the quality evidence because a gap in the audio changes how
     /// a transcript should be read, whichever transcript wins the comparison.
     pauses: local_meeting_notes_session_core::capture_quality::CapturePauseProjection,
+    /// D6: the word-level delta between the two sides, so the reader sees
+    /// what differs before choosing keep or promote. See
+    /// `transcript_retry_diff` for the algorithm and its bounds.
+    diff: RetryDiffProjection,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RetryWordSpan {
+    start_word: u32,
+    end_word: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RetryTurnDiffSpans {
+    turn_index: u32,
+    /// The word count this side used when it built `spans`. The browser
+    /// tokenizes the same turn text independently and must compare its own
+    /// count against this one before trusting a span's word indices — see
+    /// `transcript_retry_diff`'s tokenization contract.
+    word_count: u32,
+    spans: Vec<RetryWordSpan>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum RetryDiffState {
+    Computed,
+    Skipped,
+}
+
+/// Reader-safe wire shape for [`local_meeting_notes_session_core::transcript_retry_diff::TranscriptRetryDiff`].
+///
+/// `state: "skipped"` means the comparison hit a bound (either side's word
+/// count, or the edit-script search budget) and carries no spans; it is
+/// deliberately not the same shape as "computed with zero spans"
+/// (identical), so the browser can tell "not checked" from "checked, same"
+/// apart and word the quiet sentence above the columns accordingly.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RetryDiffProjection {
+    state: RetryDiffState,
+    current: Vec<RetryTurnDiffSpans>,
+    candidate: Vec<RetryTurnDiffSpans>,
+}
+
+fn retry_diff_turn_inputs(turns: &[TranscriptTurn]) -> Vec<DiffTurnInput<'_>> {
+    turns
+        .iter()
+        .map(|turn| {
+            if turn.withheld {
+                DiffTurnInput::withheld()
+            } else {
+                DiffTurnInput::visible(turn.text.as_str())
+            }
+        })
+        .collect()
+}
+
+fn retry_diff_projection(
+    current_turns: &[TranscriptTurn],
+    candidate_turns: &[TranscriptTurn],
+) -> RetryDiffProjection {
+    let current_inputs = retry_diff_turn_inputs(current_turns);
+    let candidate_inputs = retry_diff_turn_inputs(candidate_turns);
+    let diff = diff_transcript_turns(&current_inputs, &candidate_inputs);
+    let to_wire =
+        |side: Vec<local_meeting_notes_session_core::transcript_retry_diff::TurnDiffSpans>| {
+            side.into_iter()
+                .map(|turn| RetryTurnDiffSpans {
+                    turn_index: turn.turn_index,
+                    word_count: turn.word_count,
+                    spans: turn
+                        .spans
+                        .into_iter()
+                        .map(|span| RetryWordSpan {
+                            start_word: span.start_word,
+                            end_word: span.end_word,
+                        })
+                        .collect(),
+                })
+                .collect()
+        };
+    RetryDiffProjection {
+        state: match diff.state {
+            TranscriptRetryDiffState::Computed => RetryDiffState::Computed,
+            TranscriptRetryDiffState::Skipped => RetryDiffState::Skipped,
+        },
+        current: to_wire(diff.current),
+        candidate: to_wire(diff.candidate),
+    }
 }
 
 #[derive(Deserialize)]
@@ -6355,6 +6450,7 @@ fn retry_comparison_response(
         "Pause evidence changed while opening this retry. Reopen the meeting and try again."
             .to_string()
     })?;
+    let diff = retry_diff_projection(&current_turns, &candidate_turns);
     Ok(RetryComparisonResponse {
         meeting_id: operation.meeting_id,
         operation_id: operation.operation_id,
@@ -6371,6 +6467,7 @@ fn retry_comparison_response(
         quality,
         recording_device,
         pauses,
+        diff,
     })
 }
 

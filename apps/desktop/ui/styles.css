@@ -1741,6 +1741,25 @@ h3 {
   padding-left: 0;
 }
 
+/* D6: word-level diff highlighting, scoped to the retry comparison columns
+   only. The base .transcript-line rule above (shared with the main,
+   non-retry transcript view) is left untouched. */
+.retry-diff-legend {
+  margin: 12px 0 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.retry-transcript-column[data-side="current"] .retry-diff-word {
+  color: inherit;
+  background: var(--attention-soft);
+}
+
+.retry-transcript-column[data-side="candidate"] .retry-diff-word {
+  color: inherit;
+  background: var(--accent-soft);
+}
+
 .retry-warnings {
   padding: 11px 16px;
   border-bottom: 1px solid var(--line);
