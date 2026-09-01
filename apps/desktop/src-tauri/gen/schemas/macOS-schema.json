@@ -471,6 +471,12 @@
           "markdownDescription": "Enables the preview_library_snapshot command without any pre-configured scope."
         },
         {
+          "description": "Enables the preview_list_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-preview-list-trash",
+          "markdownDescription": "Enables the preview_list_trash command without any pre-configured scope."
+        },
+        {
           "description": "Enables the preview_profile_preserve_legacy command without any pre-configured scope.",
           "type": "string",
           "const": "allow-preview-profile-preserve-legacy",
@@ -517,6 +523,12 @@
           "type": "string",
           "const": "allow-remove-transcript-model",
           "markdownDescription": "Enables the remove_transcript_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the restore_meeting_from_trash_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore-meeting-from-trash-command",
+          "markdownDescription": "Enables the restore_meeting_from_trash_command command without any pre-configured scope."
         },
         {
           "description": "Enables the restore_withheld_turn command without any pre-configured scope.",
@@ -885,6 +897,12 @@
           "markdownDescription": "Denies the preview_library_snapshot command without any pre-configured scope."
         },
         {
+          "description": "Denies the preview_list_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-preview-list-trash",
+          "markdownDescription": "Denies the preview_list_trash command without any pre-configured scope."
+        },
+        {
           "description": "Denies the preview_profile_preserve_legacy command without any pre-configured scope.",
           "type": "string",
           "const": "deny-preview-profile-preserve-legacy",
@@ -931,6 +949,12 @@
           "type": "string",
           "const": "deny-remove-transcript-model",
           "markdownDescription": "Denies the remove_transcript_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore_meeting_from_trash_command command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore-meeting-from-trash-command",
+          "markdownDescription": "Denies the restore_meeting_from_trash_command command without any pre-configured scope."
         },
         {
           "description": "Denies the restore_withheld_turn command without any pre-configured scope.",

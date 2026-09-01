@@ -70,6 +70,9 @@ use local_meeting_notes_session_core::meeting::{
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::meeting_deletion::reconcile_pending_meeting_deletions;
+use local_meeting_notes_session_core::meeting_trash::{
+    execute_due_trash_purge, list_trash_entries, reconcile_pending_trash, TrashPurgeOutcome,
+};
 use local_meeting_notes_session_core::model_store::{
     InstalledTranscriptModel, ModelCatalog, TranscriptModel, activate_model, active_model,
     active_note_model, deactivate_note_model, installed_model, model_is_stored,
@@ -1036,10 +1039,23 @@ impl ApplicationState {
         manual_delete_facade::ManualAudioDeletionFacade::new(&self.app_data_writer_lock)
     }
 
+    /// Still a real capability (it is what a trash purge ultimately runs
+    /// through, via `meeting_trash::purge_trashed_meeting`), but no command in
+    /// this app calls it directly anymore — "Delete meeting" now reaches only
+    /// [`Self::meeting_trash_facade`].
+    #[allow(dead_code)]
     fn whole_meeting_deletion_facade(
         &self,
     ) -> manual_delete_facade::WholeMeetingDeletionFacade<'_> {
         manual_delete_facade::WholeMeetingDeletionFacade::new(&self.app_data_writer_lock)
+    }
+
+    fn meeting_trash_facade(&self) -> manual_delete_facade::MeetingTrashFacade<'_> {
+        manual_delete_facade::MeetingTrashFacade::new(&self.app_data_writer_lock)
+    }
+
+    fn meeting_restore_facade(&self) -> manual_delete_facade::MeetingRestoreFacade<'_> {
+        manual_delete_facade::MeetingRestoreFacade::new(&self.app_data_writer_lock)
     }
 
     fn transcript_deletion_facade(&self) -> manual_delete_facade::TranscriptDeletionFacade<'_> {
@@ -5387,49 +5403,204 @@ fn preview_delete_meeting_for(
     }
 
     let review = if confirmed {
-        manual_delete_facade::MeetingDeletionReview::Reviewed
+        manual_delete_facade::MeetingTrashReview::Reviewed
     } else {
-        manual_delete_facade::MeetingDeletionReview::NotReviewed
+        manual_delete_facade::MeetingTrashReview::NotReviewed
     };
-    let result = state
-        .whole_meeting_deletion_facade()
-        .delete_meeting(manual_delete_facade::WholeMeetingDeletionUiArgs { meeting_id, review });
+    let result = state.meeting_trash_facade().trash_meeting(
+        manual_delete_facade::MeetingTrashUiArgs { meeting_id, review },
+        now_epoch_seconds(),
+    );
     let (response_state, message) = match result {
-        Ok(manual_delete_facade::WholeMeetingDeletionFacadeOutcome::MeetingRemoved) => (
-            "removed",
-            "The meeting and everything recorded with it were permanently deleted from this Mac.",
+        Ok(manual_delete_facade::MeetingTrashFacadeOutcome::Trashed) => (
+            "trashed",
+            "The meeting moved to Trash. It stays recoverable there for 30 days, then Yawn removes it permanently and it cannot be recovered.",
         ),
-        Ok(manual_delete_facade::WholeMeetingDeletionFacadeOutcome::RecoveredRemoval) => (
-            "removed",
-            "The interrupted meeting deletion was recovered and completed.",
+        Ok(manual_delete_facade::MeetingTrashFacadeOutcome::RecoveredTrash) => (
+            "trashed",
+            "The interrupted move to Trash was recovered and completed.",
         ),
-        Ok(manual_delete_facade::WholeMeetingDeletionFacadeOutcome::AlreadyRemoved) => {
-            ("already-removed", "This meeting was already deleted.")
+        Ok(manual_delete_facade::MeetingTrashFacadeOutcome::AlreadyTrashed) => {
+            ("already-trashed", "This meeting is already in Trash.")
         }
-        Ok(manual_delete_facade::WholeMeetingDeletionFacadeOutcome::DeferredActive) => (
+        Ok(manual_delete_facade::MeetingTrashFacadeOutcome::DeferredActive) => (
             "deferred-active",
-            "Meeting deletion was deferred because this meeting is still active.",
+            "Moving this meeting to Trash was deferred because it is still active.",
         ),
-        Err(manual_delete_facade::WholeMeetingDeletionFacadeError::ConfirmationRequired) => (
+        Err(manual_delete_facade::MeetingTrashFacadeError::ConfirmationRequired) => (
             "confirmation-required",
-            "Deleting a meeting removes its transcript permanently. Confirm to continue.",
+            "Deleting a meeting moves it to Trash for 30 days, then removes it permanently. Confirm to continue.",
         ),
-        Err(manual_delete_facade::WholeMeetingDeletionFacadeError::MeetingActionInProgress) => (
+        Err(manual_delete_facade::MeetingTrashFacadeError::MeetingActionInProgress) => (
             "action-in-progress",
             "Another action for this meeting is in progress. Reopen Library and try again.",
         ),
-        Err(manual_delete_facade::WholeMeetingDeletionFacadeError::NoSuchMeeting) => {
-            ("already-removed", "This meeting was already deleted.")
+        Err(manual_delete_facade::MeetingTrashFacadeError::NoSuchMeeting) => {
+            ("already-trashed", "This meeting is already in Trash.")
         }
         Err(
-            manual_delete_facade::WholeMeetingDeletionFacadeError::WriterLockUnavailable
-            | manual_delete_facade::WholeMeetingDeletionFacadeError::StorageUnavailable,
+            manual_delete_facade::MeetingTrashFacadeError::WriterLockUnavailable
+            | manual_delete_facade::MeetingTrashFacadeError::StorageUnavailable,
         ) => (
             "unavailable",
-            "Meeting deletion could not complete. Reopen Library and try again.",
+            "Moving this meeting to Trash could not complete. Reopen Library and try again.",
         ),
     };
     PreviewMeetingDeletionResponse {
+        state: response_state,
+        message: message.into(),
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrashEntryPresentation {
+    meeting_id: String,
+    label: String,
+    deleted_at_epoch_seconds: u64,
+    purge_after_epoch_seconds: u64,
+}
+
+/// A quiet, read-only listing of what is currently in Trash. Not
+/// handle-based like the library snapshot: a trash entry carries no
+/// transcript, note, or audio access, only the identity and dates the Trash
+/// row itself shows, so there is nothing here that widening access would
+/// expose.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrashListResponse {
+    state: &'static str,
+    entries: Vec<TrashEntryPresentation>,
+}
+
+#[tauri::command]
+fn preview_list_trash(state: State<'_, ApplicationState>) -> TrashListResponse {
+    preview_list_trash_for(&state)
+}
+
+fn preview_list_trash_for(state: &ApplicationState) -> TrashListResponse {
+    let Ok(storage) = preview_storage_clone(state) else {
+        return TrashListResponse {
+            state: "unavailable",
+            entries: Vec::new(),
+        };
+    };
+    let Ok(entries) = list_trash_entries(&storage) else {
+        return TrashListResponse {
+            state: "unavailable",
+            entries: Vec::new(),
+        };
+    };
+    TrashListResponse {
+        state: "ok",
+        entries: entries
+            .into_iter()
+            .map(|entry| TrashEntryPresentation {
+                label: entry
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| {
+                        format!("Meeting · {}", entry.meeting_id.chars().take(8).collect::<String>())
+                    }),
+                meeting_id: entry.meeting_id,
+                deleted_at_epoch_seconds: entry.deleted_at_epoch_seconds,
+                purge_after_epoch_seconds: entry.purge_after_epoch_seconds,
+            })
+            .collect(),
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreMeetingResponse {
+    state: &'static str,
+    message: String,
+}
+
+/// Restores one meeting from Trash back into the ordinary library. No review
+/// token: restoring is additive, and the operator already committed to it by
+/// clicking Restore in the Trash list this command re-reads authority from.
+#[tauri::command(async)]
+fn restore_meeting_from_trash_command(
+    meeting_id: String,
+    state: State<'_, ApplicationState>,
+) -> RestoreMeetingResponse {
+    restore_meeting_from_trash_for(meeting_id, &state)
+}
+
+fn restore_meeting_from_trash_for(
+    meeting_id: String,
+    state: &ApplicationState,
+) -> RestoreMeetingResponse {
+    let Ok(_command) = state.command_lock.lock() else {
+        return RestoreMeetingResponse {
+            state: "unavailable",
+            message: "Restore is unavailable. Reopen Trash and try again.".into(),
+        };
+    };
+    let access = state.with_preview_library(
+        || library_reader::LibraryTrashRestoreAccess {
+            state: "unavailable",
+            message: "Restore is unavailable. Reopen Trash and try again.".into(),
+        },
+        |reader, _active| reader.authorize_trash_restore(&meeting_id),
+    );
+    // Any attempted mutation boundary invalidates every retained reader
+    // handle, exactly like every other mutating preview command.
+    if with_preview_library_invalidated(state, || ()).is_err() {
+        return RestoreMeetingResponse {
+            state: "unavailable",
+            message: "Restore is unavailable. Reopen Trash and try again.".into(),
+        };
+    }
+    if access.state != "authorized" {
+        return RestoreMeetingResponse {
+            state: access.state,
+            message: access.message,
+        };
+    }
+
+    let result = state
+        .meeting_restore_facade()
+        .restore_meeting(
+            manual_delete_facade::MeetingRestoreUiArgs {
+                meeting_id: meeting_id.clone(),
+            },
+            now_epoch_seconds(),
+        );
+    let (response_state, message) = match result {
+        Ok(manual_delete_facade::MeetingRestoreFacadeOutcome::Restored) => (
+            "restored",
+            "The meeting was restored from Trash. It is back in Meetings.",
+        ),
+        Ok(manual_delete_facade::MeetingRestoreFacadeOutcome::RecoveredRestore) => (
+            "restored",
+            "The interrupted restore was recovered and completed. The meeting is back in Meetings.",
+        ),
+        Err(
+            manual_delete_facade::MeetingRestoreFacadeError::NoSuchTrashEntry
+            | manual_delete_facade::MeetingRestoreFacadeError::AlreadyPurged,
+        ) => (
+            "not-found",
+            "This meeting is no longer in Trash.",
+        ),
+        Err(manual_delete_facade::MeetingRestoreFacadeError::DestinationExists) => (
+            "unavailable",
+            "Yawn could not restore this meeting because a meeting already occupies its place. Reopen Trash and try again.",
+        ),
+        Err(manual_delete_facade::MeetingRestoreFacadeError::PurgeInProgress) => (
+            "unavailable",
+            "This meeting is being permanently removed and can no longer be restored.",
+        ),
+        Err(
+            manual_delete_facade::MeetingRestoreFacadeError::WriterLockUnavailable
+            | manual_delete_facade::MeetingRestoreFacadeError::StorageUnavailable,
+        ) => (
+            "unavailable",
+            "Restore could not complete. Reopen Trash and try again.",
+        ),
+    };
+    RestoreMeetingResponse {
         state: response_state,
         message: message.into(),
     }
@@ -6342,6 +6513,8 @@ fn main() {
             preview_delete_meeting_audio,
             preview_delete_meeting_transcript,
             preview_delete_meeting,
+            preview_list_trash,
+            restore_meeting_from_trash_command,
             preview_library_open_evidence,
             product_facade::restore_withheld_turn,
             product_facade::regenerate_note,
@@ -6506,6 +6679,25 @@ fn initialize_application(app: AppHandle, retry: bool) {
             retry,
             StartupFailure::Diagnostic,
             "an interrupted meeting deletion requires attention",
+        );
+        return;
+    }
+    // Ahead of any library read, exactly like the permanent-deletion
+    // reconciliation above: a meeting mid-move to trash or mid-restore must
+    // never be read as anything but what it will finish as.
+    if let Err(error) =
+        reconcile_pending_trash(&storage_context.storage, &coordination, now_epoch_seconds())
+    {
+        let _ = write_private_diagnostic(
+            &storage_context.diagnostics,
+            "meeting_trash_reconciliation_failed",
+            &error.to_string(),
+        );
+        finish_startup_failure(
+            &state,
+            retry,
+            StartupFailure::Diagnostic,
+            "an interrupted trash move or restore requires attention",
         );
         return;
     }
@@ -7018,9 +7210,9 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
                 execute_scheduled_retention(&state, &storage, now_epoch_seconds());
             match retention_result {
                 Ok(None) => {}
-                Ok(Some(outcomes)) => {
+                Ok(Some(report)) => {
                     let mut retention_failed = false;
-                    for outcome in outcomes {
+                    for outcome in report.retention {
                         if let RetentionOutcome::Quarantined(meeting_id) = outcome {
                             retention_failed = true;
                             if reported_quarantines.insert(meeting_id.clone()) {
@@ -7032,6 +7224,21 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
                                     ),
                                 );
                             }
+                        }
+                    }
+                    // A trash entry that fails to purge is logged the same way
+                    // a quarantined meeting is, but it never marks retention
+                    // itself unavailable — the two are separate promises, and
+                    // a stuck purge should not also block audio release.
+                    for outcome in report.trash_purge {
+                        if let TrashPurgeOutcome::Quarantined(meeting_id) = outcome
+                            && reported_quarantines.insert(format!("trash-purge:{meeting_id}"))
+                        {
+                            let _ = write_private_diagnostic(
+                                &diagnostics,
+                                "trash_purge_quarantined",
+                                &format!("trash entry {meeting_id} could not be purged"),
+                            );
                         }
                     }
                     if retention_failed {
@@ -7065,17 +7272,32 @@ enum ScheduledRetentionError {
     Retention,
 }
 
+/// What one scheduled tick did, across the two independent promises it
+/// reconciles: audio retention (a privacy deadline) and the trash purge
+/// window (a recoverability deadline). They share a tick because both are
+/// "sweep storage for something whose time has come," but neither outcome
+/// list is folded into the other's meaning.
+#[derive(Debug, PartialEq, Eq)]
+struct ScheduledRetentionReport {
+    retention: Vec<RetentionOutcome>,
+    trash_purge: Vec<TrashPurgeOutcome>,
+}
+
 /// Runs one scheduled retention pass under the same first-tier command lock
 /// as playback launch and explicit deletion. A live owned child defers the
 /// whole pass before it can acquire the storage sequence; a completed child is
 /// reaped before the pass continues. The order is deliberately `command_lock`,
 /// playback slot, then meeting-storage sequence; no storage lock is held while
 /// acquiring an earlier tier.
+///
+/// The trash purge runs in this same locked pass rather than a second timer,
+/// reusing retention's own scheduling idiom exactly as the roadmap intake
+/// calls for.
 fn execute_scheduled_retention(
     state: &ApplicationState,
     storage: &StorageRoot,
     now: u64,
-) -> Result<Option<Vec<RetentionOutcome>>, ScheduledRetentionError> {
+) -> Result<Option<ScheduledRetentionReport>, ScheduledRetentionError> {
     let _command = state
         .command_lock
         .lock()
@@ -7094,9 +7316,14 @@ fn execute_scheduled_retention(
         ScheduledRetentionError::Coordination("active meeting registry is unavailable")
     })?;
 
-    execute_due_retention_excluding(storage, now, &active_meetings)
-        .map(Some)
-        .map_err(|_| ScheduledRetentionError::Retention)
+    let retention = execute_due_retention_excluding(storage, now, &active_meetings)
+        .map_err(|_| ScheduledRetentionError::Retention)?;
+    let trash_purge = execute_due_trash_purge(storage, &coordination, now)
+        .map_err(|_| ScheduledRetentionError::Retention)?;
+    Ok(Some(ScheduledRetentionReport {
+        retention,
+        trash_purge,
+    }))
 }
 
 /// Polls only Yawn's retained child while the command lock is held. A live
@@ -9327,14 +9554,15 @@ mod tests {
         assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
         assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::ESRCH));
 
-        let outcomes = execute_scheduled_retention(&state, &storage, 1)
+        let report = execute_scheduled_retention(&state, &storage, 1)
             .unwrap()
             .unwrap();
 
         assert_eq!(
-            outcomes,
+            report.retention,
             vec![RetentionOutcome::AudioReleased(meeting_id.into())]
         );
+        assert!(report.trash_purge.is_empty());
         assert!(state.audio_playback.lock().unwrap().is_none());
         assert!(!directory.join("capture/mic.wav").exists());
         assert!(!directory.join("capture/system.wav").exists());

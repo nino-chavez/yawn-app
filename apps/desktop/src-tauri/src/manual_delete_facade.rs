@@ -127,18 +127,21 @@ fn map_core_error(error: ManualAudioDeletionError) -> ManualAudioDeletionFacadeE
 /// token would let a confirmation the operator gave for the smaller act satisfy
 /// the larger one, and the compiler would never object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum MeetingDeletionReview {
     Reviewed,
     NotReviewed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) struct WholeMeetingDeletionUiArgs {
     pub(crate) meeting_id: String,
     pub(crate) review: MeetingDeletionReview,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum WholeMeetingDeletionFacadeOutcome {
     DeferredActive,
     MeetingRemoved,
@@ -158,6 +161,7 @@ impl From<MeetingDeletionOutcome> for WholeMeetingDeletionFacadeOutcome {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum WholeMeetingDeletionFacadeError {
     ConfirmationRequired,
     WriterLockUnavailable,
@@ -166,11 +170,16 @@ pub(crate) enum WholeMeetingDeletionFacadeError {
     StorageUnavailable,
 }
 
-/// Desktop owner for whole-meeting removal.
+/// Desktop owner for whole-meeting removal. Kept as a real, working capability
+/// — it is what `meeting_trash::purge_trashed_meeting` runs through once a
+/// trash entry's window elapses — but no command in this app constructs one
+/// directly anymore.
+#[allow(dead_code)]
 pub(crate) struct WholeMeetingDeletionFacade<'a> {
     writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>,
 }
 
+#[allow(dead_code)]
 impl<'a> WholeMeetingDeletionFacade<'a> {
     pub(crate) fn new(writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>) -> Self {
         Self { writer_lock }
@@ -205,6 +214,7 @@ impl<'a> WholeMeetingDeletionFacade<'a> {
     }
 }
 
+#[allow(dead_code)]
 fn map_meeting_deletion_error(error: MeetingDeletionError) -> WholeMeetingDeletionFacadeError {
     match error {
         MeetingDeletionError::NonterminalProductOperation => {
@@ -212,6 +222,189 @@ fn map_meeting_deletion_error(error: MeetingDeletionError) -> WholeMeetingDeleti
         }
         MeetingDeletionError::NoSuchMeeting => WholeMeetingDeletionFacadeError::NoSuchMeeting,
         _ => WholeMeetingDeletionFacadeError::StorageUnavailable,
+    }
+}
+
+/// The reviewed confirmation for moving a whole meeting to local trash.
+///
+/// This is what the desktop "Delete meeting" command now spends — the older
+/// [`MeetingDeletionReview`] above still guards an immediate, unrecoverable
+/// removal, but nothing in this app calls it anymore. A distinct type again,
+/// for the same reason the others are: a confirmation the operator gave for
+/// one act must not silently satisfy a different one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MeetingTrashReview {
+    Reviewed,
+    NotReviewed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MeetingTrashUiArgs {
+    pub(crate) meeting_id: String,
+    pub(crate) review: MeetingTrashReview,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MeetingTrashFacadeOutcome {
+    DeferredActive,
+    Trashed,
+    RecoveredTrash,
+    AlreadyTrashed,
+}
+
+impl From<local_meeting_notes_session_core::meeting_trash::MeetingTrashOutcome>
+    for MeetingTrashFacadeOutcome
+{
+    fn from(outcome: local_meeting_notes_session_core::meeting_trash::MeetingTrashOutcome) -> Self {
+        use local_meeting_notes_session_core::meeting_trash::MeetingTrashOutcome as Core;
+        match outcome {
+            Core::DeferredActive => Self::DeferredActive,
+            Core::MeetingTrashed => Self::Trashed,
+            Core::RecoveredTrash => Self::RecoveredTrash,
+            Core::AlreadyTrashed => Self::AlreadyTrashed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MeetingTrashFacadeError {
+    ConfirmationRequired,
+    WriterLockUnavailable,
+    MeetingActionInProgress,
+    NoSuchMeeting,
+    StorageUnavailable,
+}
+
+/// Desktop owner for moving a whole meeting to trash.
+pub(crate) struct MeetingTrashFacade<'a> {
+    writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>,
+}
+
+impl<'a> MeetingTrashFacade<'a> {
+    pub(crate) fn new(writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>) -> Self {
+        Self { writer_lock }
+    }
+
+    pub(crate) fn trash_meeting(
+        &self,
+        args: MeetingTrashUiArgs,
+        now_epoch_seconds: u64,
+    ) -> Result<MeetingTrashFacadeOutcome, MeetingTrashFacadeError> {
+        if args.review != MeetingTrashReview::Reviewed {
+            return Err(MeetingTrashFacadeError::ConfirmationRequired);
+        }
+        let held = self
+            .writer_lock
+            .lock()
+            .map_err(|_| MeetingTrashFacadeError::WriterLockUnavailable)?;
+        if held.is_none() {
+            return Err(MeetingTrashFacadeError::WriterLockUnavailable);
+        }
+        held.as_ref()
+            .expect("checked app-data writer lock")
+            .meeting_trash_authority()
+            .trash_meeting(&args.meeting_id, now_epoch_seconds)
+            .map(Into::into)
+            .map_err(map_meeting_trash_error)
+    }
+}
+
+fn map_meeting_trash_error(
+    error: local_meeting_notes_session_core::meeting_trash::MeetingTrashError,
+) -> MeetingTrashFacadeError {
+    use local_meeting_notes_session_core::meeting_trash::MeetingTrashError as Core;
+    match error {
+        Core::NonterminalProductOperation | Core::NonterminalTranscription => {
+            MeetingTrashFacadeError::MeetingActionInProgress
+        }
+        Core::Deletion(MeetingDeletionError::NonterminalProductOperation)
+        | Core::Deletion(MeetingDeletionError::NonterminalTranscription) => {
+            MeetingTrashFacadeError::MeetingActionInProgress
+        }
+        Core::NoSuchMeeting => MeetingTrashFacadeError::NoSuchMeeting,
+        _ => MeetingTrashFacadeError::StorageUnavailable,
+    }
+}
+
+/// No review token: restoring is additive, not destructive, so the shell asks
+/// for no confirmation before spending it — it just needs the process writer
+/// lock, exactly like every other storage-mutating facade here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MeetingRestoreUiArgs {
+    pub(crate) meeting_id: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MeetingRestoreFacadeOutcome {
+    Restored,
+    RecoveredRestore,
+}
+
+impl From<local_meeting_notes_session_core::meeting_trash::MeetingRestoreOutcome>
+    for MeetingRestoreFacadeOutcome
+{
+    fn from(
+        outcome: local_meeting_notes_session_core::meeting_trash::MeetingRestoreOutcome,
+    ) -> Self {
+        use local_meeting_notes_session_core::meeting_trash::MeetingRestoreOutcome as Core;
+        match outcome {
+            Core::Restored => Self::Restored,
+            Core::RecoveredRestore => Self::RecoveredRestore,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MeetingRestoreFacadeError {
+    WriterLockUnavailable,
+    NoSuchTrashEntry,
+    DestinationExists,
+    PurgeInProgress,
+    AlreadyPurged,
+    StorageUnavailable,
+}
+
+/// Desktop owner for restoring a meeting from trash.
+pub(crate) struct MeetingRestoreFacade<'a> {
+    writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>,
+}
+
+impl<'a> MeetingRestoreFacade<'a> {
+    pub(crate) fn new(writer_lock: &'a Mutex<Option<Arc<AppDataWriterLock>>>) -> Self {
+        Self { writer_lock }
+    }
+
+    pub(crate) fn restore_meeting(
+        &self,
+        args: MeetingRestoreUiArgs,
+        now_epoch_seconds: u64,
+    ) -> Result<MeetingRestoreFacadeOutcome, MeetingRestoreFacadeError> {
+        let held = self
+            .writer_lock
+            .lock()
+            .map_err(|_| MeetingRestoreFacadeError::WriterLockUnavailable)?;
+        if held.is_none() {
+            return Err(MeetingRestoreFacadeError::WriterLockUnavailable);
+        }
+        held.as_ref()
+            .expect("checked app-data writer lock")
+            .meeting_trash_authority()
+            .restore_meeting(&args.meeting_id, now_epoch_seconds)
+            .map(Into::into)
+            .map_err(map_meeting_restore_error)
+    }
+}
+
+fn map_meeting_restore_error(
+    error: local_meeting_notes_session_core::meeting_trash::MeetingRestoreError,
+) -> MeetingRestoreFacadeError {
+    use local_meeting_notes_session_core::meeting_trash::MeetingRestoreError as Core;
+    match error {
+        Core::NoSuchTrashEntry => MeetingRestoreFacadeError::NoSuchTrashEntry,
+        Core::DestinationExists => MeetingRestoreFacadeError::DestinationExists,
+        Core::PurgeInProgress => MeetingRestoreFacadeError::PurgeInProgress,
+        Core::AlreadyPurged => MeetingRestoreFacadeError::AlreadyPurged,
+        _ => MeetingRestoreFacadeError::StorageUnavailable,
     }
 }
 
@@ -727,5 +920,66 @@ mod tests {
         assert_eq!(fs::read(transcript_path).unwrap(), transcript_before);
         assert_eq!(fs::read(note_json_path).unwrap(), note_json_before);
         assert_eq!(fs::read(note_markdown_path).unwrap(), note_markdown_before);
+    }
+
+    /// The desktop command layer's own round trip through the two new
+    /// facades: an unreviewed trash request refuses before any mutation, a
+    /// reviewed one moves the meeting out of `meetings/`, and restoring it
+    /// through `MeetingRestoreFacade` (which asks for no review token at all)
+    /// brings it back. This exercises exactly the plumbing
+    /// `preview_delete_meeting_for` and `restore_meeting_from_trash_for` add
+    /// in `main.rs`, one layer above the session-core tests that already
+    /// cover the state machine itself.
+    #[test]
+    fn the_trash_and_restore_facades_refuse_unreviewed_and_round_trip_when_reviewed() {
+        let (_temporary, storage) = storage();
+        let directory = write_fixture(&storage, false);
+        let before = fs::read(directory.join("meeting.json")).unwrap();
+        let state = ApplicationState::default();
+        ensure_app_data_writer_lock(&state, &storage).unwrap();
+
+        let unreviewed = MeetingTrashUiArgs {
+            meeting_id: MEETING_ID.into(),
+            review: MeetingTrashReview::NotReviewed,
+        };
+        assert_eq!(
+            state.meeting_trash_facade().trash_meeting(unreviewed, 1_000),
+            Err(MeetingTrashFacadeError::ConfirmationRequired)
+        );
+        assert_eq!(fs::read(directory.join("meeting.json")).unwrap(), before);
+        assert!(directory.exists(), "an unreviewed request moved the meeting");
+
+        let reviewed = MeetingTrashUiArgs {
+            meeting_id: MEETING_ID.into(),
+            review: MeetingTrashReview::Reviewed,
+        };
+        assert_eq!(
+            state.meeting_trash_facade().trash_meeting(reviewed, 1_000),
+            Ok(MeetingTrashFacadeOutcome::Trashed)
+        );
+        assert!(!directory.exists(), "the meeting stayed at meetings/<id>");
+
+        let restored = state
+            .meeting_restore_facade()
+            .restore_meeting(
+                MeetingRestoreUiArgs {
+                    meeting_id: MEETING_ID.into(),
+                },
+                2_000,
+            );
+        assert_eq!(restored, Ok(MeetingRestoreFacadeOutcome::Restored));
+        assert!(directory.join("meeting.json").exists());
+
+        // Restoring a second time finds nothing left to restore — the trash
+        // receipt is gone, exactly as a fully completed restore leaves it.
+        assert_eq!(
+            state.meeting_restore_facade().restore_meeting(
+                MeetingRestoreUiArgs {
+                    meeting_id: MEETING_ID.into(),
+                },
+                3_000,
+            ),
+            Err(MeetingRestoreFacadeError::NoSuchTrashEntry)
+        );
     }
 }

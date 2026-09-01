@@ -10,6 +10,7 @@ import {
   libraryRecoveryPresentation,
   localVocabularyPresentation,
   meetingContextPresentation,
+  meetingDeletionConfirmationCopy,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -30,6 +31,8 @@ import {
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
+  trashLinkPresentation,
+  trashListPresentation,
   turnCitationPresentation,
   withheldTurnPresentation,
 } from "./view-model.mjs";
@@ -80,6 +83,11 @@ const state = {
   transcriptActionStatus: {},
   transcriptQuery: "",
   noteCaptureFocusPending: false,
+  // Roadmap intake I9: local trash for whole-meeting deletion. `trash` is
+  // null until first loaded, then `{ entries: [...] }`; `trashOpen` selects
+  // the quiet secondary list in place of Meetings.
+  trash: null,
+  trashOpen: false,
 };
 
 let noteSaveTimer;
@@ -181,6 +189,7 @@ function render() {
   else if (state.snapshot.startup !== "ready") content = renderStartup(false);
   else if (state.snapshot.capture !== "idle") content = renderCapture();
   else if (state.selected) content = renderMeeting();
+  else if (state.trashOpen) content = renderTrash();
   else content = renderHome();
 
   root.innerHTML = `
@@ -383,6 +392,43 @@ function renderHome() {
         ${library?.total ? `<input class="search-input" type="search" data-field="library-search" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" />` : ""}
       </div>
       ${renderLibrary(library)}
+      ${(() => {
+        const link = trashLinkPresentation(state.trash);
+        return link
+          ? `<button class="button button-quiet button-small trash-link" type="button" data-action="open-trash">${escapeHtml(link.label)}</button>`
+          : "";
+      })()}
+    </section>
+  `;
+}
+
+function renderTrash() {
+  const presentation = trashListPresentation(state.trash);
+  return `
+    <section aria-labelledby="trash-heading">
+      <div class="section-heading">
+        <button class="icon-button" type="button" data-action="close-trash" aria-label="Back to Meetings">‹</button>
+        <h2 id="trash-heading">Trash</h2>
+      </div>
+      <p class="quiet-copy">Deleted meetings stay here for 30 days, then Yawn removes them permanently. There is no server copy, so a meeting cannot be recovered after that.</p>
+      ${presentation.state === "loading" ? `<p class="quiet-copy">Loading Trash…</p>` : ""}
+      ${presentation.state === "empty" ? `<p class="quiet-copy">Trash is empty.</p>` : ""}
+      ${presentation.state === "populated" ? `
+        <div class="meeting-list" role="list">
+          ${presentation.entries.map((entry) => {
+            const busy = state.busyAction === `restore-${entry.meetingId}`;
+            return `
+            <div class="meeting-row trash-row" role="listitem">
+              <span>
+                <span class="meeting-row-title">${escapeHtml(entry.label)}</span>
+                <span class="meeting-row-meta">Deleted ${escapeHtml(dateLabel(entry.deletedAtEpochSeconds))} · removed permanently ${escapeHtml(dateLabel(entry.purgeAfterEpochSeconds))}</span>
+              </span>
+              <button class="button button-secondary button-small" type="button" data-action="restore-trash-entry" data-meeting-id="${escapeHtml(entry.meetingId)}" ${busy ? "disabled" : ""}>${busy ? "Restoring…" : "Restore"}</button>
+            </div>
+          `;
+          }).join("")}
+        </div>
+      ` : ""}
     </section>
   `;
 }
@@ -1372,28 +1418,18 @@ function renderMeetingDeletionSheet() {
       : "confirm-delete-meeting";
   const busy = state.busyAction === action;
   const title = selection.row.label || `Meeting · ${dateLabel(selection.row.createdAtEpochSeconds)}`;
-  const heading = deleteRecording
-    ? "Delete this recording?"
-    : deleteTranscript
-      ? "Delete this transcript?"
-      : "Delete this meeting?";
-  const detail = deleteRecording
-    ? "This permanently removes the saved microphone and system audio from this Mac. The transcript and your personal notes stay."
-    : deleteTranscript
-      ? "This permanently removes the transcript and generated points from this Mac. Any recording and your personal notes stay."
-      : "This permanently removes the recording, transcript, generated points, personal notes, and saved name from this Mac.";
-  const label = deleteRecording ? "Delete recording" : deleteTranscript ? "Delete transcript" : "Delete meeting";
+  const copy = meetingDeletionConfirmationCopy(state.modal);
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet destructive-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-meeting-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Permanent deletion</p><h2 id="delete-meeting-title">${heading}</h2><p>${escapeHtml(detail)}</p></div>
+          <div><p class="eyebrow">${escapeHtml(copy.eyebrow)}</p><h2 id="delete-meeting-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <p class="destructive-target">${escapeHtml(title)}</p>
         <div class="sheet-actions">
           <button class="button button-quiet" type="button" data-action="close-modal">Cancel</button>
-          <button class="button button-danger" type="button" data-action="${action}" ${busy ? "disabled" : ""}>${busy ? "Deleting…" : label}</button>
+          <button class="button button-danger" type="button" data-action="${action}" ${busy ? "disabled" : ""}>${busy ? "Deleting…" : escapeHtml(copy.label)}</button>
         </div>
       </section>
     </div>
@@ -1508,6 +1544,12 @@ async function loadCurrentContext(meetingId) {
 async function refreshLibrary() {
   const title = state.search.trim();
   state.library = await invoke("library_snapshot", { filter: title ? { title } : null });
+  await refreshTrash();
+}
+
+async function refreshTrash() {
+  const response = await invoke("preview_list_trash");
+  state.trash = { entries: response.entries || [] };
 }
 
 async function refreshPermissions() {
@@ -1937,14 +1979,15 @@ async function deleteSelectedMeeting() {
   await flushSelectedNoteSave();
   await runBusy("confirm-delete-meeting", async () => {
     const response = await invoke("preview_delete_meeting", { handle, confirmed: true });
-    if (!["removed", "already-removed"].includes(response.state)) {
+    if (!["trashed", "already-trashed"].includes(response.state)) {
       throw new Error(response.message || "Yawn could not delete this meeting.");
     }
     if (state.selected !== selection) return;
     state.selected = null;
     state.activeView = "home";
     state.modal = "";
-    state.notice = response.message || "The meeting was permanently deleted from this Mac.";
+    state.notice = response.message
+      || "The meeting moved to Trash. It stays recoverable there for 30 days, then Yawn removes it permanently.";
     await refreshLibrary();
   });
 }
@@ -2144,11 +2187,46 @@ async function openMeetings() {
   state.meetingManagementOpen = false;
   state.transcriptQuery = "";
   state.activeView = "home";
+  state.trashOpen = false;
   if (!invoke) {
     render();
     return;
   }
   await runBusy("library", refreshLibrary);
+}
+
+function openTrash() {
+  state.selected = null;
+  state.trashOpen = true;
+  render();
+  if (!invoke) return;
+  void runBusy("open-trash", refreshTrash);
+}
+
+function closeTrash() {
+  state.trashOpen = false;
+  render();
+}
+
+async function restoreTrashEntry(meetingId) {
+  if (!meetingId) return;
+  await runBusy(`restore-${meetingId}`, async () => {
+    const response = await invoke("restore_meeting_from_trash_command", { meetingId });
+    if (!["restored", "not-found"].includes(response.state)) {
+      throw new Error(response.message || "Yawn could not restore this meeting.");
+    }
+    state.notice = response.message || "The meeting was restored from Trash.";
+    await refreshTrash();
+    await refreshLibraryQuietly();
+    if (!state.trash?.entries?.length) state.trashOpen = false;
+  });
+}
+
+// A restore already refreshed Trash; Meetings needs the same treatment so the
+// restored meeting shows up there without a second visible busy state.
+async function refreshLibraryQuietly() {
+  const title = state.search.trim();
+  state.library = await invoke("library_snapshot", { filter: title ? { title } : null });
 }
 
 async function refreshLibraryFromRecovery() {
@@ -2297,6 +2375,9 @@ function handleClick(event) {
   else if (action === "delete-recording") openMeetingDeletion("delete-recording");
   else if (action === "delete-transcript") openMeetingDeletion("delete-transcript");
   else if (action === "delete-meeting") openMeetingDeletion("delete-meeting");
+  else if (action === "open-trash") openTrash();
+  else if (action === "close-trash") closeTrash();
+  else if (action === "restore-trash-entry") void restoreTrashEntry(control.dataset.meetingId);
   else if (action === "confirm-delete-recording") void deleteSelectedRecording();
   else if (action === "confirm-delete-transcript") void deleteSelectedTranscript();
   else if (action === "confirm-delete-meeting") void deleteSelectedMeeting();

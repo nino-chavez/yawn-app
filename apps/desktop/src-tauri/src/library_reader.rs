@@ -381,6 +381,14 @@ pub(crate) struct LibraryMeetingDeletionAccess {
     pub(crate) message: String,
 }
 
+/// Authorization to restore one trash entry, re-read from disk rather than
+/// from a retained handle — see `authorize_trash_restore`.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LibraryTrashRestoreAccess {
+    pub(crate) state: &'static str,
+    pub(crate) message: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryClaim {
@@ -1420,6 +1428,36 @@ impl LibraryReader {
             state: "stale",
             meeting_id: None,
             message: STALE_MESSAGE.into(),
+        }
+    }
+
+    /// Authorization to restore one trash entry.
+    ///
+    /// Deliberately not handle-based like the deletion accesses above: a trash
+    /// entry lives outside `LibraryProjection` (it is, by construction, not a
+    /// projected meeting), so there is no snapshot handle to redeem. The
+    /// operator already has the exact `meeting_id` from the Trash list this
+    /// call re-reads, matching the raw-identifier precedent
+    /// `restore_withheld_turn` already uses elsewhere in this app. What this
+    /// keeps from the deletion idiom is the state shape — a fresh disk read
+    /// authoritative over whatever the shell last rendered — not the handle
+    /// mechanism, which has nothing to attach to here.
+    pub(crate) fn authorize_trash_restore(&self, meeting_id: &str) -> LibraryTrashRestoreAccess {
+        use local_meeting_notes_session_core::meeting_trash::list_trash_entries;
+        let found = list_trash_entries(&self.storage)
+            .unwrap_or_default()
+            .into_iter()
+            .any(|entry| entry.meeting_id == meeting_id);
+        if found {
+            LibraryTrashRestoreAccess {
+                state: "authorized",
+                message: "This meeting may be restored from Trash.".into(),
+            }
+        } else {
+            LibraryTrashRestoreAccess {
+                state: "not-found",
+                message: "This meeting is no longer in Trash.".into(),
+            }
         }
     }
 

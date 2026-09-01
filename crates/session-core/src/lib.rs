@@ -12,6 +12,7 @@ pub mod meeting;
 pub mod meeting_coordination;
 pub mod meeting_deletion;
 pub mod meeting_title;
+pub mod meeting_trash;
 pub mod model_store;
 pub mod note_generation;
 pub mod note_projection;

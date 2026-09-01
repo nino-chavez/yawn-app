@@ -990,6 +990,76 @@ pub(crate) fn forget_meeting(storage: &StorageRoot, meeting_id: &str) -> Result<
     }
 }
 
+/// Writes back a title and folder remembered from before a meeting was
+/// trashed, for the restore path only.
+///
+/// Mirrors `forget_meeting`'s self-contained revision handling: the caller
+/// already holds the process writer lock and the meeting's lease, so there is
+/// no concurrent writer to conflict with, and a conflict here would strand a
+/// restore with no one to resolve it. It differs from `forget_meeting` in one
+/// way that matters — **it must run after the meeting directory is back on
+/// disk**, because `meeting_is_present` (which both `set_meeting_title` and
+/// `assign_meeting_folder` require) can only see a meeting that has already
+/// been moved back to `meetings/<id>`.
+///
+/// A folder the operator deleted while the meeting sat in trash is dropped
+/// silently rather than refusing the whole restore: losing a folder
+/// assignment is a smaller failure than a meeting that cannot come back.
+///
+/// **Guarded on `meeting_is_present`, same as `set_meeting_title` and
+/// `assign_meeting_folder` above.** Skipping that guard was the actual bug: a
+/// caller that reinstates before confirming the meeting is really back on
+/// disk (for instance, after a purge finished mid-crash and left a `Trashed`
+/// receipt pointing at nothing) would otherwise write a row for a meeting
+/// that isn't there — which does not strand one title, it makes
+/// `library_read` quarantine every title and folder in the record at once.
+/// A caller-side check is not a substitute for this one; this is the only
+/// place that can refuse atomically with the write.
+pub(crate) fn reinstate_meeting_organization(
+    storage: &StorageRoot,
+    meeting_id: &str,
+    title: Option<&str>,
+    folder_id: Option<&str>,
+) -> Result<(), ()> {
+    if title.is_none() && folder_id.is_none() {
+        return Ok(());
+    }
+    if !meeting_is_present(storage, meeting_id) {
+        return Err(());
+    }
+    let current = match read_library_metadata(storage) {
+        MetadataState::Valid(document) => document.revision,
+        MetadataState::Missing { .. } => 0,
+        // An unreadable record cannot be safely rewritten; the restore itself
+        // already succeeded by the time this runs, so the meeting comes back
+        // without its remembered name rather than not coming back at all.
+        MetadataState::Unavailable { .. } => return Ok(()),
+    };
+    let title_owned = title.map(str::to_owned);
+    let folder_owned = folder_id.map(str::to_owned);
+    match mutate(storage, current, move |draft| {
+        let resolved_folder = folder_owned
+            .as_deref()
+            .filter(|id| draft.folders.iter().any(|folder| folder.id == *id))
+            .map(str::to_owned);
+        match draft.row_mut(meeting_id) {
+            Some(row) => {
+                row.title = title_owned.clone();
+                row.folder_id = resolved_folder;
+            }
+            None => draft.insert_row(MeetingMetadata {
+                meeting_id: meeting_id.to_owned(),
+                title: title_owned.clone(),
+                folder_id: resolved_folder,
+            }),
+        }
+        Ok(None)
+    }) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(()),
+    }
+}
+
 fn canonical_uuid(value: &str) -> bool {
     Uuid::parse_str(value)
         .map(|id| {
