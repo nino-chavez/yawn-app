@@ -63,7 +63,7 @@ struct StoredContext {
 /// string, mirroring `OperatorNote`: the shell decides how to present an empty
 /// context, and conflating "nothing written" with "nothing readable" is the
 /// mistake `operator_note.rs` was already corrected for.
-#[derive(Debug, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct MeetingContext {
     pub text: String,
@@ -74,6 +74,18 @@ pub struct MeetingContext {
     /// saving over it would destroy whatever it holds. The shell refuses
     /// editing on this, which is the only reason the flag exists.
     pub unreadable: bool,
+}
+
+impl MeetingContext {
+    /// Nothing to report: no meeting resolved, so neither a context nor a
+    /// failure to read one. Mirrors `OperatorNote::none()` exactly, for the
+    /// same reason -- identical in what a surface should show.
+    pub fn none() -> Self {
+        Self {
+            text: String::new(),
+            unreadable: false,
+        }
+    }
 }
 
 pub fn read(meeting_dir: &Path) -> MeetingContext {
@@ -132,6 +144,17 @@ mod tests {
         let temporary = TempDir::new().unwrap();
         create_private_dir(&temporary.path().join("meeting")).unwrap();
         temporary
+    }
+
+    #[test]
+    fn none_matches_what_a_meeting_with_no_context_reads() {
+        // The library note response falls back to `none()` when a meeting
+        // cannot be resolved at all. It must read identically to a resolved
+        // meeting with no context, or a reader could tell "no meeting" and
+        // "no context" apart from this field alone.
+        let temporary = meeting();
+        let directory = temporary.path().join("meeting");
+        assert_eq!(MeetingContext::none(), read(&directory));
     }
 
     #[test]

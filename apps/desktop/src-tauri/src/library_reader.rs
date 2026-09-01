@@ -259,7 +259,38 @@ pub(crate) struct LibraryNoteResponse {
     /// collapsing to text, because "could not be read" and "nothing written"
     /// lead a reader to opposite conclusions.
     pub(crate) operator_note: crate::operator_note::OperatorNote,
+    /// The operator's pre-meeting context (roadmap intake I3's sidecar),
+    /// carried here so it stays readable after the meeting the same way
+    /// `operator_note` does.
+    ///
+    /// Read-only on this surface: nothing here is editable, and this packet
+    /// adds no write path for it beyond the one `save_meeting_context`
+    /// already has for the meeting currently being captured.
+    pub(crate) meeting_context: crate::meeting_context::MeetingContext,
+    /// Roadmap intake I4 / design D4's reverse half: which of `claims` cites
+    /// each transcript turn, keyed by the turn's `sourceTurnIndex` -- the
+    /// same identity the transcript reader already uses for a turn, and the
+    /// same identity `claims[].locators` already carries. A turn with no
+    /// citing claim is simply absent; the shell reads absence as "uncited,"
+    /// never as "not yet checked."
+    ///
+    /// This is not a second link: it is `claims` folded the other direction,
+    /// derived in `turns_cited` from the exact locators opened for this
+    /// response. It therefore shares `claims`'s staleness lifecycle exactly --
+    /// when the projection is not current, this response is `stale` before
+    /// either field is populated, and both come back empty.
+    pub(crate) turns_cited: Vec<TurnCitation>,
     pub(crate) message: String,
+}
+
+/// One transcript turn cited by at least one claim, and every claim ordinal
+/// that cites it (ascending, deduplicated -- a claim with two locators on the
+/// same turn appears once).
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TurnCitation {
+    pub(crate) turn: u32,
+    pub(crate) claim_ordinals: Vec<u64>,
 }
 
 /// Content-free, freshly checked retention facts for one meeting detail view.
@@ -878,6 +909,7 @@ impl LibraryReader {
         let audio_retention = self.audio_retention(&meeting_id);
         let capture_pauses = Self::capture_pauses(&self.storage, &meeting_id);
         let operator_note = self.operator_note(&meeting_id);
+        let meeting_context = self.meeting_context(&meeting_id);
         let operator_note_handle = (!operator_note.unreadable)
             .then(|| self.retain_operator_note_handle(&meeting_id))
             .flatten();
@@ -920,6 +952,8 @@ impl LibraryReader {
                     audio_retention,
                     capture_pauses: capture_pauses.clone(),
                     operator_note,
+                    meeting_context: meeting_context.clone(),
+                    turns_cited: Vec::new(),
                     message: "A note was not produced. Retained transcript text remains available."
                         .into(),
                 };
@@ -942,6 +976,8 @@ impl LibraryReader {
                     audio_retention,
                     capture_pauses: capture_pauses.clone(),
                     operator_note,
+                    meeting_context: meeting_context.clone(),
+                    turns_cited: Vec::new(),
                     message: if transcript_handle.is_some() {
                         "No admitted note is available. Retained transcript text remains available."
                             .into()
@@ -961,6 +997,11 @@ impl LibraryReader {
             Err(_) => return Self::stale_note(&meeting_id),
         };
         let mut claims = Vec::new();
+        // Gathered alongside `claims`, from the exact locators this response
+        // just opened -- not looked up separately -- then folded into
+        // `turns_cited` below. See that function's doc comment for why this
+        // is what gives the reverse index its staleness lifecycle for free.
+        let mut turn_citations: Vec<(u32, u64)> = Vec::new();
         for hit in handles {
             let handle = self.retain_handle(hit.clone());
             match self.projection.open_snapshot(&hit) {
@@ -971,14 +1012,19 @@ impl LibraryReader {
                     claim,
                     locators,
                     ..
-                }) => claims.push(LibraryClaim {
-                    handle,
-                    ordinal: claim_ordinal,
-                    claim_type: claim_type_name(claim_type),
-                    claim,
-                    evidence_state: evidence_state_name(evidence_state),
-                    locator_count: locators.len(),
-                }),
+                }) => {
+                    for locator in &locators {
+                        turn_citations.push((locator.source_turn_index, claim_ordinal));
+                    }
+                    claims.push(LibraryClaim {
+                        handle,
+                        ordinal: claim_ordinal,
+                        claim_type: claim_type_name(claim_type),
+                        claim,
+                        evidence_state: evidence_state_name(evidence_state),
+                        locator_count: locators.len(),
+                    })
+                }
                 Ok(_) | Err(_) => return Self::stale_note(&meeting_id),
             }
         }
@@ -997,6 +1043,8 @@ impl LibraryReader {
             audio_retention,
             capture_pauses,
             operator_note,
+            meeting_context,
+            turns_cited: turns_cited(&turn_citations),
             message: "Claim words can be opened against their exact transcript locators.".into(),
         }
     }
@@ -1190,6 +1238,8 @@ impl LibraryReader {
             capture_pauses:
                 local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
             operator_note: crate::operator_note::OperatorNote::none(),
+            meeting_context: crate::meeting_context::MeetingContext::none(),
+            turns_cited: Vec::new(),
             message: UNAVAILABLE_MESSAGE.into(),
         }
     }
@@ -1587,6 +1637,16 @@ impl LibraryReader {
         }
     }
 
+    /// Read alongside the operator's own note, from the same resolved
+    /// directory and with the same failure posture as `operator_note`: a
+    /// meeting that cannot be resolved reports nothing rather than guessing.
+    fn meeting_context(&self, meeting_id: &str) -> crate::meeting_context::MeetingContext {
+        match meeting_dir(&self.storage, meeting_id) {
+            Ok(directory) => crate::meeting_context::read(&directory),
+            Err(_) => crate::meeting_context::MeetingContext::none(),
+        }
+    }
+
     pub(crate) fn read_audio_retention(
         storage: &StorageRoot,
         meeting_id: &str,
@@ -1771,6 +1831,8 @@ impl LibraryReader {
             capture_pauses:
                 local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
             operator_note: crate::operator_note::OperatorNote::none(),
+            meeting_context: crate::meeting_context::MeetingContext::none(),
+            turns_cited: Vec::new(),
             message: STALE_MESSAGE.into(),
         }
     }
@@ -1870,6 +1932,35 @@ fn evidence_state_name(value: ClaimEvidenceState) -> &'static str {
     match value {
         ClaimEvidenceState::Located => "located",
     }
+}
+
+/// Folds `(source_turn_index, claim_ordinal)` pairs -- gathered while opening
+/// this response's own `claims`, one pair per locator -- into one entry per
+/// cited transcript turn.
+///
+/// A pure derivation over data the caller already validated: nothing here
+/// touches storage, re-derives a claim, or looks anything up a second time.
+/// Roadmap intake I4 / design D4's reverse half, "Extends the existing
+/// claim→source link on the existing surface": this is that same link, read
+/// backwards.
+fn turns_cited(citations: &[(u32, u64)]) -> Vec<TurnCitation> {
+    let mut by_turn: std::collections::BTreeMap<u32, Vec<u64>> = std::collections::BTreeMap::new();
+    for (turn, ordinal) in citations {
+        let ordinals = by_turn.entry(*turn).or_default();
+        if !ordinals.contains(ordinal) {
+            ordinals.push(*ordinal);
+        }
+    }
+    for ordinals in by_turn.values_mut() {
+        ordinals.sort_unstable();
+    }
+    by_turn
+        .into_iter()
+        .map(|(turn, claim_ordinals)| TurnCitation {
+            turn,
+            claim_ordinals,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -2031,6 +2122,314 @@ mod tests {
             storage,
             directory,
         }
+    }
+
+    /// A `Ready` meeting with four transcript turns, one of them withheld, so
+    /// a locator's projection-input `turn` (an index into the worker-visible
+    /// turns only) and its real `sourceTurnIndex` (an index into every turn,
+    /// withheld ones included) genuinely differ. That gap is exactly what a
+    /// reverse-index bug would get wrong silently: using the wrong one still
+    /// looks plausible unless a withheld turn sits between two visible ones.
+    ///
+    /// Turns, by their real (source) index: 0 "alpha" (visible), 1 "redacted"
+    /// (withheld), 2 "gamma" (visible), 3 "delta" (visible). Fed to the
+    /// projector as the visible-only array `["alpha", "gamma", "delta"]`, so
+    /// the worker's own `turn` ordinals 0/1/2 name source turns 0/2/3.
+    fn claims_fixture() -> Fixture {
+        let temporary = TempDir::new().unwrap();
+        let protected = temporary.path().join("protected");
+        create_private_dir(&protected).unwrap();
+        let storage = StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let directory = storage.path().join("meetings").join(MEETING_ID);
+        for child in ["", "capture", "transcript", "deletion", "notes"] {
+            create_private_dir(&directory.join(child)).unwrap();
+        }
+        let rule = AudioRetentionRule::UntilManualDeletion;
+        let policy_sha256 = retention_policy_sha256(&rule);
+        let attempt = serde_json::to_vec_pretty(&json!({
+            "schema": "capture-attempt/1",
+            "meeting_id": MEETING_ID,
+            "attempt_id": "22222222-2222-4222-8222-222222222222",
+            "created_at_epoch_seconds": 1_728_000_000_u64,
+            "application_build_sha256": "a".repeat(64),
+            "participant_notice_version": "internal-transcript-alpha/1",
+            "operator_attestation": {
+                "participantsConsented": true,
+                "headphones": true,
+                "operatorAlone": true
+            },
+            "retention_policy_sha256": policy_sha256,
+        }))
+        .unwrap();
+        durable_create_new(&directory.join("attempt.json"), &attempt).unwrap();
+        durable_create_new(&directory.join("ownership.json"), b"ownership").unwrap();
+        durable_create_new(&directory.join("capture/session.json"), b"session").unwrap();
+        durable_create_new(&directory.join("deletion/audio-deletion.json"), b"released").unwrap();
+        let transcript_bytes = serde_json::to_vec_pretty(&json!({
+            "schema": "capture-transcript/1",
+            "source": "synthetic",
+            "attribution": "channel",
+            "bleed": null,
+            "voiceprint": null,
+            "capture_health": {},
+            "turns": [
+                {"start": 0.0, "end": 0.5, "speaker": "Me", "text": "alpha", "gated": false},
+                {"start": 0.5, "end": 1.0, "speaker": "Me", "text": "redacted", "gated": true},
+                {"start": 1.0, "end": 1.5, "speaker": "Me", "text": "gamma", "gated": false},
+                {"start": 1.5, "end": 2.0, "speaker": "Me", "text": "delta", "gated": false}
+            ]
+        }))
+        .unwrap();
+        let transcript_relative = format!(
+            "transcript/{:x}.json",
+            sha2::Sha256::digest(&transcript_bytes)
+        );
+        durable_create_new(&directory.join(&transcript_relative), &transcript_bytes).unwrap();
+        let note_json = b"{}\n";
+        let note_markdown = b"# private\n";
+        let note_json_relative = format!(
+            "notes/{:x}.json",
+            sha2::Sha256::digest(note_json.as_slice())
+        );
+        let note_markdown_relative = format!(
+            "notes/{:x}.md",
+            sha2::Sha256::digest(note_markdown.as_slice())
+        );
+        durable_create_new(&directory.join(&note_json_relative), note_json).unwrap();
+        durable_create_new(&directory.join(&note_markdown_relative), note_markdown).unwrap();
+        let transcript_sha256 = format!("{:x}", sha2::Sha256::digest(&transcript_bytes));
+        let record = MeetingRecord {
+            schema: MeetingSchema::V2,
+            meeting_id: MEETING_ID.into(),
+            lifecycle: MeetingLifecycle::Ready,
+            retention: AudioRetention {
+                policy_sha256,
+                rule,
+                next_deletion_at_epoch_seconds: None,
+                state: AudioState::Released,
+                deletion_receipt: Some(
+                    artifact_ref(&directory, "deletion/audio-deletion.json").unwrap(),
+                ),
+            },
+            artifacts: MeetingArtifacts {
+                attempt: artifact_ref(&directory, "attempt.json").unwrap(),
+                ownership: Some(artifact_ref(&directory, "ownership.json").unwrap()),
+                capture_session: Some(artifact_ref(&directory, "capture/session.json").unwrap()),
+                // Metadata only: `Ready` requires both legs recorded, but the
+                // bytes need not exist on disk once retention state is
+                // `Released` -- `verify_record_artifacts` only opens audio
+                // bytes while `Retained`.
+                microphone_audio: Some(ArtifactRef {
+                    relative_path: "capture/mic.wav".into(),
+                    sha256: "b".repeat(64),
+                }),
+                system_audio: Some(ArtifactRef {
+                    relative_path: "capture/system.wav".into(),
+                    sha256: "c".repeat(64),
+                }),
+                current_transcript: Some(artifact_ref(&directory, &transcript_relative).unwrap()),
+                current_note: Some(local_meeting_notes_session_core::meeting::NoteRevisionRef {
+                    json: artifact_ref(&directory, &note_json_relative).unwrap(),
+                    markdown: artifact_ref(&directory, &note_markdown_relative).unwrap(),
+                    source_transcript_sha256: transcript_sha256,
+                }),
+            },
+            pending_storage_operation: None,
+        };
+        write_meeting(&directory, &record).unwrap();
+        Fixture {
+            _temporary: temporary,
+            storage,
+            directory,
+        }
+    }
+
+    /// Projects three claims over [`claims_fixture`]'s transcript, fixed so
+    /// the reverse index has one turn multiple claims cite (source turn 0,
+    /// "alpha"), one claim citing two different turns (the point, citing
+    /// source turns 0 and 3), and one visible turn no claim cites at all
+    /// (source turn 2, "gamma") -- the three shapes the merge gate requires.
+    struct TurnCitationProjector;
+
+    impl NoteProjector for TurnCitationProjector {
+        fn project(
+            &self,
+            request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+        ) -> Result<
+            Vec<u8>,
+            local_meeting_notes_session_core::note_projection::ProjectTransportError,
+        > {
+            let alpha_sha256 = format!("{:x}", sha2::Sha256::digest(b"alpha"));
+            let delta_sha256 = format!("{:x}", sha2::Sha256::digest(b"delta"));
+            let decision_text = "decide on alpha";
+            let action_text = "follow up on alpha too";
+            let point_text = "alpha and delta both matter";
+            let decision_sha256 = format!("{:x}", sha2::Sha256::digest(decision_text.as_bytes()));
+            let action_sha256 = format!("{:x}", sha2::Sha256::digest(action_text.as_bytes()));
+            let point_sha256 = format!("{:x}", sha2::Sha256::digest(point_text.as_bytes()));
+            // Worker-visible `turn` 0 is source turn 0 ("alpha"); worker-visible
+            // `turn` 2 is source turn 3 ("delta"). Worker-visible `turn` 1
+            // ("gamma", source turn 2) appears in no locator below.
+            let locator_alpha =
+                format!("{{\"turn\":0,\"start\":0,\"end\":5,\"text_sha256\":\"{alpha_sha256}\"}}");
+            let locator_delta =
+                format!("{{\"turn\":2,\"start\":0,\"end\":5,\"text_sha256\":\"{delta_sha256}\"}}");
+            let claim_decision = format!(
+                "{{\"claim_ordinal\":0,\"claim_sha256\":\"{decision_sha256}\",\"claim_type\":\"decision\",\"evidence_state\":\"located\",\"claim\":\"{decision_text}\",\"locators\":[{locator_alpha}]}}"
+            );
+            let claim_action = format!(
+                "{{\"claim_ordinal\":1,\"claim_sha256\":\"{action_sha256}\",\"claim_type\":\"action\",\"evidence_state\":\"located\",\"claim\":\"{action_text}\",\"locators\":[{locator_alpha}]}}"
+            );
+            let claim_point = format!(
+                "{{\"claim_ordinal\":2,\"claim_sha256\":\"{point_sha256}\",\"claim_type\":\"point\",\"evidence_state\":\"located\",\"claim\":\"{point_text}\",\"locators\":[{locator_alpha},{locator_delta}]}}"
+            );
+            Ok(format!(
+                "{{\"schema\":\"note-projection-result/1\",\"request_id\":\"{}\",\"operation\":\"note.project\",\"outcome\":\"succeeded\",\"projection\":{{\"schema\":\"note-claim-projection/1\",\"note_json_sha256\":\"{}\",\"note_markdown_sha256\":\"{}\",\"transcript_sha256\":\"{}\",\"claims\":[{claim_decision},{claim_action},{claim_point}]}},\"failure\":null}}\n",
+                request.request_id,
+                request.note_json_sha256,
+                request.note_markdown_sha256,
+                request.transcript_sha256,
+            )
+            .into_bytes())
+        }
+    }
+
+    #[test]
+    fn reverse_index_folds_claims_by_the_real_turn_not_the_projection_ordinal() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(TurnCitationProjector),
+        )
+        .unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        let handle = snapshot.rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new());
+        assert_eq!(note.state, "note");
+        assert_eq!(note.claims.len(), 3);
+
+        // Source turn 0 ("alpha") is cited by all three claims.
+        let turn_zero = note
+            .turns_cited
+            .iter()
+            .find(|citation| citation.turn == 0)
+            .expect("source turn 0 is cited");
+        assert_eq!(turn_zero.claim_ordinals, vec![0, 1, 2]);
+
+        // The point claim (ordinal 2) also cites source turn 3 ("delta"),
+        // proving one claim can appear under more than one turn.
+        let turn_three = note
+            .turns_cited
+            .iter()
+            .find(|citation| citation.turn == 3)
+            .expect("source turn 3 is cited");
+        assert_eq!(turn_three.claim_ordinals, vec![2]);
+
+        // Source turn 2 ("gamma") is visible but cited by nothing, and must
+        // be absent rather than present with an empty list -- absence is how
+        // the shell tells "uncited" from "not yet checked."
+        assert!(!note.turns_cited.iter().any(|citation| citation.turn == 2));
+
+        // The withheld turn (source index 1) never enters a claim's locators
+        // at all, so it cannot appear here either. Asserting there are
+        // exactly two entries (turns 0 and 3) closes the set: nothing beyond
+        // the two turns actually cited leaked in, in particular not the
+        // withheld turn's real index or the projector's own visible-turn
+        // ordinal for it (which does not exist, since it was excluded).
+        assert_eq!(note.turns_cited.len(), 2);
+    }
+
+    #[test]
+    fn reverse_index_disappears_with_claims_when_the_projection_goes_stale() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(TurnCitationProjector),
+        )
+        .unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        let handle = snapshot.rows[0].handle.clone();
+
+        let fresh = reader.open_note(&handle, &HashSet::new());
+        assert_eq!(fresh.state, "note");
+        assert!(!fresh.turns_cited.is_empty());
+
+        // Change the admitted note's own JSON bytes on disk: the note's
+        // digest no longer matches `meeting.json`, so the whole projection --
+        // claims and their reverse index alike -- must read as current no
+        // longer, not merely thin on data.
+        fs::write(fixture.directory.join("notes").join(
+            format!("{:x}.json", sha2::Sha256::digest(b"{}\n".as_slice())),
+        ), b"{\"changed\":true}\n")
+        .unwrap();
+
+        let stale = reader.open_note(&handle, &HashSet::new());
+        assert_eq!(stale.state, "stale");
+        assert!(stale.claims.is_empty());
+        assert!(
+            stale.turns_cited.is_empty(),
+            "a stale note must carry no reverse citations, exactly like it carries no claims"
+        );
+    }
+
+    #[test]
+    fn note_response_carries_written_meeting_context_read_only() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        crate::meeting_context::write(&fixture.directory, "what must get decided").unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new());
+        assert_eq!(note.meeting_context.text, "what must get decided");
+        assert!(!note.meeting_context.unreadable);
+    }
+
+    #[test]
+    fn note_response_reports_no_context_as_empty_not_unreadable() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new());
+        assert!(note.meeting_context.text.is_empty());
+        assert!(!note.meeting_context.unreadable);
+    }
+
+    #[test]
+    fn note_response_reports_an_unparseable_context_file_as_unreadable_not_missing() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        fs::write(fixture.directory.join("meeting-context.json"), b"{ not context").unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new());
+        assert!(note.meeting_context.unreadable);
+        // Distinct from empty: an unreadable context must never surface bytes
+        // from a file this build could not parse.
+        assert!(note.meeting_context.text.is_empty());
     }
 
     fn tree_bytes(path: &Path) -> Vec<(String, Vec<u8>)> {

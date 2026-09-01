@@ -9,6 +9,7 @@ import {
   humanize,
   libraryRecoveryPresentation,
   localVocabularyPresentation,
+  meetingContextPresentation,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -21,6 +22,7 @@ import {
   retainedAudioPlaybackPresentation,
   retentionLabel,
   shouldPollSnapshot,
+  transcriptCitationSummary,
   transcriptPlainText,
   transcriptRetryQualityPresentation,
   transcriptSpeakerLabel,
@@ -28,6 +30,7 @@ import {
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
+  turnCitationPresentation,
   withheldTurnPresentation,
 } from "./view-model.mjs";
 
@@ -551,12 +554,18 @@ function transcriptActionStatus(scope) {
   return state.transcriptActionStatus?.[scope] || "";
 }
 
-function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", workspace = false } = {}) {
+function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", workspace = false, citations = null } = {}) {
   const scope = copyAction.includes("library") ? "library" : "current";
   const copyBusy = state.busyAction === copyAction;
   const fileBusy = state.busyAction === openFileAction;
   const query = workspace ? state.transcriptQuery.trim() : "";
   const visibleTurns = workspace ? transcriptTurnsMatching(turns, query) : turns;
+  // Roadmap intake I4 / design D4's reverse half. Only the library's finished
+  // transcript passes `citations`, so the live capture view never grows the
+  // affordance for a note that does not exist yet.
+  const citationSummary = citations
+    ? transcriptCitationSummary(citations.turnsCited, turns.length)
+    : null;
   const vocabulary = workspace
     ? localVocabularyPresentation({
       meetingId: state.selected?.row?.meetingId,
@@ -585,6 +594,9 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
     const correctionLabel = turn.speakerCorrected
       ? `Change speaker name. Currently ${speakerLabel}, corrected from ${turn.sourceSpeaker || "Unattributed"}.`
       : `Correct speaker name. Currently ${speakerLabel}.`;
+    const citation = citations && !turn.withheld
+      ? turnCitationPresentation(citations.turnsCited, citations.claims, turn.sourceTurnIndex)
+      : null;
     return `
       <div class="transcript-line ${turn.withheld ? "withheld" : ""}">
         <div class="transcript-line-meta">
@@ -595,6 +607,9 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
         </div>
         <p>${turn.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn.text)}</p>
         ${restore ? `<button class="button button-quiet button-small" type="button" data-action="restore-withheld-turn" data-source-turn-index="${escapeHtml(restore.sourceTurnIndex)}">${restore.label}</button>` : ""}
+        ${citation ? `<div class="turn-citation" aria-label="${escapeHtml(citation.summary)}">
+          ${citation.citations.map((cited) => `<button class="turn-citation-button" type="button" data-action="navigate-to-claim" data-ordinal="${escapeHtml(cited.ordinal)}">${escapeHtml(cited.label)}</button>`).join("")}
+        </div>` : ""}
       </div>
     `;
   }).join("");
@@ -607,7 +622,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
     return `
       <section class="transcript-panel transcript-workspace" aria-labelledby="transcript-heading">
         <div class="transcript-workspace-toolbar">
-          <div class="transcript-heading"><h3 id="transcript-heading">${escapeHtml(title)}</h3>${detail ? `<p>${escapeHtml(detail)}</p>` : ""}</div>
+          <div class="transcript-heading"><h3 id="transcript-heading">${escapeHtml(title)}</h3>${detail ? `<p>${escapeHtml(detail)}</p>` : ""}${citationSummary ? `<p class="transcript-citation-summary">${escapeHtml(citationSummary)}</p>` : ""}</div>
           <div class="transcript-workspace-actions">
             ${vocabulary ? `<button class="button button-quiet button-small" type="button" data-action="${vocabulary.action}">${vocabulary.label}</button>` : ""}
             ${actions}
@@ -637,7 +652,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
 
 function renderMeetingNoteItems(claims, claimEvidence) {
   return `
-    <ul class="meeting-note-list">${claims.map((claim) => `<li class="meeting-note-item">
+    <ul class="meeting-note-list">${claims.map((claim) => `<li class="meeting-note-item"${Number.isInteger(claim.ordinal) ? ` data-claim-item="${escapeHtml(claim.ordinal)}"` : ""}>
           <p>${escapeHtml(claim.claim)}</p>
           ${renderClaimEvidence(claim, claimEvidence[claim.ordinal])}
         </li>`).join("")}</ul>
@@ -684,7 +699,7 @@ function renderMeetingNote(note, claimEvidence) {
       ${presentation.summary.length ? `
         <section class="meeting-note-section meeting-note-overview" aria-labelledby="meeting-overview-heading">
           <h3 id="meeting-overview-heading">Overview</h3>
-          ${presentation.summary.map((claim) => `<div class="meeting-note-summary-item">
+          ${presentation.summary.map((claim) => `<div class="meeting-note-summary-item"${Number.isInteger(claim.ordinal) ? ` data-claim-item="${escapeHtml(claim.ordinal)}"` : ""}>
             <p>${escapeHtml(claim.claim)}</p>
             ${claim.handle ? renderClaimEvidence(claim, claimEvidence[claim.ordinal]) : ""}
           </div>`).join("")}
@@ -706,7 +721,7 @@ function renderMeetingNote(note, claimEvidence) {
   `;
 }
 
-function renderTranscriptDisclosure(transcript, recovery = null) {
+function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
   if (recovery?.state === "transcript-unavailable" && !transcript?.turns?.length) return "";
   if (!transcript?.turns?.length && !transcript?.message) return "";
   return `
@@ -717,6 +732,7 @@ function renderTranscriptDisclosure(transcript, recovery = null) {
           copyAction: "copy-library-transcript",
           openFileAction: "open-library-transcript-file",
           workspace: true,
+          citations: note ? { turnsCited: note.turnsCited, claims: note.claims } : null,
         }) : `<section class="note-section transcript-unavailable"><p class="message-card">${escapeHtml(transcript.message)}</p></section>`}
       </div>
     </details>
@@ -827,10 +843,11 @@ function renderMeeting() {
           ${renderMeetingNote(note, claimEvidence)}
           ${renderGenerateNote(note, recovery)}
           ${renderTranscriptRetryAction(note, transcript, recovery)}
-          ${renderTranscriptDisclosure(transcript, recovery)}
+          ${renderTranscriptDisclosure(transcript, recovery, note)}
         </main>
         <aside class="meeting-notes-pane">
           ${renderRetainedAudioPlayback(playback)}
+          ${renderMeetingContextSection(note)}
           <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
           <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="save-state" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
           ${operatorNote?.unreadable
@@ -841,6 +858,26 @@ function renderMeeting() {
         </aside>
       </div>
     </article>
+  `;
+}
+
+// Roadmap intake I3's sidecar, shown read-only next to the operator's own
+// note the same way `operatorNote` already is, so a meeting's stated purpose
+// stays reachable after the meeting instead of disappearing once capture ends.
+// No editing here -- `save_meeting_context` remains scoped to the meeting
+// currently being captured.
+function renderMeetingContextSection(note) {
+  const presentation = meetingContextPresentation(note?.meetingContext);
+  return `
+    <section class="note-section meeting-context-section" aria-labelledby="meeting-context-heading">
+      <div class="note-editor-head"><h3 id="meeting-context-heading">Meeting context</h3></div>
+      ${presentation.state === "unreadable"
+        ? `<p class="message-card attention">Yawn could not read this meeting’s pre-meeting context.</p>`
+        : presentation.state === "present"
+          ? `<p class="meeting-context-text">${escapeHtml(presentation.text)}</p>
+             <p class="note-editor-help">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
+          : `<p class="note-editor-help">No pre-meeting context was written for this meeting.</p>`}
+    </section>
   `;
 }
 
@@ -1953,6 +1990,23 @@ async function openClaimEvidence(ordinal) {
   });
 }
 
+// Roadmap intake I4 / design D4's reverse half: the mirror of "Show source"
+// (claim -> transcript turn). Every claim is already rendered on this same
+// page, so this is pure DOM navigation -- no native round trip, no new
+// command. A cited claim can sit inside a closed <details> ("Additional
+// transcript highlights"), so every ancestor gets opened before scrolling.
+function navigateToClaim(ordinal) {
+  if (!Number.isFinite(ordinal)) return;
+  const target = root.querySelector(`[data-claim-item="${ordinal}"]`);
+  if (!target) return;
+  for (let ancestor = target.closest("details"); ancestor; ancestor = ancestor.parentElement?.closest("details")) {
+    ancestor.open = true;
+  }
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.classList.add("claim-item-navigated");
+  window.setTimeout(() => target.classList.remove("claim-item-navigated"), 1600);
+}
+
 function queueNoteSave(text = state.noteDraft, meetingId = state.snapshot?.meeting_id) {
   if (!meetingId || state.noteUnreadable) return Promise.resolve();
   state.noteSaveQueue = state.noteSaveQueue.catch(() => undefined).then(async () => {
@@ -2231,6 +2285,7 @@ function handleClick(event) {
     queueMicrotask(() => root.querySelector("#speaker-name-input")?.focus());
   }
   else if (action === "open-claim-evidence") void openClaimEvidence(Number(control.dataset.ordinal));
+  else if (action === "navigate-to-claim") navigateToClaim(Number(control.dataset.ordinal));
   else if (action === "toggle-meeting-management") {
     state.meetingManagementOpen = !state.meetingManagementOpen;
     render();
