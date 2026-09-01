@@ -416,6 +416,59 @@ merges established:
   a one-week local usage probe of the already-built dormant command. The
   decision remains open.
 
+**Desktop-design audit — 2026-09-01.** A two-half audit of Yawn as a macOS
+app: a source-derived inventory of every screen, sheet, and state (the first
+such map to exist anywhere), and a hands-on pass observing launch, landing,
+and window behavior beside Bear and Agenda. Evidence classes: source claims
+carry file-and-line citations; observed claims come from driving the
+installed build (which predates this week's merges) live.
+
+Facts the audit established:
+
+- **The reopen contract is broken.** Closing the window hides it
+  (deliberate, correct for a tray-resident app), but no reopen handler
+  exists — activating the app with zero windows fronts it with nothing on
+  screen, observed live and confirmed absent in source. Tray "Open Yawn"
+  is the only recovery. Bear reopens on activation.
+- **⌘W and ⌘M bind to nothing** — the menu carries App and Edit submenus
+  only; there is no Window menu. File, View, and Help are defensibly
+  absent (no document model); Window is not.
+- **The observed "lands on the last meeting" is not persistence.** No
+  window-frame or last-view persistence exists in source; the behavior is
+  the capture state machine restoring a never-dismissed finished meeting,
+  which re-captures the landing on every launch until Back to Meetings is
+  clicked. A dismissed-state cold boot lands on Home. Agenda's observed
+  counter-example (frame memory, place reset to an empty overview) is the
+  named landing anti-pattern; Bear (frame, note, and scroll all restored)
+  is the restoration bar.
+- **Honest-waiting-state gaps:** the library's loading line renders
+  identically at 200 ms and forever (no stall affordance); the tray shows
+  the same alarming glyph for first-run model setup as for real failures;
+  a finished, unread transcript gets no tray signal at all. Error-recovery
+  actions are coupled to exact backend strings — a rewording silently
+  downgrades to a dismiss-only toast.
+- **Passes worth recording:** single-instance show-and-focus; all seven
+  sheets share one consistent custom-modal idiom with coded Escape
+  precedence and no click-outside dismissal; sensible window minimums;
+  no Services/share/print/login-item code half-exists; no rendered dead
+  ends — every meeting-detail state keeps an unconditional route back.
+- Lock precedence hides co-existing recovery states until unlock (by
+  design, now recorded), and the locked barrier's copy says removal is the
+  only way in while its button offers read-only Confirm-to-open — a
+  wording mismatch to fix in passing.
+
+Decisions taken from the audit's five calls: the two adopts (wire
+RunEvent::Reopen to show-and-focus; add a standard Window menu with ⌘W
+routing through the existing hide handler) are dispatched as one packet.
+Two decides remain open for the operator: honest waiting states (library
+stall affordance, first-run tray glyph, transcript-ready tray signal) and
+tray-menu scope (a recording-state action vs the single Open item). One
+refuse: window-state persistence stays out — it is a separate mechanism
+from the reopen fix, and whether Yawn's landing should be Home-always or
+place-memory is a real product question the accidental capture-state
+landing has now surfaced; decide it deliberately if landing behavior is
+revisited.
+
 Remaining decisions and design intake: the exact-search call (memo
 delivered), D2's stated capture speed budget (live-run-shaped), and D7's
 enforcement note.
