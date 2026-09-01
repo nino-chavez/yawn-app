@@ -76,3 +76,80 @@ test("the evidence popover never enters the patched tree, and the split's visibl
   // `renderMeetingWorkspace` call, not read back from a previous DOM node.
   assert.match(main, /data-evidence-split="\$\{splitActive \? "open" : "closed"\}"/);
 });
+
+// W9-B: the motion vocabulary's entrance animations are plain, permanent CSS
+// rules on `.modal-backdrop` / `.start-sheet` (styles.css). They fire once,
+// on first insertion, and never replay across the 900 ms poll -- but only
+// because those elements carry no `id` or `data-field`, so the patcher above
+// matches and morphs them in place (see `compatible()`/`patchChildren`)
+// instead of removing and reinserting them while a sheet stays open. There
+// is no jsdom in this suite to run `patchInto` and observe that directly
+// (ui-harness/ is the real-WKWebView proof of the reused-node claim, run
+// manually, not part of `npm run test:ui`); this test pins the two things
+// that would silently break it: a stray identity on a backdrop/dialog, or a
+// JS-driven class toggle standing in for the CSS rule.
+test("no modal backdrop or dialog carries an id, so it is reused across a patch tick instead of re-animating", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const backdropOpenTags = [...main.matchAll(/<div class="modal-backdrop"[^>]*>/g)];
+  assert.equal(backdropOpenTags.length, 7, "expected all seven sheets' backdrop tags");
+  for (const [tag] of backdropOpenTags) {
+    assert.doesNotMatch(tag, /\bid=/, `modal-backdrop must stay unkeyed: ${tag}`);
+  }
+  const dialogOpenTags = [...main.matchAll(/<section class="start-sheet[^>]*role="dialog"[^>]*>/g)];
+  assert.equal(dialogOpenTags.length, 7, "expected all seven sheets' dialog tags");
+  for (const [tag] of dialogOpenTags) {
+    assert.doesNotMatch(tag, /\bid=/, `sheet dialog must stay unkeyed: ${tag}`);
+    assert.doesNotMatch(tag, /data-field=/, `sheet dialog must stay unkeyed: ${tag}`);
+  }
+});
+
+test("the two toast kinds carry distinct stable ids, so switching between them is a real insert, not a content swap on a reused node", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // Without distinct ids the patcher would match them by tag-name position
+  // (both are a bare <aside>): a notice replaced by an error toast in the
+  // same tick would reuse the notice's node, and the entrance animation
+  // (which already played for the notice) would never fire for the error
+  // that silently took its place.
+  assert.match(main, /<aside id="toast-notice" class="toast toast-notice"/);
+  assert.match(main, /<aside id="toast-error" class="toast"/);
+});
+
+test("no JS toggles a motion class -- the entrance animation is a permanent CSS rule, not something render() switches on", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  for (const cls of ["modal-backdrop", "start-sheet", "evidence-popover", "toast"]) {
+    const toggle = new RegExp(`classList\\.(add|remove|toggle)\\(["']${cls}`);
+    assert.doesNotMatch(main, toggle, `${cls} must not be toggled from JS`);
+  }
+});
+
+test("the shared motion tokens are defined once and every new animation reads them, never a literal duration", async () => {
+  const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+  assert.match(styles, /--motion-fast:\s*120ms;/);
+  assert.match(styles, /--motion-standard:\s*200ms;/);
+  assert.match(styles, /--motion-ease:\s*ease-out;/);
+  // Token-level reduced motion: one override, not a rule per consumer.
+  assert.match(
+    styles,
+    /@media \(prefers-reduced-motion: reduce\) \{\s*:root \{\s*--motion-fast: 0ms;\s*--motion-standard: 0ms;\s*\}\s*\}/,
+  );
+  const animationDeclarations = [...styles.matchAll(/animation:\s*([^;]+);/g)].map(([, value]) => value);
+  const motionDeclarations = animationDeclarations.filter((value) => value.includes("motion-fade-in") || value.includes("motion-rise-in"));
+  assert.equal(motionDeclarations.length, 4, "expected backdrop, dialog, popover, and toast to each declare one animation");
+  for (const value of motionDeclarations) {
+    assert.match(value, /var\(--motion-(fast|standard)\)/, `duration must read a token, not a literal: ${value}`);
+    assert.doesNotMatch(value, /\d+m?s\b/, `no literal duration alongside the token: ${value}`);
+  }
+  // Two keyframes total for the whole vocabulary -- no keyframe zoo.
+  const motionKeyframes = [...styles.matchAll(/@keyframes (motion-[a-z-]+)/g)];
+  assert.equal(motionKeyframes.length, 2);
+});
+
+test("the motion vocabulary only ever animates transform and opacity, never a layout property", async () => {
+  const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+  const fadeIn = styles.match(/@keyframes motion-fade-in \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  const riseIn = styles.match(/@keyframes motion-rise-in \{([\s\S]*?)\n\}/)?.[1] ?? "";
+  for (const body of [fadeIn, riseIn]) {
+    assert.match(body, /opacity/);
+    assert.doesNotMatch(body, /\b(width|height|top|left|right|bottom|margin|padding)\b\s*:/);
+  }
+});

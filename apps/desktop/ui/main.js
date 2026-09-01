@@ -355,8 +355,8 @@ function render() {
       ${state.modal === "vocabulary" ? renderVocabularySheet() : ""}
       ${["delete-recording", "delete-transcript", "delete-meeting"].includes(state.modal) ? renderMeetingDeletionSheet() : ""}
       ${["lock-meeting", "unlock-meeting"].includes(state.modal) ? renderMeetingLockSheet() : ""}
-      ${state.notice ? `<aside class="toast toast-notice" role="status"><button type="button" data-action="clear-notice" aria-label="Dismiss">×</button>${escapeHtml(state.notice)}</aside>` : ""}
-      ${state.error ? `<aside class="toast" role="alert"><button type="button" data-action="clear-error" aria-label="Dismiss">×</button><span>${escapeHtml(state.error.message)}</span>${state.error.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(state.error.action.action)}">${escapeHtml(state.error.action.label)}</button>` : ""}</aside>` : ""}
+      ${state.notice ? `<aside id="toast-notice" class="toast toast-notice" role="status"><button type="button" data-action="clear-notice" aria-label="Dismiss">×</button>${escapeHtml(state.notice)}</aside>` : ""}
+      ${state.error ? `<aside id="toast-error" class="toast" role="alert"><button type="button" data-action="clear-error" aria-label="Dismiss">×</button><span>${escapeHtml(state.error.message)}</span>${state.error.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(state.error.action.action)}">${escapeHtml(state.error.action.label)}</button>` : ""}</aside>` : ""}
     </div>
   `);
   restoreEditorFocus(editorFocus);
@@ -1285,6 +1285,29 @@ function renderClaimEvidence(claim, evidence) {
   // node reachable by ordinal regardless of where sibling claims shift it.
   return `<button class="claim-source-button" type="button" id="claim-source-${escapeHtml(claim.ordinal)}" data-action="open-evidence-split" data-ordinal="${escapeHtml(claim.ordinal)}">Show source</button>`;
 }
+
+// -- W9-B: the seven sheets below share one entrance-motion mechanism -------
+//
+// Each sheet's `.modal-backdrop` and `.start-sheet` (styles.css) carry the
+// entrance animation as a plain, permanent CSS rule -- no class toggling, no
+// JS-driven timing. That works because of how ui/dom-patch.mjs already
+// treats these nodes: neither carries an `id` or `data-field`, so they are
+// matched positionally by tag name and morphed in place across the 900 ms
+// snapshot poll. The animation only plays when the browser first connects
+// the node to the document, so the first render after `state.modal` opens is
+// the only tick that ever fires it -- every later tick while the same sheet
+// stays open reuses the same node and never replays it.
+//
+// Exit is intentionally instant: `closeModal()` (below) clears state.modal
+// and `handleClick` calls render() in the same synchronous handler, and that
+// render is also driven independently by the poll. Animating the close would
+// mean holding the closing node alive across an async gap while an unrelated
+// tick could re-render underneath it -- the "JS gymnastics" this packet was
+// told to avoid. An honest instant close is the shipped behavior.
+//
+// Do not add an `id` to a backdrop or dialog element for any reason other
+// than a deliberate identity change (see ui/dom-patch.test.mjs) -- one would
+// make the node re-insert, and therefore re-animate, on every poll tick.
 
 function renderStartSheet() {
   const permission = permissionSummary(state.permissions);

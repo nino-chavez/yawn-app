@@ -28,7 +28,30 @@
   --measure-reading: 68ch;
   --leading-reading: 1.65;
   --leading-transcript: 1.58;
+  /* W9-B: the app's first deliberate motion vocabulary -- two durations and
+     one easing, defined once. Fast is for something the reader's own pointer
+     summoned and dismisses in the same gesture (the evidence popover);
+     standard is for something that arrives on its own and the reader reads
+     before deciding (a sheet, a toast). Every consumer below reads these
+     tokens, never a literal ms value, so reduced motion is one override here
+     -- not a sweep across selectors. */
+  --motion-fast: 120ms;
+  --motion-standard: 200ms;
+  --motion-ease: ease-out;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Token-level reduced-motion override: every declaration that reads
+   var(--motion-fast) / var(--motion-standard) collapses to instant with this
+   one rule. This is independent of (and narrower than) the pre-existing
+   blanket `*` reduced-motion rule further down this file, which predates this
+   work and also silences the unrelated `spin`/`pulse` animations that stay
+   out of this vocabulary's scope. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-standard: 0ms;
+  }
 }
 
 * {
@@ -1401,6 +1424,10 @@ h3 {
   border-radius: var(--radius-sm);
   background: var(--paper);
   box-shadow: 0 8px 24px rgb(27 27 24 / 14%);
+  /* W9-B: `showEvidencePopover` always creates a fresh element (see the
+     comment above and main.js), so this fires on every hover -- correct here,
+     unlike the sheets, because each showing genuinely is a new node. */
+  animation: motion-fade-in var(--motion-fast) var(--motion-ease);
 }
 
 .evidence-popover-meta {
@@ -1650,6 +1677,15 @@ h3 {
   padding: 20px;
   background: rgb(22 22 20 / 35%);
   backdrop-filter: blur(4px);
+  /* Entrance only -- there is no matching exit animation. `closeModal()`
+     clears state.modal and calls render() synchronously in the same click
+     handler (see handleClick), so an animated exit would mean holding this
+     node alive across an async boundary while the independent 900 ms poll
+     may re-render underneath it. Instant removal is the honest choice; see
+     ui/dom-patch.mjs for why this node is never re-animated on a poll tick
+     while it stays open (it is reused in place, never removed and
+     reinserted). */
+  animation: motion-fade-in var(--motion-standard) var(--motion-ease);
 }
 
 .start-sheet {
@@ -1661,6 +1697,7 @@ h3 {
   border-radius: var(--radius-md);
   background: var(--paper);
   box-shadow: 0 20px 60px rgb(22 22 20 / 20%);
+  animation: motion-rise-in var(--motion-standard) var(--motion-ease);
 }
 
 .sheet-head {
@@ -2165,6 +2202,14 @@ h3 {
   box-shadow: 0 12px 30px rgb(71 47 8 / 13%);
   font-size: 13px;
   line-height: 1.45;
+  /* W9-B: a toast arrives unbidden, in peripheral vision -- --motion-standard
+     reads as a calm arrival, where --motion-fast on an element the reader
+     was not already looking at would read as a flicker. `#toast-notice` /
+     `#toast-error` (main.js) keep the notice and error toasts on distinct
+     identities, so a switch between them is a real remove-then-insert (this
+     animation plays again) rather than one node's content changing under it
+     (see dom-patch.mjs's id-based keying). */
+  animation: motion-rise-in var(--motion-standard) var(--motion-ease);
 }
 
 .toast button {
@@ -2185,6 +2230,22 @@ h3 {
   max-width: 48ch;
   color: var(--ink-soft);
   line-height: 1.55;
+}
+
+/* W9-B's whole vocabulary in two keyframes: opacity alone for a backdrop or
+   a popover, opacity plus a few px of translateY for anything the reader
+   reads as a discrete object arriving (a dialog, a toast). Transform and
+   opacity only -- never a layout property -- so this never costs a frame
+   the roadmap's synced-scroll and diff work is already budgeting for. */
+@keyframes motion-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes motion-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 @keyframes spin {
