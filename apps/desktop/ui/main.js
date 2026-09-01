@@ -38,6 +38,7 @@ import {
   turnCitationPresentation,
   withheldTurnPresentation,
 } from "./view-model.mjs";
+import { patchInto } from "./dom-patch.mjs";
 
 const root = document.querySelector("#app");
 const invoke = window.__TAURI__?.core?.invoke;
@@ -194,7 +195,11 @@ function render() {
   else if (state.trashOpen) content = renderTrash();
   else content = renderHome();
 
-  root.innerHTML = `
+  // Patched in place, never assigned wholesale: replacing root.innerHTML
+  // destroyed every editor node per 900 ms poll tick, which reset WebKit's
+  // per-element undo stack (and collapsed reader-opened <details>). See
+  // dom-patch.mjs for the preservation rules.
+  patchInto(root, `
     <div class="app-shell" data-capture="${escapeHtml(state.snapshot?.capture || "opening")}">
       <header class="topbar" data-tauri-drag-region>
         <button class="brand" type="button" data-action="home" data-tauri-drag-region="false">
@@ -224,7 +229,7 @@ function render() {
       ${state.notice ? `<aside class="toast toast-notice" role="status"><button type="button" data-action="clear-notice" aria-label="Dismiss">×</button>${escapeHtml(state.notice)}</aside>` : ""}
       ${state.error ? `<aside class="toast" role="alert"><button type="button" data-action="clear-error" aria-label="Dismiss">×</button><span>${escapeHtml(state.error.message)}</span>${state.error.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(state.error.action.action)}">${escapeHtml(state.error.action.label)}</button>` : ""}</aside>` : ""}
     </div>
-  `;
+  `);
   restoreEditorFocus(editorFocus);
   if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
