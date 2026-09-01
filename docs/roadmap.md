@@ -330,10 +330,53 @@ Facts the merge established:
   fifty double-contention runs, and merged after review. Both cargo lanes
   and the worker suite are deterministic again.
 
-Remaining intake: I5 (per-meeting lock and scoped re-auth) deliberately held
-for its own wave, the cross-meeting exact-search product decision, and from
-the design intake D2's stated speed budget, D5 (three-depth evidence
-disclosure), D7 enforcement notes, and D9's native-text QA pass.
+**Wave 4 status (2026-09-01):** I5, the D9 audit and its fixes, the
+Wave 2–3 fixture coverage, and the render-architecture repair are implemented
+and merged (session-core 545, desktop 233, UI 81 all green after
+integration). Facts the merges established:
+
+- A meeting can be locked (I5). The lock is a plain meeting-lock/1 sidecar;
+  enforcement lives in Rust behind single-use, action-scoped tokens minted
+  only after LAContext deviceOwnerAuthentication (Touch ID with the login
+  password as macOS's own fallback; dependency: objc2-local-authentication
+  0.3.2, the wave's one new compiled crate). Opening a locked meeting for
+  reading, exporting it, and playing its audio each take their own
+  confirmation; reading re-issues its token so ordinary refreshes do not
+  re-prompt. Locked rows keep title and date, suppress the note preview, and
+  keep transcript_available truthful. Deletion and regeneration are
+  deliberately ungated — a forgotten-auth meeting must never become immortal
+  — and locking is refused on a Mac that can never confirm the owner. The
+  shipped copy states the honest claim ("a local barrier, not encryption"),
+  enforced by a claim-checking test. **Honest ceiling, two facts:** the
+  sidecar is deletable from the filesystem, and the corpus index writes
+  derived content of locked meetings outside the meeting directory (no
+  reachable read path today — corpus_search is unregistered — but any
+  honest statement of the deterrent includes both).
+- The D9 native-text audit found two unconditional focus-loss bugs (library
+  search on every debounce; rename and speaker fields on every background
+  poll tick) and the substitution hazard on exact-match fields — all fixed
+  and pushed — plus the structural finding: render() replaced root.innerHTML
+  wholesale, resetting WebKit undo history every 900 ms tick. That is now
+  repaired by in-place DOM patching (ui/dom-patch.mjs) with a WKWebView
+  verification harness at apps/desktop/ui-harness/.
+- The packaged-preview fixture now stages the Wave 1–3 states (diff computed
+  /identical/skipped, pause spans, a trashed meeting, export withholding, a
+  validator-passing note with row preview, citations, and context), each
+  proven against real product logic; the fixture's note document was built
+  through the packaged Python interpreter and validator, not hand-written.
+
+Live-run receipts now owed, in one list: the GUI walk of the packaged
+Fixture app across the staged states (including the not-yet-staged locked
+states — extend the fixture first); the real Touch ID prompt, password
+fallback, and cancel-returns-to-locked; a real recorded meeting exercising
+pause and the elapsed-vs-integrity-floor interaction; reopening a restored
+meeting from Trash; opening an export bundle with no Yawn installed; and the
+D9 audit's five-item live checklist (undo depth now expected to survive
+ticks — verify).
+
+Remaining decisions and design intake: the cross-meeting exact-search call,
+D2's stated capture speed budget, D5 (three-depth evidence disclosure:
+hover preview, split view, synced scroll), and D7's enforcement note.
 
 I1–I3 change what the operator can do during and around capture; I4–I9 harden
 trust in what already exists and can travel as independent packets. Two
