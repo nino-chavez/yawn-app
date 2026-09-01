@@ -353,6 +353,77 @@ export function meetingNotePresentation(note) {
   };
 }
 
+const CLAIM_TYPE_CITATION_LABELS = Object.freeze({
+  summary: "Overview",
+  decision: "Decision",
+  action: "Follow-up",
+  proposal: "Idea",
+  question: "Open question",
+  point: "Highlight",
+});
+
+// A short, non-truncating-looking preview: whole words only, never a
+// mid-word cut. Six words is enough to recognize which claim this is
+// without turning the transcript into a second copy of the note.
+function claimTextPreview(text, wordLimit = 6) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  const preview = words.slice(0, wordLimit).join(" ");
+  return words.length > wordLimit ? `${preview}…` : preview;
+}
+
+// Roadmap intake I4 / design D4's reverse half: what a transcript turn's
+// quiet citation affordance shows, derived only from data the note response
+// already carries (`turnsCited` and `claims`). No claim text is duplicated
+// here beyond a short preview -- the full claim stays in the note itself,
+// one navigation away.
+//
+// Returns null for an uncited turn, or when the citing claim ordinal no
+// longer resolves against `claims` (the two are read from the same response,
+// so this should not happen live, but a renderer must not invent a citation
+// for a claim it cannot show).
+export function turnCitationPresentation(turnsCited, claims, sourceTurnIndex) {
+  const turn = Number(sourceTurnIndex);
+  if (!Array.isArray(turnsCited) || !Number.isInteger(turn)) return null;
+  const entry = turnsCited.find((candidate) => Number(candidate?.turn) === turn);
+  const ordinals = Array.isArray(entry?.claimOrdinals) ? entry.claimOrdinals : [];
+  if (!ordinals.length) return null;
+  const claimList = Array.isArray(claims) ? claims : [];
+  const citations = ordinals
+    .map((ordinal) => claimList.find((claim) => Number(claim?.ordinal) === Number(ordinal)))
+    .filter(Boolean)
+    .map((claim) => ({
+      ordinal: claim.ordinal,
+      label: `${CLAIM_TYPE_CITATION_LABELS[claim.claimType] || "Note"}: ${claimTextPreview(claim.claim)}`,
+    }));
+  if (!citations.length) return null;
+  return {
+    summary: citations.length === 1 ? "Cited in the note" : `Cited by ${citations.length} note items`,
+    citations,
+  };
+}
+
+// The optional, plain-sentence transcript-header summary design D4's reverse
+// half allows: "12 of 48 turns are cited by the note." Null whenever there is
+// nothing to say -- no citations at all, or a turn count Yawn cannot state.
+export function transcriptCitationSummary(turnsCited, totalTurns) {
+  const total = Number(totalTurns);
+  if (!Array.isArray(turnsCited) || !Number.isInteger(total) || total <= 0) return null;
+  const cited = turnsCited.filter((entry) => Array.isArray(entry?.claimOrdinals) && entry.claimOrdinals.length).length;
+  if (!cited) return null;
+  return `${cited} of ${total} ${total === 1 ? "turn is" : "turns are"} cited by the note.`;
+}
+
+// Roadmap intake I3's sidecar, read-only on the completed-meeting surface:
+// mirrors `operatorNote`'s own present/empty/unreadable split exactly, so the
+// renderer needs no separate rule for "nothing readable" versus "nothing
+// written."
+export function meetingContextPresentation(meetingContext) {
+  if (meetingContext?.unreadable) return { state: "unreadable", text: "" };
+  const text = typeof meetingContext?.text === "string" ? meetingContext.text.trim() : "";
+  return { state: text ? "present" : "empty", text };
+}
+
 // Clipboard text is a portable reading copy, not a claim that the transcript
 // is complete. A turn the voice check withheld still occupies a visible line,
 // so pasting this elsewhere cannot silently turn a known gap into a seamless

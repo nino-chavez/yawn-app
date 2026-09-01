@@ -1291,6 +1291,53 @@ h3 {
   font-size: 11px;
 }
 
+/* Roadmap intake I4 / design D4's reverse half: a cited transcript turn's
+   quiet affordance. Same accent idiom as `.claim-source-button` -- no new
+   color, and no visible chrome at all for an uncited turn. */
+.turn-citation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.turn-citation-button {
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.turn-citation-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.transcript-citation-summary {
+  margin: 4px 0 0;
+  color: var(--ink-faint);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+/* Brief, non-color landing cue for "Show source"'s mirror direction --
+   activating a citation scrolls to the claim; this marks where it landed. */
+.claim-item-navigated {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.meeting-context-section .meeting-context-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .claim-evidence {
   margin-top: 10px;
   padding: 10px 11px;

@@ -16,6 +16,7 @@ import {
   humanize,
   libraryRecoveryPresentation,
   localVocabularyPresentation,
+  meetingContextPresentation,
   meetingRecoveryPresentation,
   meetingNotePresentation,
   mergePermissions,
@@ -26,6 +27,7 @@ import {
   retainedAudioPlaybackPresentation,
   retentionLabel,
   shouldPollSnapshot,
+  transcriptCitationSummary,
   transcriptPlainText,
   transcriptRetryQualityPresentation,
   transcriptRetryQualityKindLabel,
@@ -34,6 +36,7 @@ import {
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
+  turnCitationPresentation,
   withheldTurnPresentation,
 } from "./view-model.mjs";
 
@@ -161,6 +164,69 @@ test("a generated meeting note leads with summary and outcome groups", () => {
   ]);
   assert.deepEqual(presentation.groups.map((group) => group.title), ["Decisions", "Follow-ups"]);
   assert.deepEqual(presentation.highlights, []);
+});
+
+// Roadmap intake I4 / design D4's reverse half.
+test("a turn's citation affordance names each citing claim's type and words", () => {
+  const claims = [
+    { ordinal: 0, claimType: "decision", claim: "Use the smaller battery for the pilot run." },
+    { ordinal: 1, claimType: "action", claim: "Send the cost table by Friday." },
+  ];
+  const turnsCited = [{ turn: 5, claimOrdinals: [0, 1] }];
+  const presentation = turnCitationPresentation(turnsCited, claims, 5);
+  assert.equal(presentation.summary, "Cited by 2 note items");
+  assert.deepEqual(presentation.citations, [
+    { ordinal: 0, label: "Decision: Use the smaller battery for the…" },
+    { ordinal: 1, label: "Follow-up: Send the cost table by Friday." },
+  ]);
+});
+
+test("an uncited turn gets no citation affordance", () => {
+  const claims = [{ ordinal: 0, claimType: "decision", claim: "Use the smaller battery." }];
+  const turnsCited = [{ turn: 5, claimOrdinals: [0] }];
+  assert.equal(turnCitationPresentation(turnsCited, claims, 6), null);
+  assert.equal(turnCitationPresentation([], claims, 5), null);
+  assert.equal(turnCitationPresentation(turnsCited, claims, undefined), null);
+});
+
+test("a citation naming a claim ordinal absent from claims resolves to nothing, not a broken entry", () => {
+  const claims = [{ ordinal: 0, claimType: "decision", claim: "Use the smaller battery." }];
+  const turnsCited = [{ turn: 5, claimOrdinals: [9] }];
+  assert.equal(turnCitationPresentation(turnsCited, claims, 5), null);
+});
+
+test("a single citing claim reads as singular", () => {
+  const claims = [{ ordinal: 2, claimType: "point", claim: "we agreed to defer the migration until Q3" }];
+  const presentation = turnCitationPresentation([{ turn: 1, claimOrdinals: [2] }], claims, 1);
+  assert.equal(presentation.summary, "Cited in the note");
+  assert.deepEqual(presentation.citations, [
+    { ordinal: 2, label: "Highlight: we agreed to defer the migration…" },
+  ]);
+});
+
+test("the optional transcript-header citation summary states a plain count or nothing", () => {
+  const turnsCited = [{ turn: 0, claimOrdinals: [0] }, { turn: 3, claimOrdinals: [1, 2] }];
+  assert.equal(transcriptCitationSummary(turnsCited, 48), "2 of 48 turns are cited by the note.");
+  assert.equal(transcriptCitationSummary([], 48), null);
+  assert.equal(transcriptCitationSummary(turnsCited, 0), null);
+  assert.equal(transcriptCitationSummary(null, 48), null);
+});
+
+// Roadmap intake I3's sidecar, shown read-only after the meeting.
+test("meeting context presents present, empty, and unreadable as three distinct states", () => {
+  assert.deepEqual(
+    meetingContextPresentation({ text: "Decide the Q3 roadmap.", unreadable: false }),
+    { state: "present", text: "Decide the Q3 roadmap." },
+  );
+  assert.deepEqual(meetingContextPresentation({ text: "", unreadable: false }), { state: "empty", text: "" });
+  assert.deepEqual(meetingContextPresentation({ text: "   ", unreadable: false }), { state: "empty", text: "" });
+  assert.deepEqual(meetingContextPresentation(undefined), { state: "empty", text: "" });
+  // Unreadable wins even if a corrupt read somehow left text behind -- the
+  // shell must never surface bytes from a file it could not parse.
+  assert.deepEqual(
+    meetingContextPresentation({ text: "should not surface", unreadable: true }),
+    { state: "unreadable", text: "" },
+  );
 });
 
 test("a copied transcript keeps known gaps visible", () => {
@@ -391,8 +457,8 @@ test("retry comparison UI keeps the decision explicit and uses exact backend com
 test("retry comparison redacts withheld text and keeps the summary before personal notes", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /turn\.withheld \? "This turn was withheld by the voice check\." : escapeHtml\(turn\.text\)/);
-  assert.match(source, /renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}\n\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\n\s*\$\{renderTranscriptDisclosure\(transcript, recovery\)\}/);
-  assert.match(source, /<aside class="meeting-notes-pane">\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*<section class="note-section your-notes-section"/);
+  assert.match(source, /renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}\n\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\n\s*\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
+  assert.match(source, /<aside class="meeting-notes-pane">\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
   assert.match(source, /function renderRetryWarnings\(warnings, label\)/);
   assert.match(source, /renderRetryRecordingDevice\(retry\.recordingDevice\)/);
   assert.doesNotMatch(source, /retry\.recordingDevice\.(name|index|hostapi|message)/);
