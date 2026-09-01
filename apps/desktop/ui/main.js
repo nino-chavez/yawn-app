@@ -1,7 +1,6 @@
 import {
   backgroundTranscriptionPresentation,
   canOpenStart,
-  captureIsInProgress,
   captureActivity,
   captureActivityElapsedSeconds,
   capturePresentation,
@@ -208,7 +207,6 @@ function takeJourneyTimingForConfirm() {
 let evidenceHoverTimer = null;
 let evidencePopoverEl = null;
 let evidencePopoverAnchor = null;
-let evidencePopoverOrdinal = null;
 let evidenceSyncSuppressedUntil = 0;
 let evidenceSyncRafPending = false;
 let evidenceSyncManualUntilNoteScroll = false;
@@ -2620,7 +2618,6 @@ function showEvidencePopover(anchor, ordinal) {
   positionEvidencePopover(el, anchor);
   evidencePopoverEl = el;
   evidencePopoverAnchor = anchor;
-  evidencePopoverOrdinal = ordinal;
 }
 
 function positionEvidencePopover(el, anchor) {
@@ -2638,7 +2635,6 @@ function dismissEvidencePopover() {
   evidencePopoverEl?.remove();
   evidencePopoverEl = null;
   evidencePopoverAnchor = null;
-  evidencePopoverOrdinal = null;
 }
 
 // `render()`'s tail calls this after every patch: the popover's anchor is
