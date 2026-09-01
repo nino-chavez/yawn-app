@@ -45,3 +45,34 @@ test("a reader-opened details element never snaps shut on a render", async () =>
   // the pre-fix behavior that lost focus on the first search keystroke.
   assert.match(patcher, /oldNode\.tagName === "DETAILS" && attribute\.name === "open"/);
 });
+
+// Design intake D5: the evidence popover and split view needed no new
+// preservation rule in this file at all. Two different reasons, one per
+// depth:
+//
+// - The hover popover (depth 1) is never part of the patched tree in the
+//   first place -- it is appended straight to `document.body` by
+//   `showEvidencePopover` in main.js, so `patchInto`/`patchChildren` never
+//   walks it and cannot detach or mismatch it mid-hover.
+// - The split view (depths 2/3) needs no *node* preserved at all: its
+//   visible/highlighted state (`state.selected.evidenceSplit`) is read at
+//   render time and rendered back into the template
+//   (`data-evidence-split`, `transcript-line-target`) on every call, the
+//   same way the app's status pill or save-state label already are. There is
+//   nothing for the patcher to lose, because nothing about it lives only in
+//   the DOM between renders.
+test("the evidence popover never enters the patched tree, and the split's visible state is state-driven, not DOM-cached", async () => {
+  const patcher = await readFile(new URL("./dom-patch.mjs", import.meta.url), "utf8");
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // No popover-specific key, class, or id check was added to the patcher.
+  assert.doesNotMatch(patcher, /evidence-popover/);
+  assert.doesNotMatch(patcher, /evidenceSplit/);
+  // The popover lives outside `root` (and therefore outside `patchInto`'s
+  // reach) for its entire lifetime -- created on `document.body`, removed by
+  // reference, never looked up through `root.querySelector`.
+  assert.match(main, /document\.body\.appendChild\(el\)/);
+  assert.match(main, /evidencePopoverEl\?\.remove\(\)/);
+  // The split's own layout attribute is computed from `state` on every
+  // `renderMeetingWorkspace` call, not read back from a previous DOM node.
+  assert.match(main, /data-evidence-split="\$\{splitActive \? "open" : "closed"\}"/);
+});

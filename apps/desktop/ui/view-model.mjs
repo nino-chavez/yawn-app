@@ -1039,6 +1039,80 @@ export function trashListPresentation(trash) {
 // scope boundary), so their copy is unchanged; deleting a meeting now states
 // the trash-and-recovery truth plainly instead of claiming permanence it no
 // longer has at the moment of the click.
+// Design intake D5: evidence disclosure's three depths (hover preview, split
+// view, synced scroll). These are pure presentation/decision helpers only --
+// DOM creation, geometry measurement, and scheduling stay in main.js, which
+// hands each function already-measured input.
+
+// Depth 1's hover/keyboard-focus preview. `claim.spans` (batched onto the
+// note response -- see `library_reader.rs`'s `LibraryClaim.spans`) already
+// carries every locator's quoted transcript text, so this never triggers a
+// fetch. Only the first span previews: a claim citing several turns still
+// shows one exact position, matching split view's own "first cited span"
+// landing rule (decision 3) rather than a second, different behavior for
+// hover.
+export function evidencePopoverPresentation(claim, transcriptTurns) {
+  const span = claim?.spans?.[0];
+  if (!span || typeof span.text !== "string" || !span.text.trim()) return null;
+  const turns = Array.isArray(transcriptTurns) ? transcriptTurns : [];
+  const turn = turns.find((candidate) => Number(candidate?.sourceTurnIndex) === Number(span.sourceTurnIndex));
+  return {
+    text: span.text,
+    speaker: transcriptSpeakerLabel(turn) || "Unattributed",
+    start: Number.isFinite(Number(turn?.start)) ? Number(turn.start) : null,
+    sourceTurnIndex: span.sourceTurnIndex,
+  };
+}
+
+// Depth 2's width gate (design decision 3): below this, the split cramps two
+// reading columns into too little room and the surface falls back to the
+// existing below-the-note disclosure instead.
+const EVIDENCE_SPLIT_MIN_WINDOW_WIDTH = 1100;
+
+export function evidenceSplitAllowed(windowWidth) {
+  return Number.isFinite(Number(windowWidth)) && Number(windowWidth) >= EVIDENCE_SPLIT_MIN_WINDOW_WIDTH;
+}
+
+// Depth 3's sync target: given the note column's currently visible claims
+// (topmost first -- a geometry read the caller already performed) and the
+// note's claims, the transcript column tracks the first cited span of the
+// first visible claim that has one. A claim with no locatable span (no
+// `spans`) is skipped rather than stalling the scan, so a run of source-free
+// claims at the top of the viewport does not freeze the target on nothing.
+export function evidenceSyncTarget(visibleOrdinals, claims) {
+  const ordinals = Array.isArray(visibleOrdinals) ? visibleOrdinals : [];
+  const claimList = Array.isArray(claims) ? claims : [];
+  for (const ordinal of ordinals) {
+    const claim = claimList.find((candidate) => Number(candidate?.ordinal) === Number(ordinal));
+    const span = claim?.spans?.[0];
+    if (span && Number.isInteger(span.sourceTurnIndex)) return span.sourceTurnIndex;
+  }
+  return null;
+}
+
+// Depth 3's suspension rule: "manual scroll in the transcript column
+// suspends sync until the reader next scrolls the note." A programmatic
+// sync-scroll (which may animate under `behavior: "smooth"`) fires several
+// scroll events of its own; comparing each one's position against a
+// continuously-updated "last known good" value can misfire mid-animation.
+// A bounded time window sidesteps that: every sync-scroll call marks
+// "ours" for a fixed duration that covers its own animation, and any
+// transcript scroll event observed after that window is the reader's own.
+export function isManualTranscriptScroll(nowMs, syncSuppressedUntilMs) {
+  return !Number.isFinite(Number(syncSuppressedUntilMs)) || Number(nowMs) > Number(syncSuppressedUntilMs);
+}
+
+// Escape's precedence across the three depths plus the app's existing modal
+// sheets: the innermost, most transient surface closes first. A popover
+// closing under a reader's cursor while a sheet stays open behind it is the
+// "no fighting the reader" rule read backwards.
+export function nextEscapeTarget({ popoverOpen = false, modalOpen = false, splitOpen = false } = {}) {
+  if (popoverOpen) return "popover";
+  if (modalOpen) return "modal";
+  if (splitOpen) return "split";
+  return null;
+}
+
 export function meetingDeletionConfirmationCopy(kind) {
   if (kind === "delete-recording") {
     return {

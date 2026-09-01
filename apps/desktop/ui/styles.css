@@ -1388,6 +1388,103 @@ h3 {
   line-height: 1.5;
 }
 
+/* Design intake D5, depth 1: a transient, cursor-anchored popover appended to
+   `document.body` (see `showEvidencePopover` in main.js) -- it lives outside
+   the tree render() patches, by design, so a render tick mid-hover cannot
+   disturb it. Same accent idiom as `.claim-source-button`; no new color. */
+.evidence-popover {
+  z-index: 40;
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 24px));
+  padding: 12px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgb(27 27 24 / 14%);
+}
+
+.evidence-popover-meta {
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-popover-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* Design intake D5, depth 2: the split view. Only ever rendered at/above
+   `EVIDENCE_SPLIT_MIN_WINDOW_WIDTH` (main.js/view-model.mjs's shared 1100px
+   gate) -- below that, `renderMeetingWorkspace` falls back to the ordinary
+   below-the-note disclosure instead, so no narrower breakpoint is needed
+   here. The note column keeps its own measure (`.meeting-note`,
+   `.meeting-note-item` etc. already cap at `--measure-reading`); the
+   transcript column takes the remaining width. */
+.meeting-workspace[data-evidence-split="open"] {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr) minmax(300px, 0.72fr);
+}
+
+/* Independently scrollable while the split is open, the same way
+   `.meeting-notes-pane` already stays put with `position: sticky` in this
+   same grid -- reusing that precedent's `top` rather than inventing a second
+   sticky offset. `.transcript-workspace` (inside `.evidence-split-column`)
+   already self-bounds its own height and scrolls its own turns internally
+   (the same card `renderTranscriptDisclosure` already ships); nothing here
+   overrides that, it only gives the column around it the same sticky
+   treatment so the two columns track each other as the page scrolls. */
+.meeting-workspace[data-evidence-split="open"] .meeting-source-pane,
+.evidence-split-column {
+  position: sticky;
+  top: 78px;
+  max-height: calc(100dvh - 96px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.evidence-split-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 4px;
+}
+
+.evidence-split-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.evidence-split-head .eyebrow {
+  margin: 0;
+}
+
+/* Design intake D5, depth 3: the synced-scroll target. Rendered from state
+   (`targetTurnIndex` in `renderTranscript`), not toggled as an imperative
+   class -- see that function's comment for why. Same accent family as
+   `.claim-item-navigated`'s landing cue, kept visible (not a fading pulse)
+   for as long as it stays the sync target. */
+.transcript-line-target {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meeting-workspace[data-evidence-split="open"] .meeting-source-pane,
+  .evidence-split-column {
+    scroll-behavior: auto;
+  }
+}
+
 .startup-card {
   width: min(620px, 100%);
   margin: clamp(42px, 10vw, 112px) auto 0;

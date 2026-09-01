@@ -13,7 +13,12 @@ import {
   capturePauseControlPresentation,
   capturePausePresentation,
   errorRecoveryPresentation,
+  evidencePopoverPresentation,
+  evidenceSplitAllowed,
+  evidenceSyncTarget,
   humanize,
+  isManualTranscriptScroll,
+  nextEscapeTarget,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
   libraryRowPreview,
@@ -570,7 +575,12 @@ test("retry comparison UI keeps the decision explicit and uses exact backend com
 test("retry comparison redacts withheld text and keeps the summary before personal notes", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /turn\.withheld \? "This turn was withheld by the voice check\." : escapeHtml\(turn\.text\)/);
-  assert.match(source, /renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}\n\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\n\s*\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
+  // Design intake D5: the below-the-note transcript disclosure now renders
+  // only when the evidence split is not showing the same workspace-mode
+  // transcript elsewhere (see `renderMeetingWorkspace`) -- the two must never
+  // render at once, since `renderTranscript`'s workspace branch hardcodes ids
+  // the patcher would then have to choose between.
+  assert.match(source, /renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}\n\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\n\s*\$\{splitActive \? "" : renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
   assert.match(source, /<aside class="meeting-notes-pane">\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
   assert.match(source, /function renderRetryWarnings\(warnings, label\)/);
   assert.match(source, /renderRetryRecordingDevice\(retry\.recordingDevice\)/);
@@ -1175,4 +1185,154 @@ test("main.js gates every locked action through the Rust confirmation, not throu
     assert.ok(found, `${command} is still invoked`);
     assert.ok(!found[0].includes("lockToken"), `${command} must not be gated by the lock`);
   }
+});
+
+// Design intake D5: evidence disclosure's three depths (hover preview, split
+// view, synced scroll). See view-model.mjs's own comments on each function
+// for why the shape is what it is; these tests pin the observable behavior.
+
+test("the hover popover previews the first cited span, quoted, with a speaker", () => {
+  const claim = {
+    ordinal: 2,
+    spans: [
+      { sourceTurnIndex: 3, start: 0, end: 5, text: "alpha" },
+      { sourceTurnIndex: 5, start: 0, end: 5, text: "delta" },
+    ],
+  };
+  const turns = [
+    { sourceTurnIndex: 3, start: 12, speaker: "Jamie" },
+    { sourceTurnIndex: 5, start: 40, speaker: "Sam" },
+  ];
+  const presentation = evidencePopoverPresentation(claim, turns);
+  // Only the first span previews, even though the claim cites two turns --
+  // one exact position, matching the split's own "first cited span" landing
+  // rule rather than a second, different behavior for hover.
+  assert.deepEqual(presentation, {
+    text: "alpha",
+    speaker: "Jamie",
+    start: 12,
+    sourceTurnIndex: 3,
+  });
+});
+
+test("the hover popover falls back to Unattributed and a null time when the turn cannot be matched", () => {
+  const claim = { ordinal: 0, spans: [{ sourceTurnIndex: 9, start: 0, end: 3, text: "hey" }] };
+  const presentation = evidencePopoverPresentation(claim, []);
+  assert.equal(presentation.speaker, "Unattributed");
+  assert.equal(presentation.start, null);
+  assert.equal(presentation.text, "hey");
+});
+
+test("the hover popover offers nothing for a claim with no batched spans", () => {
+  // A locator that could not currently be re-sliced (see
+  // `library_reader.rs`'s `claim_locator_spans`) leaves `spans` empty even
+  // when `locatorCount` is nonzero -- the popover must not invent a preview.
+  assert.equal(evidencePopoverPresentation({ ordinal: 1, locatorCount: 1, spans: [] }, []), null);
+  assert.equal(evidencePopoverPresentation(null, []), null);
+  assert.equal(evidencePopoverPresentation({ ordinal: 1, spans: [{ text: "" }] }, []), null);
+});
+
+test("the split view's width gate matches the governing 1100px threshold", () => {
+  assert.equal(evidenceSplitAllowed(1099), false);
+  assert.equal(evidenceSplitAllowed(1100), true);
+  assert.equal(evidenceSplitAllowed(1400), true);
+  assert.equal(evidenceSplitAllowed(undefined), false);
+  assert.equal(evidenceSplitAllowed(Number.NaN), false);
+});
+
+test("synced scroll targets the first visible claim's first cited span, skipping source-free claims", () => {
+  const claims = [
+    { ordinal: 0, spans: [] }, // no locatable span -- must not stall the scan
+    { ordinal: 1, spans: [{ sourceTurnIndex: 7 }] },
+    { ordinal: 2, spans: [{ sourceTurnIndex: 2 }] },
+  ];
+  // Ordinal 0 is topmost but has nothing to target; ordinal 1 is next and
+  // does.
+  assert.equal(evidenceSyncTarget([0, 1, 2], claims), 7);
+  // No visible claim carries a span at all.
+  assert.equal(evidenceSyncTarget([0], claims), null);
+  // Nothing visible.
+  assert.equal(evidenceSyncTarget([], claims), null);
+});
+
+test("a manual transcript scroll is only the reader's once the sync-suppression window elapses", () => {
+  // No sync-scroll call has ever suppressed anything yet -- any scroll is
+  // the reader's own.
+  assert.equal(isManualTranscriptScroll(1_000, undefined), true);
+  assert.equal(isManualTranscriptScroll(1_000, null), true);
+  // Still inside the window a sync-scroll call opened.
+  assert.equal(isManualTranscriptScroll(1_000, 1_500), false);
+  // The window has elapsed -- a scroll observed now is the reader's.
+  assert.equal(isManualTranscriptScroll(1_600, 1_500), true);
+});
+
+test("Escape closes the innermost surface first: popover, then modal, then split", () => {
+  assert.equal(nextEscapeTarget({ popoverOpen: true, modalOpen: true, splitOpen: true }), "popover");
+  assert.equal(nextEscapeTarget({ popoverOpen: false, modalOpen: true, splitOpen: true }), "modal");
+  assert.equal(nextEscapeTarget({ popoverOpen: false, modalOpen: false, splitOpen: true }), "split");
+  assert.equal(nextEscapeTarget({}), null);
+});
+
+test("Show source renders only when a claim has a batched span to show, and never re-fetches on click", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // The button's own action now opens the split directly from already-batched
+  // data -- no network round trip, no single-use evidence handle spent per
+  // click.
+  assert.match(source, /data-action="open-evidence-split" data-ordinal="\$\{escapeHtml\(claim\.ordinal\)\}"/);
+  assert.match(source, /if \(!claim\.spans\?\.length\) \{/);
+  // `openClaimEvidence` (the pre-D5 fetch-and-store path) is left in place,
+  // not deleted -- see the D5 report's decision-2 note -- but no control
+  // wired through `renderClaimEvidence` invokes it any more.
+  assert.match(source, /async function openClaimEvidence\(ordinal\)/);
+  assert.doesNotMatch(source, /data-action="open-claim-evidence"[^>]*>\$\{state\.busyAction/);
+});
+
+test("the evidence split and the below-the-note disclosure never render at once", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // `renderTranscript`'s workspace branch hardcodes ids
+  // (transcript-heading, transcript-search-input, ...); two live instances
+  // would collide under the patcher's id-keying. `splitActive` gates both
+  // branches from the same variable, so they cannot both be true.
+  assert.match(source, /\$\{splitActive \? "" : renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
+  assert.match(source, /\$\{splitActive \? renderEvidenceSplitColumn\(transcript, citations, evidenceSplit\.turnIndex\) : ""\}/);
+  assert.match(source, /const splitActive = Boolean\(/);
+  assert.match(source, /evidenceSplitAllowed\(currentWindowWidth\(\)\)/);
+});
+
+test("the split column's width fallback reads the live window, gated by the shared 1100px threshold", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /function currentWindowWidth\(\) \{/);
+  assert.match(source, /window\.addEventListener\("resize", handleEvidenceResize\)/);
+  assert.match(source, /function handleEvidenceResize\(\) \{\s*const allowed = evidenceSplitAllowed\(currentWindowWidth\(\)\);/);
+});
+
+test("the sync-scroll handler is rAF-batched, not a per-scroll-event geometry read", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /function scheduleEvidenceSyncFromNote\(\) \{/);
+  assert.match(source, /if \(evidenceSyncRafPending\) return;\s*evidenceSyncRafPending = true;\s*window\.requestAnimationFrame\(\(\) => \{/);
+  // The geometry read (topmostVisibleClaimOrdinals) and the pure decision
+  // (evidenceSyncTarget) both live inside the rAF callback's function,
+  // performEvidenceSync -- never inside the scroll listener itself.
+  assert.match(source, /function performEvidenceSync\(\) \{[\s\S]*?topmostVisibleClaimOrdinals\(notePane\)/);
+  assert.doesNotMatch(source, /function handleEvidenceGlobalScroll\(event\) \{[\s\S]{0,400}getBoundingClientRect/);
+});
+
+test("popover state lives outside the patched tree, and the split's own state survives a render tick", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // The popover is a plain node appended to document.body -- never part of
+  // the template string patchInto(root, ...) patches -- so an unrelated
+  // render() call (a 900ms poll tick, a keystroke elsewhere) cannot disturb
+  // it while it is showing. This is the same "leave it alone unless it
+  // changed" contract dom-patch.mjs gives editors, achieved here by simply
+  // never putting the popover inside the patched tree at all.
+  assert.match(source, /document\.body\.appendChild\(el\)/);
+  assert.doesNotMatch(source, /evidence-popover[\s\S]{0,200}patchInto/);
+  // The split's own state (`state.selected.evidenceSplit`) is read at render
+  // time and rendered back out (`data-evidence-split`), so it is what makes
+  // the split survive a patch tick -- not a DOM node the patcher happens to
+  // leave alone. `render()`'s tail reconciles the DOM to that state on every
+  // call, the same way `restoreEditorFocus` and `syncActivityClock` already
+  // do for their own concerns.
+  assert.match(source, /syncEvidenceSplitScroll\(\);\s*dismissEvidencePopoverIfDetached\(\);/);
+  assert.match(source, /evidenceSplit: \{ open: false, ordinal: null, turnIndex: null \}/);
 });
