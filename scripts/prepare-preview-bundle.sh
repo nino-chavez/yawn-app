@@ -33,6 +33,11 @@ require_bundle() {
   [[ -x "$RESOURCES/python-runtime/bin/python3.12" ]] \
     || die "Preview Python runtime is missing"
   [[ -f "$ENTITLEMENTS" ]] || die "capture entitlements are missing"
+  # The bundled runtime carries the source stamp written at staging time.
+  # Checking it here — before signing mutates the bundle — is what refuses the
+  # Aug-19-helper-under-a-Sep-1-app class of bundle instead of sealing it.
+  python3 "$ROOT/worker/source_digest.py" check "$RESOURCES" \
+    || die "bundled runtime failed the source-freshness gate (see above); run worker/build_runtime.sh, then rebuild the bundle"
 }
 
 has_audio_input_entitlement() {
