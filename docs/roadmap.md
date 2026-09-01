@@ -464,14 +464,28 @@ reopen never fired), and the Window menu ships Minimize, Zoom, and a ⌘W
 that composes with the existing hide handler through the native
 performClose: chain, verified in the vendored crate sources. The Dock-click
 round trip itself is live-run evidence and joins the receipt list.
-Two decides remain open for the operator: honest waiting states (library
-stall affordance, first-run tray glyph, transcript-ready tray signal) and
-tray-menu scope (a recording-state action vs the single Open item). One
-refuse: window-state persistence stays out — it is a separate mechanism
-from the reopen fix, and whether Yawn's landing should be Home-always or
-place-memory is a real product question the accidental capture-state
-landing has now surfaced; decide it deliberately if landing behavior is
-revisited.
+The remaining calls were decided by the operator on 2026-09-01:
+
+- Honest waiting states: dispatched (library stall affordance, first-run
+  tray glyph, transcript-ready tray state, locked-barrier wording), with
+  the error-string decoupling and the D2 timing receipts in the same wave.
+- Tray-menu scope: the tray becomes minimally state-aware — Open Yawn
+  always, Stop recording only while Recording or Paused (the brief's "one
+  obvious way to stop", reachable while the window is hidden), and a
+  standard Quit. No pause from the tray; pause keeps the window's context.
+  Dispatched.
+- **Landing: Home-always, closed as deliberate.** The brief's
+  open-to-next-action rule makes Home the landing; Bear-style place memory
+  suits resuming writing, not reopening finished meetings, and the
+  genuinely-unfinished case is already handled by capture-state recovery.
+  No place memory and no window-frame persistence; revisit only if a
+  live-run annoyance receipt argues otherwise.
+- Exact search: the memo's recommendation is adopted. The one-week local
+  usage probe is dispatched — the dormant commands registered but gated on
+  a local marker file, default-off and byte-identical to today without it,
+  logging only invoked/opened timestamps, riding the existing search box,
+  unavailable during capture, locked meetings excluded by the W5-B
+  hardening. The ship/hold decision follows the week's log.
 
 Remaining decisions and design intake: the exact-search call (memo
 delivered), D2's stated capture speed budget (live-run-shaped), and D7's
