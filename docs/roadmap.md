@@ -318,7 +318,8 @@ Facts the merge established:
 - The three suite flakes were root-caused and fixed on a separate branch
   (fix/yawn-flaky-tests: a racy pid-file handoff, a fixed-sleep exit
   assumption, a mocked os._exit raising in a daemon thread), verified over
-  fifty double-contention runs; it rebases onto this merge before landing.
+  fifty double-contention runs, and merged after review. Both cargo lanes
+  and the worker suite are deterministic again.
 
 Remaining intake: I5 (per-meeting lock and scoped re-auth) deliberately held
 for its own wave, the cross-meeting exact-search product decision, and from
