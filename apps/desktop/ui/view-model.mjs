@@ -248,6 +248,17 @@ export function humanize(value) {
   return String(value || "").replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+// Design intake D1: a row's preview of the note's outcome. `notePreview` is
+// already the finished, capped sentence the backend read from a
+// digest-verified note -- this seam only decides whether the row has one to
+// show. It must never invent copy when the field is absent or blank: the
+// governing constraint is real generated content only, never a placeholder
+// line, and a row with no admitted note simply has no preview line.
+export function libraryRowPreview(row) {
+  const preview = typeof row?.notePreview === "string" ? row.notePreview.trim() : "";
+  return preview || null;
+}
+
 // The library owns its state and message. Do not turn an unavailable or stale
 // snapshot into the same empty-state promise used for a genuinely empty list.
 export function libraryRecoveryPresentation(library) {
