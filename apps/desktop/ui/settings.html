@@ -14,12 +14,27 @@
         <h1>Settings</h1>
         <p>Recording access and on-device storage live here.</p>
       </header>
-      <section class="privacy-card" aria-labelledby="privacy-title">
-        <span aria-hidden="true">⌂</span>
-        <div>
-          <h2 id="privacy-title">Kept on this Mac</h2>
-          <p>Yawn does not use an account, cloud sync, a meeting bot, or automatic sharing.</p>
+      <section class="settings-card" aria-labelledby="privacy-title">
+        <div class="section-heading">
+          <div>
+            <h2 id="privacy-title">What happens with your meeting</h2>
+            <p>Three facts about this Mac, not a policy promise.</p>
+          </div>
         </div>
+        <dl class="privacy-rows">
+          <div class="privacy-row">
+            <dt>What leaves this Mac</dt>
+            <dd>Nothing. Recording, transcription, and notes run and stay here. Yawn has no account and makes no network calls with meeting data.</dd>
+          </div>
+          <div class="privacy-row">
+            <dt>Where transcription runs</dt>
+            <dd>On this Mac, using the local speech model shown below.</dd>
+          </div>
+          <div class="privacy-row">
+            <dt>What is kept, and for how long</dt>
+            <dd>Transcript and notes: until you delete them (deleted meetings stay in Trash for 30 days). Recording audio: 1, 7, or 30 days — you choose at the start of each meeting.</dd>
+          </div>
+        </dl>
       </section>
       <section class="settings-card" aria-labelledby="model-title">
         <div class="section-heading">

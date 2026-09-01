@@ -62,7 +62,7 @@ test("activity reports a real phase duration without inventing progress", () => 
     capture_state_started_at_epoch_seconds: 100,
     transcription_last_worker_heartbeat_at_epoch_seconds: 160,
   };
-  assert.equal(captureActivity(snapshot).label, "Transcribing locally");
+  assert.equal(captureActivity(snapshot).label, "Transcribing on this Mac");
   assert.equal(captureActivityElapsedSeconds(snapshot, 163), 63);
   assert.equal(transcriptionWorkerHeartbeatAgeSeconds(snapshot, 163), 3);
   assert.equal(captureActivityElapsedSeconds({ capture: "transcript-ready" }, 163), null);
@@ -83,7 +83,7 @@ test("background transcription uses fixed private status and exposes capacity", 
     background_transcription_queued_count: 1,
   }), {
     state: "active",
-    label: "An earlier meeting is processing locally.",
+    label: "An earlier meeting is processing on this Mac.",
     detail: "You can start the next meeting when the recorder is ready.",
     canStart: true,
   });

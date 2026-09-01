@@ -440,7 +440,7 @@ function renderBackgroundTranscription(snapshot) {
   if (!processing) return "";
   return `
     <section class="message-card background-transcription" data-state="${escapeHtml(processing.state)}" aria-live="polite">
-      <p class="eyebrow">Local processing</p>
+      <p class="eyebrow">Processing on this Mac</p>
       <h2>${escapeHtml(processing.label)}</h2>
       <p>${escapeHtml(processing.detail)}</p>
     </section>
@@ -544,7 +544,7 @@ function renderActivityMonitor(snapshot) {
       <div class="activity-timing">
         <strong data-activity-elapsed data-activity-started-at="${Number.isFinite(startedAt) ? startedAt : ""}">${elapsed === null ? "Working" : timeLabel(elapsed)}</strong>
         <span>elapsed in this step</span>
-        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for a local-worker confirmation" : `Last confirmed by local worker ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
+        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for a confirmation on this Mac" : `Last confirmed on this Mac ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
       </div>
     </section>
   `;
@@ -563,7 +563,7 @@ function updateActivityClock() {
     if (!rawHeartbeatAt) continue;
     const heartbeatAt = Number(rawHeartbeatAt);
     if (!Number.isFinite(heartbeatAt)) continue;
-    target.textContent = `Last confirmed by local worker ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
+    target.textContent = `Last confirmed on this Mac ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
   }
 }
 
@@ -1012,7 +1012,7 @@ function renderStartSheet() {
         </div>
         ${audioReady ? "" : `<div class="message-card attention"><strong>${escapeHtml(permission.title)}</strong><p>${escapeHtml(permission.detail)}</p><button class="text-button" type="button" data-action="${action.action}">${escapeHtml(action.label)}</button></div>`}
         <label class="field-label">Keep recording audio for
-          <small>Your transcript and notes stay local. This choice covers the saved audio.</small>
+          <small>This choice covers the saved audio.</small>
           <select class="select" data-field="retention-days">${[1, 7, 30].map((days) => `<option value="${days}" ${Number(state.retentionDays) === days ? "selected" : ""}>${retentionLabel(days)}</option>`).join("")}</select>
         </label>
         <div class="attestation-list">
@@ -1020,6 +1020,7 @@ function renderStartSheet() {
           ${attestation("headphones", "I am using headphones for this recording.")}
           ${attestation("operatorAlone", "I am the only person near this microphone.")}
         </div>
+        <p class="quiet-copy start-sheet-privacy-note">Recording, transcription, and storage all happen on this Mac — details in Settings.</p>
         <div class="sheet-actions">
           <button class="button button-quiet" type="button" data-action="close-start">Cancel</button>
           <button class="button button-record" type="button" data-action="start-recording" ${!audioReady || !allConfirmed || state.busyAction === "start" ? "disabled" : ""}>${state.busyAction === "start" ? "Starting…" : "Start recording"}</button>

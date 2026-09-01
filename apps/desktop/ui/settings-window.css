@@ -61,7 +61,6 @@ h2 {
 
 header > p:last-child,
 .section-heading p,
-.privacy-card p,
 .permission-copy p {
   margin-bottom: 0;
   color: var(--muted);
@@ -76,33 +75,13 @@ header > p:last-child,
   line-height: 1.45;
 }
 
-.privacy-card,
 .settings-card {
   margin-top: 28px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgb(255 255 254 / 80%);
+  overflow: hidden;
 }
-
-.privacy-card {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  gap: 13px;
-  padding: 18px;
-  background: var(--accent-soft);
-}
-
-.privacy-card > span {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--accent);
-  background: rgb(255 255 255 / 64%);
-}
-
-.settings-card { overflow: hidden; }
 
 .section-heading {
   display: flex;
@@ -139,6 +118,28 @@ header > p:last-child,
 .permission-list { padding: 0 20px; }
 
 .model-list { padding: 0 20px; }
+
+.privacy-rows { margin: 0; padding: 0 20px 20px; }
+
+.privacy-row {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.privacy-row:first-child { border-top: 0; }
+
+.privacy-row dt {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.privacy-row dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 .permission-line {
   display: flex;
@@ -269,7 +270,7 @@ button:disabled {
   }
 
   body { background: linear-gradient(145deg, #202820, var(--canvas)); }
-  .privacy-card, .settings-card { background: rgb(31 39 32 / 82%); }
+  .settings-card { background: rgb(31 39 32 / 82%); }
   .quiet-button { color: var(--muted); border-color: var(--line); background: #263027; }
   .allow-button { color: #102319; background: var(--accent); border-color: var(--accent); }
   .state { background: #2a342c; }
