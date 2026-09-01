@@ -61,6 +61,11 @@ pub(crate) struct LibraryReader {
     audio_playback_handles: HashMap<String, RetainedAudioPlaybackHandle>,
     transcript_deletion_handles: HashMap<String, LibraryHit>,
     meeting_deletion_handles: HashMap<String, LibraryHit>,
+    // Roadmap intake I7+I8: a single-use authority to export one meeting as
+    // plain files plus a compact archive. Issued whenever the meeting resolves
+    // at all (unconditionally, like `meeting_deletion_handles`), because even a
+    // transcript-only or summary-failed meeting has something honest to export.
+    export_handles: HashMap<String, LibraryHit>,
 }
 
 /// The filter as the shell states it, before it becomes a `LibraryFilter`.
@@ -235,6 +240,11 @@ pub(crate) struct LibraryNoteResponse {
     /// meeting rather than only for one holding retained audio: a meeting whose
     /// audio has already been released can still be removed in full.
     pub(crate) meeting_deletion_handle: Option<String>,
+    /// Roadmap intake I7+I8: a single-use authority for `library_export_meeting`.
+    /// Issued for every readable meeting, mirroring `meeting_deletion_handle` —
+    /// a transcript-only or summary-failed meeting still has a transcript,
+    /// receipts, and operator content worth exporting honestly.
+    pub(crate) export_handle: Option<String>,
     pub(crate) meeting_id: String,
     /// The retained current transcript's digest when this meeting is eligible
     /// to create or replace a generated note. It is the exact source pin the
@@ -361,6 +371,35 @@ pub(crate) struct LibraryClaim {
     pub(crate) locator_count: usize,
 }
 
+/// One located claim as `meeting_export` needs it: the claim text plus every
+/// locator's turn number and its digest-verified quoted excerpt. Distinct from
+/// `LibraryClaim` (the webview DTO), which reports only a `locator_count` —
+/// export needs the actual turn numbers and quoted text, never a path or a
+/// handle, so this stays private to the reader/export seam.
+#[derive(Debug, Clone)]
+pub(crate) struct ExportClaim {
+    pub(crate) ordinal: u64,
+    pub(crate) claim_type: &'static str,
+    pub(crate) text: String,
+    pub(crate) locators: Vec<ExportClaimLocator>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ExportClaimLocator {
+    pub(crate) source_turn_index: u32,
+    pub(crate) text: String,
+}
+
+/// Failure information for `open_export_bound`. Carries no meeting identity —
+/// same rule as the other bounded-access failures — because the export
+/// pathway must not turn a stale handle into a way to probe which meetings
+/// exist.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LibraryExportAccess {
+    pub(crate) state: &'static str,
+    pub(crate) message: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryEvidenceResponse {
@@ -448,6 +487,7 @@ impl LibraryReader {
             audio_playback_handles: HashMap::new(),
             transcript_deletion_handles: HashMap::new(),
             meeting_deletion_handles: HashMap::new(),
+            export_handles: HashMap::new(),
         }
     }
 
@@ -903,6 +943,7 @@ impl LibraryReader {
             .flatten();
         let transcript_deletion_handle = self.retain_transcript_deletion_handle(&meeting_id);
         let meeting_deletion_handle = self.retain_meeting_deletion_handle(&meeting_id);
+        let export_handle = self.retain_export_handle(&meeting_id);
         match lifecycle {
             MeetingLifecycle::SummaryFailed => {
                 return LibraryNoteResponse {
@@ -914,6 +955,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    export_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     claims: Vec::new(),
@@ -936,6 +978,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    export_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     claims: Vec::new(),
@@ -991,6 +1034,7 @@ impl LibraryReader {
             system_playback_handle,
             transcript_deletion_handle,
             meeting_deletion_handle,
+            export_handle,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims,
@@ -1183,6 +1227,7 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
+            export_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims: Vec::new(),
@@ -1339,6 +1384,139 @@ impl LibraryReader {
         Some(handle)
     }
 
+    /// Roadmap intake I7+I8: issued for any meeting the projection can
+    /// resolve, mirroring `retain_meeting_deletion_handle` — a meeting with no
+    /// generated note still has a transcript and receipts worth exporting.
+    /// `pub(crate)` because the export command reissues one after a
+    /// successful export, the same way `retain_transcript_handle` is reissued
+    /// after opening a transcript file.
+    pub(crate) fn retain_export_handle(&mut self, meeting_id: &str) -> Option<String> {
+        let hit = self.projection.meeting_handle(meeting_id).ok()?;
+        let handle = Uuid::new_v4().to_string();
+        self.export_handles.insert(handle.clone(), hit);
+        Some(handle)
+    }
+
+    /// Spends an export handle and, once the exact meeting still resolves,
+    /// hands the bounded callback the storage root, the meeting id, a label to
+    /// derive an archive name from, and every claim this meeting's admitted
+    /// note holds — each claim's locators already carry digest-verified quoted
+    /// excerpt text via `open_claim_evidence_excluding`. Claims are empty for
+    /// any lifecycle other than `Ready`: a transcript-only or summary-failed
+    /// meeting still exports honestly, just without a note.
+    ///
+    /// This is the one place export logic reaches into `self.projection`; the
+    /// callback receives only already-verified values and does no further
+    /// library-projection work itself, keeping `meeting_export` a pure
+    /// assembler over data this reader already proved.
+    pub(crate) fn open_export_bound<T>(
+        &mut self,
+        handle: &str,
+        active_meeting_ids: &HashSet<String>,
+        run: impl FnOnce(&StorageRoot, &str, Option<&str>, u64, &[ExportClaim]) -> T,
+    ) -> Result<T, LibraryExportAccess> {
+        if !self.revalidate(active_meeting_ids) {
+            return Err(Self::stale_export());
+        }
+        let hit = self.export_handles.remove(handle);
+        self.clear_handles();
+        let Some(hit) = hit else {
+            return Err(Self::stale_export());
+        };
+        let meeting_id = match self.projection.open_snapshot(&hit) {
+            Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => meeting_id,
+            Ok(_) | Err(_) => return Err(Self::stale_export()),
+        };
+        if active_meeting_ids.contains(&meeting_id) {
+            return Err(Self::stale_export());
+        }
+        let Some(row) = self
+            .projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == meeting_id)
+        else {
+            return Err(Self::stale_export());
+        };
+        let label = row.title().map(str::to_owned).or_else(|| row.derived_title());
+        let created_at_epoch_seconds = row.created_at_epoch_seconds;
+        let claims = match self.export_claims(&meeting_id) {
+            Ok(claims) => claims,
+            Err(()) => return Err(Self::stale_export()),
+        };
+        Ok(run(
+            &self.storage,
+            &meeting_id,
+            label.as_deref(),
+            created_at_epoch_seconds,
+            &claims,
+        ))
+    }
+
+    /// Every located claim for a `Ready` meeting, with locator turn numbers and
+    /// digest-verified quoted excerpt text — the same evidence
+    /// `preview_library_open_evidence` proves before showing a source passage,
+    /// gathered up front rather than one locator at a time.
+    fn export_claims(&self, meeting_id: &str) -> Result<Vec<ExportClaim>, ()> {
+        let Some(row) = self
+            .projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == meeting_id)
+        else {
+            return Err(());
+        };
+        if row.lifecycle() != MeetingLifecycle::Ready {
+            return Ok(Vec::new());
+        }
+        let handles = self.projection.note_claims(meeting_id).map_err(|_| ())?;
+        let mut claims = Vec::with_capacity(handles.len());
+        for hit in &handles {
+            let (ordinal, claim_type, text, locator_count) = match self.projection.open_snapshot(hit)
+            {
+                Ok(OpenedLibraryHit::Claim {
+                    claim_ordinal,
+                    claim_type,
+                    claim,
+                    locators,
+                    ..
+                }) => (claim_ordinal, claim_type, claim, locators.len()),
+                _ => return Err(()),
+            };
+            let mut export_locators = Vec::with_capacity(locator_count);
+            for locator_ordinal in 0..locator_count {
+                let evidence = self
+                    .projection
+                    .open_claim_evidence_excluding(
+                        &self.storage,
+                        hit,
+                        locator_ordinal,
+                        &self.excluded_meeting_ids,
+                    )
+                    .map_err(|_| ())?;
+                export_locators.push(ExportClaimLocator {
+                    source_turn_index: evidence.source_turn_index,
+                    text: evidence.text,
+                });
+            }
+            claims.push(ExportClaim {
+                ordinal,
+                claim_type: claim_type_name(claim_type),
+                text,
+                locators: export_locators,
+            });
+        }
+        Ok(claims)
+    }
+
+    fn stale_export() -> LibraryExportAccess {
+        LibraryExportAccess {
+            state: "stale",
+            message: "This meeting changed or is no longer available. Reopen it and try again."
+                .into(),
+        }
+    }
+
     pub(crate) fn authorize_meeting_deletion(
         &mut self,
         handle: &str,
@@ -1479,6 +1657,7 @@ impl LibraryReader {
         self.audio_playback_handles.clear();
         self.transcript_deletion_handles.clear();
         self.meeting_deletion_handles.clear();
+        self.export_handles.clear();
     }
 
     /// A new snapshot generation, a changed active set, or opening a different
@@ -1764,6 +1943,7 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
+            export_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims: Vec::new(),

@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "preview-window",
-  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording, transcript, or whole-meeting deletion, regenerating a meeting note from its current transcript, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The local Preview build exercises the same meeting-notes flow as the shipped window, including naming a meeting, editable personal notes, exact local vocabulary replacements without rewriting retained transcript bytes, bounded speaker-name correction, restoring a verified withheld transcript turn without rewriting the source artifact, comparing a source-bound retry candidate and selecting it only through the durable retry authority, only the freshly verified retained microphone or system recording selected by an opaque handle, confirmed recording, transcript, or whole-meeting deletion, exporting a reviewed meeting as plain files and a compact archive written only inside that meeting's own directory, regenerating a meeting note from its current transcript, and receiving the local note-capture-hotkey focus event while a meeting is recording. It has no reference-interface, generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "preview"
   ],
@@ -31,6 +31,7 @@
     "allow-preview-library-open-evidence",
     "allow-library-open-transcript",
     "allow-library-open-transcript-file",
+    "allow-library-export-meeting",
     "allow-correct-speaker-name",
     "allow-local-vocabulary-list",
     "allow-local-vocabulary-add",

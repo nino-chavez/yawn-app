@@ -1,7 +1,7 @@
 {
   "$schema": "../../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "The shipped meeting-notes window may run one local meeting flow: check readiness, request the two capture permissions, start, pause, resume, and stop a meeting, name a meeting, edit an operator note, record optional pre-meeting context, copy a transcript, manage exact local vocabulary replacements without rewriting retained transcript bytes, correct a displayed speaker name without rewriting the retained transcript, restore a verified withheld transcript turn without rewriting the source artifact, compare a source-bound retry candidate and either keep the current transcript or promote that candidate, open only the verified transcript file the operator selected, play only a freshly verified retained microphone or system recording through a fixed native player, release a selected recording, delete a confirmed transcript and its generated notes, delete a confirmed meeting, open local completed notes with retained source passages, regenerate a meeting note from its current transcript, and receive the local note-capture-hotkey focus event while a meeting is recording. It cannot use generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
+  "description": "The shipped meeting-notes window may run one local meeting flow: check readiness, request the two capture permissions, start, pause, resume, and stop a meeting, name a meeting, edit an operator note, record optional pre-meeting context, copy a transcript, manage exact local vocabulary replacements without rewriting retained transcript bytes, correct a displayed speaker name without rewriting the retained transcript, restore a verified withheld transcript turn without rewriting the source artifact, compare a source-bound retry candidate and either keep the current transcript or promote that candidate, open only the verified transcript file the operator selected, export a reviewed meeting as plain files and a compact archive written only inside that meeting's own directory, play only a freshly verified retained microphone or system recording through a fixed native player, release a selected recording, delete a confirmed transcript and its generated notes, delete a confirmed meeting, open local completed notes with retained source passages, regenerate a meeting note from its current transcript, and receive the local note-capture-hotkey focus event while a meeting is recording. It cannot use generic filesystem, shell, process, dialog, remote-origin, account, or cloud authority.",
   "windows": [
     "main"
   ],
@@ -31,6 +31,7 @@
     "allow-preview-library-open-evidence",
     "allow-library-open-transcript",
     "allow-library-open-transcript-file",
+    "allow-library-export-meeting",
     "allow-correct-speaker-name",
     "allow-local-vocabulary-list",
     "allow-local-vocabulary-add",

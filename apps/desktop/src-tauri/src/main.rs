@@ -40,6 +40,13 @@ mod product_coordinator;
 // register/unregister lifecycle, and the frontend focus event — nothing
 // else. See the module docs for the governing constraint.
 mod capture_shortcut;
+// Roadmap intake I7+I8: assembles a completed meeting into plain per-item
+// files (a Markdown note with source references, a readable transcript,
+// operator content, and copied receipts) plus one compact archive of the same
+// content, written only inside that meeting's own directory. Pure assembly
+// over data `library_reader` has already digest-verified; see the module docs
+// for what is copied verbatim versus freshly derived.
+mod meeting_export;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -5527,6 +5534,59 @@ fn library_open_transcript_file(
     )
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryExportMeetingResponse {
+    state: &'static str,
+    /// Every artifact this export could not include, each named with why —
+    /// never a silent gap. Empty when every eligible artifact exported.
+    withheld: Vec<String>,
+    /// A fresh single-use authority so the operator can export again — for
+    /// example after recording a retry or writing more of their own notes —
+    /// without reopening the meeting, mirroring `transcript_file_handle`.
+    export_handle: Option<String>,
+    message: String,
+}
+
+/// Roadmap intake I7+I8: exports a reviewed meeting as plain per-item files
+/// plus one compact archive of the same content, written only inside that
+/// meeting's own directory — no save dialog, no path picker, no new
+/// filesystem scope. The handle is spent through the same bounded pattern as
+/// every other Library capability; `meeting_export` does the actual
+/// verification, assembly, and writing over the values it is handed.
+#[tauri::command(async)]
+fn library_export_meeting(
+    handle: String,
+    state: State<'_, ApplicationState>,
+) -> Result<LibraryExportMeetingResponse, String> {
+    state.with_preview_library(
+        || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
+        |reader, active| match reader.open_export_bound(
+            &handle,
+            active,
+            |storage, meeting_id, label, created_at_epoch_seconds, claims| {
+                let outcome = meeting_export::export_meeting(
+                    storage,
+                    meeting_id,
+                    label,
+                    created_at_epoch_seconds,
+                    claims,
+                );
+                (meeting_id.to_owned(), outcome)
+            },
+        ) {
+            Ok((meeting_id, Ok(outcome))) => Ok(LibraryExportMeetingResponse {
+                state: "exported",
+                withheld: outcome.withheld,
+                export_handle: reader.retain_export_handle(&meeting_id),
+                message: "Exported to a folder next to this meeting on this Mac.".into(),
+            }),
+            Ok((_, Err(error))) => Err(error),
+            Err(access) => Err(access.message),
+        },
+    )
+}
+
 #[tauri::command]
 fn library_open_transcript(
     handle: String,
@@ -6332,6 +6392,7 @@ fn main() {
             library_stop_retained_audio,
             library_open_transcript,
             library_open_transcript_file,
+            library_export_meeting,
             correct_speaker_name,
             local_vocabulary_list,
             local_vocabulary_add,
