@@ -631,7 +631,41 @@ impl LibraryProjection {
         query: &str,
         filter: &LibraryFilter,
     ) -> Result<SearchHits, LibraryReadError> {
+        self.search_filtered_excluding(query, filter, &HashSet::new())
+    }
+
+    /// Same as [`Self::search_filtered`], but a meeting named in
+    /// `excluded_meeting_ids` contributes no hit at all -- no claim, no
+    /// transcript span, no withheld-turn marker, no title/folder match -- and
+    /// none of its matches count toward `total`.
+    ///
+    /// This is the dormant search backend's own roadmap-I5 hook (this backend
+    /// has no reachable caller today -- `preview_library_search` and
+    /// `preview_library_open_search_result` in `main.rs` are unregistered --
+    /// but a lock this session-core crate cannot itself observe must still be
+    /// structurally impossible for a future caller to bypass, the same way the
+    /// corpus index's own exclusion is). The desktop crate is the layer that
+    /// can read `meeting_lock`, so it resolves the excluded set and passes it
+    /// in here; this crate treats the set as opaque and exists to make its
+    /// exclusion airtight rather than to decide who belongs in it.
+    ///
+    /// Filtering happens on the raw match set, before `total` is computed --
+    /// not merely before `seal` mints handles -- so a locked meeting's hit
+    /// count leaks nothing either. A caller that filtered only the returned
+    /// page would still tell a reader "3 results" for a query none of which
+    /// they may open.
+    pub fn search_filtered_excluding(
+        &self,
+        query: &str,
+        filter: &LibraryFilter,
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> Result<SearchHits, LibraryReadError> {
         let mut hits = self.matches(query)?;
+        if !excluded_meeting_ids.is_empty() {
+            hits.retain(|hit| {
+                !excluded_meeting_ids.contains(hit_authority(hit).meeting_id.as_str())
+            });
+        }
         if !filter.is_empty() {
             let admitted: HashSet<&str> = self
                 .filtered_rows(filter)
@@ -2709,6 +2743,129 @@ mod tests {
             projection.open(&fixture.storage, &hits[0]).unwrap(),
             OpenedLibraryHit::Transcript { ref meeting_id, .. } if meeting_id == "meeting-b"
         ));
+    }
+
+    /// Roadmap intake I5's search-path hardening. `search_filtered_excluding`
+    /// is the hook a locked-meeting-aware caller uses (the desktop crate,
+    /// which can read `meeting_lock` -- this crate cannot); this pins that
+    /// every kind of hit `matches` can produce for one meeting -- transcript
+    /// span, withheld-turn marker, and title match -- disappears when that
+    /// meeting is excluded, and that the count a caller would render also
+    /// drops, not merely the page of hits.
+    #[test]
+    fn search_filtered_excluding_removes_transcript_withheld_and_title_hits_for_one_meeting() {
+        let fixture = Fixture::new();
+        fixture.meeting(
+            "meeting-a",
+            10,
+            &[
+                ("shared secret sentence", false),
+                ("withheld secret aside", true),
+            ],
+        );
+        fixture.meeting("meeting-b", 20, &[("shared secret sentence", false)]);
+        crate::library_metadata::set_meeting_title(
+            &fixture.storage,
+            0,
+            "meeting-a",
+            Some("Shared Title"),
+        )
+        .unwrap();
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        // Sanity: both meetings match before any exclusion, so the assertions
+        // below are about exclusion and not about the fixture failing to
+        // produce a hit in the first place.
+        assert_eq!(projection.search_hits("shared secret").unwrap().len(), 2);
+        assert_eq!(projection.search_hits("withheld secret").unwrap().len(), 1);
+        assert_eq!(projection.search_hits("Shared Title").unwrap().len(), 1);
+
+        let excluded = HashSet::from(["meeting-a".to_owned()]);
+
+        let transcript = projection
+            .search_filtered_excluding(
+                "shared secret",
+                &LibraryFilter::default(),
+                &excluded,
+            )
+            .unwrap();
+        assert_eq!(
+            transcript.total, 1,
+            "an excluded meeting's transcript span still counted"
+        );
+        for hit in &transcript.hits {
+            assert!(matches!(
+                projection.open(&fixture.storage, hit).unwrap(),
+                OpenedLibraryHit::Transcript { ref meeting_id, .. } if meeting_id == "meeting-b"
+            ));
+        }
+
+        let withheld = projection
+            .search_filtered_excluding(
+                "withheld secret",
+                &LibraryFilter::default(),
+                &excluded,
+            )
+            .unwrap();
+        assert_eq!(
+            withheld.total, 0,
+            "an excluded meeting's withheld-turn marker still surfaced"
+        );
+
+        let titled = projection
+            .search_filtered_excluding("Shared Title", &LibraryFilter::default(), &excluded)
+            .unwrap();
+        assert_eq!(
+            titled.total, 0,
+            "an excluded meeting's title match still surfaced"
+        );
+
+        // Lifting the exclusion restores every one of them -- unlocking
+        // re-admits on the next search, with no separate re-admission path.
+        let restored = projection
+            .search_filtered_excluding(
+                "shared secret",
+                &LibraryFilter::default(),
+                &HashSet::new(),
+            )
+            .unwrap();
+        assert_eq!(restored.total, 2);
+    }
+
+    /// Same requirement, for a claim hit rather than a transcript/title one --
+    /// a locked meeting's generated note content must be just as unreachable
+    /// through search as its raw transcript.
+    #[test]
+    fn search_filtered_excluding_removes_claim_hits_for_an_excluded_meeting() {
+        let fixture = Fixture::new();
+        fixture.ready_meeting("meeting-a", 10);
+        fixture.ready_meeting("meeting-b", 20);
+        let projector = Arc::new(FixtureProjector::new(ProjectorMode::Success));
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            projector,
+        )
+        .unwrap();
+
+        let unfiltered = projection.search_hits("claim-a").unwrap();
+        assert!(
+            unfiltered.len() >= 2,
+            "sanity: both meetings should produce a claim-a hit"
+        );
+
+        let excluded = HashSet::from(["meeting-a".to_owned()]);
+        let found = projection
+            .search_filtered_excluding("claim-a", &LibraryFilter::default(), &excluded)
+            .unwrap();
+        assert!(!found.hits.is_empty(), "meeting-b's own claim hit vanished too");
+        for hit in &found.hits {
+            assert!(matches!(
+                projection.open(&fixture.storage, hit).unwrap(),
+                OpenedLibraryHit::Claim { ref meeting_id, .. } if meeting_id == "meeting-b"
+            ));
+        }
     }
 
     /// The semantic-retrieval probe measures against exact search, so exact

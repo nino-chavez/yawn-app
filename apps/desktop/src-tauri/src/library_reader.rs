@@ -47,13 +47,48 @@ pub(crate) const LOCKED_MESSAGE: &str =
 /// library, and no diagnostic is emitted because the only content that
 /// distinguishes these failures is private.
 ///
-/// `sync_if_changed` makes this affordable on a path the app walks whenever the
-/// library is opened or invalidated: an unchanged corpus costs one hash over the
-/// projection's row identities and one `SELECT`, and writes nothing.
+/// `sync_if_changed_excluding` makes this affordable on a path the app walks
+/// whenever the library is opened or invalidated: an unchanged corpus costs one
+/// hash over the projection's row identities and one `SELECT`, and writes
+/// nothing.
+///
+/// Roadmap intake I5's honest-ceiling follow-up: a locked meeting's derived
+/// content must not sit in this index outside the meeting's own directory, so
+/// `locked_meeting_ids` below is threaded straight into the exclusion the index
+/// already has a hook for. `lock_meeting` invalidates the library reader
+/// (`with_preview_library_invalidated` in `main.rs`), and this function runs
+/// again the next time anything rebuilds it — that is the whole hook: no
+/// separate "remove from corpus" call exists or is needed, because
+/// `sync_if_changed_excluding`'s digest already changes the moment a meeting
+/// crosses into or out of the exclusion set, forcing the real write that drops
+/// or restores its rows. Unlocking needs no push either: the next rebuild
+/// simply stops excluding it and the meeting is re-admitted.
 fn sync_corpus_index(storage: &StorageRoot, projection: &LibraryProjection) {
     if let Ok(mut index) = CorpusIndex::open(storage) {
-        let _ = index.sync_if_changed(projection);
+        let locked_meeting_ids = locked_meeting_ids(storage, projection);
+        let _ = index.sync_if_changed_excluding(projection, &locked_meeting_ids);
     }
+}
+
+/// Every meeting in `projection` whose lock reads locked right now, by the
+/// same fail-closed rule every other locked-meeting gate in this file uses: an
+/// unreadable lock sidecar is `meeting_lock::read`'s own `locked: true`, so it
+/// reaches this set exactly like a readable one. A meeting whose directory
+/// cannot be resolved at all is left out rather than excluded — the row came
+/// from a projection that already resolved it once, so this is not the fail
+/// path the honest-ceiling paragraph is about, and treating an unresolvable
+/// directory as "locked" here would be inventing a lock state no file states.
+fn locked_meeting_ids(storage: &StorageRoot, projection: &LibraryProjection) -> HashSet<String> {
+    projection
+        .rows()
+        .iter()
+        .filter(|row| {
+            meeting_dir(storage, &row.meeting_id)
+                .map(|directory| crate::meeting_lock::read(&directory).locked)
+                .unwrap_or(false)
+        })
+        .map(|row| row.meeting_id.clone())
+        .collect()
 }
 
 /// Owns only opaque handles into one immutable `LibraryProjection` snapshot.
@@ -884,7 +919,17 @@ impl LibraryReader {
         // handles would retain an unbounded amount of private snapshot state.
         self.clear_handles();
         let unavailable_count = self.projection.quarantined_meetings();
-        match self.projection.search_filtered(query, filter) {
+        // Roadmap intake I5's search-path hardening: this exact-search backend
+        // has no reachable caller today (`preview_library_search` is
+        // unregistered in `main.rs`), but a locked meeting's transcript,
+        // claims, and title must be structurally impossible to reach through
+        // it whenever it does gain one -- the same fail-closed exclusion the
+        // corpus index already applies, computed the same way.
+        let locked_meeting_ids = locked_meeting_ids(&self.storage, &self.projection);
+        match self
+            .projection
+            .search_filtered_excluding(query, filter, &locked_meeting_ids)
+        {
             Ok(found) if found.hits.is_empty() => LibrarySearchResponse {
                 state: if unavailable_count == 0 {
                     "no-results"
@@ -1029,16 +1074,32 @@ impl LibraryReader {
                 original_scalar_start,
                 original_scalar_end,
                 ..
-            }) => self.retain_search_open(
-                hit,
-                "transcript",
-                Some(meeting_id),
-                Some(source_turn_index),
-                Some(original_scalar_start),
-                Some(original_scalar_end),
-                "Opening the exact retained transcript turn that matched.",
-            ),
+            }) => {
+                // Roadmap intake I5: the hit was minted against a snapshot
+                // that already excluded every locked meeting, but the lock is
+                // re-checked here anyway -- this is the only place that can
+                // catch a meeting that was unlocked when `search_current`
+                // sealed this handle and became locked before it was opened.
+                // A stale-hit refusal is exactly the right shape for that
+                // race: nothing here distinguishes it from any other kind of
+                // staleness to the caller.
+                if self.meeting_lock(&meeting_id).locked {
+                    return Self::stale_search_open();
+                }
+                self.retain_search_open(
+                    hit,
+                    "transcript",
+                    Some(meeting_id),
+                    Some(source_turn_index),
+                    Some(original_scalar_start),
+                    Some(original_scalar_end),
+                    "Opening the exact retained transcript turn that matched.",
+                )
+            }
             Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => {
+                if self.meeting_lock(&meeting_id).locked {
+                    return Self::stale_search_open();
+                }
                 if self.meeting_has_transcript(&meeting_id) {
                     self.retain_search_open(
                         hit,
@@ -1064,15 +1125,20 @@ impl LibraryReader {
             Ok(OpenedLibraryHit::Withheld {
                 meeting_id,
                 source_turn_index,
-            }) => self.retain_search_open(
-                hit,
-                "withheld",
-                Some(meeting_id),
-                Some(source_turn_index),
-                None,
-                None,
-                "A voice check withheld this matching turn. It is not shown as transcript text.",
-            ),
+            }) => {
+                if self.meeting_lock(&meeting_id).locked {
+                    return Self::stale_search_open();
+                }
+                self.retain_search_open(
+                    hit,
+                    "withheld",
+                    Some(meeting_id),
+                    Some(source_turn_index),
+                    None,
+                    None,
+                    "A voice check withheld this matching turn. It is not shown as transcript text.",
+                )
+            }
             // Preview does not expose note reading yet, so a retained claim is
             // not a transcript/title search destination.
             Ok(OpenedLibraryHit::Claim { .. }) | Err(_) => Self::stale_search_open(),
@@ -3409,6 +3475,54 @@ mod tests {
         );
     }
 
+    /// Roadmap intake I5's search-path hardening, end to end through the real
+    /// `meeting_lock` module rather than a synthetic exclusion set (that layer
+    /// is proven directly in `library_read::tests`). This backend has no
+    /// reachable caller today (`preview_library_search` /
+    /// `preview_library_open_search_result` stay unregistered in `main.rs`),
+    /// but the exclusion must hold structurally for whenever it does.
+    #[test]
+    fn locking_a_meeting_removes_it_from_search_and_a_stale_hit_refuses_to_open() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+
+        let before = reader.search("exact", &HashSet::new());
+        assert_eq!(before.state, "results");
+        assert_eq!(before.results.len(), 1);
+        let stale_handle = before.results[0].handle.clone();
+
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+
+        // The already-sealed hit refuses rather than reopening the meeting it
+        // named -- the race where a meeting was unlocked when a search sealed
+        // this handle and became locked before it was opened.
+        assert_eq!(
+            reader
+                .open_search_result(&stale_handle, &HashSet::new())
+                .state,
+            "stale"
+        );
+
+        // And the meeting is gone from search entirely, not merely
+        // unreachable through the one handle that predates the lock.
+        let locked = reader.search("exact", &HashSet::new());
+        assert_ne!(locked.state, "results");
+        assert!(locked.results.is_empty());
+
+        // Unlocking re-admits it on the next search -- no separate
+        // re-admission path.
+        crate::meeting_lock::write(&fixture.directory, false).unwrap();
+        let after = reader.search("exact", &HashSet::new());
+        assert_eq!(after.state, "results");
+        assert_eq!(after.results.len(), 1);
+    }
+
     #[test]
     fn transcript_loader_runs_only_for_an_inactive_current_generation() {
         let fixture = fixture(
@@ -3729,6 +3843,83 @@ mod tests {
         // thing this product forbids for a withheld turn; the shell's locked
         // branch simply does not render that line.
         assert_eq!(locked.transcript_available, unlocked.transcript_available);
+    }
+
+    /// Roadmap intake I5's honest-ceiling follow-up: locking a meeting must
+    /// not just suppress its list-row preview (proven above) -- it must remove
+    /// whatever `sync_corpus_index` already wrote about it into the derived
+    /// corpus index, which lives *outside* the meeting's own directory. This
+    /// exercises the real hook end to end: `LibraryReader::rebuild` is what
+    /// `lock_meeting`'s invalidation (`main.rs`) causes to run again next, and
+    /// `sync_corpus_index` inside it is what actually drops the rows -- not a
+    /// bespoke test-only removal path.
+    #[test]
+    fn locking_a_meeting_drops_its_words_from_the_next_corpus_sync_and_unlocking_restores_them() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+
+        // Unlocked: the first rebuild is exactly what happens when the
+        // library is opened, and it is the path that syncs the corpus index.
+        LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        {
+            let index = CorpusIndex::open(&fixture.storage).unwrap();
+            assert_eq!(index.meeting_count().unwrap(), 1);
+        }
+
+        // Locking, then the next rebuild -- standing in for `lock_meeting`'s
+        // `with_preview_library_invalidated` plus the shell's next
+        // `library_snapshot` -- must remove it, with no other file touched.
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        {
+            let index = CorpusIndex::open(&fixture.storage).unwrap();
+            assert_eq!(
+                index.meeting_count().unwrap(),
+                0,
+                "a locked meeting's derived content stayed in the corpus index"
+            );
+        }
+
+        // Unlocking re-admits it on the next rebuild -- no separate re-add
+        // path either.
+        crate::meeting_lock::write(&fixture.directory, false).unwrap();
+        LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        {
+            let index = CorpusIndex::open(&fixture.storage).unwrap();
+            assert_eq!(index.meeting_count().unwrap(), 1);
+        }
+    }
+
+    /// The corpus-index exclusion fails closed exactly like every other
+    /// locked-meeting gate: a sidecar this build cannot read is `locked: true`
+    /// (`meeting_lock::read`), so it must be excluded from the corpus index
+    /// the same as a meeting locked through a normal, readable sidecar.
+    #[test]
+    fn an_unreadable_lock_sidecar_excludes_the_meeting_from_the_corpus_index_too() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+        LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        {
+            let index = CorpusIndex::open(&fixture.storage).unwrap();
+            assert_eq!(index.meeting_count().unwrap(), 1);
+        }
+
+        std::fs::write(fixture.directory.join("meeting-lock.json"), b"{ not a lock").unwrap();
+        LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        let index = CorpusIndex::open(&fixture.storage).unwrap();
+        assert_eq!(
+            index.meeting_count().unwrap(),
+            0,
+            "an unreadable lock sidecar left the meeting's words in the corpus index"
+        );
     }
 
     /// Roadmap intake I5 (b): opening a locked meeting without a confirmation
