@@ -207,6 +207,27 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+/// Shows and focuses the active (`ACTIVE_WINDOW_LABEL`) window — never the
+/// Settings window. The one place this logic lives; the tray's "Open Yawn"
+/// item, the single-instance relaunch callback, and `RunEvent::Reopen` all
+/// call it instead of repeating the show+focus pair a third or fourth time.
+fn show_and_focus_active_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(ACTIVE_WINDOW_LABEL) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Whether a macOS Reopen (Dock click / re-activation) should show the active
+/// window. Split out from the `RunEvent::Reopen` arm so the decision is
+/// unit-testable without a live event loop: `has_visible_windows` mirrors
+/// `NSApplication`'s own signal of whether *any* window (including Settings)
+/// is currently visible, so this only says yes when the app is otherwise
+/// invisible — it never steals focus from a window already on screen.
+fn should_show_on_reopen(has_visible_windows: bool) -> bool {
+    !has_visible_windows
+}
+
 struct ApplicationState {
     model: Mutex<AppModel>,
     // The storage, worker, and writer-lock slots are shared (Arc) so the
@@ -7007,10 +7028,7 @@ fn main() {
     ));
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(window) = app.get_webview_window(ACTIVE_WINDOW_LABEL) {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            show_and_focus_active_window(app);
         }))
         // § A: the menubar item is the primary UI and must survive the most
         // ordinary window action. Closing the window hides it instead of
@@ -7116,9 +7134,24 @@ fn main() {
                 .paste()
                 .select_all()
                 .build()?;
+            // W6-B: a standard Window submenu. Predefined items only, same as
+            // Edit above. `.maximize()` is Tauri/muda's builder name for the
+            // item macOS itself labels "Zoom" (⌘W's `close_window()` sends
+            // the native `performClose:` action, which macOS routes through
+            // the same `windowShouldClose:` delegate call as the traffic-light
+            // close button — the existing CloseRequested handler below
+            // already intercepts that into a hide, so ⌘W composes with it
+            // for free and needs no menu-event handling here).
+            let window_menu = tauri::menu::SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .maximize()
+                .separator()
+                .close_window()
+                .build()?;
             let menu = tauri::menu::MenuBuilder::new(app)
                 .item(&app_menu)
                 .item(&edit_menu)
+                .item(&window_menu)
                 .build()?;
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| {
@@ -7144,10 +7177,7 @@ fn main() {
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     if event.id() == "open-window" {
-                        if let Some(window) = app.get_webview_window(ACTIVE_WINDOW_LABEL) {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_and_focus_active_window(app);
                     }
                 })
                 .build(app)?;
@@ -7159,9 +7189,36 @@ fn main() {
                 .map_err(io_error)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("Local Meeting Notes shell failed");
+        .build(tauri::generate_context!())
+        .expect("Local Meeting Notes shell failed")
+        // `Builder::run` is a shorthand for `build` followed by `App::run(|_,
+        // _| {})` — it discards every RunEvent, including macOS's Reopen.
+        // That gap left Dock-clicking the app with no visible window front
+        // nothing (the tray's "Open Yawn" was the only recovery), so this
+        // app runs its own callback instead of the shorthand.
+        .run(|app_handle, event| handle_run_event(app_handle, event));
 }
+
+// `RunEvent::Reopen` only exists on macOS (`applicationShouldHandleReopen`),
+// so the match lives behind its own cfg — a plain `if let` on the variant
+// would not compile on a non-macOS target. This app only ships for macOS,
+// but Cargo.toml carries no target_os restriction, so keep the split honest
+// rather than relying on that.
+#[cfg(target_os = "macos")]
+fn handle_run_event(app_handle: &AppHandle, event: tauri::RunEvent) {
+    if let tauri::RunEvent::Reopen {
+        has_visible_windows,
+        ..
+    } = event
+    {
+        if should_show_on_reopen(has_visible_windows) {
+            show_and_focus_active_window(app_handle);
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn handle_run_event(_app_handle: &AppHandle, _event: tauri::RunEvent) {}
 
 fn initialize_application(app: AppHandle, retry: bool) {
     let state = app.state::<ApplicationState>();
@@ -10036,6 +10093,18 @@ mod tests {
     use super::*;
     use std::sync::Barrier;
     use tempfile::TempDir;
+
+    /// W6-B: the Reopen decision itself can be unit-tested headlessly even
+    /// though the event only ever arrives from a live `NSApplicationDelegate`
+    /// callback (a real Dock click, which this suite cannot drive). This
+    /// pins the one thing that logic is required to get right: don't front a
+    /// window that's already visible (which includes Settings being open),
+    /// only recover the case the audit found -- zero visible windows.
+    #[test]
+    fn reopen_shows_the_window_only_when_none_are_visible() {
+        assert!(should_show_on_reopen(false));
+        assert!(!should_show_on_reopen(true));
+    }
 
     /// Roadmap intake I5, decision 4, verbatim. The sentence is the packet's
     /// honesty burden on the machine that cannot run the check: the lock does
