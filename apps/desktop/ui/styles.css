@@ -558,10 +558,22 @@ h3 {
 }
 
 .empty-library p {
-  max-width: 42ch;
+  /* Roadmap packet W10: widened from 42ch to fit the teaching copy's fuller
+     sentence (what Record does, what exists afterward, where it appears)
+     without wrapping to an unreadably narrow column. */
+  max-width: 56ch;
   margin: 0;
   color: var(--ink-soft);
   line-height: 1.5;
+}
+
+/* Roadmap packet W10: the guided-recording invitation inside the teaching
+   empty state. Spacing only -- `.button-quiet.button-small` already carries
+   its visual weight, matching the other quiet secondary affordances in this
+   section (the trash link, the transcript-search affordance). */
+.empty-library-invite {
+  display: block;
+  margin-top: 14px;
 }
 
 .session-workspace {
@@ -2198,6 +2210,46 @@ h3 {
 .sheet-actions {
   justify-content: flex-end;
   gap: 9px;
+}
+
+/* Roadmap packet W10: the guided start sheet's one-line hint, shown only
+   when the sheet was opened from the empty state's "Try it" invitation.
+   Reuses `.quiet-copy`'s color and size; only the spacing is specific here,
+   matching `.start-sheet-privacy-note` above it. */
+.guided-start-hint {
+  margin: 4px 0 18px;
+}
+
+/* Roadmap packet W10: the once-only first-run sheet's three moments. A
+   plain `dt`/`dd` list rather than a carousel or numbered steps -- one
+   glance, no pagination -- reusing the `dt`/`dd` eyebrow idiom `.model-option`
+   already established rather than inventing a second one. */
+.first-run-moments {
+  display: grid;
+  gap: 14px;
+  margin: 4px 0 26px;
+}
+
+.first-run-moment {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-soft);
+}
+
+.first-run-moment dt {
+  margin-bottom: 4px;
+  color: var(--ink-faint);
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.first-run-moment dd {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
 }
 
 /* Roadmap intake I5: the per-meeting local barrier.

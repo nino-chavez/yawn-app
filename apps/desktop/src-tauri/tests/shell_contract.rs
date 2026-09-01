@@ -22,6 +22,10 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "first_run_request_microphone",
     "first_run_request_system_audio",
     "library_snapshot",
+    // Roadmap packet W10: the once-only first-run sheet's dismissal marker.
+    // `library_snapshot` already carries whether it has been seen; this is
+    // the only other command the sheet needs.
+    "dismiss_first_run_sheet",
     "library_set_meeting_title",
     "library_open_note",
     "library_play_retained_audio",
@@ -97,6 +101,7 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-first-run-request-microphone",
     "allow-first-run-request-system-audio",
     "allow-library-snapshot",
+    "allow-dismiss-first-run-sheet",
     "allow-library-set-meeting-title",
     "allow-library-open-note",
     "allow-library-play-retained-audio",

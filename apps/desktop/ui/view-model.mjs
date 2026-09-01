@@ -355,6 +355,66 @@ export function libraryRecoveryPresentation(library) {
   };
 }
 
+// Roadmap packet W10 (product brief, "A first run must teach without
+// counterfeiting," amended 2026-09-01). The teaching empty state replaces the
+// old one-line "your meetings will appear here" copy whenever the library is
+// genuinely empty (not merely filtered to nothing by a title search) --
+// it states what pressing Record does, what exists afterward, and where it
+// appears, and carries the one quiet guided-recording invitation. A
+// search-filtered empty result keeps the narrower "no matches" copy and never
+// gets the invitation: that affordance is about a library with nothing in it
+// yet, not a query that happened to miss.
+//
+// Callers must only reach this once `library` is a loaded, non-recovery
+// snapshot -- the same precondition `renderLibrary` already establishes by
+// checking `libraryLoadingPresentation`/`libraryRecoveryPresentation` first.
+export function libraryEmptyStatePresentation(library, searchQuery) {
+  if (library?.rows?.length) return null;
+  const trimmedQuery = String(searchQuery ?? "").trim();
+  if (trimmedQuery) {
+    return {
+      variant: "no-matches",
+      title: "No matching meetings",
+      message: typeof library?.message === "string" && library.message.trim()
+        ? library.message.trim()
+        : "No meeting matches that title.",
+      showGuidedInvite: false,
+    };
+  }
+  return {
+    variant: "no-meetings",
+    title: "No meetings yet",
+    message: "Press Record to start a private meeting. Yawn keeps your notes, the finished note, and the full transcript on this Mac. When it is ready, it appears right here.",
+    showGuidedInvite: true,
+  };
+}
+
+// Roadmap packet W10: the once-only first-run sheet's entire show/hide
+// truth table, kept as one pure function so it is testable without a render
+// pass. `library` is the same flattened `library_snapshot` response object
+// main.js already holds in `state.library` -- `total` is the meeting count
+// before any filter (so a title search never affects this), and
+// `firstRunSheetSeen` is the dismissal marker's raw value (see
+// `onboarding.rs`). Both must be present and loaded; a null or not-yet-loaded
+// library must never show the sheet, or it would flash on for one tick
+// before the first real snapshot arrives.
+export function firstRunSheetVisible(library) {
+  if (!library || typeof library.total !== "number") return false;
+  return library.total === 0 && !library.firstRunSheetSeen;
+}
+
+// Roadmap packet W10: the one-line hint shown above the start sheet's
+// attestations only when it was opened from the empty state's guided
+// invitation, never from the ordinary Record button or the ⌘R hotkey. The
+// exact copy is fixed by the product brief's amendment: it names the fastest
+// path to seeing what Yawn makes and states the real, unconditional recovery
+// (Trash, 30 days) rather than inventing a special disposable-meeting
+// concept -- there is no such thing; this is an ordinary meeting.
+export function startSheetGuidedHint(guided) {
+  if (!guided) return null;
+  return "A short test note to yourself is the fastest way to see what Yawn makes. You can delete it afterward — deleted meetings sit in Trash for 30 days.";
+}
+
 // W7-B (2026-09-01 desktop audit). This used to key entirely on exact
 // backend message strings: a rewording of a known message would silently
 // downgrade its recovery action to a dismiss-only toast, with no
