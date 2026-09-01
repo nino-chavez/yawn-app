@@ -108,6 +108,45 @@ let permissionsRefreshTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
 
+// Packet W7-C: local start-latency evidence for design intake D2's stated-
+// but-never-measured seconds budget (docs/roadmap.md). Not part of `state` --
+// same reasoning as the evidence-depth scheduling flags below: this is
+// bookkeeping for one start attempt, not something any render depends on.
+// Clock model: `t0EpochMs` anchors a single `Date.now()` read taken at the
+// operator's click; every later mark in the same attempt is derived as that
+// anchor plus a `performance.now()` delta, so the marks stay in the order
+// they actually happened even though `performance.now()` and `Date.now()`
+// are different clocks -- only one wall-clock read happens per attempt.
+let startJourney = null;
+
+function beginStartJourney() {
+  startJourney = { t0EpochMs: Date.now(), t0Perf: performance.now(), t1EpochMs: null };
+}
+
+// t1: the start sheet rendered and interactive. Called immediately after the
+// synchronous `render()` that shows it -- there is no virtual-DOM scheduling
+// in this app, so the sheet's controls are already interactive the instant
+// that call returns.
+function markStartSheetInteractive() {
+  if (!startJourney || startJourney.t1EpochMs != null) return;
+  startJourney.t1EpochMs = startJourney.t0EpochMs + (performance.now() - startJourney.t0Perf);
+}
+
+// t2: consent confirmed. Reads whatever `openStart` began and clears it, so
+// one start attempt cannot leak its marks into the next. A missing journey
+// (should not happen -- `startRecording` is only reachable through the sheet
+// `openStart` renders) falls back to a degenerate but still-ordered journey
+// rather than sending Rust a partially-populated one.
+function takeJourneyTimingForConfirm() {
+  const journey = startJourney;
+  startJourney = null;
+  const t0EpochMs = journey ? journey.t0EpochMs : Date.now();
+  const t0Perf = journey ? journey.t0Perf : performance.now();
+  const t1EpochMs = journey?.t1EpochMs ?? t0EpochMs;
+  const t2EpochMs = t0EpochMs + (performance.now() - t0Perf);
+  return { t0EpochMs, t1EpochMs, t2EpochMs };
+}
+
 // Design intake D5's evidence-depth affordances. None of this lives in
 // `state`: the popover is a transient, cursor-anchored overlay outside the
 // patched tree entirely (see `showEvidencePopover`), and the sync-suppression
@@ -1817,16 +1856,22 @@ async function requestPermission(kind) {
 
 function openStart() {
   if (!canOpenStart(state.snapshot, state.permissions)) return;
+  // t0: the operator's start intent -- this is the entry point every start
+  // route (the topbar/Home Record button, and the ⌘R hotkey) shares.
+  beginStartJourney();
   state.modal = "start";
   render();
+  markStartSheetInteractive();
 }
 
 async function startRecording() {
   if (!canOpenStart(state.snapshot, state.permissions) || !Object.values(state.consent).every(Boolean)) return;
+  const journeyTiming = takeJourneyTimingForConfirm();
   await runBusy("start", async () => {
     state.snapshot = await invoke("start_meeting", {
       retentionDays: Number(state.retentionDays),
       attestation: state.consent,
+      journeyTiming,
     });
     clearCurrentNote();
     clearCurrentContext();

@@ -57,6 +57,11 @@ mod meeting_lock;
 // the system's password fallback) behind a trait, so every gate path above is
 // testable with a fake and the real prompt stays live-run evidence.
 mod operator_confirmation;
+// Packet W7-C: local start-latency evidence for design intake D2's stated-
+// but-never-measured seconds budget. Owns the `capture-timing/1` sidecar,
+// its clock model, and the one call site (past the `CaptureState::Recording`
+// transition) that may write it. See the module docs for why.
+mod capture_timing;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -2012,6 +2017,7 @@ fn start_meeting(
     app: AppHandle,
     retention_days: u64,
     attestation: StartAttestation,
+    journey_timing: capture_timing::JourneyTiming,
 ) -> Result<AppSnapshot, String> {
     validate_start_request(retention_days, &attestation)?;
     let state = app.state::<ApplicationState>();
@@ -2060,6 +2066,12 @@ fn start_meeting(
     };
     let task_app = app.clone();
     let spawn_failure_meeting_id = meeting_id.clone();
+    // t3: this command returning (Arming accepted) is the boundary packet
+    // W7-C's app-latency span is measured from the other side of -- see
+    // `capture_timing`. Stamped here, before the spawn can fail, so a spawn
+    // failure (which never reaches `CaptureState::Recording`) simply never
+    // gets to use it.
+    let t3_epoch_ms = capture_timing::now_epoch_millis();
     std::thread::Builder::new()
         .name("meeting-capture-attempt".into())
         .spawn(move || {
@@ -2070,6 +2082,8 @@ fn start_meeting(
                 retention_days,
                 attestation,
                 receiver,
+                journey_timing,
+                t3_epoch_ms,
             )
         })
         .map_err(|error| {
@@ -8011,6 +8025,8 @@ fn run_capture_task(
     retention_days: u64,
     attestation: StartAttestation,
     commands: mpsc::Receiver<CaptureTaskCommand>,
+    journey_timing: capture_timing::JourneyTiming,
+    t3_epoch_ms: u64,
 ) {
     let state = app.state::<ApplicationState>();
     let _task_registration = CaptureTaskRegistration {
@@ -8334,6 +8350,22 @@ fn run_capture_task(
         model.mic_state = Some("Active".into());
         model.system_state = Some("Active".into());
     }
+
+    // Packet W7-C: t4, the moment `CaptureState::Recording` is confirmed
+    // above -- the other end of the app's own start-latency span (t2 -> t4).
+    // Written once, here, and nowhere else; every earlier return in this
+    // function leaves no receipt, which is the "absence means unmeasured"
+    // rule from `capture_timing`'s module doc. Best-effort: a write failure
+    // must never unwind a recording that has already, correctly, started.
+    let t4_epoch_ms = capture_timing::now_epoch_millis();
+    let app_version = app.package_info().version.to_string();
+    let _ = capture_timing::write(
+        &attempt.meeting_dir,
+        journey_timing,
+        t3_epoch_ms,
+        t4_epoch_ms,
+        &app_version,
+    );
 
     let mut ledger = PauseLedger::new(recording_started);
     // A pause or resume the helper has not confirmed yet. The reducer is not
