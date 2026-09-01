@@ -93,6 +93,16 @@ it is not the home-screen subject. Settings remain a small auxiliary window.
   content column, light chrome, and color only for recording or attention.
 - Never use fake counts, placeholder meetings, promised automation, or a
   synthetic example as if it were data from this Mac.
+- A first run must teach without counterfeiting. The app may explain itself
+  in its own words — the before/during/after moments, what a finished note
+  is, where things live — and may invite the operator to learn by recording
+  something real and disposable. It must never seed a meeting, transcript,
+  claim, or count the operator did not produce: in this product a meeting is
+  a provenance chain, and the first Show source must resolve to something
+  actually said. (Amended 2026-09-01. Clearly labeled sample content is how
+  the category onboards; it stays out of Yawn not because labeling is
+  dishonest but because a sample meeting either fabricates provenance or
+  breaks the loop it exists to teach.)
 
 ## Not part of this reset
 
