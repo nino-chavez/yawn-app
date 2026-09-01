@@ -1,6 +1,7 @@
 import {
   backgroundTranscriptionPresentation,
   canOpenStart,
+  captureIsInProgress,
   captureActivity,
   captureActivityElapsedSeconds,
   capturePresentation,
@@ -36,6 +37,8 @@ import {
   transcriptPlainText,
   transcriptRetryDiffPresentation,
   transcriptRetryQualityPresentation,
+  transcriptSearchAffordancePresentation,
+  transcriptSearchResultSnippet,
   transcriptSpeakerLabel,
   transcriptRetryPresentation,
   transcriptTurnsForSourceSpeaker,
@@ -94,6 +97,16 @@ const state = {
   transcriptActionStatus: {},
   transcriptQuery: "",
   noteCaptureFocusPending: false,
+  // Roadmap intake W8-B: the one-week local usage probe for cross-meeting
+  // exact search. `transcriptSearchResults` is null until the operator
+  // activates the affordance under the title-search box; `transcriptSearchRows`
+  // is an unfiltered snapshot of every meeting, fetched alongside the search
+  // so a hit outside the current title filter can still show a real title and
+  // date rather than nothing. Both are cleared whenever the title-search query
+  // changes or a meeting is opened, so a stale result list never survives past
+  // the query it answered.
+  transcriptSearchResults: null,
+  transcriptSearchRows: null,
   // Roadmap intake I9: local trash for whole-meeting deletion. `trash` is
   // null until first loaded, then `{ entries: [...] }`; `trashOpen` selects
   // the quiet secondary list in place of Meetings.
@@ -443,6 +456,8 @@ function renderHome() {
         ${library?.total ? `<input class="search-input" type="search" data-field="library-search" data-meeting-id="library" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" autocorrect="off" spellcheck="false" />` : ""}
       </div>
       ${renderLibrary(library)}
+      ${renderTranscriptSearchAffordance(library)}
+      ${renderTranscriptSearchResults()}
       ${(() => {
         const link = trashLinkPresentation(state.trash);
         return link
@@ -450,6 +465,49 @@ function renderHome() {
           : "";
       })()}
     </section>
+  `;
+}
+
+// Roadmap intake W8-B: the probe's entire UI. With the flag off (the
+// product's default, and everything before this packet), `presentation` is
+// null and this renders nothing -- not even an empty wrapper element -- so
+// the Home screen is byte-identical to before the probe existed.
+function renderTranscriptSearchAffordance(library) {
+  const presentation = transcriptSearchAffordancePresentation({
+    library,
+    query: state.search,
+    snapshot: state.snapshot,
+  });
+  if (!presentation) return "";
+  if (presentation.state === "unavailable") {
+    return `<p class="quiet-copy transcript-search-affordance" data-state="unavailable">${escapeHtml(presentation.message)}</p>`;
+  }
+  return `<button class="button button-quiet button-small transcript-search-affordance" type="button" data-action="search-transcripts" data-query="${escapeHtml(presentation.query)}">Search transcripts for “${escapeHtml(presentation.query)}”</button>`;
+}
+
+function renderTranscriptSearchResults() {
+  const response = state.transcriptSearchResults;
+  if (!response) return "";
+  if (!response.results?.length) {
+    return `<p class="quiet-copy transcript-search-results" data-state="${escapeHtml(response.state)}">${escapeHtml(response.message)}</p>`;
+  }
+  return `
+    <div class="meeting-list transcript-search-results" role="list" aria-label="Transcript search results">
+      ${response.results.map((result) => {
+        const row = state.transcriptSearchRows?.find((candidate) => candidate.meetingId === result.meetingId);
+        const title = row?.label || (row ? `Meeting · ${dateLabel(row.createdAtEpochSeconds)}` : "Meeting");
+        return `
+        <button class="meeting-row" type="button" role="listitem" data-action="open-search-result" data-search-handle="${escapeHtml(result.handle)}">
+          <span>
+            <span class="meeting-row-title">${escapeHtml(title)}</span>
+            <span class="meeting-row-preview">${escapeHtml(transcriptSearchResultSnippet(result))}</span>
+            ${row ? `<span class="meeting-row-meta">${escapeHtml(dateLabel(row.createdAtEpochSeconds))}</span>` : ""}
+          </span>
+          <span class="meeting-row-arrow" aria-hidden="true">›</span>
+        </button>
+      `;
+      }).join("")}
+    </div>
   `;
 }
 
@@ -1915,6 +1973,61 @@ async function openMeeting(handle) {
   });
 }
 
+// Roadmap intake W8-B. Runs only when the affordance rendered, which already
+// required a non-empty query and the local probe flag -- so this trusts the
+// caller and simply asks the backend, which re-checks the flag itself as the
+// first thing it does either way.
+async function searchTranscripts(query) {
+  await runBusy("transcript-search", async () => {
+    const [results, unfiltered] = await Promise.all([
+      invoke("preview_library_search", { query }),
+      invoke("library_snapshot", { filter: null }),
+    ]);
+    state.transcriptSearchResults = results;
+    state.transcriptSearchRows = unfiltered.rows || [];
+  });
+}
+
+// Opens a cross-meeting search hit through the library's ordinary open path
+// (`openMeeting`), rather than a second, search-specific reader -- the
+// backend hands back only a meeting id and a transcript handle, never a
+// filename or a general path, so this resolves that meeting id to the same
+// row `openMeeting` already knows how to open (lock confirmation included).
+async function openTranscriptSearchResult(handle) {
+  let response;
+  try {
+    response = await invoke("preview_library_open_search_result", { handle });
+  } catch (error) {
+    reportError(error);
+    return;
+  }
+  if (!response.meetingId) {
+    state.notice = response.message || "That result is no longer available.";
+    render();
+    return;
+  }
+  let row = state.transcriptSearchRows?.find((candidate) => candidate.meetingId === response.meetingId)
+    || state.library?.rows?.find((candidate) => candidate.meetingId === response.meetingId);
+  if (!row) {
+    try {
+      const unfiltered = await invoke("library_snapshot", { filter: null });
+      state.transcriptSearchRows = unfiltered.rows || [];
+      row = state.transcriptSearchRows.find((candidate) => candidate.meetingId === response.meetingId);
+    } catch (error) {
+      reportError(error);
+      return;
+    }
+  }
+  if (!row) {
+    state.notice = "That meeting could not be reopened.";
+    render();
+    return;
+  }
+  state.transcriptSearchResults = null;
+  state.transcriptSearchRows = null;
+  await openMeeting(row.handle);
+}
+
 // `lockToken` is roadmap intake I5's reading authority: a single-use
 // confirmation for this exact meeting. `library_open_note` spends it and, when
 // the read succeeds on a still-locked meeting, hands back a fresh one on
@@ -1930,6 +2043,10 @@ async function loadSelectedMeeting(row, lockToken = null) {
   const operatorNote = note.operatorNote || { text: "", unreadable: false };
   state.meetingManagementOpen = false;
   state.transcriptQuery = "";
+  // Leaving Home for a meeting detail, however it was reached, must not leave
+  // a stale cross-meeting search result list behind for the next Home render.
+  state.transcriptSearchResults = null;
+  state.transcriptSearchRows = null;
   state.selected = {
     row,
     note,
@@ -2694,6 +2811,8 @@ async function openMeetings() {
 function openTrash() {
   state.selected = null;
   state.trashOpen = true;
+  state.transcriptSearchResults = null;
+  state.transcriptSearchRows = null;
   render();
   if (!invoke) return;
   void runBusy("open-trash", refreshTrash);
@@ -2907,6 +3026,8 @@ function handleClick(event) {
   else if (action === "dismiss-current") void dismissCurrent();
   else if (action === "record-another") void recordAnother();
   else if (action === "open-meeting") void openMeeting(control.dataset.handle);
+  else if (action === "search-transcripts") void searchTranscripts(control.dataset.query);
+  else if (action === "open-search-result") void openTranscriptSearchResult(control.dataset.searchHandle);
   else if (action === "open-speaker-correction") openSpeakerCorrection(Number(control.dataset.sourceTurnIndex));
   else if (action === "open-vocabulary") void openVocabulary();
   else if (action === "start-transcript-retry") void openTranscriptRetry();
@@ -2996,6 +3117,10 @@ function handleClick(event) {
 function handleInput(event) {
   if (event.target.dataset.field === "library-search") {
     state.search = event.target.value;
+    // A changed query invalidates whatever cross-meeting search results are
+    // showing -- they answered the previous query, not this one.
+    state.transcriptSearchResults = null;
+    state.transcriptSearchRows = null;
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => void runBusy("search", refreshLibrary), 220);
   }

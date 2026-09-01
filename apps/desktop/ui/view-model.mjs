@@ -197,6 +197,43 @@ export function shouldPollSnapshot(snapshot) {
     || (Number(snapshot?.background_transcription_queued_count) || 0) > 0;
 }
 
+// Roadmap intake W8-B: the one-week local usage probe for cross-meeting exact
+// search. `library.searchProbeEnabled` is the only signal the frontend has for
+// whether the operator's local marker file exists -- with it false (the
+// default, and everything before this packet), this must return null so the
+// Home screen renders with zero difference from before the probe existed. A
+// non-empty title-search query is also required: the probe rides the existing
+// title-search box rather than adding a second field, so there is nothing to
+// search until the operator has already typed something there. Capture gates
+// on `captureIsInProgress` -- the same state the exact-search decision memo
+// names for "unavailable while it would compete with the transcription
+// worker" -- rather than a separate check, so this affordance is never
+// available in a state the memo did not intend it to be.
+export function transcriptSearchAffordancePresentation({ library, query, snapshot }) {
+  if (!library?.searchProbeEnabled) return null;
+  const trimmed = (query || "").trim();
+  if (!trimmed) return null;
+  if (captureIsInProgress(snapshot)) {
+    return {
+      state: "unavailable",
+      query: trimmed,
+      message: "Search across meetings is unavailable while recording.",
+    };
+  }
+  return { state: "available", query: trimmed };
+}
+
+// The honest per-kind label for one cross-meeting search hit. A withheld turn
+// must never render as blank or as invented transcript text (product-brief
+// rule), and a title/folder match has no turn text to show at all.
+export function transcriptSearchResultSnippet(result) {
+  if (result?.kind === "withheld") {
+    return "A voice check withheld this matching turn. It is not shown as transcript text.";
+  }
+  if (result?.kind === "meeting") return "Matched this meeting's title or folder.";
+  return result?.text || "";
+}
+
 export function permissionSummary(permission) {
   if (!permission) {
     return { state: "checking", title: "Checking audio access", detail: "Yawn checks access on this Mac before the first recording." };

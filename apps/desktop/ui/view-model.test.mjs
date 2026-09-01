@@ -45,6 +45,8 @@ import {
   transcriptRetryDiffPresentation,
   transcriptRetryQualityPresentation,
   transcriptRetryQualityKindLabel,
+  transcriptSearchAffordancePresentation,
+  transcriptSearchResultSnippet,
   transcriptSpeakerLabel,
   transcriptRetryPresentation,
   transcriptTurnsForSourceSpeaker,
@@ -696,6 +698,93 @@ test("startup keeps polling until the app is ready", () => {
   assert.equal(shouldPollSnapshot({ startup: "ready", capture: "recording" }), true);
   assert.equal(shouldPollSnapshot({ startup: "ready", capture: "idle", background_transcription_active: true }), true);
   assert.equal(shouldPollSnapshot({ startup: "ready", capture: "idle", background_transcription_queued_count: 1 }), true);
+});
+
+// Roadmap intake W8-B: the one-week local usage probe for cross-meeting exact
+// search. The merge gate's flag-off requirement lives here: with the flag
+// off, this must return null for every query and every capture state, which
+// is what lets `renderTranscriptSearchAffordance` render nothing at all.
+test("the transcript-search affordance renders nothing at all with the probe flag off", () => {
+  assert.equal(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: false },
+      query: "budget",
+      snapshot: { capture: "idle" },
+    }),
+    null,
+  );
+  assert.equal(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: false },
+      query: "budget",
+      snapshot: { capture: "recording" },
+    }),
+    null,
+    "flag off must win even during a state that would otherwise be unavailable",
+  );
+  assert.equal(transcriptSearchAffordancePresentation({ library: null, query: "budget", snapshot: null }), null);
+});
+
+test("the transcript-search affordance requires a non-empty query even with the flag on", () => {
+  assert.equal(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: true },
+      query: "",
+      snapshot: { capture: "idle" },
+    }),
+    null,
+  );
+  assert.equal(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: true },
+      query: "   ",
+      snapshot: { capture: "idle" },
+    }),
+    null,
+    "whitespace-only is the same as empty",
+  );
+});
+
+test("the transcript-search affordance is available with the flag on, a query, and no capture in progress", () => {
+  const presentation = transcriptSearchAffordancePresentation({
+    library: { searchProbeEnabled: true },
+    query: "  budget  ",
+    snapshot: { capture: "idle" },
+  });
+  assert.deepEqual(presentation, { state: "available", query: "budget" });
+});
+
+test("the transcript-search affordance states unavailability with the brief's exact sentence while capture is in progress", () => {
+  for (const capture of ["arming", "recording", "paused", "stopping", "captured", "transcribing", "summarizing"]) {
+    const presentation = transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: true },
+      query: "budget",
+      snapshot: { capture },
+    });
+    assert.equal(presentation.state, "unavailable", `capture=${capture}`);
+    assert.equal(presentation.message, "Search across meetings is unavailable while recording.");
+  }
+  // transcript-ready is not in captureIsInProgress's own list (recording and
+  // transcribing are both finished by then), so the affordance stays
+  // available rather than unavailable in that state.
+  assert.equal(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: true },
+      query: "budget",
+      snapshot: { capture: "transcript-ready" },
+    }).state,
+    "available",
+  );
+});
+
+test("a cross-meeting search hit renders an honest per-kind snippet, never blank or invented text", () => {
+  assert.equal(
+    transcriptSearchResultSnippet({ kind: "withheld", text: null }),
+    "A voice check withheld this matching turn. It is not shown as transcript text.",
+  );
+  assert.equal(transcriptSearchResultSnippet({ kind: "meeting", text: null }), "Matched this meeting's title or folder.");
+  assert.equal(transcriptSearchResultSnippet({ kind: "transcript", text: "the exact matched words" }), "the exact matched words");
+  assert.equal(transcriptSearchResultSnippet({ kind: "claim", text: null }), "");
 });
 
 test("the generate control follows the backend's eligibility signal alone", () => {
