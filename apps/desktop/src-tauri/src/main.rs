@@ -7101,7 +7101,25 @@ fn main() {
                 .separator()
                 .quit()
                 .build()?;
-            let menu = tauri::menu::MenuBuilder::new(app).item(&app_menu).build()?;
+            // D9 native-text audit: without an Edit menu, macOS has no
+            // key-equivalent route for cmd-Z/X/C/V/A into the webview, so
+            // undo is unreachable from the keyboard even though the editor
+            // preserves its undo stack (confirmed live against the packaged
+            // preview bundle, 2026-09-01). Predefined items only — they bind
+            // the native selectors and need no menu-event handling.
+            let edit_menu = tauri::menu::SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let menu = tauri::menu::MenuBuilder::new(app)
+                .item(&app_menu)
+                .item(&edit_menu)
+                .build()?;
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| {
                 if event.id() == "open-settings" {
