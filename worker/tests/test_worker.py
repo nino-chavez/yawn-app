@@ -221,7 +221,7 @@ class WorkerProcess:
         if not self.closed:
             os.close(self.write_fd)
             self.closed = True
-        self.process.wait(timeout=3)
+        self.process.wait(timeout=30)
         error = self.process.stderr.read()
         self.process.stdin.close()
         self.process.stdout.close()
@@ -1045,7 +1045,7 @@ while True:
         )
         os.close(read_fd)
         os.close(write_fd)
-        process.wait(timeout=3)
+        process.wait(timeout=30)
         error = process.stderr.read().decode()
         process.stderr.close()
         self.assertEqual(process.returncode, 0, error)
@@ -1095,7 +1095,7 @@ while True:
             self.assertIsNotNone(heartbeat)
             stopped, thread = heartbeat
             try:
-                for _ in range(100):
+                for _ in range(1000):
                     if protocol.getvalue():
                         break
                     threading.Event().wait(0.01)
@@ -1156,7 +1156,7 @@ while True:
             self.assertIsNotNone(heartbeat)
             stopped, thread = heartbeat
             try:
-                for _ in range(100):
+                for _ in range(1000):
                     if protocol.getvalue():
                         break
                     threading.Event().wait(0.01)

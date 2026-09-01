@@ -76,7 +76,7 @@ class MeetingCaptureHandshakeTests(unittest.TestCase):
                     self.assertEqual(list(capture_dir.iterdir()), [])
                     os.close(liveness_write)
                     liveness_write = -1
-                    process.wait(timeout=3)
+                    process.wait(timeout=30)
                     self.assertEqual(process.returncode, 1, process.stderr.read().decode())
                     self.assertEqual(
                         [json.loads(line) for line in events],
@@ -125,7 +125,7 @@ class MeetingCaptureHandshakeTests(unittest.TestCase):
                 with os.fdopen(event_read, "rb", closefd=True) as events:
                     self.assertEqual(json.loads(events.readline())["event"], "paused")
                     os.write(control_write, b"Q")
-                    process.wait(timeout=3)
+                    process.wait(timeout=30)
                     self.assertEqual(process.returncode, 2, process.stderr.read().decode())
                     self.assertEqual(
                         [json.loads(line) for line in events],

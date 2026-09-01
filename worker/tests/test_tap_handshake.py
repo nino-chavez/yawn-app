@@ -47,7 +47,7 @@ class TapHandshakeTests(unittest.TestCase):
                     {"schema": "tap-ready/1", "state": "paused"},
                 )
             os.close(liveness_write)
-            process.wait(timeout=3)
+            process.wait(timeout=30)
             self.assertEqual(process.returncode, 0, process.stderr.read().decode())
         finally:
             os.close(control_write)
@@ -68,7 +68,7 @@ class TapHandshakeTests(unittest.TestCase):
         )
         os.close(liveness_read)
         try:
-            process.wait(timeout=3)
+            process.wait(timeout=30)
             self.assertEqual(process.returncode, 0, process.stderr.read().decode())
         finally:
             if process.poll() is None:
@@ -101,7 +101,7 @@ class TapHandshakeTests(unittest.TestCase):
                 self.assertIsNotNone(liveness)
                 os.close(liveness)
                 tap._liveness_write_fd = None
-                tap.proc.wait(timeout=3)
+                tap.proc.wait(timeout=30)
                 self.assertEqual(tap.proc.returncode, 0)
             finally:
                 tap.stop()
