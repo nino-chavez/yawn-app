@@ -530,6 +530,26 @@ two shipping bugs:
   ambiguous copy); the preview packaging script's empty manifest_args
   broke under macOS bash 3.2 on an app-runtime/1 staging (fixed on main).
 
+**Refit intake — 2026-09-01 (judged-screen reviews of e7e96f9).** The cold
+and conformance reviews (docs/evidence/screen-reviews/, browser-render,
+PROVISIONAL pending installed-app captures) set design_intent: refit in
+DIRECTION.md. The direction stands — the primary journey passed cold; these
+are presentation changes inside it. Strings flagged by the cold review were
+verified at source as shipped copy, not fixture artifacts.
+
+| # | Proposed outcome | Source finding | Governing constraint |
+|---|---|---|---|
+| R1 | The generated note is the first readable content at every window width | Conformance drift: at 960 px the notes/context aside precedes the note in document order | The brief's own sentence: the note is the first readable result after capture; the aside discloses nearby, not first |
+| R2 | Home carries one Record affordance | Cold: two differently-styled Record buttons on one surface | One obvious way to start; the topbar and hero may not both spend the record color |
+| R3 | The withheld-turn surface explains itself | Cold: "the voice check" never defined; "Restore this turn" states no consequence (real copy: main.js:894, :1718; library_reader.rs:1184) | Trust surfaces carry their own explanation at the point of doubt; copy changes route through DIRECTION.md's content-reads table |
+| R4 | Increased contrast produces a legible response | Both reviews converged: no prefers-contrast rule exists; the state renders byte-identical to default (large text already reflows correctly) | An accessibility state that changes nothing misstates what the system asked for |
+| R5 | The color budget holds on idle surfaces | Conformance drift: idle Ready dot, always-coral Record, green In-use tag in Settings | Color only for recording or attention plus one evidence accent; per-element decisions owed — a record-colored Record control may be the budget used correctly, a green third status color is not |
+| R6 | A locked row says why its summary is absent | Cold: the LOCKED row's missing preview reads as ambiguous (real render, I5's deliberate suppression) | Suppression is deliberate; ambiguity is not — one word of explanation, no content leak |
+
+All six stay provisional until the installed-app capture pass, which
+supersedes the browser-render verdicts and may return design_intent to
+preserve or amend this list.
+
 Remaining decisions and design intake: the exact-search call (memo
 delivered), D2's stated capture speed budget (live-run-shaped), and D7's
 enforcement note.
