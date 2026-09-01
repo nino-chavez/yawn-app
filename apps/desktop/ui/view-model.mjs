@@ -584,6 +584,72 @@ export function transcriptRetryQualityPresentation(quality = null) {
   return { state, message, observations };
 }
 
+// D6 (design intake): the retry comparison must show *what* differs between
+// the two transcripts before the keep/promote choice, not just that a retry
+// exists. The word-level spans themselves come from the Rust
+// `transcript_retry_diff` module; these two functions turn that raw payload
+// into what the two columns render.
+
+const RETRY_DIFF_LEGEND = "Highlights show where the transcripts differ.";
+const RETRY_DIFF_SKIPPED_MESSAGE = "These transcripts are too long to highlight word differences.";
+const RETRY_DIFF_IDENTICAL_MESSAGE = "No word-level differences found.";
+
+function retryDiffSpansByTurn(side) {
+  const map = new Map();
+  if (!Array.isArray(side)) return map;
+  for (const entry of side) {
+    if (!entry || typeof entry.turnIndex !== "number") continue;
+    map.set(entry.turnIndex, Array.isArray(entry.spans) ? entry.spans : []);
+  }
+  return map;
+}
+
+// Anything other than an explicit "computed" state is treated the same as
+// "skipped": a diff that never ran must never be read as "these transcripts
+// are identical". `current`/`candidate` are Maps keyed by the turn's position
+// in that side's `turns` array (not `sourceTurnIndex`), matching how the diff
+// was built against that same array order.
+export function transcriptRetryDiffPresentation(diff = null) {
+  const computed = diff?.state === "computed";
+  const current = retryDiffSpansByTurn(diff?.current);
+  const candidate = retryDiffSpansByTurn(diff?.candidate);
+  const hasSpans = current.size > 0 || candidate.size > 0;
+  const legend = !computed
+    ? RETRY_DIFF_SKIPPED_MESSAGE
+    : hasSpans
+      ? RETRY_DIFF_LEGEND
+      : RETRY_DIFF_IDENTICAL_MESSAGE;
+  return { computed, legend, current, candidate };
+}
+
+// Splits one turn's text into the same word/separator runs the Rust side
+// tokenized against (a "word" is a maximal run of non-whitespace characters),
+// then marks each word segment highlighted when its word index falls inside
+// any of the given spans. Whitespace segments are never highlighted and are
+// rendered exactly as they appeared, so the visible spacing is unchanged.
+export function retryTurnDiffSegments(text, spans = []) {
+  const source = typeof text === "string" ? text : "";
+  const ranges = Array.isArray(spans) ? spans : [];
+  if (!source) return [];
+  const parts = source.split(/(\s+)/);
+  const segments = [];
+  let wordIndex = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (part === "") continue;
+    const isSeparator = i % 2 === 1;
+    if (isSeparator) {
+      segments.push({ text: part, highlighted: false });
+      continue;
+    }
+    const thisWord = wordIndex;
+    wordIndex += 1;
+    const highlighted = ranges.some((span) => thisWord >= span?.startWord && thisWord < span?.endWord);
+    segments.push({ text: part, highlighted });
+  }
+  return segments;
+}
+
 // The pause control the operator sees beside Stop.
 //
 // The reducer is only moved once the capture helper confirms the change, so a

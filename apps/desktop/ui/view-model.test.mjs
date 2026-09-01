@@ -27,9 +27,11 @@ import {
   recordingDevicePresentation,
   retainedAudioPlaybackPresentation,
   retentionLabel,
+  retryTurnDiffSegments,
   shouldPollSnapshot,
   transcriptCitationSummary,
   transcriptPlainText,
+  transcriptRetryDiffPresentation,
   transcriptRetryQualityPresentation,
   transcriptRetryQualityKindLabel,
   transcriptSpeakerLabel,
@@ -398,6 +400,80 @@ test("retry quality keeps canonical observation labels from the reader projectio
     observations: { silence: { status: "unknown" } },
   }).observations, [{ kind: "Silence", detail: "unknown" }]);
   assert.equal(transcriptRetryQualityPresentation().message, "Capture-quality details are unavailable for this retry.");
+});
+
+test("retry turn diff segments highlight only the word indices inside a span", () => {
+  const segments = retryTurnDiffSegments("the quarterly review starts monday", [{ startWord: 4, endWord: 5 }]);
+  assert.deepEqual(segments, [
+    { text: "the", highlighted: false },
+    { text: " ", highlighted: false },
+    { text: "quarterly", highlighted: false },
+    { text: " ", highlighted: false },
+    { text: "review", highlighted: false },
+    { text: " ", highlighted: false },
+    { text: "starts", highlighted: false },
+    { text: " ", highlighted: false },
+    { text: "monday", highlighted: true },
+  ]);
+});
+
+test("retry turn diff segments keep whitespace unhighlighted and support multiple spans", () => {
+  const segments = retryTurnDiffSegments("alpha bravo charlie delta echo", [
+    { startWord: 1, endWord: 2 },
+    { startWord: 3, endWord: 4 },
+  ]);
+  const highlightedWords = segments.filter((segment) => segment.highlighted).map((segment) => segment.text);
+  assert.deepEqual(highlightedWords, ["bravo", "delta"]);
+  assert.equal(segments.every((segment) => segment.text !== "" ), true);
+});
+
+test("retry turn diff segments are empty for empty text and default to no spans", () => {
+  assert.deepEqual(retryTurnDiffSegments("", [{ startWord: 0, endWord: 1 }]), []);
+  assert.deepEqual(retryTurnDiffSegments("solo"), [{ text: "solo", highlighted: false }]);
+});
+
+test("retry diff presentation shows the legend when differences were computed", () => {
+  const presentation = transcriptRetryDiffPresentation({
+    state: "computed",
+    current: [{ turnIndex: 1, spans: [{ startWord: 4, endWord: 5 }] }],
+    candidate: [{ turnIndex: 1, spans: [{ startWord: 4, endWord: 5 }] }],
+  });
+  assert.equal(presentation.computed, true);
+  assert.equal(presentation.legend, "Highlights show where the transcripts differ.");
+  assert.deepEqual(presentation.current.get(1), [{ startWord: 4, endWord: 5 }]);
+  assert.deepEqual(presentation.candidate.get(1), [{ startWord: 4, endWord: 5 }]);
+});
+
+test("retry diff presentation reports the identical sentence when computed with no spans", () => {
+  const presentation = transcriptRetryDiffPresentation({ state: "computed", current: [], candidate: [] });
+  assert.equal(presentation.computed, true);
+  assert.equal(presentation.legend, "No word-level differences found.");
+  assert.equal(presentation.current.size, 0);
+  assert.equal(presentation.candidate.size, 0);
+});
+
+test("retry diff presentation reports the skipped sentence and never claims identical", () => {
+  const skipped = transcriptRetryDiffPresentation({ state: "skipped", current: [], candidate: [] });
+  assert.equal(skipped.computed, false);
+  assert.equal(skipped.legend, "These transcripts are too long to highlight word differences.");
+
+  // A missing or unrecognized diff payload fails the same safe way: it is
+  // never presented as "these transcripts are identical".
+  assert.equal(transcriptRetryDiffPresentation(null).legend, "These transcripts are too long to highlight word differences.");
+  assert.equal(transcriptRetryDiffPresentation(undefined).computed, false);
+});
+
+test("word-level diff highlighting stays inside the retry comparison and never touches the main transcript render", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // Exactly one call site: renderRetryTurnBody, used only by the retry
+  // comparison columns.
+  assert.equal(source.split("retryTurnDiffSegments(").length - 1, 1);
+  assert.match(source, /function renderRetryTurnBody\(turn, spans\) \{[\s\S]*?retryTurnDiffSegments\(turn\.text, spans\)/);
+  // The main, non-retry transcript turn render (shared .transcript-line
+  // class) is unchanged: still a plain escapeHtml of the turn text, with no
+  // diff segmentation in its own render path.
+  assert.match(source, /<p>\$\{turn\.withheld \? "This turn was withheld by the voice check\." : escapeHtml\(turn\.text\)\}<\/p>/);
+  assert.match(source, /renderRetryDiffLegend\(\)/);
 });
 
 test("retry quality uses closed labels and keeps unknown kinds safe", () => {

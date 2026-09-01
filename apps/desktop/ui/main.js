@@ -21,9 +21,11 @@ import {
   capturePausePresentation,
   retainedAudioPlaybackPresentation,
   retentionLabel,
+  retryTurnDiffSegments,
   shouldPollSnapshot,
   transcriptCitationSummary,
   transcriptPlainText,
+  transcriptRetryDiffPresentation,
   transcriptRetryQualityPresentation,
   transcriptSpeakerLabel,
   transcriptRetryPresentation,
@@ -1289,23 +1291,46 @@ function renderRetryRecordingDevice(device) {
   `;
 }
 
+// D6: renders each turn's text with word-level diff highlighting so the
+// reader sees what differs between the two sides before the keep/promote
+// choice, instead of only being able to browse both transcripts side by
+// side. `spansByTurn` is keyed by the turn's position in this side's `turns`
+// array (see transcriptRetryDiffPresentation), matching how the Rust diff
+// built its per-side sequence.
+function renderRetryTurnBody(turn, spans) {
+  if (turn.withheld) return "This turn was withheld by the voice check.";
+  return retryTurnDiffSegments(turn.text, spans)
+    .map((segment) => segment.highlighted
+      ? `<span class="retry-diff-word">${escapeHtml(segment.text)}</span>`
+      : escapeHtml(segment.text))
+    .join("");
+}
+
 function renderRetryComparisonTurns(turns, label) {
   const rows = Array.isArray(turns) ? turns : [];
+  const diffPresentation = transcriptRetryDiffPresentation(state.transcriptRetry?.diff);
+  const spansByTurn = label === "current" ? diffPresentation.current : diffPresentation.candidate;
   return `
-    <section class="retry-transcript-column" aria-labelledby="retry-${label}-heading">
+    <section class="retry-transcript-column" data-side="${escapeHtml(label)}" aria-labelledby="retry-${label}-heading">
       <header><p class="eyebrow">${escapeHtml(label === "current" ? "Retained transcript" : "New local result")}</p><h3 id="retry-${label}-heading">${label === "current" ? "Current" : "Retry candidate"}</h3></header>
       ${renderRetryWarnings(label === "current" ? state.transcriptRetry?.current?.warnings : state.transcriptRetry?.candidate?.warnings, label === "current" ? "Current transcript" : "Retry candidate")}
       <div class="retry-transcript-turns" tabindex="0" aria-label="${escapeHtml(label === "current" ? "Current transcript turns" : "Retry candidate transcript turns")}">
-        ${rows.length ? rows.map((turn) => {
+        ${rows.length ? rows.map((turn, index) => {
     const speaker = transcriptSpeakerLabel(turn);
+    const spans = spansByTurn.get(index) || [];
     return `<div class="transcript-line ${turn.withheld ? "withheld" : ""}">
               <div class="transcript-line-meta"><time>${escapeHtml(timeLabel(turn.start))}</time>${speaker ? `<span>${escapeHtml(speaker)}</span>` : ""}</div>
-              <p>${turn.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn.text)}</p>
+              <p>${renderRetryTurnBody(turn, spans)}</p>
             </div>`;
   }).join("") : `<p class="transcript-empty">No transcript turns are available for this comparison.</p>`}
       </div>
     </section>
   `;
+}
+
+function renderRetryDiffLegend() {
+  const presentation = transcriptRetryDiffPresentation(state.transcriptRetry?.diff);
+  return `<p class="retry-diff-legend">${escapeHtml(presentation.legend)}</p>`;
 }
 
 function renderTranscriptRetrySheet() {
@@ -1327,6 +1352,7 @@ function renderTranscriptRetrySheet() {
         ${renderRetryQuality(retry.quality)}
         ${renderRetryCapturePauses(retry.pauses)}
         ${renderRetryRecordingDevice(retry.recordingDevice)}
+        ${renderRetryDiffLegend()}
         <div class="retry-transcript-comparison">
           ${renderRetryComparisonTurns(retry.current?.turns, "current")}
           ${renderRetryComparisonTurns(retry.candidate?.turns, "candidate")}
