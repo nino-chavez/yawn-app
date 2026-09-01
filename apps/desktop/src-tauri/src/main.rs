@@ -9669,30 +9669,14 @@ mod tests {
         let state = ApplicationState::default();
         *state.app_data_writer_lock.lock().unwrap() =
             Some(Arc::new(acquire_app_data_writer_lock(&storage).unwrap()));
-        let playback_pid = directory.join("playback.pid");
-        let child = Command::new("/bin/sh")
-            .args([
-                "-c",
-                "echo $$ > \"$1\"; exec sleep 30",
-                "retained-audio-test",
-                playback_pid.to_str().unwrap(),
-            ])
+        let child = Command::new("/bin/sleep")
+            .arg("30")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
             .unwrap();
-        for _ in 0..100 {
-            if playback_pid.exists() {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        let pid: libc::pid_t = fs::read_to_string(&playback_pid)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let pid = child.id() as libc::pid_t;
         *state.audio_playback.lock().unwrap() = Some(RetainedAudioPlayback {
             child,
             source: library_reader::RetainedAudioSource::Microphone,
@@ -9742,8 +9726,20 @@ mod tests {
             child,
             source: library_reader::RetainedAudioSource::Microphone,
         });
-        std::thread::sleep(Duration::from_millis(10));
-        assert_eq!(owned_audio_playback_status(&state).state, "completed");
+        // The child's exit time is scheduler-dependent, so poll: every status
+        // before the exit is observed must read "playing", the observing one
+        // "completed", and only then may the slot report "idle".
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            match owned_audio_playback_status(&state).state {
+                "completed" => break,
+                "playing" => {
+                    assert!(Instant::now() < deadline, "playback child never exited");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                other => panic!("completion may only be reported once, got {other:?}"),
+            }
+        }
         assert_eq!(owned_audio_playback_status(&state).state, "idle");
     }
 

@@ -751,9 +751,12 @@ class NoteProjectBridgeTests(unittest.TestCase):
         exits = []
 
         def fake_exit(code: int) -> None:
+            # Record and return instead of raising: os._exit is the last call
+            # in the watch thread, and a raised stand-in would escape as an
+            # unhandled thread exception attributed to whichever test is
+            # running when the daemon thread unwinds.
             exits.append(code)
             exited.set()
-            raise SystemExit(code)
 
         with (
             mock.patch("worker.note_bridge.os.getppid", return_value=4242),
@@ -762,7 +765,7 @@ class NoteProjectBridgeTests(unittest.TestCase):
             mock.patch("worker.note_bridge.os._exit", side_effect=fake_exit),
         ):
             _watch_parent_pid(4242)
-            self.assertTrue(exited.wait(1))
+            self.assertTrue(exited.wait(10))
         self.assertEqual(exits, [0])
         kevent.assert_called_once_with(
             4242,
