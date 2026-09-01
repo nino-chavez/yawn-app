@@ -496,6 +496,40 @@ The remaining calls were decided by the operator on 2026-09-01:
   unavailable during capture, locked meetings excluded by the W5-B
   hardening. The ship/hold decision follows the week's log.
 
+**Live-run receipts — 2026-09-01, packaged preview, agent-driven test
+recording (operator authorized).** Three consecutive takes produced the
+first packaged evidence for the pause journey and the D2 budget, and found
+two shipping bugs:
+
+- Take 1 failed at the pause click: the bundled Swift capture helper was
+  twelve days older than the app (`invalid_control` — it predated the pause
+  protocol). Take 2, after a targeted helper rebuild, failed at finalize:
+  the bundled Python worker was equally stale and refused the now-required
+  `pauses` argument. Root cause for both: nothing gates runtime-staging
+  freshness against source at packaging time (a gate is in flight as its
+  own task). Both failure surfaces behaved exactly as designed — plain
+  statements, no fake completion, diagnostics naming the codes.
+- Take 3, on a fully rebuilt runtime: the complete journey passed —
+  consent (1-day retention), Recording, a ~3.5 s pause with the observed
+  "Nothing is being recorded / both audio sources are released" state,
+  resume, stop, worker finalize accepting the pause, transcript-ready.
+  The receipt carries capture-pauses/1 with the real span
+  (samples 267504→323013) inside the worker-attested digest. RECEIPT:
+  pause round trip observed in a packaged build.
+- **First capture-timing/1 receipt: app span (consent → Recording) 532 ms;
+  sheet render 1 ms.** D2's budget can now be stated from measurement — a
+  "recording starts within two seconds of consent" budget holds with 4×
+  margin on this hardware. Operator span (3.5 s) was scripted clicking,
+  not a human baseline.
+- The recovery queue salvaged take 1 into a readable transcript and
+  refused the integrity-rejected take 2 as ineligible, logging the
+  refusal — recovery observed behaving honestly on real failures.
+- Findings for a later packet: the Arming step's elapsed counter renders
+  an epoch-garbage value until Recording starts; a transcript-ready
+  meeting with zero turns lists as "note only" (technically true,
+  ambiguous copy); the preview packaging script's empty manifest_args
+  broke under macOS bash 3.2 on an app-runtime/1 staging (fixed on main).
+
 Remaining decisions and design intake: the exact-search call (memo
 delivered), D2's stated capture speed budget (live-run-shaped), and D7's
 enforcement note.
