@@ -261,6 +261,12 @@
           "markdownDescription": "Enables the library_delete_folder command without any pre-configured scope."
         },
         {
+          "description": "Enables the library_export_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-library-export-meeting",
+          "markdownDescription": "Enables the library_export_meeting command without any pre-configured scope."
+        },
+        {
           "description": "Enables the library_open_note command without any pre-configured scope.",
           "type": "string",
           "const": "allow-library-open-note",
@@ -685,6 +691,12 @@
           "type": "string",
           "const": "deny-library-delete-folder",
           "markdownDescription": "Denies the library_delete_folder command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the library_export_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-library-export-meeting",
+          "markdownDescription": "Denies the library_export_meeting command without any pre-configured scope."
         },
         {
           "description": "Denies the library_open_note command without any pre-configured scope.",

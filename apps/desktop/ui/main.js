@@ -600,10 +600,11 @@ function transcriptActionStatus(scope) {
   return state.transcriptActionStatus?.[scope] || "";
 }
 
-function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", workspace = false, citations = null } = {}) {
+function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", exportAction = "", workspace = false, citations = null } = {}) {
   const scope = copyAction.includes("library") ? "library" : "current";
   const copyBusy = state.busyAction === copyAction;
   const fileBusy = state.busyAction === openFileAction;
+  const exportBusy = state.busyAction === exportAction;
   const query = workspace ? state.transcriptQuery.trim() : "";
   const visibleTurns = workspace ? transcriptTurnsMatching(turns, query) : turns;
   // Roadmap intake I4 / design D4's reverse half. Only the library's finished
@@ -620,9 +621,10 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
       capture: state.snapshot?.capture,
     })
     : null;
-  const actions = copyAction || openFileAction ? `<div class="transcript-actions" aria-label="Transcript actions">
+  const actions = copyAction || openFileAction || exportAction ? `<div class="transcript-actions" aria-label="Transcript actions">
     ${copyAction ? `<button class="button button-quiet button-small" type="button" data-action="${copyAction}" ${copyBusy ? "disabled" : ""}>${copyBusy ? "Copying…" : "Copy transcript"}</button>` : ""}
     ${openFileAction ? `<button class="button button-quiet button-small" type="button" data-action="${openFileAction}" ${fileBusy ? "disabled" : ""}>${fileBusy ? "Opening…" : "Open transcript file"}</button>` : ""}
+    ${exportAction ? `<button class="button button-quiet button-small" type="button" data-action="${exportAction}" ${exportBusy || !state.selected?.transcript?.transcriptFileHandle ? "disabled" : ""}>${exportBusy ? "Exporting…" : "Export meeting"}</button>` : ""}
     <span class="transcript-action-status" role="status" aria-live="polite">${escapeHtml(transcriptActionStatus(scope))}</span>
   </div>` : "";
   const transcriptLines = visibleTurns.map((turn) => {
@@ -777,6 +779,7 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
         ${transcript?.turns?.length ? renderTranscript(transcript.turns, "Source transcript", "Search or read the complete retained conversation.", {
           copyAction: "copy-library-transcript",
           openFileAction: "open-library-transcript-file",
+          exportAction: "export-meeting",
           workspace: true,
           citations: note ? { turnsCited: note.turnsCited, claims: note.claims } : null,
         }) : `<section class="note-section transcript-unavailable"><p class="message-card">${escapeHtml(transcript.message)}</p></section>`}
@@ -2299,6 +2302,27 @@ async function openTranscriptFile(scope) {
   });
 }
 
+async function exportSelectedMeeting() {
+  await flushSelectedNoteSave();
+  await runBusy("export-meeting", async () => {
+    const selection = state.selected;
+    const handle = selection?.transcript?.transcriptFileHandle;
+    if (!handle) throw new Error("Reopen this meeting before exporting it.");
+    const exported = await invoke("library_export_meeting", { handle });
+    if (state.selected !== selection || !selection.transcript) return;
+    selection.transcript = {
+      ...selection.transcript,
+      transcriptFileHandle: exported.transcriptFileHandle,
+    };
+    state.transcriptActionStatus = {
+      ...(state.transcriptActionStatus || {}),
+      library: exported.withheld.length
+        ? `Exported. Not included: ${exported.withheld.length === 1 ? "1 item" : `${exported.withheld.length} items`} (see README.txt).`
+        : "Exported. Opened the export folder on this Mac.",
+    };
+  });
+}
+
 async function retryStartup() {
   await runBusy("retry", async () => {
     state.snapshot = await invoke("retry_startup");
@@ -2385,6 +2409,7 @@ function handleClick(event) {
   else if (action === "copy-library-transcript") void copyTranscript("library");
   else if (action === "open-current-transcript-file") void openTranscriptFile("current");
   else if (action === "open-library-transcript-file") void openTranscriptFile("library");
+  else if (action === "export-meeting") void exportSelectedMeeting();
   else if (action === "clear-transcript-search") {
     state.transcriptQuery = "";
     render();

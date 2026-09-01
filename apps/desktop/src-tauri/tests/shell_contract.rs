@@ -30,6 +30,9 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "preview_library_open_evidence",
     "library_open_transcript",
     "library_open_transcript_file",
+    // Roadmap intake I7+I8: exports a reviewed meeting as plain per-item files
+    // plus a compact archive, written only inside that meeting's own directory.
+    "library_export_meeting",
     "correct_speaker_name",
     "local_vocabulary_list",
     "local_vocabulary_add",
@@ -89,6 +92,7 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-preview-library-open-evidence",
     "allow-library-open-transcript",
     "allow-library-open-transcript-file",
+    "allow-library-export-meeting",
     "allow-correct-speaker-name",
     "allow-local-vocabulary-list",
     "allow-local-vocabulary-add",
