@@ -250,6 +250,41 @@ before any of the three counts as proven in use. Facts the merge established:
   claims require only a resolvable alias, leaving their prose unchecked
   against the excerpt.
 
+**Intake Wave 2 status (2026-08-31):** I4, I7, I8, and I9 are implemented and
+merged to main from three isolated worktree packets; the combined suites are
+green after integration (session-core 531, desktop 189, UI 55; no Python or
+Swift files changed this wave). Implemented and merged, not packaged or
+shipped; the release journeys owed are: reopen a restored meeting from Trash,
+and open an exported bundle with no Yawn installed. Facts the merge
+established:
+
+- Reverse citations are derived at read time from verified claim locators —
+  never stored — and share the claims list's staleness lifecycle by
+  construction. Pre-meeting context now displays read-only on the library
+  note surface. (I4; also closes the Wave 1 display-after gap.)
+- Whole-meeting deletion now moves to a local Trash under the storage root
+  with a 30-day purge riding the retention tick; restore reinstates the
+  organization row last and refuses ghosts. Two bugs were caught in build:
+  a crashed purge could leave a ghost entry whose restore would have
+  quarantined the library's organization, and the purge-in-progress check
+  failed open on an unreadable deletions directory. Both are fixed with
+  regression tests. Audio retention keeps running inside Trash — the
+  privacy promise is never deferred. Transcript and audio deletion remain
+  immediate. (I9, with I6's restore-as-copy rule as the governing shape.)
+- Export writes plain files plus a zip inside the meeting's own directory
+  (the capability contract denies dialog authority, so no save dialog):
+  note.md preserves every claim's turn references and quoted excerpts,
+  transcript.md renders withheld turns as withheld, operator files carry
+  provenance headers, receipts copy byte-verbatim, and any artifact failing
+  digest verification is withheld and named in README.txt and the command
+  result — never exported silently. (I7, I8.)
+- The desktop suite's two timing flakes were reproduced at the unmodified
+  base commit by the trash packet — pre-existing, not wave-caused; tracked
+  as separate work alongside the worker-pytest flake.
+
+Remaining intake: I5 (per-meeting lock and scoped re-auth) deliberately held
+for its own wave, and the cross-meeting exact-search product decision.
+
 I1–I3 change what the operator can do during and around capture; I4–I9 harden
 trust in what already exists and can travel as independent packets. Two
 boundaries from the same review:
