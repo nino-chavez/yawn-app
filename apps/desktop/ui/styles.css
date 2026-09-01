@@ -25,9 +25,9 @@
      status line, never observed near even 58 characters), so it now reads
      the same 68ch as every other reading surface instead of keeping an
      accidental second measure. */
-  --measure-reading: 68ch;
-  --leading-reading: 1.65;
-  --leading-transcript: 1.58;
+  --measure-reading: 62ch;
+  --leading-reading: 1.6;
+  --leading-transcript: 1.55;
   /* W9-B: the app's first deliberate motion vocabulary -- two durations and
      one easing, defined once. Fast is for something the reader's own pointer
      summoned and dismisses in the same gesture (the evidence popover);
@@ -65,7 +65,7 @@
   --text-section: 20px;
   --text-transcript-body: 14px;
   --text-note-item: 15px;
-  --text-note-summary: 16px;
+  --text-note-summary: 15px;
 
   --weight-book: 500;
   --weight-medium: 620;
@@ -1168,7 +1168,7 @@ h3 {
   max-width: var(--measure-reading);
   margin: 0;
   font-size: var(--text-note-item);
-  line-height: 1.55;
+  line-height: var(--leading-reading);
 }
 
 .transcript-highlights,
