@@ -5541,19 +5541,21 @@ struct LibraryExportMeetingResponse {
     /// Every artifact this export could not include, each named with why —
     /// never a silent gap. Empty when every eligible artifact exported.
     withheld: Vec<String>,
-    /// A fresh single-use authority so the operator can export again — for
-    /// example after recording a retry or writing more of their own notes —
-    /// without reopening the meeting, mirroring `transcript_file_handle`.
-    export_handle: Option<String>,
+    /// A fresh single-use authority so the operator can open the transcript
+    /// file or export again without reopening the meeting. Same authority
+    /// class `library_open_transcript_file` reissues under this same field
+    /// name — export spends and reissues the identical handle.
+    transcript_file_handle: Option<String>,
     message: String,
 }
 
 /// Roadmap intake I7+I8: exports a reviewed meeting as plain per-item files
 /// plus one compact archive of the same content, written only inside that
 /// meeting's own directory — no save dialog, no path picker, no new
-/// filesystem scope. The handle is spent through the same bounded pattern as
-/// every other Library capability; `meeting_export` does the actual
-/// verification, assembly, and writing over the values it is handed.
+/// filesystem scope. The handle spent here is the meeting's existing
+/// transcript-file authority (`transcriptFileHandle`), not a new capability —
+/// `meeting_export` does the actual verification, assembly, and writing over
+/// the values `open_export_bound` hands it.
 #[tauri::command(async)]
 fn library_export_meeting(
     handle: String,
@@ -5578,7 +5580,7 @@ fn library_export_meeting(
             Ok((meeting_id, Ok(outcome))) => Ok(LibraryExportMeetingResponse {
                 state: "exported",
                 withheld: outcome.withheld,
-                export_handle: reader.retain_export_handle(&meeting_id),
+                transcript_file_handle: reader.retain_transcript_handle(&meeting_id),
                 message: "Exported to a folder next to this meeting on this Mac.".into(),
             }),
             Ok((_, Err(error))) => Err(error),

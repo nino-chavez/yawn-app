@@ -61,11 +61,6 @@ pub(crate) struct LibraryReader {
     audio_playback_handles: HashMap<String, RetainedAudioPlaybackHandle>,
     transcript_deletion_handles: HashMap<String, LibraryHit>,
     meeting_deletion_handles: HashMap<String, LibraryHit>,
-    // Roadmap intake I7+I8: a single-use authority to export one meeting as
-    // plain files plus a compact archive. Issued whenever the meeting resolves
-    // at all (unconditionally, like `meeting_deletion_handles`), because even a
-    // transcript-only or summary-failed meeting has something honest to export.
-    export_handles: HashMap<String, LibraryHit>,
 }
 
 /// The filter as the shell states it, before it becomes a `LibraryFilter`.
@@ -240,11 +235,6 @@ pub(crate) struct LibraryNoteResponse {
     /// meeting rather than only for one holding retained audio: a meeting whose
     /// audio has already been released can still be removed in full.
     pub(crate) meeting_deletion_handle: Option<String>,
-    /// Roadmap intake I7+I8: a single-use authority for `library_export_meeting`.
-    /// Issued for every readable meeting, mirroring `meeting_deletion_handle` —
-    /// a transcript-only or summary-failed meeting still has a transcript,
-    /// receipts, and operator content worth exporting honestly.
-    pub(crate) export_handle: Option<String>,
     pub(crate) meeting_id: String,
     /// The retained current transcript's digest when this meeting is eligible
     /// to create or replace a generated note. It is the exact source pin the
@@ -487,7 +477,6 @@ impl LibraryReader {
             audio_playback_handles: HashMap::new(),
             transcript_deletion_handles: HashMap::new(),
             meeting_deletion_handles: HashMap::new(),
-            export_handles: HashMap::new(),
         }
     }
 
@@ -943,7 +932,6 @@ impl LibraryReader {
             .flatten();
         let transcript_deletion_handle = self.retain_transcript_deletion_handle(&meeting_id);
         let meeting_deletion_handle = self.retain_meeting_deletion_handle(&meeting_id);
-        let export_handle = self.retain_export_handle(&meeting_id);
         match lifecycle {
             MeetingLifecycle::SummaryFailed => {
                 return LibraryNoteResponse {
@@ -955,7 +943,6 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
-                    export_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     claims: Vec::new(),
@@ -978,7 +965,6 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
-                    export_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     claims: Vec::new(),
@@ -1034,7 +1020,6 @@ impl LibraryReader {
             system_playback_handle,
             transcript_deletion_handle,
             meeting_deletion_handle,
-            export_handle,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims,
@@ -1227,7 +1212,6 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
-            export_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims: Vec::new(),
@@ -1384,31 +1368,26 @@ impl LibraryReader {
         Some(handle)
     }
 
-    /// Roadmap intake I7+I8: issued for any meeting the projection can
-    /// resolve, mirroring `retain_meeting_deletion_handle` — a meeting with no
-    /// generated note still has a transcript and receipts worth exporting.
-    /// `pub(crate)` because the export command reissues one after a
-    /// successful export, the same way `retain_transcript_handle` is reissued
-    /// after opening a transcript file.
-    pub(crate) fn retain_export_handle(&mut self, meeting_id: &str) -> Option<String> {
-        let hit = self.projection.meeting_handle(meeting_id).ok()?;
-        let handle = Uuid::new_v4().to_string();
-        self.export_handles.insert(handle.clone(), hit);
-        Some(handle)
-    }
-
-    /// Spends an export handle and, once the exact meeting still resolves,
+    /// Spends the same opaque handle `open_transcript_bound` accepts — the one
+    /// `retain_transcript_handle` mints, already returned to the webview as
+    /// `transcriptFileHandle` — and, once the exact meeting still resolves,
     /// hands the bounded callback the storage root, the meeting id, a label to
     /// derive an archive name from, and every claim this meeting's admitted
-    /// note holds — each claim's locators already carry digest-verified quoted
-    /// excerpt text via `open_claim_evidence_excluding`. Claims are empty for
-    /// any lifecycle other than `Ready`: a transcript-only or summary-failed
-    /// meeting still exports honestly, just without a note.
+    /// note holds. Reusing that handle's authority class rather than minting a
+    /// new one keeps `open_note_current` (which is what mints every other
+    /// per-meeting capability) untouched: export rides the exact same
+    /// "meeting, optionally with its transcript" authority a transcript-file
+    /// open already spends.
     ///
-    /// This is the one place export logic reaches into `self.projection`; the
-    /// callback receives only already-verified values and does no further
-    /// library-projection work itself, keeping `meeting_export` a pure
-    /// assembler over data this reader already proved.
+    /// Claims are empty for any lifecycle other than `Ready`: a
+    /// transcript-only or summary-failed meeting still exports honestly, just
+    /// without a note. Each claim's locators already carry digest-verified
+    /// quoted excerpt text via `open_claim_evidence_excluding` — the same
+    /// evidence `preview_library_open_evidence` proves before showing a
+    /// source passage. This is the one place export logic reaches into
+    /// `self.projection`; the callback receives only already-verified values
+    /// and does no further library-projection work itself, keeping
+    /// `meeting_export` a pure assembler over data this reader already proved.
     pub(crate) fn open_export_bound<T>(
         &mut self,
         handle: &str,
@@ -1418,13 +1397,17 @@ impl LibraryReader {
         if !self.revalidate(active_meeting_ids) {
             return Err(Self::stale_export());
         }
-        let hit = self.export_handles.remove(handle);
-        self.clear_handles();
-        let Some(hit) = hit else {
+        let Some(hit) = self.handles.remove(handle) else {
+            self.clear_handles();
             return Err(Self::stale_export());
         };
+        // Mirrors `open_transcript_current`'s narrower clear: exporting reads
+        // this one meeting and must not invalidate an adjacent deletion or
+        // audio-playback capability the same detail view already holds.
+        self.handles.clear();
         let meeting_id = match self.projection.open_snapshot(&hit) {
             Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => meeting_id,
+            Ok(OpenedLibraryHit::Transcript { meeting_id, .. }) => meeting_id,
             Ok(_) | Err(_) => return Err(Self::stale_export()),
         };
         if active_meeting_ids.contains(&meeting_id) {
@@ -1657,7 +1640,6 @@ impl LibraryReader {
         self.audio_playback_handles.clear();
         self.transcript_deletion_handles.clear();
         self.meeting_deletion_handles.clear();
-        self.export_handles.clear();
     }
 
     /// A new snapshot generation, a changed active set, or opening a different
@@ -1943,7 +1925,6 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
-            export_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             claims: Vec::new(),

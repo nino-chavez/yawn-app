@@ -569,7 +569,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
   const actions = copyAction || openFileAction || exportAction ? `<div class="transcript-actions" aria-label="Transcript actions">
     ${copyAction ? `<button class="button button-quiet button-small" type="button" data-action="${copyAction}" ${copyBusy ? "disabled" : ""}>${copyBusy ? "Copying…" : "Copy transcript"}</button>` : ""}
     ${openFileAction ? `<button class="button button-quiet button-small" type="button" data-action="${openFileAction}" ${fileBusy ? "disabled" : ""}>${fileBusy ? "Opening…" : "Open transcript file"}</button>` : ""}
-    ${exportAction ? `<button class="button button-quiet button-small" type="button" data-action="${exportAction}" ${exportBusy || !state.selected?.note?.exportHandle ? "disabled" : ""}>${exportBusy ? "Exporting…" : "Export meeting"}</button>` : ""}
+    ${exportAction ? `<button class="button button-quiet button-small" type="button" data-action="${exportAction}" ${exportBusy || !state.selected?.transcript?.transcriptFileHandle ? "disabled" : ""}>${exportBusy ? "Exporting…" : "Export meeting"}</button>` : ""}
     <span class="transcript-action-status" role="status" aria-live="polite">${escapeHtml(transcriptActionStatus(scope))}</span>
   </div>` : "";
   const transcriptLines = visibleTurns.map((turn) => {
@@ -2174,13 +2174,13 @@ async function exportSelectedMeeting() {
   await flushSelectedNoteSave();
   await runBusy("export-meeting", async () => {
     const selection = state.selected;
-    const handle = selection?.note?.exportHandle;
+    const handle = selection?.transcript?.transcriptFileHandle;
     if (!handle) throw new Error("Reopen this meeting before exporting it.");
     const exported = await invoke("library_export_meeting", { handle });
-    if (state.selected !== selection || !selection.note) return;
-    selection.note = {
-      ...selection.note,
-      exportHandle: exported.exportHandle,
+    if (state.selected !== selection || !selection.transcript) return;
+    selection.transcript = {
+      ...selection.transcript,
+      transcriptFileHandle: exported.transcriptFileHandle,
     };
     state.transcriptActionStatus = {
       ...(state.transcriptActionStatus || {}),
