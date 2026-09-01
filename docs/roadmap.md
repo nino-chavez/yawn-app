@@ -282,8 +282,48 @@ established:
   base commit by the trash packet — pre-existing, not wave-caused; tracked
   as separate work alongside the worker-pytest flake.
 
+**Design Wave 3 status (2026-08-31):** D1, D3, D6, and D8 are implemented and
+merged (session-core 544, desktop 196, UI 65 all green after integration).
+Facts the merge established:
+
+- Meeting rows preview the note overview's first sentence, read from the
+  digest-verified claim projection at listing time — generated content only,
+  absent when there is no admitted note, never a placeholder. A projection
+  API hazard was found and fixed in build: reading claims per-row cleared
+  earlier rows' sealed handles; previews are now read in one pass before any
+  handle is minted. (D1)
+- Reading measure and leading are named tokens (--measure-reading 68ch,
+  --leading-reading 1.65, --leading-transcript 1.58); transcript body text
+  moved 13 → 14 px as the app's longest-form reading surface. (D8)
+- The retry comparison highlights word-level differences before keep-or-
+  promote: a dependency-free Myers diff over word tokens, withheld turns
+  excluded as opaque boundaries, punctuation counted, both budget caps
+  skipping honestly ("too long to highlight") rather than blocking, and
+  absence of highlights never rendered as "identical." A tokenizer-parity
+  check ships per-turn word counts so a Rust/JS split mismatch renders plain
+  rather than misplacing a highlight. Known bound to carry: the worst-case
+  diff trace can transiently allocate ~250 MB inside the comparison call
+  while the storage lease is held — bounded, then skipped; tune
+  MAX_EDIT_BUDGET down if a live run ever shows it. The packaged-preview
+  fixture does not yet exercise the diff states — extend it before the next
+  release gate. (D6)
+- Privacy is legible in-product: a three-row what-happens table in Settings
+  ("Three facts about this Mac, not a policy promise") sitting directly
+  above the model card its second row points at; one plain sentence on the
+  start sheet; "on this Mac" as the canonical locality phrase across eight
+  status and save-state strings, including live "Transcribing on this Mac."
+  The read-first pass confirmed every pre-existing locality claim true;
+  "encrypted" and "audited" remain deliberately unused — neither is
+  currently a checkable claim. (D3)
+- The three suite flakes were root-caused and fixed on a separate branch
+  (fix/yawn-flaky-tests: a racy pid-file handoff, a fixed-sleep exit
+  assumption, a mocked os._exit raising in a daemon thread), verified over
+  fifty double-contention runs; it rebases onto this merge before landing.
+
 Remaining intake: I5 (per-meeting lock and scoped re-auth) deliberately held
-for its own wave, and the cross-meeting exact-search product decision.
+for its own wave, the cross-meeting exact-search product decision, and from
+the design intake D2's stated speed budget, D5 (three-depth evidence
+disclosure), D7 enforcement notes, and D9's native-text QA pass.
 
 I1–I3 change what the operator can do during and around capture; I4–I9 harden
 trust in what already exists and can travel as independent packets. Two
