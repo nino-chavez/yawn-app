@@ -1,0 +1,78 @@
+// WKWebView harness runner: loads the real Yawn UI (stubbed Tauri bridge)
+// over localhost and executes scenario.js in the page, printing its JSON
+// result. Same engine as the packaged Tauri app.
+import AppKit
+import WebKit
+
+final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
+    let pageURL: URL
+    let scenarioPath: String
+    let mode: String
+    var webView: WKWebView!
+    var window: NSWindow!
+
+    init(pageURL: URL, scenarioPath: String, mode: String) {
+        self.pageURL = pageURL
+        self.scenarioPath = scenarioPath
+        self.mode = mode
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let configuration = WKWebViewConfiguration()
+        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 760), configuration: configuration)
+        webView.navigationDelegate = self
+        window = NSWindow(
+            contentRect: webView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Yawn undo harness"
+        window.contentView = webView
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        webView.load(URLRequest(url: pageURL))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) {
+            FileHandle.standardError.write(Data("TIMEOUT\n".utf8))
+            exit(3)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let body = try? String(contentsOfFile: scenarioPath, encoding: .utf8) else {
+            FileHandle.standardError.write(Data("cannot read scenario\n".utf8))
+            exit(2)
+        }
+        webView.callAsyncJavaScript(body, arguments: ["mode": mode], in: nil, in: .page) { outcome in
+            switch outcome {
+            case .success(let value):
+                if JSONSerialization.isValidJSONObject(value),
+                   let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) {
+                    print(String(data: data, encoding: .utf8) ?? "\(value)")
+                } else {
+                    print("\(String(describing: value))")
+                }
+            case .failure(let error):
+                FileHandle.standardError.write(Data("JS ERROR: \(error)\n".utf8))
+            }
+            exit(0)
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        FileHandle.standardError.write(Data("NAV ERROR: \(error)\n".utf8))
+        exit(2)
+    }
+}
+
+let arguments = CommandLine.arguments
+guard arguments.count >= 3, let pageURL = URL(string: arguments[1]) else {
+    FileHandle.standardError.write(Data("usage: runner <url> <scenario.js path>\n".utf8))
+    exit(2)
+}
+let mode = pageURL.query?.contains("mode=library") == true ? "library" : "capture"
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+let delegate = Delegate(pageURL: pageURL, scenarioPath: arguments[2], mode: mode)
+app.delegate = delegate
+app.run()
