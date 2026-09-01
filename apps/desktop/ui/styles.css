@@ -1952,6 +1952,10 @@ h3 {
   accent-color: var(--accent);
 }
 
+.start-sheet-privacy-note {
+  margin: 0 0 20px;
+}
+
 .sheet-actions {
   justify-content: flex-end;
   gap: 9px;

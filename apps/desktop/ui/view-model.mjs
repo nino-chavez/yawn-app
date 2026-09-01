@@ -36,13 +36,13 @@ const CAPTURE_COPY = Object.freeze({
     tone: "working",
   },
   transcribing: {
-    eyebrow: "Transcribing locally",
+    eyebrow: "Transcribing on this Mac",
     title: "Making your transcript.",
     detail: "This can take a moment. Your own notes remain available below.",
     tone: "working",
   },
   summarizing: {
-    eyebrow: "Preparing notes",
+    eyebrow: "Preparing your note on this Mac",
     title: "Finishing your meeting note.",
     detail: "Yawn is preparing a local note from the completed transcript.",
     tone: "working",
@@ -100,12 +100,12 @@ const CAPTURE_ACTIVITY_COPY = Object.freeze({
     tone: "working",
   },
   transcribing: {
-    label: "Transcribing locally",
+    label: "Transcribing on this Mac",
     detail: "The captured audio is saved. Yawn is making the transcript on this Mac.",
     tone: "working",
   },
   summarizing: {
-    label: "Preparing meeting notes",
+    label: "Preparing your note on this Mac",
     detail: "The transcript is ready. Yawn is preparing the local meeting note.",
     tone: "working",
   },
@@ -156,14 +156,14 @@ export function backgroundTranscriptionPresentation(snapshot) {
   if (queued >= 2) {
     return {
       state: "full",
-      label: "Earlier meetings are processing locally.",
+      label: "Earlier meetings are processing on this Mac.",
       detail: "Yawn will accept the next recording after one finishes processing. Nothing has been discarded.",
       canStart: false,
     };
   }
   return {
     state: "active",
-    label: "An earlier meeting is processing locally.",
+    label: "An earlier meeting is processing on this Mac.",
     detail: "You can start the next meeting when the recorder is ready.",
     canStart: true,
   };
