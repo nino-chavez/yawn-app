@@ -91,12 +91,14 @@ test("the evidence popover never enters the patched tree, and the split's visibl
 test("no modal backdrop or dialog carries an id, so it is reused across a patch tick instead of re-animating", async () => {
   const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
   const backdropOpenTags = [...main.matchAll(/<div class="modal-backdrop"[^>]*>/g)];
-  assert.equal(backdropOpenTags.length, 7, "expected all seven sheets' backdrop tags");
+  // Roadmap packet W10 adds the once-only first-run sheet as an eighth
+  // consumer of this same unkeyed idiom.
+  assert.equal(backdropOpenTags.length, 8, "expected all eight sheets' backdrop tags");
   for (const [tag] of backdropOpenTags) {
     assert.doesNotMatch(tag, /\bid=/, `modal-backdrop must stay unkeyed: ${tag}`);
   }
   const dialogOpenTags = [...main.matchAll(/<section class="start-sheet[^>]*role="dialog"[^>]*>/g)];
-  assert.equal(dialogOpenTags.length, 7, "expected all seven sheets' dialog tags");
+  assert.equal(dialogOpenTags.length, 8, "expected all eight sheets' dialog tags");
   for (const [tag] of dialogOpenTags) {
     assert.doesNotMatch(tag, /\bid=/, `sheet dialog must stay unkeyed: ${tag}`);
     assert.doesNotMatch(tag, /data-field=/, `sheet dialog must stay unkeyed: ${tag}`);

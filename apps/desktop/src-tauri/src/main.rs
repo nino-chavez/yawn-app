@@ -13,6 +13,12 @@ mod library_reader;
 // and the append-only, content-free event log. See the module doc for why
 // the flag is read fresh per call rather than cached.
 mod search_probe;
+// Roadmap packet W10: the once-only first-run sheet's dismissal marker. Owns
+// only "has the operator dismissed it" and "mark it dismissed" -- the
+// frontend combines that with the already-computed library total to decide
+// whether the sheet renders. See the module doc for why the flag is read
+// fresh per call rather than cached.
+mod onboarding;
 
 // The correction/regeneration facade is intentionally compiled but not wired
 // into the current internal-alpha command set.
@@ -3541,6 +3547,15 @@ struct LibrarySnapshotResponse {
     #[serde(flatten)]
     library: library_reader::LibrarySnapshot,
     search_probe_enabled: bool,
+    /// Roadmap packet W10: whether the operator has already dismissed the
+    /// once-only first-run sheet. Same reasoning as `search_probe_enabled`
+    /// above -- `library_snapshot` is the one call the Home screen always
+    /// makes before it renders anything, so it is also the one place that can
+    /// hand the frontend this fact without a second round trip. Defaults to
+    /// `true` (already seen) when storage is unavailable: an app that cannot
+    /// read its own storage should not also show a teaching sheet it cannot
+    /// durably dismiss.
+    first_run_sheet_seen: bool,
 }
 
 #[tauri::command]
@@ -3548,13 +3563,44 @@ fn library_snapshot(
     filter: Option<library_reader::LibraryFilterArgs>,
     state: State<'_, ApplicationState>,
 ) -> LibrarySnapshotResponse {
-    let library = library_snapshot_with(filter.unwrap_or_default(), &state);
-    let search_probe_enabled = preview_storage_clone(&state)
+    library_snapshot_response_for(filter.unwrap_or_default(), &state)
+}
+
+// Split out from the `#[tauri::command]` wrapper so a test can call it with a
+// plain `&ApplicationState` -- the same "_for" idiom `library_snapshot_with`
+// and `preview_library_search_for` already use, needed because
+// `tauri::State<'_, T>` cannot be constructed outside a running Tauri app.
+fn library_snapshot_response_for(
+    filter: library_reader::LibraryFilterArgs,
+    state: &ApplicationState,
+) -> LibrarySnapshotResponse {
+    let library = library_snapshot_with(filter, state);
+    let search_probe_enabled = preview_storage_clone(state)
         .map(|storage| search_probe::enabled(&storage))
         .unwrap_or(false);
+    let first_run_sheet_seen = preview_storage_clone(state)
+        .map(|storage| onboarding::seen(&storage))
+        .unwrap_or(true);
     LibrarySnapshotResponse {
         library,
         search_probe_enabled,
+        first_run_sheet_seen,
+    }
+}
+
+/// Roadmap packet W10: writes the first-run sheet's dismissal marker. See
+/// `onboarding::mark_seen` for why this is idempotent and best-effort --
+/// nothing here needs to distinguish "already marked" from "just marked," and
+/// a write failure must never surface as an error over what is, at most, the
+/// sheet reappearing on a later cold boot.
+#[tauri::command]
+fn dismiss_first_run_sheet(state: State<'_, ApplicationState>) {
+    dismiss_first_run_sheet_for(&state);
+}
+
+fn dismiss_first_run_sheet_for(state: &ApplicationState) {
+    if let Ok(storage) = preview_storage_clone(state) {
+        onboarding::mark_seen(&storage);
     }
 }
 
@@ -7416,6 +7462,10 @@ fn main() {
             save_meeting_context,
             open_current_transcript_file,
             library_snapshot,
+            // Roadmap packet W10: the once-only first-run sheet's dismissal
+            // marker. `library_snapshot` above already tells the frontend
+            // whether it has been seen; this is the only other half.
+            dismiss_first_run_sheet,
             library_set_meeting_title,
             library_open_note,
             library_play_retained_audio,
@@ -12350,6 +12400,61 @@ mod tests {
         assert!(opened.meeting_id.is_none());
 
         assert!(!storage.path().join(search_probe::LOG_FILE).exists());
+    }
+
+    /// Roadmap packet W10, requirement 1: the frontend's only two signals for
+    /// the once-only first-run sheet, both riding the `library_snapshot`
+    /// response it already fetches on every Home render -- `total` (already
+    /// existed) and `firstRunSheetSeen` (new). Zero meetings and an
+    /// undismissed sheet is exactly the "show it once" state.
+    #[test]
+    fn library_snapshot_reports_unseen_first_run_sheet_when_no_meetings_exist() {
+        let (_temporary, storage) = test_storage();
+        let state = vocabulary_command_state(&storage);
+        // Deliberately no `first-run-seen.flag` written.
+
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        assert_eq!(response.library.total, 0);
+        assert!(!response.first_run_sheet_seen);
+    }
+
+    /// Requirement 1's other half: an operator who already has meetings never
+    /// saw the sheet dismissed (no flag was ever written for them), but the
+    /// `total` half of the same response is what the frontend uses to
+    /// suppress it anyway -- an upgrading operator is not a stranger. This
+    /// proves both facts land in the same response for that combination to be
+    /// possible client-side.
+    #[test]
+    fn library_snapshot_reports_a_nonzero_total_for_an_operator_with_existing_meetings() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &meeting_id, 3, AudioState::Retained, "an existing meeting");
+        let state = vocabulary_command_state(&storage);
+
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        assert_eq!(response.library.total, 1);
+        // No flag was ever written for this operator -- the point is that
+        // `total` alone is enough to suppress the sheet regardless.
+        assert!(!response.first_run_sheet_seen);
+    }
+
+    /// Requirement 1, the dismissal path: `dismiss_first_run_sheet` writes the
+    /// marker, and a *fresh* `library_snapshot` call -- not a cached field --
+    /// reflects it. That freshness is what makes this "restart-shaped": a
+    /// real relaunch is nothing more than a new call against the same
+    /// storage root, which is exactly what this test performs.
+    #[test]
+    fn dismissing_the_first_run_sheet_persists_across_a_fresh_library_snapshot_call() {
+        let (_temporary, storage) = test_storage();
+        let state = vocabulary_command_state(&storage);
+
+        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        assert!(!before.first_run_sheet_seen);
+
+        dismiss_first_run_sheet_for(&state);
+
+        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        assert!(after.first_run_sheet_seen, "dismissal must persist across a fresh snapshot call, not just in-memory");
     }
 
     #[test]

@@ -6,6 +6,7 @@ import {
   capturePresentation,
   errorRecoveryPresentation,
   humanize,
+  libraryEmptyStatePresentation,
   libraryLoadingPresentation,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
@@ -28,12 +29,14 @@ import {
   evidencePopoverPresentation,
   evidenceSplitAllowed,
   evidenceSyncTarget,
+  firstRunSheetVisible,
   isManualTranscriptScroll,
   nextEscapeTarget,
   retainedAudioPlaybackPresentation,
   retentionLabel,
   retryTurnDiffSegments,
   shouldPollSnapshot,
+  startSheetGuidedHint,
   transcriptCitationSummary,
   transcriptPlainText,
   transcriptRetryDiffPresentation,
@@ -98,6 +101,12 @@ const state = {
   snapshot: null,
   speakerCorrection: null,
   speakerCorrectionDraft: "",
+  // Roadmap packet W10: true only when the start sheet was opened from the
+  // empty state's guided invitation ("Try it: record a 30-second note to
+  // yourself."), never from the ordinary Record button or ⌘R. It only
+  // changes what `renderStartSheet` shows above the attestations -- the
+  // consent flow, retention choice, and start path are identical either way.
+  startSheetGuided: false,
   transcriptRetry: null,
   vocabulary: null,
   transcriptActionStatus: {},
@@ -215,6 +224,13 @@ let evidenceScrolledToTurnIndex = null;
 const EVIDENCE_HOVER_DELAY_MS = 350;
 const EVIDENCE_SYNC_SUPPRESS_MS = 500;
 
+// Roadmap packet W10: whether the first-run sheet is showing as of the most
+// recent render. Not part of `state` -- it is fully derived from `state.library`
+// and `state.modal` every tick (see `render()`), and this is only a cached copy
+// so `handleKeydown`'s Escape handling can ask "is it showing right now"
+// without recomputing the same derivation outside a render pass.
+let firstRunSheetShowing = false;
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -314,6 +330,11 @@ function render() {
   const status = statusLabel(state.snapshot, state.permissions);
   const audioReady = canOpenStart(state.snapshot, state.permissions);
   let content;
+  // Roadmap packet W10: `isHomeReady` is true in exactly the one branch below
+  // that renders Home -- the same set of conditions, kept alongside them
+  // rather than re-derived, so the first-run sheet can never show over a
+  // startup screen, an active capture, or a meeting/Trash view.
+  let isHomeReady = false;
   if (!invoke) content = renderBrowserNotice();
   else if (!state.snapshot || state.snapshot.startup === "checking") content = renderStartup(true);
   else if (state.snapshot.startup === "model-required") content = renderModelSetup();
@@ -321,7 +342,15 @@ function render() {
   else if (state.snapshot.capture !== "idle") content = renderCapture();
   else if (state.selected) content = renderMeeting();
   else if (state.trashOpen) content = renderTrash();
-  else content = renderHome();
+  else {
+    content = renderHome();
+    isHomeReady = true;
+  }
+  // Only when Home is what's showing, no other sheet is already open, and
+  // the library has loaded with zero meetings still undismissed. See
+  // `firstRunSheetVisible` for the truth table.
+  const firstRunVisible = isHomeReady && !state.modal && firstRunSheetVisible(state.library);
+  firstRunSheetShowing = firstRunVisible;
 
   // Patched in place, never assigned wholesale: replacing root.innerHTML
   // destroyed every editor node per 900 ms poll tick, which reset WebKit's
@@ -348,6 +377,7 @@ function render() {
         </div>
       </header>
       <main class="stage">${content}</main>
+      ${firstRunVisible ? renderFirstRunSheet() : ""}
       ${state.modal === "start" ? renderStartSheet() : ""}
       ${state.modal === "rename-meeting" ? renderRenameMeetingSheet() : ""}
       ${state.modal === "speaker-correction" ? renderSpeakerCorrectionSheet() : ""}
@@ -640,11 +670,15 @@ function renderLibrary(library, stalled) {
   if (recovery) {
     return `<section class="empty-library recovery-card attention" aria-labelledby="library-recovery-title"><h3 id="library-recovery-title">${escapeHtml(recovery.title)}</h3><p>${escapeHtml(recovery.detail)}</p><button class="button button-primary button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button></section>`;
   }
-  if (!library.rows?.length) {
-    const message = state.search.trim()
-      ? library.message || "No meeting matches that title."
-      : "Your finished meetings will appear here. Start with the next conversation you want to remember.";
-    return `<div class="empty-library"><h3>${state.search.trim() ? "No matching meetings" : "No meetings yet"}</h3><p>${escapeHtml(message)}</p></div>`;
+  const empty = libraryEmptyStatePresentation(library);
+  if (empty) {
+    return `
+      <div class="empty-library">
+        <h3>${escapeHtml(empty.title)}</h3>
+        <p>${escapeHtml(empty.message)}</p>
+        ${empty.showGuidedInvite ? `<button class="button button-quiet button-small empty-library-invite" type="button" data-action="open-start-guided" ${canOpenStart(state.snapshot, state.permissions) ? "" : "disabled"}>Try it: record a 30-second note to yourself.</button>` : ""}
+      </div>
+    `;
   }
   return `
     <div class="meeting-list" role="list">
@@ -1286,7 +1320,7 @@ function renderClaimEvidence(claim, evidence) {
   return `<button class="claim-source-button" type="button" id="claim-source-${escapeHtml(claim.ordinal)}" data-action="open-evidence-split" data-ordinal="${escapeHtml(claim.ordinal)}">Show source</button>`;
 }
 
-// -- W9-B: the seven sheets below share one entrance-motion mechanism -------
+// -- W9-B: the eight sheets below share one entrance-motion mechanism -------
 //
 // Each sheet's `.modal-backdrop` and `.start-sheet` (styles.css) carry the
 // entrance animation as a plain, permanent CSS rule -- no class toggling, no
@@ -1305,6 +1339,13 @@ function renderClaimEvidence(claim, evidence) {
 // tick could re-render underneath it -- the "JS gymnastics" this packet was
 // told to avoid. An honest instant close is the shipped behavior.
 //
+// Roadmap packet W10's first-run sheet (`renderFirstRunSheet`, below) is the
+// eighth and reuses the same two classes, but is not tracked in `state.modal`
+// at all -- its visibility is fully derived from `state.library` in `render()`
+// (see `firstRunSheetVisible`), so there is nothing for `closeModal()` to
+// clear. Its exit is instant for the same reason the others are: dismissal
+// flips the derived condition false and calls `render()` synchronously.
+//
 // Do not add an `id` to a backdrop or dialog element for any reason other
 // than a deliberate identity change (see ui/dom-patch.test.mjs) -- one would
 // make the node re-insert, and therefore re-animate, on every poll tick.
@@ -1314,6 +1355,9 @@ function renderStartSheet() {
   const audioReady = permission.state === "ready";
   const allConfirmed = Object.values(state.consent).every(Boolean);
   const action = permissionAction(state.permissions);
+  // Roadmap packet W10: null on the ordinary Record/⌘R path, so this whole
+  // block is absent and the sheet is byte-identical to before this packet.
+  const guidedHint = startSheetGuidedHint(state.startSheetGuided);
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet" role="dialog" aria-modal="true" aria-labelledby="start-sheet-title">
@@ -1326,6 +1370,7 @@ function renderStartSheet() {
           <small>This choice covers the saved audio.</small>
           <select class="select" data-field="retention-days">${[1, 7, 30].map((days) => `<option value="${days}" ${Number(state.retentionDays) === days ? "selected" : ""}>${retentionLabel(days)}</option>`).join("")}</select>
         </label>
+        ${guidedHint ? `<p class="quiet-copy guided-start-hint">${escapeHtml(guidedHint)}</p>` : ""}
         <div class="attestation-list">
           ${attestation("participantsConsented", "Everyone in this meeting has agreed to be recorded.")}
           ${attestation("headphones", "I am using headphones for this recording.")}
@@ -1335,6 +1380,54 @@ function renderStartSheet() {
         <div class="sheet-actions">
           <button class="button button-quiet" type="button" data-action="close-start">Cancel</button>
           <button class="button button-record" type="button" data-action="start-recording" ${!audioReady || !allConfirmed || state.busyAction === "start" ? "disabled" : ""}>${state.busyAction === "start" ? "Starting…" : "Start recording"}</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+// Roadmap packet W10 (product brief, "A first run must teach without
+// counterfeiting," amended 2026-09-01). Shown once, on the very first arrival
+// at a ready Home with zero meetings -- see `firstRunSheetVisible` for the
+// truth table this is gated on in `render()`. Mines the README's own
+// "A meeting has three moments" table and the brief's before/during/after
+// language rather than inventing new copy; states no capability the app does
+// not have.
+//
+// Reuses `.modal-backdrop`/`.start-sheet` (styles.css) verbatim -- the same
+// entrance-motion mechanism W9-B gave every other sheet, and the same
+// dom-patch identity rules (no `id` on the backdrop or dialog) so it is
+// never re-animated while it stays open across a poll tick. One primary
+// action ("Got it") and nothing else in the action row: this is an
+// acknowledgment, not a decision, so there is no Cancel beside it.
+function renderFirstRunSheet() {
+  return `
+    <div class="modal-backdrop" role="presentation">
+      <section class="start-sheet first-run-sheet" role="dialog" aria-modal="true" aria-labelledby="first-run-sheet-title">
+        <div class="sheet-head">
+          <div>
+            <p class="eyebrow">Before you record</p>
+            <h2 id="first-run-sheet-title">A meeting has three moments.</h2>
+            <p>This appears once. It shows what happens before, during, and after you press Record.</p>
+          </div>
+          <button class="icon-button" type="button" data-action="dismiss-first-run" aria-label="Close">×</button>
+        </div>
+        <dl class="first-run-moments">
+          <div class="first-run-moment">
+            <dt>Before</dt>
+            <dd>Confirm participant consent, put on headphones, and choose how long the recording audio stays — 1, 7, or 30 days.</dd>
+          </div>
+          <div class="first-run-moment">
+            <dt>During</dt>
+            <dd>Keep your own notes in a calm canvas while Yawn records in the background.</dd>
+          </div>
+          <div class="first-run-moment">
+            <dt>After</dt>
+            <dd>Generate a readable note with decisions and follow-ups, each pointing back to the transcript so you can check it. Everything stays on this Mac.</dd>
+          </div>
+        </dl>
+        <div class="sheet-actions">
+          <button class="button button-primary" type="button" data-action="dismiss-first-run">Got it</button>
         </div>
       </section>
     </div>
@@ -1467,6 +1560,10 @@ function closeModal() {
   state.speakerCorrectionDraft = "";
   state.transcriptRetry = null;
   state.vocabulary = null;
+  // Roadmap packet W10: cleared here too, not only after a successful start,
+  // so a cancelled guided invitation never leaks its hint into the next
+  // ordinary Record click.
+  state.startSheetGuided = false;
   if (retryOpen) queueMicrotask(() => root.querySelector("#transcript-retry-action")?.focus());
 }
 
@@ -1997,14 +2094,38 @@ async function requestPermission(kind) {
   });
 }
 
-function openStart() {
+// Roadmap packet W10: `guided` is true only for the empty state's "Try it"
+// invitation. It changes nothing about the start journey itself -- the same
+// t0 mark, the same sheet, the same consent gate -- only whether
+// `renderStartSheet` shows the one-line guided hint above the attestations.
+function openStart(guided = false) {
   if (!canOpenStart(state.snapshot, state.permissions)) return;
   // t0: the operator's start intent -- this is the entry point every start
-  // route (the topbar/Home Record button, and the ⌘R hotkey) shares.
+  // route (the topbar/Home Record button, the ⌘R hotkey, and the guided
+  // invitation) shares.
   beginStartJourney();
   state.modal = "start";
+  state.startSheetGuided = guided;
   render();
   markStartSheetInteractive();
+}
+
+// Roadmap packet W10: the once-only first-run sheet's dismissal. Flips the
+// local copy of `firstRunSheetSeen` immediately so the sheet is gone on the
+// very next render -- the operator should not wait on a round trip to see
+// "Got it" take effect -- then persists it best-effort. See
+// `dismiss_first_run_sheet` (main.rs) and `onboarding.rs` for why a write
+// failure here stays silent: at most, the sheet reappears on a later cold
+// boot, which is not worth an error toast.
+async function closeFirstRunSheet() {
+  if (state.library) state.library = { ...state.library, firstRunSheetSeen: true };
+  render();
+  if (!invoke) return;
+  try {
+    await invoke("dismiss_first_run_sheet");
+  } catch {
+    // Best-effort -- see the function doc above.
+  }
 }
 
 async function startRecording() {
@@ -2020,6 +2141,7 @@ async function startRecording() {
     clearCurrentContext();
     state.activeView = "capture";
     state.modal = "";
+    state.startSheetGuided = false;
     state.selected = null;
   });
 }
@@ -3145,6 +3267,8 @@ function handleClick(event) {
   const action = control.dataset.action;
   if (action === "home" || action === "meetings") void openMeetings();
   else if (action === "open-start") openStart();
+  else if (action === "open-start-guided") openStart(true);
+  else if (action === "dismiss-first-run") void closeFirstRunSheet();
   else if (action === "close-start" || action === "close-modal") {
     closeModal();
     render();
@@ -3307,6 +3431,12 @@ function handleChange(event) {
 
 function handleKeydown(event) {
   if (event.key === "Escape") {
+    // Roadmap packet W10: the first-run sheet is not tracked in `state.modal`
+    // (its visibility is fully derived -- see `render()`), so it needs its
+    // own Escape check ahead of `nextEscapeTarget`, which knows nothing about
+    // it. It has no nested popover or split behind it, so there is no
+    // precedence to resolve: Escape simply dismisses it, the same as "Got it".
+    if (firstRunSheetShowing) { void closeFirstRunSheet(); return; }
     // Design intake D5: the innermost, most transient surface closes first
     // -- a popover dismissing under the reader's cursor must not also close
     // a sheet or the split behind it.
@@ -3323,6 +3453,15 @@ function handleKeydown(event) {
   if (!event.metaKey || event.altKey || event.ctrlKey) return;
   if (event.key.toLowerCase() === "r" && canOpenStart(state.snapshot, state.permissions)) {
     event.preventDefault();
+    // Roadmap packet W10: the first-run sheet is not tracked in `state.modal`,
+    // so ⌘R would otherwise set `state.modal = "start"` in the same tick the
+    // sheet is still showing -- two sheets landing in the same unkeyed
+    // `.modal-backdrop` slot within one render, which dom-patch would morph
+    // in place rather than re-insert, silently skipping the entrance
+    // animation W9-B guarantees every sheet plays once. Dismissing first and
+    // returning (mirroring the Escape branch above) keeps every sheet
+    // transition to one mount per tick; a second ⌘R then opens Start normally.
+    if (firstRunSheetShowing) { void closeFirstRunSheet(); return; }
     openStart();
   }
   if (event.key.toLowerCase() === "k" && state.snapshot?.capture === "idle") {

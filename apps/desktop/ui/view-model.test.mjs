@@ -16,9 +16,11 @@ import {
   evidencePopoverPresentation,
   evidenceSplitAllowed,
   evidenceSyncTarget,
+  firstRunSheetVisible,
   humanize,
   isManualTranscriptScroll,
   nextEscapeTarget,
+  libraryEmptyStatePresentation,
   libraryLoadingPresentation,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
@@ -42,6 +44,7 @@ import {
   retentionLabel,
   retryTurnDiffSegments,
   shouldPollSnapshot,
+  startSheetGuidedHint,
   transcriptCitationSummary,
   transcriptPlainText,
   transcriptRetryDiffPresentation,
@@ -875,6 +878,108 @@ test("unavailable library keeps its backend message and offers a real refresh", 
   assert.equal(recovery.detail, "The local library is unavailable. Reopen the app and try again.");
   assert.deepEqual(recovery.action, { action: "refresh-library", label: "Check again" });
   assert.equal(libraryRecoveryPresentation({ state: "empty", rows: [] }), null);
+});
+
+// Roadmap packet W10: the teaching empty state and its guided invitation
+// only appear at a genuinely empty library (`total === 0` -- the same fact
+// `firstRunSheetVisible` gates on), never when a filter (today, only a title
+// search reaches the product surface) simply matched nothing against an
+// otherwise non-empty library.
+test("the teaching empty state renders only when the library is genuinely empty, not merely filtered to nothing", () => {
+  assert.equal(libraryEmptyStatePresentation({ total: 0, rows: [{ handle: "a" }] }), null);
+
+  const genuinelyEmpty = libraryEmptyStatePresentation({ total: 0, rows: [] });
+  assert.equal(genuinelyEmpty.variant, "no-meetings");
+  assert.equal(genuinelyEmpty.title, "No meetings yet");
+  assert.match(genuinelyEmpty.message, /Press Record to start a private meeting/);
+  assert.match(genuinelyEmpty.message, /on this Mac/);
+  // The note is generated on request (`generate-note`/`generateSelectedNote`
+  // in main.js), not produced automatically the moment a meeting finishes --
+  // the teaching copy must not claim otherwise.
+  assert.match(genuinelyEmpty.message, /you can generate a note/);
+  assert.equal(genuinelyEmpty.showGuidedInvite, true);
+
+  // A non-empty library (total > 0) with zero rows is a filter that matched
+  // nothing, never the teaching state, regardless of what filter caused it.
+  const filteredToNothing = libraryEmptyStatePresentation({ total: 3, rows: [] });
+  assert.equal(filteredToNothing.variant, "no-matches");
+  assert.equal(filteredToNothing.title, "No matching meetings");
+  assert.equal(filteredToNothing.message, "No meeting matches that title.");
+  assert.equal(filteredToNothing.showGuidedInvite, false);
+
+  const filteredToNothingWithBackendMessage = libraryEmptyStatePresentation({
+    total: 3,
+    rows: [],
+    message: "No meeting from this folder matches that title.",
+  });
+  assert.equal(filteredToNothingWithBackendMessage.message, "No meeting from this folder matches that title.");
+});
+
+// Roadmap packet W10: the once-only first-run sheet's full show/hide truth
+// table -- zero meetings and unseen shows it; anything else suppresses it,
+// including a library that has not loaded yet (never a flash-on before the
+// first real snapshot arrives).
+test("the first-run sheet shows only when the library is loaded, empty, and undismissed", () => {
+  assert.equal(firstRunSheetVisible(null), false, "an unloaded library must never show the sheet");
+  assert.equal(firstRunSheetVisible({ rows: [] }), false, "a library with no total field is treated as not yet loaded");
+  assert.equal(firstRunSheetVisible({ total: 0, firstRunSheetSeen: false }), true, "zero meetings, never dismissed: show it once");
+  assert.equal(firstRunSheetVisible({ total: 0, firstRunSheetSeen: true }), false, "dismissal must suppress it");
+  assert.equal(
+    firstRunSheetVisible({ total: 4, firstRunSheetSeen: false }),
+    false,
+    "an operator with existing meetings is not a stranger, even if never dismissed",
+  );
+  assert.equal(firstRunSheetVisible({ total: 4, firstRunSheetSeen: true }), false);
+});
+
+// Roadmap packet W10: the guided start-sheet hint is the one visible
+// difference between the guided invitation and every ordinary way to open
+// the start sheet (the Home Record button, ⌘R).
+test("the guided start-sheet hint appears only on the guided invocation, with the exact brief copy", () => {
+  assert.equal(startSheetGuidedHint(false), null);
+  assert.equal(startSheetGuidedHint(undefined), null);
+  assert.equal(
+    startSheetGuidedHint(true),
+    "A short test note to yourself is the fastest way to see what Yawn makes. You can delete it afterward — deleted meetings sit in Trash for 30 days.",
+  );
+});
+
+// Roadmap packet W10: proves the ordinary Record/⌘R path renders the start
+// sheet exactly as it did before this packet. `renderStartSheet` itself has
+// no rendering harness (main.js is not a testable module the way view-model
+// functions are), so this checks the source shape instead: `openStart`
+// defaults `guided` to `false`, the guided-hint markup is conditional on
+// that state (so it is entirely absent -- not merely empty -- on the
+// ordinary path), and the plain Record/⌘R call sites never pass `true`.
+test("the ordinary start-sheet path never carries the guided hint", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /function openStart\(guided = false\)/);
+  assert.match(source, /const guidedHint = startSheetGuidedHint\(state\.startSheetGuided\);/);
+  assert.match(source, /\$\{guidedHint \? `<p class="quiet-copy guided-start-hint">/);
+  // The Home Record button and the ⌘R hotkey both call the zero-argument
+  // form; only the guided invitation's handler passes `true`.
+  assert.match(source, /data-action="open-start"[^-]/);
+  assert.match(source, /else if \(action === "open-start"\) openStart\(\);/);
+  assert.match(source, /if \(event\.key\.toLowerCase\(\) === "r" && canOpenStart\(state\.snapshot, state\.permissions\)\) \{\s*event\.preventDefault\(\);/);
+  assert.match(source, /else if \(action === "open-start-guided"\) openStart\(true\);/);
+});
+
+// Roadmap packet W10: ⌘R must not open the start sheet in the same tick the
+// first-run sheet is still showing -- both share the one unkeyed
+// `.modal-backdrop` slot dom-patch matches positionally, so swapping their
+// content within one render would skip the entrance animation W9-B
+// guarantees every sheet plays once (the same failure class the two toast
+// kinds were given distinct ids to avoid). ⌘R dismisses the first-run sheet
+// instead, mirroring the Escape branch, so only one sheet ever mounts per
+// tick.
+test("⌘R dismisses the first-run sheet rather than opening Start over it in the same tick", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const rBranch = source.slice(
+    source.indexOf('if (event.key.toLowerCase() === "r"'),
+    source.indexOf('if (event.key.toLowerCase() === "k"'),
+  );
+  assert.match(rBranch, /if \(firstRunSheetShowing\) \{ void closeFirstRunSheet\(\); return; \}/);
+  assert.match(rBranch, /openStart\(\);/);
 });
 
 test("a row's preview is the backend's own sentence, trimmed, or nothing at all", () => {

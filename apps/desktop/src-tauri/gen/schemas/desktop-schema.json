@@ -207,6 +207,12 @@
           "markdownDescription": "Enables the correct_speaker_name command without any pre-configured scope."
         },
         {
+          "description": "Enables the dismiss_first_run_sheet command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-dismiss-first-run-sheet",
+          "markdownDescription": "Enables the dismiss_first_run_sheet command without any pre-configured scope."
+        },
+        {
           "description": "Enables the dismiss_meeting command without any pre-configured scope.",
           "type": "string",
           "const": "allow-dismiss-meeting",
@@ -655,6 +661,12 @@
           "type": "string",
           "const": "deny-correct-speaker-name",
           "markdownDescription": "Denies the correct_speaker_name command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the dismiss_first_run_sheet command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-dismiss-first-run-sheet",
+          "markdownDescription": "Denies the dismiss_first_run_sheet command without any pre-configured scope."
         },
         {
           "description": "Denies the dismiss_meeting command without any pre-configured scope.",
