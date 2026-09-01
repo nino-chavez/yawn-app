@@ -2315,7 +2315,11 @@ fn spawn_tray_updater(
         .name("menubar-state".into())
         .spawn(move || {
             let mut last: Option<(&'static str, &'static str)> = None;
-            let mut last_shows_stop: Option<bool> = None;
+            // The menu is built without "Stop recording" (see `main`'s
+            // setup): seeding this `Some(false)` instead of `None` matches
+            // that starting shape and skips a first-tick `menu.remove()` on
+            // an item that was never inserted.
+            let mut last_shows_stop: Option<bool> = Some(false);
             loop {
                 std::thread::sleep(Duration::from_secs(1));
                 let state = app.state::<ApplicationState>();
@@ -7245,7 +7249,19 @@ fn main() {
                     if event.id() == "open-window" {
                         show_and_focus_active_window(app);
                     } else if event.id() == "stop-recording" {
-                        let _ = stop_meeting(app.clone());
+                        // Native menu clicks land on the main thread, but
+                        // stop_meeting takes command_lock/model locks and
+                        // calls capture_shortcut::deactivate, which reaches
+                        // into the global-shortcut plugin's own OS-level
+                        // unregister. The frontend only ever reaches this
+                        // command off-main (Tauri's invoke handler runs
+                        // commands on its async task pool), so dispatch the
+                        // tray's call the same way instead of assuming the
+                        // plugin's internals tolerate a main-thread caller.
+                        let app = app.clone();
+                        std::thread::spawn(move || {
+                            let _ = stop_meeting(app);
+                        });
                     }
                 })
                 .build(app)?;
