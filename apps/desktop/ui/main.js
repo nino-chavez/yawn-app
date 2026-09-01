@@ -1835,6 +1835,19 @@ function reportError(error) {
   render();
 }
 
+// W7-B (2026-09-01 desktop audit). A handful of commands answer `Ok` with a
+// `{state, message, code}` shape rather than rejecting, and are displayed
+// directly from that response -- but an unhappy `state` also re-throws the
+// same `message` as an `Error` so it reaches `reportError` and the same
+// recovery-action path a genuine command rejection would. This carries the
+// response's `code` onto that re-thrown `Error` so `errorRecoveryPresentation`
+// can key on it instead of the exact message text.
+function throwRecoverableResponse(response, fallbackMessage) {
+  const error = new Error(response?.message || fallbackMessage);
+  if (response && typeof response.code === "string") error.code = response.code;
+  throw error;
+}
+
 function clearCurrentNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = undefined;
@@ -2182,7 +2195,9 @@ async function playRetainedAudio(source) {
     }
     const response = await invoke("library_play_retained_audio", { handle, lockToken });
     state.audioPlayback = response;
-    if (response.state !== "playing") throw new Error(response.message || "Retained audio is unavailable. Reopen Library and try again.");
+    if (response.state !== "playing") {
+      throwRecoverableResponse(response, "Retained audio is unavailable. Reopen Library and try again.");
+    }
   });
 }
 
@@ -2428,7 +2443,7 @@ async function deleteSelectedRecording() {
   await runBusy("confirm-delete-recording", async () => {
     const response = await invoke("preview_delete_meeting_audio", { handle });
     if (!["released", "already-released"].includes(response.state)) {
-      throw new Error(response.message || "Yawn could not delete this recording.");
+      throwRecoverableResponse(response, "Yawn could not delete this recording.");
     }
     if (state.selected !== selection) return;
     state.modal = "";
@@ -2448,7 +2463,7 @@ async function deleteSelectedTranscript() {
   await runBusy("confirm-delete-transcript", async () => {
     const response = await invoke("preview_delete_meeting_transcript", { handle, confirmed: true });
     if (!["removed", "already-removed"].includes(response.state)) {
-      throw new Error(response.message || "Yawn could not delete this transcript.");
+      throwRecoverableResponse(response, "Yawn could not delete this transcript.");
     }
     if (state.selected !== selection) return;
     state.modal = "";
@@ -2468,7 +2483,7 @@ async function deleteSelectedMeeting() {
   await runBusy("confirm-delete-meeting", async () => {
     const response = await invoke("preview_delete_meeting", { handle, confirmed: true });
     if (!["trashed", "already-trashed"].includes(response.state)) {
-      throw new Error(response.message || "Yawn could not delete this meeting.");
+      throwRecoverableResponse(response, "Yawn could not delete this meeting.");
     }
     if (state.selected !== selection) return;
     state.selected = null;

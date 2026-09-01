@@ -355,14 +355,78 @@ export function libraryRecoveryPresentation(library) {
   };
 }
 
-// Backend commands currently return user-facing errors as text, not tagged
-// classes. Map only their exact, stable recovery responses. A generic "try
+// W7-B (2026-09-01 desktop audit). This used to key entirely on exact
+// backend message strings: a rewording of a known message would silently
+// downgrade its recovery action to a dismiss-only toast, with no
+// compile-time or test-time signal. A migrated backend error now carries a
+// stable machine `code` alongside its `message` -- either as a Tauri
+// command's rejected `{code, message}` object (see the Rust
+// `error_codes::CommandError` envelope), or attached to a JS-re-thrown Error
+// (`main.js`'s retained-audio and preview-deletion handlers already read an
+// Ok-shaped `{state, message, code}` response and display it; they attach
+// `.code` when re-throwing it as an `Error` to reach this same path).
+//
+// The three code lists below are the current mapping's source of truth.
+// `error-codes.test.mjs` asserts their union is exactly the code set in
+// `../src-tauri/error-codes.json` -- the single list this file and
+// `error_codes.rs` are both tested against, so a code dropped from either
+// side fails a test instead of silently drifting.
+//
+// The two message arrays below are DEPRECATED: an exact-string fallback for
+// callers that still pass a plain string (or an error with no `code`, e.g.
+// one not yet migrated on the Rust side). Do not add a new message here --
+// give it a code in `error-codes.json` and `error_codes.rs` instead, and add
+// the code to one of the lists above.
+export const VIEW_STALE_CODE = "view-stale";
+export const LIBRARY_UNAVAILABLE_CODES = Object.freeze([
+  "library-unavailable",
+  "preview-library-unavailable",
+  "meeting-library-unavailable",
+]);
+export const SELECTED_MEETING_RECOVERY_CODES = Object.freeze([
+  "transcript-unavailable",
+  "transcript-changed",
+  "vocabulary-check-unsafe",
+  "vocabulary-read-failed",
+  "vocabulary-unavailable",
+  "meeting-action-in-use",
+  "transcript-changed-retry",
+  "speaker-correction-unavailable",
+  "speaker-group-unavailable",
+  "retry-quality-evidence-changed",
+  "retry-device-evidence-changed",
+  "retry-pause-evidence-changed",
+  "retry-candidate-changed",
+  "retained-audio-unavailable",
+  "recording-deletion-unavailable",
+  "audio-retention-unavailable",
+  "meeting-changed-unavailable",
+  "meeting-action-in-progress",
+  "recording-deletion-failed",
+  "transcript-deletion-unavailable",
+  "transcript-deletion-failed",
+  "meeting-deletion-unavailable",
+]);
+
+function errorCode(error) {
+  return error && typeof error === "object" && typeof error.code === "string" ? error.code : null;
+}
+
+// Backend commands currently return most user-facing errors as text, not
+// tagged classes. The two arrays below remain the deprecated fallback for
+// exactly those unmigrated, stable recovery responses. A generic "try
 // again" can describe any operation, so it must remain a plain error.
 export function errorRecoveryPresentation(error, { hasSelectedMeeting = false } = {}) {
-  const message = String(error instanceof Error ? error.message : error || "")
+  const rawMessage = error instanceof Error
+    ? error.message
+    : error && typeof error === "object" && typeof error.message === "string"
+      ? error.message
+      : error;
+  const message = String(rawMessage || "")
     .replace(/^Error:\s*/, "")
     .trim() || "Yawn could not complete that action.";
-  if (message === "That view is no longer current. Reopen it and try again.") {
+  const code = errorCode(error);
+  if (code === VIEW_STALE_CODE || message === "That view is no longer current. Reopen it and try again.") {
     return {
       message,
       action: hasSelectedMeeting
@@ -370,13 +434,18 @@ export function errorRecoveryPresentation(error, { hasSelectedMeeting = false } 
         : { action: "refresh-library", label: "Check again" },
     };
   }
-  if ([
+  if (LIBRARY_UNAVAILABLE_CODES.includes(code) || [
     "The local library is unavailable. Reopen the app and try again.",
     "The local Preview library is unavailable. Reopen the app and try again.",
     "The local meeting library is unavailable. Reopen the app and try again.",
   ].includes(message)) {
     return { message, action: { action: "refresh-library", label: "Check again" } };
   }
+  // Deprecated exact-string fallback. "Meeting deletion could not complete.
+  // Reopen Library and try again." has no live backend origin -- the actual
+  // message reads "Moving this meeting to Trash could not complete...". Left
+  // here unmigrated (already a dead match before this packet) rather than
+  // "fixed" by coding a different message; see error_codes.rs's module doc.
   const selectedMeetingRecoveryMessages = [
     "The local transcript is unavailable. Reopen the meeting and try again.",
     "That transcript changed. Reopen the meeting and try again.",
@@ -403,7 +472,10 @@ export function errorRecoveryPresentation(error, { hasSelectedMeeting = false } 
     "Meeting deletion could not complete. Reopen Library and try again.",
     "That transcript is no longer available. Reopen Library and try again.",
   ];
-  if (hasSelectedMeeting && selectedMeetingRecoveryMessages.includes(message)) {
+  if (
+    hasSelectedMeeting &&
+    (SELECTED_MEETING_RECOVERY_CODES.includes(code) || selectedMeetingRecoveryMessages.includes(message))
+  ) {
     return { message, action: { action: "refresh-selected-meeting", label: "Refresh this meeting" } };
   }
   return { message, action: null };

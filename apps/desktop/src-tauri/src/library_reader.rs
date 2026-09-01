@@ -492,6 +492,11 @@ pub(crate) struct LibraryAudioDeletionAccess {
     pub(crate) state: &'static str,
     pub(crate) meeting_id: Option<String>,
     pub(crate) message: String,
+    /// W7-B (2026-09-01 desktop audit): a stable machine code for `message`,
+    /// present only when `message` is one of the handful the frontend
+    /// attaches a recovery action to. `None` for every other message, same as
+    /// today. See `crate::error_codes`.
+    pub(crate) code: Option<&'static str>,
 }
 
 /// The only two retained-audio sources a player may ever request. This is a
@@ -546,6 +551,8 @@ pub(crate) struct LibraryTranscriptDeletionAccess {
     pub(crate) state: &'static str,
     pub(crate) meeting_id: Option<String>,
     pub(crate) message: String,
+    /// See `LibraryAudioDeletionAccess::code`.
+    pub(crate) code: Option<&'static str>,
 }
 
 /// Authorization to remove a whole meeting, which is a strictly larger act than
@@ -560,6 +567,8 @@ pub(crate) struct LibraryMeetingDeletionAccess {
     pub(crate) state: &'static str,
     pub(crate) meeting_id: Option<String>,
     pub(crate) message: String,
+    /// See `LibraryAudioDeletionAccess::code`.
+    pub(crate) code: Option<&'static str>,
 }
 
 /// Authorization to restore one trash entry, re-read from disk rather than
@@ -638,6 +647,8 @@ pub(crate) struct ExportClaimLocator {
 pub(crate) struct LibraryExportAccess {
     pub(crate) state: &'static str,
     pub(crate) message: String,
+    /// See `LibraryAudioDeletionAccess::code`.
+    pub(crate) code: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -659,6 +670,8 @@ pub(crate) struct LibraryTranscriptAccess {
     pub(crate) meeting_id: Option<String>,
     pub(crate) transcript_artifact: Option<ArtifactRef>,
     pub(crate) message: String,
+    /// See `LibraryAudioDeletionAccess::code`.
+    pub(crate) code: Option<&'static str>,
 }
 
 /// Authorization for one edit of the operator's note in a retained meeting.
@@ -671,6 +684,8 @@ pub(crate) struct LibraryTranscriptAccess {
 pub(crate) struct LibraryOperatorNoteAccess {
     pub(crate) state: &'static str,
     pub(crate) message: String,
+    /// See `LibraryAudioDeletionAccess::code`.
+    pub(crate) code: Option<&'static str>,
 }
 
 impl LibraryReader {
@@ -1557,6 +1572,7 @@ impl LibraryReader {
                 meeting_id: Some(meeting_id),
                 transcript_artifact: Some(transcript_artifact),
                 message: "Opening the retained canonical transcript.".into(),
+                code: None,
             },
             Ok(OpenedLibraryHit::Meeting {
                 meeting_id,
@@ -1567,6 +1583,7 @@ impl LibraryReader {
                 meeting_id: Some(meeting_id),
                 transcript_artifact: Some(transcript_artifact),
                 message: "Opening the retained canonical transcript.".into(),
+                code: None,
             },
             Ok(OpenedLibraryHit::Meeting { .. }) => Self::stale_transcript(),
             Ok(OpenedLibraryHit::Withheld { .. }) => LibraryTranscriptAccess {
@@ -1574,6 +1591,7 @@ impl LibraryReader {
                 meeting_id: None,
                 transcript_artifact: None,
                 message: "A voice check withheld that matching turn from transcript text.".into(),
+                code: None,
             },
             Ok(OpenedLibraryHit::Claim { .. }) | Err(_) => Self::stale_transcript(),
         };
@@ -1929,6 +1947,7 @@ impl LibraryReader {
             state: "stale",
             message: "This meeting changed or is no longer available. Reopen it and try again."
                 .into(),
+            code: Some(crate::error_codes::MEETING_CHANGED_UNAVAILABLE),
         }
     }
 
@@ -1955,6 +1974,7 @@ impl LibraryReader {
             state: "authorized",
             meeting_id: Some(meeting_id),
             message: "The reviewed meeting may be deleted in full.".into(),
+            code: None,
         }
     }
 
@@ -1963,6 +1983,7 @@ impl LibraryReader {
             state: "stale",
             meeting_id: None,
             message: STALE_MESSAGE.into(),
+            code: Some(crate::error_codes::VIEW_STALE),
         }
     }
 
@@ -2019,6 +2040,7 @@ impl LibraryReader {
                 meeting_id: Some(meeting_id),
                 message: "The reviewed meeting transcript may be deleted with its generated notes."
                     .into(),
+                code: None,
             };
         }
         if transcript_deletion_completed(&self.storage, &meeting_id).unwrap_or(false) {
@@ -2026,12 +2048,14 @@ impl LibraryReader {
                 state: "already-removed",
                 meeting_id: Some(meeting_id),
                 message: "This meeting transcript was already deleted.".into(),
+                code: None,
             };
         }
         LibraryTranscriptDeletionAccess {
             state: "no-transcript",
             meeting_id: Some(meeting_id),
             message: "This meeting has no retained transcript to delete.".into(),
+            code: None,
         }
     }
 
@@ -2040,6 +2064,7 @@ impl LibraryReader {
             state: "stale",
             meeting_id: None,
             message: STALE_MESSAGE.into(),
+            code: Some(crate::error_codes::VIEW_STALE),
         }
     }
 
@@ -2069,26 +2094,31 @@ impl LibraryReader {
                 state: "authorized",
                 meeting_id: Some(meeting_id),
                 message: "The reviewed meeting recording may be deleted.".into(),
+                code: None,
             },
             "released" => LibraryAudioDeletionAccess {
                 state: "already-released",
                 meeting_id: Some(meeting_id),
                 message: "This meeting recording was already deleted.".into(),
+                code: None,
             },
             "deleting" => LibraryAudioDeletionAccess {
                 state: "deleting",
                 meeting_id: Some(meeting_id),
                 message: "This meeting recording is already being deleted.".into(),
+                code: None,
             },
             "not-recorded" => LibraryAudioDeletionAccess {
                 state: "not-recorded",
                 meeting_id: Some(meeting_id),
                 message: "This meeting has no retained recording to delete.".into(),
+                code: None,
             },
             _ => LibraryAudioDeletionAccess {
                 state: "unavailable",
                 meeting_id: None,
                 message: "Recording deletion is unavailable. Reopen Library and try again.".into(),
+                code: Some(crate::error_codes::RECORDING_DELETION_UNAVAILABLE),
             },
         }
     }
@@ -2476,6 +2506,7 @@ impl LibraryReader {
             state: "stale",
             meeting_id: None,
             message: STALE_MESSAGE.into(),
+            code: Some(crate::error_codes::VIEW_STALE),
         }
     }
 
@@ -2498,6 +2529,7 @@ impl LibraryReader {
             state: "stale",
             message: "This meeting changed or is no longer available. Reopen it and try again."
                 .into(),
+            code: Some(crate::error_codes::MEETING_CHANGED_UNAVAILABLE),
         }
     }
 
@@ -2506,6 +2538,7 @@ impl LibraryReader {
             state: "unavailable",
             meeting_id: None,
             message: "Recording deletion is unavailable. Reopen Library and try again.".into(),
+            code: Some(crate::error_codes::RECORDING_DELETION_UNAVAILABLE),
         }
     }
 
@@ -2528,6 +2561,7 @@ impl LibraryReader {
             meeting_id: None,
             transcript_artifact: None,
             message: STALE_MESSAGE.into(),
+            code: Some(crate::error_codes::VIEW_STALE),
         }
     }
 
@@ -2537,6 +2571,7 @@ impl LibraryReader {
             meeting_id: None,
             transcript_artifact: None,
             message: UNAVAILABLE_MESSAGE.into(),
+            code: Some(crate::error_codes::LIBRARY_UNAVAILABLE),
         }
     }
 

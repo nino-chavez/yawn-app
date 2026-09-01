@@ -71,6 +71,12 @@ mod operator_confirmation;
 // transition) that may write it. See the module docs for why.
 mod capture_timing;
 
+// W7-B (2026-09-01 desktop audit): stable machine codes for the small set of
+// backend errors the frontend attaches a recovery action to, so that
+// coupling no longer relies on exact string equality with a hand-maintained
+// JS array. See the module docs for the two transports this covers.
+mod error_codes;
+
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
     ManualAudioDeletionUiArgs,
@@ -151,6 +157,7 @@ use local_meeting_notes_session_core::transcript_retry_diff::{
 use local_meeting_notes_session_core::transcription_queue::{
     TranscriptionQueue, TranscriptionRequest,
 };
+use error_codes::CommandError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -400,6 +407,12 @@ struct RetainedAudioPlaybackResponse {
     state: &'static str,
     source: Option<&'static str>,
     message: &'static str,
+    /// W7-B (2026-09-01 desktop audit): present only when `message` is one of
+    /// the handful the frontend attaches a recovery action to. The frontend
+    /// re-throws this response's `message` as an `Error` to reach that same
+    /// recovery path (see `main.js`'s retained-audio handlers) -- `code`
+    /// travels with it so that path no longer keys on exact string equality.
+    code: Option<&'static str>,
 }
 
 fn audio_playback_response(
@@ -407,10 +420,20 @@ fn audio_playback_response(
     source: Option<&'static str>,
     message: &'static str,
 ) -> RetainedAudioPlaybackResponse {
+    audio_playback_response_coded(state, source, message, None)
+}
+
+fn audio_playback_response_coded(
+    state: &'static str,
+    source: Option<&'static str>,
+    message: &'static str,
+    code: Option<&'static str>,
+) -> RetainedAudioPlaybackResponse {
     RetainedAudioPlaybackResponse {
         state,
         source,
         message,
+        code,
     }
 }
 
@@ -427,10 +450,11 @@ fn stop_owned_audio_playback(state: &ApplicationState) {
 
 fn owned_audio_playback_status(state: &ApplicationState) -> RetainedAudioPlaybackResponse {
     let Ok(mut slot) = state.audio_playback.lock() else {
-        return audio_playback_response(
+        return audio_playback_response_coded(
             "unavailable",
             None,
             "Retained audio is unavailable. Reopen Library and try again.",
+            Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
         );
     };
     let Some(playback) = slot.as_mut() else {
@@ -448,10 +472,11 @@ fn owned_audio_playback_status(state: &ApplicationState) -> RetainedAudioPlaybac
             if let Some(mut playback) = slot.take() {
                 playback.stop_and_reap();
             }
-            return audio_playback_response(
+            return audio_playback_response_coded(
                 "unavailable",
                 None,
                 "Retained audio is unavailable. Reopen Library and try again.",
+                Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
             );
         }
         Ok(false) => {}
@@ -3756,22 +3781,31 @@ fn verified_transcript_file(
     storage: &StorageRoot,
     meeting_id: &str,
     expected: &ArtifactRef,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, CommandError> {
     let directory = meeting_dir(storage, meeting_id).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     if meeting.artifacts.current_transcript.as_ref() != Some(expected) {
-        return Err("That transcript changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::TRANSCRIPT_CHANGED,
+            "That transcript changed. Reopen the meeting and try again.",
+        ));
     }
     let path = resolve_artifact(&directory, &expected.relative_path).map_err(error_text)?;
     let bytes = read_private_bytes(&path, TRANSCRIPT_MAX_BYTES).map_err(error_text)?;
     if format!("{:x}", Sha256::digest(&bytes)) != expected.sha256 {
-        return Err("That transcript changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::TRANSCRIPT_CHANGED,
+            "That transcript changed. Reopen the meeting and try again.",
+        ));
     }
     let current = load_meeting(&directory).map_err(error_text)?;
     if current.artifacts.current_transcript.as_ref() != Some(expected)
         || artifact_ref(&directory, &expected.relative_path).map_err(error_text)? != *expected
     {
-        return Err("That transcript changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::TRANSCRIPT_CHANGED,
+            "That transcript changed. Reopen the meeting and try again.",
+        ));
     }
     Ok(path)
 }
@@ -3783,14 +3817,14 @@ fn open_verified_transcript_file(
     storage: &StorageRoot,
     meeting_id: &str,
     expected: &ArtifactRef,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let path = verified_transcript_file(storage, meeting_id, expected)?;
     #[cfg(target_os = "macos")]
     {
         let status = Command::new("/usr/bin/open")
             .arg(&path)
             .status()
-            .map_err(|_| "Yawn could not open this transcript file.".to_string())?;
+            .map_err(|_| CommandError::from("Yawn could not open this transcript file."))?;
         if status.success() {
             Ok(())
         } else {
@@ -3809,7 +3843,7 @@ fn open_verified_transcript_file(
 /// the settled capture projection and re-checks that exact artifact under the
 /// storage coordination lock before opening it.
 #[tauri::command]
-fn open_current_transcript_file(state: State<'_, ApplicationState>) -> Result<(), String> {
+fn open_current_transcript_file(state: State<'_, ApplicationState>) -> Result<(), CommandError> {
     let (meeting_id, current_transcript_sha256) = {
         let model = state.model.lock().expect("application model lock");
         if model.reducer.capture() != CaptureState::TranscriptReady {
@@ -3843,12 +3877,18 @@ fn open_current_transcript_file(state: State<'_, ApplicationState>) -> Result<()
             .as_ref()
             .ok_or_else(|| "That meeting has no current transcript.".to_string())?;
         if transcript.sha256 != current_transcript_sha256 {
-            return Err("That transcript changed. Reopen the meeting and try again.".into());
+            return Err(CommandError::coded(
+                error_codes::TRANSCRIPT_CHANGED,
+                "That transcript changed. Reopen the meeting and try again.",
+            ));
         }
         open_verified_transcript_file(&storage, &meeting_id, transcript)
     })
     .map_err(|_| {
-        "The local transcript is unavailable. Reopen the meeting and try again.".to_string()
+        CommandError::coded(
+            error_codes::TRANSCRIPT_UNAVAILABLE,
+            "The local transcript is unavailable. Reopen the meeting and try again.",
+        )
     })?
 }
 
@@ -5220,10 +5260,11 @@ fn library_play_retained_audio(
     state: State<'_, ApplicationState>,
 ) -> RetainedAudioPlaybackResponse {
     let Ok(_command) = state.command_lock.lock() else {
-        return audio_playback_response(
+        return audio_playback_response_coded(
             "unavailable",
             None,
             "Retained audio is unavailable. Reopen Library and try again.",
+            Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
         );
     };
     // A new source always owns the sole player slot. Reap the former child
@@ -5251,17 +5292,19 @@ fn library_play_retained_audio(
             return audio_playback_response("locked", None, library_reader::LOCKED_MESSAGE);
         }
         Err(access) if access.state == "stale" => {
-            return audio_playback_response(
+            return audio_playback_response_coded(
                 "unavailable",
                 None,
                 "That view is no longer current. Reopen it and try again.",
+                Some(error_codes::VIEW_STALE),
             );
         }
         Err(_) => {
-            return audio_playback_response(
+            return audio_playback_response_coded(
                 "unavailable",
                 None,
                 "Retained audio is unavailable. Reopen Library and try again.",
+                Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
             );
         }
     };
@@ -5272,20 +5315,22 @@ fn library_play_retained_audio(
     let playback = match RetainedAudioPlayback::spawn(grant) {
         Ok(playback) => playback,
         Err(_) => {
-            return audio_playback_response(
+            return audio_playback_response_coded(
                 "unavailable",
                 None,
                 "Retained audio is unavailable. Reopen Library and try again.",
+                Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
             );
         }
     };
     let Ok(mut slot) = state.audio_playback.lock() else {
         let mut playback = playback;
         playback.stop_and_reap();
-        return audio_playback_response(
+        return audio_playback_response_coded(
             "unavailable",
             None,
             "Retained audio is unavailable. Reopen Library and try again.",
+            Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
         );
     };
     *slot = Some(playback);
@@ -5304,10 +5349,11 @@ fn library_stop_retained_audio(
     state: State<'_, ApplicationState>,
 ) -> RetainedAudioPlaybackResponse {
     let Ok(_command) = state.command_lock.lock() else {
-        return audio_playback_response(
+        return audio_playback_response_coded(
             "unavailable",
             None,
             "Retained audio is unavailable. Reopen Library and try again.",
+            Some(error_codes::RETAINED_AUDIO_UNAVAILABLE),
         );
     };
     stop_owned_audio_playback(&state);
@@ -5320,6 +5366,9 @@ struct PreviewAudioDeletionResponse {
     state: &'static str,
     audio_retention: Option<library_reader::LibraryAudioRetention>,
     message: String,
+    /// See `RetainedAudioPlaybackResponse::code`; this response is re-thrown
+    /// as an `Error` the same way (see `main.js`'s delete-recording handler).
+    code: Option<&'static str>,
 }
 
 fn unavailable_preview_audio_deletion() -> PreviewAudioDeletionResponse {
@@ -5327,6 +5376,7 @@ fn unavailable_preview_audio_deletion() -> PreviewAudioDeletionResponse {
         state: "unavailable",
         audio_retention: None,
         message: "Recording deletion is unavailable. Reopen Library and try again.".into(),
+        code: Some(error_codes::RECORDING_DELETION_UNAVAILABLE),
     }
 }
 
@@ -5380,6 +5430,7 @@ fn preview_delete_meeting_audio_for(
             state: "capture-active",
             audio_retention: None,
             message: "Finish the setup recording before deleting a recording.".into(),
+            code: None,
         };
     }
     let (startup, capture) = match state.model.lock() {
@@ -5393,6 +5444,7 @@ fn preview_delete_meeting_audio_for(
                 state: "unavailable",
                 meeting_id: None,
                 message: "Recording deletion is unavailable. Reopen Library and try again.".into(),
+                code: Some(error_codes::RECORDING_DELETION_UNAVAILABLE),
             },
             |reader, active| reader.authorize_audio_deletion(&handle, active),
         );
@@ -5404,6 +5456,7 @@ fn preview_delete_meeting_audio_for(
                 state: refusal.state,
                 audio_retention: None,
                 message: refusal.message.into(),
+                code: None,
             };
         }
     };
@@ -5430,6 +5483,7 @@ fn preview_delete_meeting_audio_for(
             state: access.state,
             audio_retention: None,
             message: access.message,
+            code: access.code,
         };
     };
     if access.state != "authorized" {
@@ -5437,6 +5491,7 @@ fn preview_delete_meeting_audio_for(
             state: access.state,
             audio_retention: retention_for(&meeting_id),
             message: access.message,
+            code: access.code,
         };
     }
 
@@ -5446,26 +5501,31 @@ fn preview_delete_meeting_audio_for(
             meeting_id: meeting_id.clone(),
             review: AudioDeletionReview::Reviewed,
         });
-    let (response_state, message) = match result {
+    let (response_state, message, code) = match result {
         Ok(ManualAudioDeletionFacadeOutcome::AudioReleased) => (
             "released",
             "The meeting recording was permanently deleted from this Mac.",
+            None,
         ),
         Ok(ManualAudioDeletionFacadeOutcome::RecoveredRemoval) => (
             "released",
             "The interrupted recording deletion was recovered and completed.",
+            None,
         ),
         Ok(ManualAudioDeletionFacadeOutcome::AlreadyReleased) => (
             "already-released",
             "This meeting recording was already deleted.",
+            None,
         ),
         Ok(ManualAudioDeletionFacadeOutcome::DeferredActive) => (
             "deferred-active",
             "Recording deletion was deferred because this meeting is still active.",
+            None,
         ),
         Err(ManualAudioDeletionFacadeError::MeetingActionInProgress) => (
             "action-in-progress",
             "Another action for this meeting is in progress. Reopen Library and try again.",
+            Some(error_codes::MEETING_ACTION_IN_PROGRESS),
         ),
         Err(
             ManualAudioDeletionFacadeError::ConfirmationRequired
@@ -5474,12 +5534,14 @@ fn preview_delete_meeting_audio_for(
         ) => (
             "unavailable",
             "Recording deletion could not complete. Reopen Library and try again.",
+            Some(error_codes::RECORDING_DELETION_FAILED),
         ),
     };
     PreviewAudioDeletionResponse {
         state: response_state,
         audio_retention: retention_for(&meeting_id),
         message: message.into(),
+        code,
     }
 }
 
@@ -5488,12 +5550,16 @@ fn preview_delete_meeting_audio_for(
 struct PreviewTranscriptDeletionResponse {
     state: &'static str,
     message: String,
+    /// See `RetainedAudioPlaybackResponse::code`; this response is re-thrown
+    /// as an `Error` the same way (see `main.js`'s delete-transcript handler).
+    code: Option<&'static str>,
 }
 
 fn unavailable_preview_transcript_deletion() -> PreviewTranscriptDeletionResponse {
     PreviewTranscriptDeletionResponse {
         state: "unavailable",
         message: "Transcript deletion is unavailable. Reopen Library and try again.".into(),
+        code: Some(error_codes::TRANSCRIPT_DELETION_UNAVAILABLE),
     }
 }
 
@@ -5542,6 +5608,7 @@ fn preview_delete_meeting_transcript_for(
         return PreviewTranscriptDeletionResponse {
             state: "capture-active",
             message: "Finish the setup recording before deleting a transcript.".into(),
+            code: None,
         };
     }
     let (startup, capture) = match state.model.lock() {
@@ -5554,6 +5621,7 @@ fn preview_delete_meeting_transcript_for(
                 state: "unavailable",
                 meeting_id: None,
                 message: "Transcript deletion is unavailable. Reopen Library and try again.".into(),
+                code: Some(error_codes::TRANSCRIPT_DELETION_UNAVAILABLE),
             },
             |reader, active| reader.authorize_transcript_deletion(&handle, active),
         )
@@ -5563,6 +5631,7 @@ fn preview_delete_meeting_transcript_for(
             return PreviewTranscriptDeletionResponse {
                 state: refusal.state,
                 message: refusal.message.into(),
+                code: None,
             };
         }
     };
@@ -5575,12 +5644,14 @@ fn preview_delete_meeting_transcript_for(
         return PreviewTranscriptDeletionResponse {
             state: prepared.state,
             message: prepared.message,
+            code: prepared.code,
         };
     };
     if prepared.state != "authorized" {
         return PreviewTranscriptDeletionResponse {
             state: prepared.state,
             message: prepared.message,
+            code: prepared.code,
         };
     }
 
@@ -5592,37 +5663,44 @@ fn preview_delete_meeting_transcript_for(
     let result = state
         .transcript_deletion_facade()
         .delete_transcript(manual_delete_facade::TranscriptDeletionUiArgs { meeting_id, review });
-    let (response_state, message) = match result {
+    let (response_state, message, code) = match result {
         Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::TranscriptRemoved) => (
             "removed",
             "The transcript and generated notes were permanently deleted from this Mac.",
+            None,
         ),
         Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::RecoveredRemoval) => (
             "removed",
             "The interrupted transcript deletion was recovered and completed.",
+            None,
         ),
         Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::AlreadyRemoved) => (
             "already-removed",
             "This meeting transcript was already deleted.",
+            None,
         ),
         Ok(manual_delete_facade::TranscriptDeletionFacadeOutcome::DeferredActive) => (
             "deferred-active",
             "Transcript deletion was deferred because this meeting is still active.",
+            None,
         ),
         Err(manual_delete_facade::TranscriptDeletionFacadeError::ConfirmationRequired) => (
             "confirmation-required",
             "Deleting a transcript removes its generated notes permanently. Confirm to continue.",
+            None,
         ),
         Err(manual_delete_facade::TranscriptDeletionFacadeError::MeetingActionInProgress) => (
             "action-in-progress",
             "Another action for this meeting is in progress. Reopen Library and try again.",
+            Some(error_codes::MEETING_ACTION_IN_PROGRESS),
         ),
         Err(manual_delete_facade::TranscriptDeletionFacadeError::NoTranscript) => (
             "no-transcript",
             "This meeting has no retained transcript to delete.",
+            None,
         ),
         Err(manual_delete_facade::TranscriptDeletionFacadeError::NoSuchMeeting) => {
-            ("already-removed", "This meeting was already deleted.")
+            ("already-removed", "This meeting was already deleted.", None)
         }
         Err(
             manual_delete_facade::TranscriptDeletionFacadeError::WriterLockUnavailable
@@ -5630,11 +5708,13 @@ fn preview_delete_meeting_transcript_for(
         ) => (
             "unavailable",
             "Transcript deletion could not complete. Reopen Library and try again.",
+            Some(error_codes::TRANSCRIPT_DELETION_FAILED),
         ),
     };
     PreviewTranscriptDeletionResponse {
         state: response_state,
         message: message.into(),
+        code,
     }
 }
 
@@ -5643,12 +5723,16 @@ fn preview_delete_meeting_transcript_for(
 struct PreviewMeetingDeletionResponse {
     state: &'static str,
     message: String,
+    /// See `RetainedAudioPlaybackResponse::code`; this response is re-thrown
+    /// as an `Error` the same way (see `main.js`'s delete-meeting handler).
+    code: Option<&'static str>,
 }
 
 fn unavailable_preview_meeting_deletion() -> PreviewMeetingDeletionResponse {
     PreviewMeetingDeletionResponse {
         state: "unavailable",
         message: "Meeting deletion is unavailable. Reopen Library and try again.".into(),
+        code: Some(error_codes::MEETING_DELETION_UNAVAILABLE),
     }
 }
 
@@ -5711,6 +5795,7 @@ fn preview_delete_meeting_for(
         return PreviewMeetingDeletionResponse {
             state: "capture-active",
             message: "Finish the setup recording before deleting a meeting.".into(),
+            code: None,
         };
     }
     let (startup, capture) = match state.model.lock() {
@@ -5723,6 +5808,7 @@ fn preview_delete_meeting_for(
                 state: "unavailable",
                 meeting_id: None,
                 message: "Meeting deletion is unavailable. Reopen Library and try again.".into(),
+                code: Some(error_codes::MEETING_DELETION_UNAVAILABLE),
             },
             |reader, active| reader.authorize_meeting_deletion(&handle, active),
         )
@@ -5732,6 +5818,7 @@ fn preview_delete_meeting_for(
             return PreviewMeetingDeletionResponse {
                 state: refusal.state,
                 message: refusal.message.into(),
+                code: None,
             };
         }
     };
@@ -5745,12 +5832,14 @@ fn preview_delete_meeting_for(
         return PreviewMeetingDeletionResponse {
             state: prepared.state,
             message: prepared.message,
+            code: prepared.code,
         };
     };
     if prepared.state != "authorized" {
         return PreviewMeetingDeletionResponse {
             state: prepared.state,
             message: prepared.message,
+            code: prepared.code,
         };
     }
 
@@ -5763,44 +5852,57 @@ fn preview_delete_meeting_for(
         manual_delete_facade::MeetingTrashUiArgs { meeting_id, review },
         now_epoch_seconds(),
     );
-    let (response_state, message) = match result {
+    let (response_state, message, code) = match result {
         Ok(manual_delete_facade::MeetingTrashFacadeOutcome::Trashed) => (
             "trashed",
             "The meeting moved to Trash. It stays recoverable there for 30 days, then Yawn removes it permanently and it cannot be recovered.",
+            None,
         ),
         Ok(manual_delete_facade::MeetingTrashFacadeOutcome::RecoveredTrash) => (
             "trashed",
             "The interrupted move to Trash was recovered and completed.",
+            None,
         ),
         Ok(manual_delete_facade::MeetingTrashFacadeOutcome::AlreadyTrashed) => {
-            ("already-trashed", "This meeting is already in Trash.")
+            ("already-trashed", "This meeting is already in Trash.", None)
         }
         Ok(manual_delete_facade::MeetingTrashFacadeOutcome::DeferredActive) => (
             "deferred-active",
             "Moving this meeting to Trash was deferred because it is still active.",
+            None,
         ),
         Err(manual_delete_facade::MeetingTrashFacadeError::ConfirmationRequired) => (
             "confirmation-required",
             "Deleting a meeting moves it to Trash for 30 days, then removes it permanently. Confirm to continue.",
+            None,
         ),
         Err(manual_delete_facade::MeetingTrashFacadeError::MeetingActionInProgress) => (
             "action-in-progress",
             "Another action for this meeting is in progress. Reopen Library and try again.",
+            Some(error_codes::MEETING_ACTION_IN_PROGRESS),
         ),
         Err(manual_delete_facade::MeetingTrashFacadeError::NoSuchMeeting) => {
-            ("already-trashed", "This meeting is already in Trash.")
+            ("already-trashed", "This meeting is already in Trash.", None)
         }
         Err(
             manual_delete_facade::MeetingTrashFacadeError::WriterLockUnavailable
             | manual_delete_facade::MeetingTrashFacadeError::StorageUnavailable,
         ) => (
             "unavailable",
+            // NOTE: this text has no entry in error-codes.json. It reads
+            // like "Meeting deletion could not complete..." but is not that
+            // string byte-for-byte, and the frontend's legacy array names
+            // the *other* wording -- already a dead match before this
+            // packet. See error_codes.rs's module doc for why this is left
+            // uncoded rather than "fixed" by coding this message instead.
             "Moving this meeting to Trash could not complete. Reopen Library and try again.",
+            None,
         ),
     };
     PreviewMeetingDeletionResponse {
         state: response_state,
         message: message.into(),
+        code,
     }
 }
 
@@ -5997,14 +6099,19 @@ fn library_save_operator_note(
     handle: String,
     text: String,
     state: State<'_, ApplicationState>,
-) -> Result<LibraryOperatorNoteSaveResponse, String> {
+) -> Result<LibraryOperatorNoteSaveResponse, CommandError> {
     state.with_preview_library(
-        || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
+        || {
+            Err(CommandError::coded(
+                error_codes::MEETING_LIBRARY_UNAVAILABLE,
+                "The local meeting library is unavailable. Reopen the app and try again.",
+            ))
+        },
         |reader, active| {
             let saved = reader.open_operator_note_bound(&handle, active, |storage, meeting_id| {
                 let directory = meeting_dir(storage, meeting_id).map_err(error_text)?;
                 operator_note::write(&directory, &text)?;
-                Ok::<_, String>((meeting_id.to_owned(), operator_note::read(&directory)))
+                Ok::<_, CommandError>((meeting_id.to_owned(), operator_note::read(&directory)))
             });
             match saved {
                 Ok(Ok((meeting_id, operator_note))) => Ok(LibraryOperatorNoteSaveResponse {
@@ -6017,7 +6124,10 @@ fn library_save_operator_note(
                     message: "Your notes were saved on this Mac.".into(),
                 }),
                 Ok(Err(error)) => Err(error),
-                Err(access) => Err(access.message),
+                Err(access) => Err(CommandError {
+                    code: access.code,
+                    message: access.message,
+                }),
             }
         },
     )
@@ -6109,9 +6219,12 @@ fn confirm_operator(
 fn lock_meeting(
     handle: String,
     state: State<'_, ApplicationState>,
-) -> Result<MeetingLockResponse, String> {
+) -> Result<MeetingLockResponse, CommandError> {
     let Ok(_command) = state.command_lock.lock() else {
-        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::MEETING_LIBRARY_UNAVAILABLE,
+            "The local meeting library is unavailable. Reopen the app and try again.",
+        ));
     };
     let resolved = state
         .with_preview_library(
@@ -6124,7 +6237,10 @@ fn lock_meeting(
         )
         .flatten();
     let Some(directory) = resolved else {
-        return Err("That view is no longer current. Reopen it and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::VIEW_STALE,
+            "That view is no longer current. Reopen it and try again.",
+        ));
     };
     meeting_lock::write(&directory, true)?;
     if let Ok(mut authority) = state.locked_actions.lock() {
@@ -6150,13 +6266,14 @@ fn lock_meeting(
 fn unlock_meeting(
     handle: String,
     state: State<'_, ApplicationState>,
-) -> Result<MeetingLockResponse, String> {
+) -> Result<MeetingLockResponse, CommandError> {
     // Resolve while holding the locks, then release them before the prompt.
     let resolved = {
         let Ok(_command) = state.command_lock.lock() else {
-            return Err(
-                "The local meeting library is unavailable. Reopen the app and try again.".into(),
-            );
+            return Err(CommandError::coded(
+                error_codes::MEETING_LIBRARY_UNAVAILABLE,
+                "The local meeting library is unavailable. Reopen the app and try again.",
+            ));
         };
         state
             .with_preview_library(
@@ -6172,7 +6289,10 @@ fn unlock_meeting(
             .flatten()
     };
     let Some((directory, lock)) = resolved else {
-        return Err("That view is no longer current. Reopen it and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::VIEW_STALE,
+            "That view is no longer current. Reopen it and try again.",
+        ));
     };
     if !lock.locked {
         return Ok(MeetingLockResponse {
@@ -6200,7 +6320,10 @@ fn unlock_meeting(
         }
     }
     let Ok(_command) = state.command_lock.lock() else {
-        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::MEETING_LIBRARY_UNAVAILABLE,
+            "The local meeting library is unavailable. Reopen the app and try again.",
+        ));
     };
     meeting_lock::write(&directory, false)?;
     Ok(MeetingLockResponse {
@@ -6223,15 +6346,16 @@ fn authorize_locked_action(
     handle: String,
     action: String,
     state: State<'_, ApplicationState>,
-) -> Result<LockedActionAuthorizationResponse, String> {
+) -> Result<LockedActionAuthorizationResponse, CommandError> {
     let Some(action) = meeting_lock::LockedAction::parse(&action) else {
         return Err("That action cannot be confirmed.".into());
     };
     let resolved = {
         let Ok(_command) = state.command_lock.lock() else {
-            return Err(
-                "The local meeting library is unavailable. Reopen the app and try again.".into(),
-            );
+            return Err(CommandError::coded(
+                error_codes::MEETING_LIBRARY_UNAVAILABLE,
+                "The local meeting library is unavailable. Reopen the app and try again.",
+            ));
         };
         state.with_preview_library(
             || None,
@@ -6277,7 +6401,10 @@ fn authorize_locked_action(
         }
     }
     let Ok(mut authority) = state.locked_actions.lock() else {
-        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::MEETING_LIBRARY_UNAVAILABLE,
+            "The local meeting library is unavailable. Reopen the app and try again.",
+        ));
     };
     Ok(LockedActionAuthorizationResponse {
         state: "authorized",
@@ -6344,28 +6471,36 @@ fn library_open_transcript_file(
     handle: String,
     lock_token: Option<String>,
     state: State<'_, ApplicationState>,
-) -> Result<LibraryTranscriptFileOpenResponse, String> {
+) -> Result<LibraryTranscriptFileOpenResponse, CommandError> {
     let unlocked = consume_locked_action(
         &state,
         lock_token.as_deref(),
         meeting_lock::LockedAction::Export,
     );
     state.with_preview_library(
-        || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
+        || {
+            Err(CommandError::coded(
+                error_codes::MEETING_LIBRARY_UNAVAILABLE,
+                "The local meeting library is unavailable. Reopen the app and try again.",
+            ))
+        },
         |reader, active| match reader.open_transcript_bound(
             &handle,
             active,
             |storage, meeting_id, artifact| {
                 refuse_locked_meeting(storage, meeting_id, unlocked.as_deref())?;
                 open_verified_transcript_file(storage, meeting_id, artifact)?;
-                Ok::<_, String>(meeting_id.to_owned())
+                Ok::<_, CommandError>(meeting_id.to_owned())
             },
         ) {
             Ok(Ok(meeting_id)) => Ok(LibraryTranscriptFileOpenResponse {
                 transcript_file_handle: reader.retain_transcript_handle(&meeting_id),
             }),
             Ok(Err(error)) => Err(error),
-            Err(access) => Err(access.message),
+            Err(access) => Err(CommandError {
+                code: access.code,
+                message: access.message,
+            }),
         },
     )
 }
@@ -6397,14 +6532,19 @@ fn library_export_meeting(
     handle: String,
     lock_token: Option<String>,
     state: State<'_, ApplicationState>,
-) -> Result<LibraryExportMeetingResponse, String> {
+) -> Result<LibraryExportMeetingResponse, CommandError> {
     let unlocked = consume_locked_action(
         &state,
         lock_token.as_deref(),
         meeting_lock::LockedAction::Export,
     );
     state.with_preview_library(
-        || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
+        || {
+            Err(CommandError::coded(
+                error_codes::MEETING_LIBRARY_UNAVAILABLE,
+                "The local meeting library is unavailable. Reopen the app and try again.",
+            ))
+        },
         |reader, active| match reader.open_export_bound(
             &handle,
             active,
@@ -6429,8 +6569,11 @@ fn library_export_meeting(
                 transcript_file_handle: reader.retain_transcript_handle(&meeting_id),
                 message: "Exported to a folder next to this meeting on this Mac.".into(),
             }),
-            Ok((_, Err(error))) => Err(error),
-            Err(access) => Err(access.message),
+            Ok((_, Err(error))) => Err(error.into()),
+            Err(access) => Err(CommandError {
+                code: access.code,
+                message: access.message,
+            }),
         },
     )
 }
@@ -6558,7 +6701,7 @@ struct LocalVocabularySheetResponse {
 
 fn local_vocabulary_error(
     error: local_meeting_notes_session_core::local_vocabulary::LocalVocabularyError,
-) -> String {
+) -> CommandError {
     use local_meeting_notes_session_core::local_vocabulary::LocalVocabularyError;
 
     match error {
@@ -6575,7 +6718,10 @@ fn local_vocabulary_error(
             "Use two different single-line phrases, up to 256 characters each.".into()
         }
         LocalVocabularyError::TextTooLarge | LocalVocabularyError::TooManyRangeReplacements => {
-            "Yawn could not safely check this transcript against local vocabulary. Nothing changed. Reopen the meeting and try again.".into()
+            CommandError::coded(
+                error_codes::VOCABULARY_CHECK_UNSAFE,
+                "Yawn could not safely check this transcript against local vocabulary. Nothing changed. Reopen the meeting and try again.",
+            )
         }
         LocalVocabularyError::DocumentTooLarge => {
             "Your saved vocabulary is over its 256 KB limit. Nothing changed.".into()
@@ -6584,7 +6730,10 @@ fn local_vocabulary_error(
         | LocalVocabularyError::Malformed(_)
         | LocalVocabularyError::Io(_)
         | LocalVocabularyError::Json(_) => {
-            "Your saved vocabulary could not be read. Nothing changed. Reopen the meeting and try again.".into()
+            CommandError::coded(
+                error_codes::VOCABULARY_READ_FAILED,
+                "Your saved vocabulary could not be read. Nothing changed. Reopen the meeting and try again.",
+            )
         }
     }
 }
@@ -6596,20 +6745,24 @@ fn with_current_local_vocabulary<T>(
     operation: impl FnOnce(
         &local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore,
         &[TranscriptTurn],
-    ) -> Result<T, String>,
-) -> Result<T, String> {
-    let _command = state
-        .command_lock
-        .lock()
-        .map_err(|_| "Vocabulary is unavailable. Reopen the meeting and try again.")?;
+    ) -> Result<T, CommandError>,
+) -> Result<T, CommandError> {
+    let _command = state.command_lock.lock().map_err(|_| {
+        CommandError::coded(
+            error_codes::VOCABULARY_UNAVAILABLE,
+            "Vocabulary is unavailable. Reopen the meeting and try again.",
+        )
+    })?;
     if sitting_task_active(state) {
         return Err("Finish the setup recording before changing local vocabulary.".into());
     }
     {
-        let model = state
-            .model
-            .lock()
-            .map_err(|_| "Vocabulary is unavailable. Reopen the meeting and try again.")?;
+        let model = state.model.lock().map_err(|_| {
+            CommandError::coded(
+                error_codes::VOCABULARY_UNAVAILABLE,
+                "Vocabulary is unavailable. Reopen the meeting and try again.",
+            )
+        })?;
         if model.reducer.startup() != StartupState::Ready
             || model.reducer.capture() != CaptureState::Idle
         {
@@ -6619,9 +6772,12 @@ fn with_current_local_vocabulary<T>(
     let storage = preview_storage_clone(state)
         .map_err(|_| "Local meeting storage is unavailable. Reopen the app and try again.")?;
     let coordination = state.meeting_storage_coordination()?;
-    let _lease = coordination
-        .acquire(&meeting_id.to_string())
-        .map_err(|_| "Another action is using this meeting. Reopen it and try again.")?;
+    let _lease = coordination.acquire(&meeting_id.to_string()).map_err(|_| {
+        CommandError::coded(
+            error_codes::MEETING_ACTION_IN_USE,
+            "Another action is using this meeting. Reopen it and try again.",
+        )
+    })?;
     let directory = meeting_dir(&storage, &meeting_id.to_string()).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     let current = meeting
@@ -6630,7 +6786,10 @@ fn with_current_local_vocabulary<T>(
         .as_ref()
         .ok_or_else(|| "This meeting no longer has a retained transcript.".to_string())?;
     if meeting.meeting_id != meeting_id.to_string() || current.sha256 != source_transcript_sha256 {
-        return Err("The transcript changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::TRANSCRIPT_CHANGED_RETRY,
+            "The transcript changed. Reopen the meeting and try again.",
+        ));
     }
     let (turns, _) = load_transcript_projection(&directory, &meeting_id.to_string(), current)?;
     let vocabulary =
@@ -6642,7 +6801,7 @@ fn with_current_local_vocabulary<T>(
 fn local_vocabulary_sheet_response(
     vocabulary: &local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore,
     turns: &[TranscriptTurn],
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     let entries = vocabulary.list().map_err(local_vocabulary_error)?;
     let mut applied_by_entry = HashMap::<Uuid, usize>::new();
     // This is a review-only count, not a note-generation frame. Project each
@@ -6677,7 +6836,7 @@ fn local_vocabulary_list(
     meeting_id: Uuid,
     source_transcript_sha256: String,
     state: State<'_, ApplicationState>,
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     with_current_local_vocabulary(
         meeting_id,
         &source_transcript_sha256,
@@ -6693,7 +6852,7 @@ fn local_vocabulary_add(
     source_phrase: String,
     preferred_replacement: String,
     state: State<'_, ApplicationState>,
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     with_current_local_vocabulary(
         meeting_id,
         &source_transcript_sha256,
@@ -6715,7 +6874,7 @@ fn local_vocabulary_edit(
     source_phrase: String,
     preferred_replacement: String,
     state: State<'_, ApplicationState>,
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     with_current_local_vocabulary(
         meeting_id,
         &source_transcript_sha256,
@@ -6736,7 +6895,7 @@ fn local_vocabulary_set_enabled(
     id: Uuid,
     enabled: bool,
     state: State<'_, ApplicationState>,
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     with_current_local_vocabulary(
         meeting_id,
         &source_transcript_sha256,
@@ -6756,7 +6915,7 @@ fn local_vocabulary_delete(
     source_transcript_sha256: String,
     id: Uuid,
     state: State<'_, ApplicationState>,
-) -> Result<LocalVocabularySheetResponse, String> {
+) -> Result<LocalVocabularySheetResponse, CommandError> {
     with_current_local_vocabulary(
         meeting_id,
         &source_transcript_sha256,
@@ -6779,7 +6938,7 @@ fn correct_speaker_name(
     source_speaker: Option<String>,
     replacement: String,
     state: State<'_, ApplicationState>,
-) -> Result<SpeakerCorrectionResponse, String> {
+) -> Result<SpeakerCorrectionResponse, CommandError> {
     correct_speaker_name_for(
         meeting_id,
         source_transcript_sha256,
@@ -6795,19 +6954,23 @@ fn correct_speaker_name_for(
     source_speaker: Option<String>,
     replacement: String,
     state: &ApplicationState,
-) -> Result<SpeakerCorrectionResponse, String> {
-    let _command = state
-        .command_lock
-        .lock()
-        .map_err(|_| "Speaker correction is unavailable. Reopen the meeting and try again.")?;
+) -> Result<SpeakerCorrectionResponse, CommandError> {
+    let _command = state.command_lock.lock().map_err(|_| {
+        CommandError::coded(
+            error_codes::SPEAKER_CORRECTION_UNAVAILABLE,
+            "Speaker correction is unavailable. Reopen the meeting and try again.",
+        )
+    })?;
     if sitting_task_active(&state) {
         return Err("Finish the setup recording before correcting a speaker name.".into());
     }
     {
-        let model = state
-            .model
-            .lock()
-            .map_err(|_| "Speaker correction is unavailable. Reopen the meeting and try again.")?;
+        let model = state.model.lock().map_err(|_| {
+            CommandError::coded(
+                error_codes::SPEAKER_CORRECTION_UNAVAILABLE,
+                "Speaker correction is unavailable. Reopen the meeting and try again.",
+            )
+        })?;
         if model.reducer.startup() != StartupState::Ready
             || model.reducer.capture() != CaptureState::Idle
         {
@@ -6817,9 +6980,12 @@ fn correct_speaker_name_for(
     let storage = preview_storage_clone(&state)
         .map_err(|_| "Local meeting storage is unavailable. Reopen the app and try again.")?;
     let coordination = state.meeting_storage_coordination()?;
-    let _lease = coordination
-        .acquire(&meeting_id.to_string())
-        .map_err(|_| "Another action is using this meeting. Reopen it and try again.")?;
+    let _lease = coordination.acquire(&meeting_id.to_string()).map_err(|_| {
+        CommandError::coded(
+            error_codes::MEETING_ACTION_IN_USE,
+            "Another action is using this meeting. Reopen it and try again.",
+        )
+    })?;
     let directory = meeting_dir(&storage, &meeting_id.to_string()).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     let current = meeting
@@ -6828,7 +6994,10 @@ fn correct_speaker_name_for(
         .as_ref()
         .ok_or_else(|| "This meeting no longer has a retained transcript.".to_string())?;
     if current.sha256 != source_transcript_sha256 {
-        return Err("The transcript changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::TRANSCRIPT_CHANGED_RETRY,
+            "The transcript changed. Reopen the meeting and try again.",
+        ));
     }
     let (turns, _) = load_transcript_projection(&directory, &meeting_id.to_string(), current)?;
     let applied_turn_count = turns
@@ -6836,9 +7005,10 @@ fn correct_speaker_name_for(
         .filter(|turn| !turn.withheld && turn.source_speaker == source_speaker)
         .count();
     if applied_turn_count == 0 {
-        return Err(
-            "That speaker group is no longer available. Reopen the meeting and try again.".into(),
-        );
+        return Err(CommandError::coded(
+            error_codes::SPEAKER_GROUP_UNAVAILABLE,
+            "That speaker group is no longer available. Reopen the meeting and try again.",
+        ));
     }
     let replacement = speaker_correction::normalize_replacement(&replacement)?;
     let operation_id = Uuid::new_v4();
@@ -6980,13 +7150,18 @@ pub(crate) fn current_vocabulary_replacements(
 fn retry_comparison_response(
     state: &ApplicationState,
     operation: &product_facade::TranscriptRetryOperation,
-) -> Result<RetryComparisonResponse, String> {
+) -> Result<RetryComparisonResponse, CommandError> {
     let storage = preview_storage_clone(state)
         .map_err(|_| "Local meeting storage is unavailable. Reopen the app and try again.")?;
     let coordination = state.meeting_storage_coordination()?;
     let _lease = coordination
         .acquire(&operation.meeting_id.to_string())
-        .map_err(|_| "Another action is using this meeting. Reopen it and try again.")?;
+        .map_err(|_| {
+            CommandError::coded(
+                error_codes::MEETING_ACTION_IN_USE,
+                "Another action is using this meeting. Reopen it and try again.",
+            )
+        })?;
     let directory = meeting_dir(&storage, &operation.meeting_id.to_string()).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     verify_record_artifacts(&directory, &meeting).map_err(error_text)?;
@@ -7010,8 +7185,10 @@ fn retry_comparison_response(
         &meeting,
     )
     .map_err(|_| {
-        "Recording-quality evidence changed while opening this retry. Reopen the meeting and try again."
-            .to_string()
+        CommandError::coded(
+            error_codes::RETRY_QUALITY_EVIDENCE_CHANGED,
+            "Recording-quality evidence changed while opening this retry. Reopen the meeting and try again.",
+        )
     })?;
     let recording_device =
         local_meeting_notes_session_core::capture_quality::project_recording_device(
@@ -7019,16 +7196,20 @@ fn retry_comparison_response(
             &meeting,
         )
         .map_err(|_| {
-            "Recording-device evidence changed while opening this retry. Reopen the meeting and try again."
-                .to_string()
+            CommandError::coded(
+                error_codes::RETRY_DEVICE_EVIDENCE_CHANGED,
+                "Recording-device evidence changed while opening this retry. Reopen the meeting and try again.",
+            )
         })?;
     let pauses = local_meeting_notes_session_core::capture_quality::project_capture_pauses(
         &directory,
         &meeting,
     )
     .map_err(|_| {
-        "Pause evidence changed while opening this retry. Reopen the meeting and try again."
-            .to_string()
+        CommandError::coded(
+            error_codes::RETRY_PAUSE_EVIDENCE_CHANGED,
+            "Pause evidence changed while opening this retry. Reopen the meeting and try again.",
+        )
     })?;
     let diff = retry_diff_projection(&current_turns, &candidate_turns);
     Ok(RetryComparisonResponse {
@@ -7073,7 +7254,7 @@ fn transcript_retry_start(
     source_transcript_sha256: String,
     facade: State<'_, product_facade::ProductOperationFacade>,
     state: State<'_, ApplicationState>,
-) -> Result<RetryComparisonResponse, String> {
+) -> Result<RetryComparisonResponse, CommandError> {
     retry_command_is_available(&state)?;
     let operation = facade
         .start_transcript_retry(TranscriptRetryUiArgs {
@@ -7092,7 +7273,7 @@ fn transcript_retry_pending(
     source_transcript_sha256: String,
     facade: State<'_, product_facade::ProductOperationFacade>,
     state: State<'_, ApplicationState>,
-) -> Result<Option<RetryComparisonResponse>, String> {
+) -> Result<Option<RetryComparisonResponse>, CommandError> {
     retry_command_is_available(&state)?;
     let operation = facade
         .pending_transcript_retry(TranscriptRetryUiArgs {
@@ -7116,7 +7297,7 @@ fn transcript_retry_pending(
 /// claiming an event this command has no fact for.
 fn retry_decision_response(
     outcome: TranscriptRetryOutcome,
-) -> Result<RetryDecisionResponse, String> {
+) -> Result<RetryDecisionResponse, CommandError> {
     match outcome {
         TranscriptRetryOutcome::CurrentKept => Ok(RetryDecisionResponse {
             outcome: "current-kept",
@@ -7141,10 +7322,13 @@ fn transcript_retry_decide(
     decision: RetryDecisionInput,
     facade: State<'_, product_facade::ProductOperationFacade>,
     state: State<'_, ApplicationState>,
-) -> Result<RetryDecisionResponse, String> {
+) -> Result<RetryDecisionResponse, CommandError> {
     retry_command_is_available(&state)?;
     if !valid_sha256(&candidate_transcript_sha256) {
-        return Err("The retry candidate changed. Reopen the meeting and try again.".into());
+        return Err(CommandError::coded(
+            error_codes::RETRY_CANDIDATE_CHANGED,
+            "The retry candidate changed. Reopen the meeting and try again.",
+        ));
     }
     let operation = product_facade::TranscriptRetryOperation {
         operation_id,
@@ -12981,7 +13165,7 @@ mod tests {
         meeting_id: Uuid,
         digest: &str,
         state: &ApplicationState,
-    ) -> Result<LocalVocabularySheetResponse, String> {
+    ) -> Result<LocalVocabularySheetResponse, CommandError> {
         with_current_local_vocabulary(meeting_id, digest, state, local_vocabulary_sheet_response)
     }
 
@@ -12991,7 +13175,7 @@ mod tests {
         source: &str,
         replacement: &str,
         state: &ApplicationState,
-    ) -> Result<LocalVocabularySheetResponse, String> {
+    ) -> Result<LocalVocabularySheetResponse, CommandError> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
             vocabulary
                 .add(source, replacement)
@@ -13007,7 +13191,7 @@ mod tests {
         source: &str,
         replacement: &str,
         state: &ApplicationState,
-    ) -> Result<LocalVocabularySheetResponse, String> {
+    ) -> Result<LocalVocabularySheetResponse, CommandError> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
             vocabulary
                 .edit(id, source, replacement)
@@ -13022,7 +13206,7 @@ mod tests {
         id: Uuid,
         enabled: bool,
         state: &ApplicationState,
-    ) -> Result<LocalVocabularySheetResponse, String> {
+    ) -> Result<LocalVocabularySheetResponse, CommandError> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
             vocabulary
                 .set_enabled(id, enabled)
@@ -13036,7 +13220,7 @@ mod tests {
         digest: &str,
         id: Uuid,
         state: &ApplicationState,
-    ) -> Result<LocalVocabularySheetResponse, String> {
+    ) -> Result<LocalVocabularySheetResponse, CommandError> {
         with_current_local_vocabulary(meeting_id, digest, state, |vocabulary, turns| {
             vocabulary.delete(id).map_err(local_vocabulary_error)?;
             local_vocabulary_sheet_response(vocabulary, turns)
@@ -13490,7 +13674,8 @@ mod tests {
     fn an_undecided_candidate_is_refused_rather_than_reported_as_settled() {
         assert_eq!(
             retry_decision_response(TranscriptRetryOutcome::CandidateAvailableForComparison)
-                .unwrap_err(),
+                .unwrap_err()
+                .message,
             "The retry candidate is still awaiting a decision."
         );
     }
