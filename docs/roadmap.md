@@ -457,9 +457,13 @@ Facts the audit established:
   only way in while its button offers read-only Confirm-to-open — a
   wording mismatch to fix in passing.
 
-Decisions taken from the audit's five calls: the two adopts (wire
-RunEvent::Reopen to show-and-focus; add a standard Window menu with ⌘W
-routing through the existing hide handler) are dispatched as one packet.
+Decisions taken from the audit's five calls: the two adopts are merged —
+RunEvent::Reopen now shows and focuses the window only when none are
+visible (the old .run() shorthand discarded every run event, which is why
+reopen never fired), and the Window menu ships Minimize, Zoom, and a ⌘W
+that composes with the existing hide handler through the native
+performClose: chain, verified in the vendored crate sources. The Dock-click
+round trip itself is live-run evidence and joins the receipt list.
 Two decides remain open for the operator: honest waiting states (library
 stall affordance, first-run tray glyph, transcript-ready tray signal) and
 tray-menu scope (a recording-state action vs the single Open item). One
