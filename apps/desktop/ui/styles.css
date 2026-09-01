@@ -28,6 +28,65 @@
   --measure-reading: 68ch;
   --leading-reading: 1.65;
   --leading-transcript: 1.58;
+
+  /* Packet W9-A: type scale, named from the inventoried literals this file
+     already used -- no font-size, font-weight, or letter-spacing value here
+     changes what a real 2026-08-31 build renders, with two listed exceptions
+     (see the packet report). Three sizes below duplicate a generic rung's
+     pixel value on purpose: --text-transcript-body, --text-note-item, and
+     --text-note-summary name the D8 reading surfaces the calibration sheet
+     (ui-harness/calibration.html) exists to judge, kept on their own tokens
+     so a future edit to the generic scale can never silently move them. The
+     six hero clamp() sizes (h1, h2, .session-status h1, .meeting-title,
+     .meeting-note-header h2, .startup-card h1) and their two hero
+     letter-spacings are deliberately left as literals -- out of scope for
+     this packet, an operator decision like the reading surfaces above. */
+  --text-micro: 9px;
+  --text-caption: 10px;
+  --text-meta: 11px;
+  --text-label: 12px;
+  --text-body: 13px;
+  --text-body-lg: 14px;
+  --text-subtitle: 15px;
+  --text-intro: 16px;
+  --text-lg: 17px;
+  --text-metric: 18px;
+  --text-section: 20px;
+  --text-transcript-body: 14px;
+  --text-note-item: 15px;
+  --text-note-summary: 16px;
+
+  --weight-book: 500;
+  --weight-medium: 620;
+  --weight-medium-plus: 650;
+  --weight-semibold: 680;
+  --weight-title: 690;
+  --weight-bold: 700;
+  --weight-bold-plus: 720;
+  --weight-heavy: 760;
+
+  --tracking-snug: -0.01em;
+  --tracking-row-title: -0.012em;
+  --tracking-heading-sm: -0.015em;
+  --tracking-card-heading: -0.02em;
+  --tracking-brand: -0.025em;
+  --tracking-metric: -0.03em;
+  --tracking-wide: 0.04em;
+  --tracking-eyebrow: 0.08em;
+
+  /* Light-theme audit (W9-A): four hover/status text colors were hardcoded
+     hex, each paired with a background token that DOES swap for dark mode --
+     so the dark computed contrast collapsed (measured via WCAG relative
+     luminance): link-hover 8.89:1 light -> 1.82:1 dark, status-record-text
+     5.65:1 -> 2.14:1, status-attention-text 6.15:1 -> 1.83:1, toast-text
+     7.46:1 -> 1.51:1. Every light value below is unchanged from the literal
+     it replaces; only the dark override (added next to the existing dark
+     :root block) is new. */
+  --link-hover: #19449e;
+  --status-record-text: #a83c2e;
+  --status-attention-text: #815313;
+  --toast-attention-text: #704809;
+
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -97,9 +156,9 @@ textarea:focus-visible {
   padding: 3px 0;
   color: var(--ink);
   background: transparent;
-  font-size: 15px;
-  font-weight: 760;
-  letter-spacing: -0.025em;
+  font-size: var(--text-subtitle);
+  font-weight: var(--weight-heavy);
+  letter-spacing: var(--tracking-brand);
 }
 
 .topbar-actions,
@@ -121,8 +180,8 @@ textarea:focus-visible {
   gap: 7px;
   margin-right: 5px;
   color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 620;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
 }
 
 .status-dot,
@@ -179,8 +238,8 @@ textarea:focus-visible {
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .button:hover:not(:disabled) {
@@ -238,7 +297,7 @@ textarea:focus-visible {
 .button.small {
   min-height: 32px;
   padding: 0 11px;
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .icon-button {
@@ -272,12 +331,12 @@ textarea:focus-visible {
   padding: 2px 0;
   color: var(--accent);
   background: transparent;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .text-button:hover:not(:disabled) {
-  color: #19449e;
+  color: var(--link-hover);
   text-decoration: underline;
 }
 
@@ -310,16 +369,16 @@ h2 {
 
 h3 {
   margin-bottom: 8px;
-  font-size: 14px;
-  letter-spacing: -0.015em;
+  font-size: var(--text-body-lg);
+  letter-spacing: var(--tracking-heading-sm);
 }
 
 .eyebrow {
   margin: 0 0 10px;
   color: var(--ink-faint);
-  font-size: 11px;
-  font-weight: 760;
-  letter-spacing: 0.08em;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-heavy);
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
 
@@ -327,7 +386,7 @@ h3 {
   max-width: 54ch;
   margin-bottom: 0;
   color: var(--ink-soft);
-  font-size: 16px;
+  font-size: var(--text-intro);
   line-height: 1.55;
 }
 
@@ -356,13 +415,13 @@ h3 {
   max-width: 31ch;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
 .home-action p strong {
   color: var(--ink);
-  font-weight: 680;
+  font-weight: var(--weight-semibold);
 }
 
 .inline-actions {
@@ -379,8 +438,8 @@ h3 {
   border-radius: 6px;
   color: var(--ink-faint);
   background: var(--paper);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium-plus);
 }
 
 .section-heading {
@@ -391,7 +450,7 @@ h3 {
 
 .section-heading h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-section);
 }
 
 .search-input {
@@ -402,7 +461,7 @@ h3 {
   border-radius: var(--radius-sm);
   color: var(--ink);
   background: var(--paper);
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .meeting-list {
@@ -431,9 +490,9 @@ h3 {
   display: block;
   overflow: hidden;
   margin-bottom: 4px;
-  font-size: 14px;
-  font-weight: 690;
-  letter-spacing: -0.012em;
+  font-size: var(--text-body-lg);
+  font-weight: var(--weight-title);
+  letter-spacing: var(--tracking-row-title);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -447,7 +506,7 @@ h3 {
   overflow: hidden;
   margin-bottom: 4px;
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -456,14 +515,14 @@ h3 {
 .meeting-row-meta,
 .quiet-copy {
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
 .meeting-row-arrow {
   align-self: center;
   color: var(--ink-faint);
-  font-size: 17px;
+  font-size: var(--text-lg);
 }
 
 .empty-library {
@@ -519,7 +578,7 @@ h3 {
   max-width: 54ch;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 14px;
+  font-size: var(--text-body-lg);
   line-height: 1.5;
 }
 
@@ -552,15 +611,15 @@ h3 {
 
 .activity-monitor h2 {
   margin-bottom: 4px;
-  font-size: 16px;
-  letter-spacing: -0.02em;
+  font-size: var(--text-intro);
+  letter-spacing: var(--tracking-card-heading);
 }
 
 .activity-monitor p:last-child {
   max-width: 52ch;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.45;
 }
 
@@ -573,13 +632,13 @@ h3 {
 
 .activity-timing strong {
   font-variant-numeric: tabular-nums;
-  font-size: 18px;
-  letter-spacing: -0.03em;
+  font-size: var(--text-metric);
+  letter-spacing: var(--tracking-metric);
 }
 
 .activity-timing span {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.3;
 }
 
@@ -598,19 +657,19 @@ h3 {
   border-radius: 999px;
   color: var(--ink-soft);
   background: var(--paper);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium-plus);
 }
 
 .status-pill[data-tone="recording"] {
   border-color: rgb(216 78 60 / 25%);
-  color: #a83c2e;
+  color: var(--status-record-text);
   background: var(--record-soft);
 }
 
 .status-pill[data-tone="attention"] {
   border-color: rgb(156 103 21 / 25%);
-  color: #815313;
+  color: var(--status-attention-text);
   background: var(--attention-soft);
 }
 
@@ -631,13 +690,13 @@ h3 {
 }
 
 .note-editor-head strong {
-  font-size: 13px;
-  letter-spacing: -0.01em;
+  font-size: var(--text-body);
+  letter-spacing: var(--tracking-snug);
 }
 
 .save-state {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .note-editor {
@@ -649,7 +708,7 @@ h3 {
   resize: vertical;
   color: var(--ink);
   background: transparent;
-  font-size: 17px;
+  font-size: var(--text-lg);
   line-height: var(--leading-reading);
 }
 
@@ -659,14 +718,14 @@ h3 {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--paper-soft);
-  font-size: 14px;
+  font-size: var(--text-body-lg);
   line-height: 1.55;
 }
 
 .note-editor-help {
   margin: 9px 0 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
 }
 
@@ -683,7 +742,7 @@ h3 {
   max-width: 60ch;
   margin: 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
 }
 
@@ -694,7 +753,7 @@ h3 {
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
   background: var(--paper-soft);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -706,7 +765,7 @@ h3 {
 
 .recovery-card h2 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--text-subtitle);
   line-height: 1.3;
 }
 
@@ -745,7 +804,7 @@ h3 {
   max-width: var(--measure-reading);
   margin: 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
   text-align: right;
 }
@@ -761,13 +820,13 @@ h3 {
 .button-small {
   min-height: 32px;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .transcript-action-status {
   min-height: 1em;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .transcript-line {
@@ -789,16 +848,16 @@ h3 {
 .transcript-line time {
   color: var(--ink-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
 }
 
 .transcript-line-meta span {
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -826,16 +885,16 @@ h3 {
 .speaker-label-button small {
   margin-top: 3px;
   color: var(--accent);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
   line-height: 1.2;
   text-transform: uppercase;
 }
 
 .transcript-line p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-transcript-body);
   line-height: var(--leading-transcript);
 }
 
@@ -905,7 +964,7 @@ h3 {
 .meeting-manage-menu p {
   margin: 0 0 3px;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
 }
 
@@ -919,7 +978,7 @@ h3 {
   gap: 8px;
   margin: 0;
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .meeting-meta span + span::before {
@@ -932,7 +991,7 @@ h3 {
   max-width: 72ch;
   margin: 10px 0 0;
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
@@ -1023,7 +1082,7 @@ h3 {
 .meeting-note-header > p:last-child {
   margin: 0;
   color: var(--ink-soft);
-  font-size: 14px;
+  font-size: var(--text-body-lg);
   line-height: 1.55;
 }
 
@@ -1040,13 +1099,13 @@ h3 {
 
 .meeting-note-section h3 {
   margin: 0 0 10px;
-  font-size: 15px;
+  font-size: var(--text-subtitle);
 }
 
 .meeting-note-summary-item > p {
   max-width: var(--measure-reading);
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-note-summary);
   line-height: var(--leading-reading);
 }
 
@@ -1084,7 +1143,7 @@ h3 {
 .meeting-note-item > p {
   max-width: var(--measure-reading);
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-note-item);
   line-height: 1.55;
 }
 
@@ -1107,15 +1166,15 @@ h3 {
   padding: 12px 15px;
   color: var(--ink-soft);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .transcript-highlights summary span:last-child,
 .transcript-disclosure-state {
   color: var(--ink-faint);
-  font-size: 11px;
-  font-weight: 620;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
 }
 
 .transcript-highlights[open] summary,
@@ -1143,14 +1202,14 @@ h3 {
 
 .transcript-disclosure > summary strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .transcript-disclosure > summary small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 11px;
-  font-weight: 500;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-book);
   line-height: 1.4;
 }
 
@@ -1171,14 +1230,14 @@ h3 {
 
 .transcript-retry-action h3 {
   margin: 0 0 3px;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .transcript-retry-action p {
   max-width: 58ch;
   margin: 0;
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
@@ -1192,7 +1251,7 @@ h3 {
   border-top: 1px solid var(--line);
   color: var(--ink-faint);
   background: var(--paper-soft);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
 }
 
@@ -1261,14 +1320,14 @@ h3 {
   border-radius: 7px;
   color: var(--ink);
   background: var(--paper);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .transcript-search-status {
   grid-column: 1 / -1;
   min-height: 1em;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .transcript-scroll {
@@ -1283,7 +1342,7 @@ h3 {
   padding: 28px 0;
   margin: 0;
   color: var(--ink-faint);
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .screen-reader-only {
@@ -1303,18 +1362,18 @@ h3 {
   padding: 0 4px;
   color: var(--accent);
   background: transparent;
-  font-size: 12px;
-  font-weight: 670;
+  font-size: var(--text-label);
+  font-weight: var(--weight-semibold);
 }
 
 .claim-source-button:hover:not(:disabled) {
-  color: #19449e;
+  color: var(--link-hover);
   text-decoration: underline;
 }
 
 .claim-source-unavailable {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 /* Roadmap intake I4 / design D4's reverse half: a cited transcript turn's
@@ -1334,8 +1393,8 @@ h3 {
   border-radius: 999px;
   color: var(--accent);
   background: var(--accent-soft);
-  font-size: 11px;
-  font-weight: 620;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-medium);
 }
 
 .turn-citation-button:hover:not(:disabled) {
@@ -1345,7 +1404,7 @@ h3 {
 .transcript-citation-summary {
   margin: 4px 0 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
   text-align: right;
 }
@@ -1359,7 +1418,7 @@ h3 {
 
 .meeting-context-section .meeting-context-text {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.55;
   white-space: pre-wrap;
 }
@@ -1376,15 +1435,15 @@ h3 {
   display: block;
   margin-bottom: 5px;
   color: #687ca4;
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: 0.04em;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold-plus);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
 
 .claim-evidence p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
@@ -1406,16 +1465,16 @@ h3 {
 .evidence-popover-meta {
   margin: 0 0 5px;
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: 0.04em;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold-plus);
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
 }
 
 .evidence-popover-text {
   margin: 0;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
@@ -1590,15 +1649,15 @@ h3 {
 .model-option dt {
   margin-bottom: 3px;
   color: var(--ink-faint);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-meta);
+  font-weight: var(--weight-bold);
   text-transform: uppercase;
 }
 
 .model-option dd {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--text-body-lg);
+  font-weight: var(--weight-bold);
 }
 
 .model-download {
@@ -1615,7 +1674,7 @@ h3 {
 .model-download small,
 .model-privacy {
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
 }
 
 .model-setup-error {
@@ -1678,7 +1737,7 @@ h3 {
   max-width: 44ch;
   margin-bottom: 0;
   color: var(--ink-soft);
-  font-size: 14px;
+  font-size: var(--text-body-lg);
   line-height: 1.5;
 }
 
@@ -1687,13 +1746,13 @@ h3 {
   gap: 8px;
   margin: 24px 0 12px;
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 680;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
 }
 
 .field-label small {
   color: var(--ink-faint);
-  font-weight: 500;
+  font-weight: var(--weight-book);
   line-height: 1.45;
 }
 
@@ -1727,7 +1786,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--paper-soft);
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .speaker-correction-source span {
@@ -1754,7 +1813,7 @@ h3 {
 .retry-quality h3,
 .retry-use-warning h3 {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .retry-quality p,
@@ -1762,7 +1821,7 @@ h3 {
   max-width: 62ch;
   margin: 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
@@ -1784,12 +1843,12 @@ h3 {
   gap: 14px;
   padding: 4px 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .retry-quality li strong {
   color: var(--ink-soft);
-  font-weight: 620;
+  font-weight: var(--weight-medium);
   text-align: right;
 }
 
@@ -1821,7 +1880,7 @@ h3 {
 
 .retry-transcript-column h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-subtitle);
 }
 
 .retry-transcript-turns {
@@ -1844,7 +1903,7 @@ h3 {
 .retry-diff-legend {
   margin: 12px 0 0;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .retry-transcript-column[data-side="current"] .retry-diff-word {
@@ -1866,13 +1925,13 @@ h3 {
 
 .retry-warnings h4 {
   margin: 0 0 5px;
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .retry-warnings ul {
   padding-left: 17px;
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-meta);
   line-height: 1.45;
 }
 
@@ -1896,7 +1955,7 @@ h3 {
   border-left: 2px solid var(--accent);
   color: var(--ink-soft);
   background: var(--accent-soft);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.5;
 }
 
@@ -1938,13 +1997,13 @@ h3 {
 .vocabulary-ledger-head h3,
 .vocabulary-form-head h3 {
   margin: 0;
-  font-size: 13px;
-  letter-spacing: -0.01em;
+  font-size: var(--text-body);
+  letter-spacing: var(--tracking-snug);
 }
 
 .vocabulary-ledger-head > span {
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .vocabulary-ledger ul {
@@ -1977,7 +2036,7 @@ h3 {
   min-width: 0;
   align-items: baseline;
   gap: 7px;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 
 .vocabulary-ledger-terms span:first-child,
@@ -1993,18 +2052,18 @@ h3 {
 
 .vocabulary-ledger-terms strong {
   color: var(--ink);
-  font-weight: 680;
+  font-weight: var(--weight-semibold);
 }
 
 .vocabulary-ledger-meta {
   gap: 8px;
   color: var(--ink-faint);
-  font-size: 11px;
+  font-size: var(--text-meta);
 }
 
 .vocabulary-ledger-meta span:first-child {
   color: var(--ink-soft);
-  font-weight: 650;
+  font-weight: var(--weight-medium-plus);
 }
 
 .vocabulary-ledger-row[data-enabled="false"] .vocabulary-ledger-meta span:first-child {
@@ -2023,14 +2082,14 @@ h3 {
 
 .vocabulary-delete-confirmation {
   color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium-plus);
 }
 
 .vocabulary-ledger-empty {
   padding: 18px 13px;
   color: var(--ink-faint);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.45;
 }
 
@@ -2058,7 +2117,7 @@ h3 {
 .vocabulary-help {
   margin: 11px 0 20px;
   color: var(--ink-faint);
-  font-size: 12px;
+  font-size: var(--text-label);
   line-height: 1.45;
 }
 
@@ -2077,7 +2136,7 @@ h3 {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.4;
 }
 
@@ -2116,7 +2175,7 @@ h3 {
 
 .meeting-row[data-locked="true"] .meeting-row-meta {
   font-variant-caps: all-small-caps;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-wide);
 }
 
 .meeting-lock-card {
@@ -2147,7 +2206,7 @@ h3 {
   border-radius: var(--radius-sm);
   color: var(--ink-soft);
   background: rgb(166 61 50 / 7%);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.45;
 }
 
@@ -2160,10 +2219,10 @@ h3 {
   padding: 13px 15px;
   border: 1px solid rgb(156 103 21 / 25%);
   border-radius: var(--radius-sm);
-  color: #704809;
+  color: var(--toast-attention-text);
   background: var(--attention-soft);
   box-shadow: 0 12px 30px rgb(71 47 8 / 13%);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.45;
 }
 
@@ -2406,6 +2465,22 @@ h3 {
     --record-soft: #472622;
     --attention: #ecc36f;
     --attention-soft: #41341e;
+
+    /* Light-theme audit (W9-A) fix: these four had no dark override at all,
+       so the light literal kept rendering against a background that DID
+       swap to its dark token -- WCAG contrast collapsed below 2:1 (see the
+       comment on the light :root block above for the measured before/after
+       per token). --status-record-text and --status-attention-text reuse
+       the app's existing --record/--attention dark values (already proven
+       legible against --record-soft/--attention-soft dark: 5.40:1 and
+       7.26:1) rather than inventing new hues. --link-hover and
+       --toast-attention-text get their own picked value, verified at
+       9.78:1 (link-hover vs --paper) and 7.26:1 (toast text vs
+       --attention-soft dark). */
+    --link-hover: #b6c8ff;
+    --status-record-text: #ef8879;
+    --status-attention-text: #ecc36f;
+    --toast-attention-text: #ecc36f;
   }
 
   .topbar {
