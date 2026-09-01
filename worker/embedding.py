@@ -136,8 +136,6 @@ def embed_windows(encoder, tokenizer, windows: list[dict]) -> dict[str, str]:
     exceeds the 256-token ceiling; a 128-word window should never reach it, which
     is exactly why a silent truncation here would go unnoticed.
     """
-    from mlx_minilm import SequenceTooLong, encode
-
     if not isinstance(windows, list) or not windows:
         raise EmbeddingRefused("embedding request carries no windows")
     if len(windows) > MAX_WINDOWS_PER_REQUEST:
@@ -160,6 +158,12 @@ def embed_windows(encoder, tokenizer, windows: list[dict]) -> dict[str, str]:
             raise EmbeddingRefused("window text does not match the digest sent with it")
         texts.append(text)
         digests.append(digest)
+
+    # Imported after validation, not before it: a malformed request is refused
+    # identically in every lane, including the boundary runtime that does not
+    # package the mlx wheel. Importing first made five pure-validation tests
+    # error with ModuleNotFoundError in the boundary lane's verify.
+    from mlx_minilm import SequenceTooLong, encode
 
     try:
         vectors = encode(encoder, tokenizer, texts)
