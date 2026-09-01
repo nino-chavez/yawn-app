@@ -6,8 +6,10 @@ import {
   capturePresentation,
   errorRecoveryPresentation,
   humanize,
+  libraryLoadingPresentation,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
+  libraryStallTransition,
   localVocabularyPresentation,
   lockedActionOutcome,
   meetingContextPresentation,
@@ -70,6 +72,11 @@ const state = {
   contextUnreadable: false,
   error: "",
   library: null,
+  // Desktop-design audit (2026-09-01), fix 1: whether the library load in
+  // flight has run past the bounded wait. Read by `renderLibrary` on every
+  // render tick; only `armLibraryStallTimer`/`disarmLibraryStallTimer` write
+  // it, so the escalation is state-driven, never derived from the DOM.
+  libraryStalled: false,
   generatingMeetingId: "",
   meetingManagementOpen: false,
   modal: "",
@@ -107,6 +114,36 @@ let contextSaveTimer;
 let permissionsRefreshTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
+
+// Desktop-design audit (2026-09-01), fix 1: the bounded wait before the
+// library's loading line escalates to honest stall copy. The phase and the
+// real setTimeout handle are ordinary module state (same idiom as the
+// timers above); `libraryStallTransition` (view-model.mjs) is the pure
+// function that decides what the phase becomes, so only the plumbing lives
+// here.
+const LIBRARY_STALL_MS = 10_000;
+let libraryStallPhase = "idle";
+let libraryStallTimer;
+
+function armLibraryStallTimer() {
+  clearTimeout(libraryStallTimer);
+  libraryStallPhase = libraryStallTransition(libraryStallPhase, "load-start");
+  state.libraryStalled = false;
+  libraryStallTimer = setTimeout(() => {
+    libraryStallPhase = libraryStallTransition(libraryStallPhase, "stall-elapsed");
+    if (libraryStallPhase === "stalled") {
+      state.libraryStalled = true;
+      render();
+    }
+  }, LIBRARY_STALL_MS);
+}
+
+function disarmLibraryStallTimer() {
+  clearTimeout(libraryStallTimer);
+  libraryStallTimer = undefined;
+  libraryStallPhase = libraryStallTransition(libraryStallPhase, "load-settled");
+  state.libraryStalled = false;
+}
 
 // Design intake D5's evidence-depth affordances. None of this lives in
 // `state`: the popover is a transient, cursor-anchored overlay outside the
@@ -442,7 +479,7 @@ function renderHome() {
         <h2 id="meetings-heading">Recent meetings</h2>
         ${library?.total ? `<input class="search-input" type="search" data-field="library-search" data-meeting-id="library" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" autocorrect="off" spellcheck="false" />` : ""}
       </div>
-      ${renderLibrary(library)}
+      ${renderLibrary(library, state.libraryStalled)}
       ${(() => {
         const link = trashLinkPresentation(state.trash);
         return link
@@ -496,8 +533,14 @@ function renderBackgroundTranscription(snapshot) {
   `;
 }
 
-function renderLibrary(library) {
-  if (!library) return `<p class="quiet-copy">Loading meetings saved on this Mac…</p>`;
+function renderLibrary(library, stalled) {
+  const waiting = libraryLoadingPresentation(library, stalled);
+  if (waiting) {
+    return `
+      <p class="quiet-copy">${escapeHtml(waiting.message)}</p>
+      ${waiting.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(waiting.action.action)}">${escapeHtml(waiting.action.label)}</button>` : ""}
+    `;
+  }
   const recovery = libraryRecoveryPresentation(library);
   if (recovery) {
     return `<section class="empty-library recovery-card attention" aria-labelledby="library-recovery-title"><h3 id="library-recovery-title">${escapeHtml(recovery.title)}</h3><p>${escapeHtml(recovery.detail)}</p><button class="button button-primary button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button></section>`;
@@ -1767,7 +1810,15 @@ async function loadCurrentContext(meetingId) {
 
 async function refreshLibrary() {
   const title = state.search.trim();
-  state.library = await invoke("library_snapshot", { filter: title ? { title } : null });
+  // Only the load that hasn't yet succeeded once needs the stall timer --
+  // once `state.library` is set it is never nulled out again, so a search
+  // or a background refresh never re-arms it.
+  if (!state.library) armLibraryStallTimer();
+  try {
+    state.library = await invoke("library_snapshot", { filter: title ? { title } : null });
+  } finally {
+    disarmLibraryStallTimer();
+  }
   await refreshTrash();
 }
 

@@ -19,9 +19,11 @@ import {
   humanize,
   isManualTranscriptScroll,
   nextEscapeTarget,
+  libraryLoadingPresentation,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
   libraryRowPreview,
+  libraryStallTransition,
   localVocabularyPresentation,
   lockedActionOutcome,
   meetingContextPresentation,
@@ -725,6 +727,55 @@ test("the generate control follows the backend's eligibility signal alone", () =
   assert.equal(noteGenerationPresentation(null, ""), null);
 });
 
+test("a loaded library needs no loading presentation at all", () => {
+  assert.equal(libraryLoadingPresentation({ rows: [] }, false), null);
+  assert.equal(libraryLoadingPresentation({ rows: [] }, true), null);
+});
+
+test("the library loading line escalates once, with one Try-again action", () => {
+  // Desktop-design audit (2026-09-01), fix 1: the loading line used to
+  // render the same words at 200 ms and forever. Before a stall, plain
+  // words and no action; after, honest stall copy plus one action that
+  // reuses the existing refresh idiom -- no spinner, no second control.
+  const early = libraryLoadingPresentation(null, false);
+  assert.equal(early.stalled, false);
+  assert.equal(early.message, "Loading meetings saved on this Mac…");
+  assert.equal(early.action, null);
+
+  const stalled = libraryLoadingPresentation(null, true);
+  assert.equal(stalled.stalled, true);
+  assert.equal(stalled.message, "Still loading meetings. This is taking longer than usual.");
+  assert.deepEqual(stalled.action, { action: "refresh-library", label: "Try again" });
+});
+
+test("the library-stall timer's phases are a pure transition table", () => {
+  // main.js only touches a real setTimeout; every decision about what phase
+  // that timeout produces lives here, so it is tested without faking a clock.
+  assert.equal(libraryStallTransition("idle", "load-start"), "waiting");
+  assert.equal(libraryStallTransition("waiting", "stall-elapsed"), "stalled");
+  assert.equal(libraryStallTransition("waiting", "load-settled"), "idle");
+  assert.equal(libraryStallTransition("stalled", "load-settled"), "idle");
+  // A retry after a stall re-arms the wait rather than staying stuck.
+  assert.equal(libraryStallTransition("stalled", "load-start"), "waiting");
+  // "stall-elapsed" only ever promotes "waiting" -> "stalled". A timer that
+  // fires after its load already settled -- a slow callback racing a fast
+  // response -- must not resurrect a stalled state from "idle", and an
+  // already-stalled phase is unaffected by a second elapse.
+  assert.equal(libraryStallTransition("idle", "stall-elapsed"), "idle");
+  assert.equal(libraryStallTransition("stalled", "stall-elapsed"), "stalled");
+});
+
+test("main.js arms the stall timer only for a load that has not yet succeeded, and always disarms it", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /if \(!state\.library\) armLibraryStallTimer\(\);/);
+  assert.match(source, /finally \{\s*disarmLibraryStallTimer\(\);\s*\}/);
+  // The timer callback is the only writer of `state.libraryStalled` besides
+  // the disarm path -- render() must run so the escalation actually shows.
+  assert.match(source, /state\.libraryStalled = true;\s*render\(\);/);
+  // renderLibrary reads the flag from state on every render, not from the DOM.
+  assert.match(source, /renderLibrary\(library, state\.libraryStalled\)/);
+});
+
 test("unavailable library keeps its backend message and offers a real refresh", () => {
   const recovery = libraryRecoveryPresentation({
     state: "unavailable",
@@ -1054,17 +1105,28 @@ test("a locked meeting detail shows the barrier and no meeting content", () => {
   });
 });
 
-test("an unreadable lock is still a lock, and says removing it is the way out", () => {
-  // Failing closed on the read side has a copy consequence: the reader must
-  // be told that confirming will not help, because the file itself is the
-  // problem.
+test("an unreadable lock states the actions that actually exist here", () => {
+  // Previously this detail said "removing the lock is the only way to open
+  // it here" while the barrier's own button offers a read-only Confirm to
+  // open -- a wording mismatch (2026-09-01 desktop-design audit, fix 4).
+  // Changed: old "Removing the lock is the only way to open it here." ->
+  // new "Confirm to open it for reading, or remove the lock from Manage."
   const presentation = meetingLockPresentation({
     state: "locked",
     lock: { locked: true, unreadable: true },
   });
   assert.equal(presentation.state, "unreadable");
   assert.match(presentation.detail, /could not read this meeting's lock/);
-  assert.match(presentation.detail, /Removing the lock is the only way to open it here/);
+  assert.match(presentation.detail, /Confirm to open it for reading/);
+  assert.match(presentation.detail, /remove the lock from Manage/);
+  assert.doesNotMatch(presentation.detail, /is the only way to open it here/);
+  // The action rendered on this barrier really is the read-only confirm --
+  // the same one the plain "locked" state offers -- so the new sentence
+  // matches the button beside it rather than describing a different one.
+  assert.deepEqual(presentation.action, {
+    action: "unlock-meeting-open",
+    label: "Confirm to open",
+  });
 });
 
 test("a meeting opened for reading still says it is locked", () => {

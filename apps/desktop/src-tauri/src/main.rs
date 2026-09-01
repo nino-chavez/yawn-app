@@ -2271,6 +2271,14 @@ fn tray_presentation(
             CaptureState::Captured | CaptureState::Transcribing | CaptureState::Summarizing => {
                 ("◐", "Transcribing the finished recording")
             }
+            // A finished meeting the operator has not opened yet is a ready
+            // note, not idle silence. Falling into the idle arm below would
+            // be true ("nothing is recording") but misleading — it hides the
+            // fact that something is waiting to be read. Distinct from the
+            // hollow idle glyph and from "◐" (still in progress).
+            CaptureState::TranscriptReady | CaptureState::Ready => {
+                ("◍", "Your meeting is ready to read.")
+            }
             // SummaryFailed persists until the operator acts — its only exit
             // is an explicit retry — so it must carry the error mark, not
             // the all-clear glyph.
@@ -2282,6 +2290,10 @@ fn tray_presentation(
         StartupState::ShellRendered | StartupState::Checking | StartupState::Retrying => {
             ("○", "Checking the local runtime. Nothing is recording")
         }
+        // First-run model selection is a one-time setup step, not a failure.
+        // It gets its own calm arm so it doesn't share the alarming "×" with
+        // genuine startup failures (RuntimeMissing, ServiceTimeout, …).
+        StartupState::ModelRequired => ("◌", "One-time setup: choose a speech model."),
         _ => ("×", "The app needs attention. Nothing is recording"),
     }
 }
@@ -10750,11 +10762,54 @@ mod tests {
         let (glyph, words) = tray_presentation(Ready, CaptureState::Arming, false);
         assert_eq!(glyph, "○");
         assert!(words.contains("Nothing is recording yet"));
-        // Every non-live state says outright that nothing is recording, or
-        // names the attention it needs.
-        for capture in [CaptureState::Idle, CaptureState::TranscriptReady] {
+        // Every non-live, non-finished state says outright that nothing is
+        // recording, or names the attention it needs.
+        for capture in [CaptureState::Idle, CaptureState::Paused] {
             let (glyph, _) = tray_presentation(Ready, capture, false);
             assert_eq!(glyph, "○");
+        }
+    }
+
+    /// A finished meeting the operator has not opened yet gets its own
+    /// glyph and tooltip — distinct from idle ("nothing is recording", true
+    /// but buries the waiting note) and from "◐" (still in progress).
+    /// Changed from the prior pinning of TranscriptReady to the idle arm:
+    /// old ("○", "Nothing is recording") → new ("◍", "Your meeting is ready
+    /// to read.").
+    #[test]
+    fn finished_meeting_gets_a_ready_glyph_not_idle() {
+        for capture in [CaptureState::TranscriptReady, CaptureState::Ready] {
+            let (glyph, words) = tray_presentation(StartupState::Ready, capture, false);
+            assert_eq!(glyph, "◍");
+            assert_eq!(words, "Your meeting is ready to read.");
+        }
+    }
+
+    /// First-run model selection is a one-time setup step, not a failure.
+    /// Before this fix it fell into the catch-all "×" / "The app needs
+    /// attention" arm alongside RuntimeMissing and ServiceTimeout. Changed:
+    /// old ("×", "The app needs attention. Nothing is recording") → new
+    /// ("◌", "One-time setup: choose a speech model.").
+    #[test]
+    fn model_required_gets_a_calm_setup_glyph_not_a_failure_mark() {
+        let (glyph, words) =
+            tray_presentation(StartupState::ModelRequired, CaptureState::Idle, false);
+        assert_eq!(glyph, "◌");
+        assert_eq!(words, "One-time setup: choose a speech model.");
+    }
+
+    /// Genuine startup failures keep the alarming mark — only ModelRequired
+    /// was carved out.
+    #[test]
+    fn genuine_startup_failures_still_read_as_failures() {
+        for startup in [
+            StartupState::RuntimeMissing,
+            StartupState::ServiceTimeout,
+            StartupState::DiagnosticWritten,
+            StartupState::ReinstallRequired,
+        ] {
+            let (glyph, _) = tray_presentation(startup, CaptureState::Idle, false);
+            assert_eq!(glyph, "×");
         }
     }
 
