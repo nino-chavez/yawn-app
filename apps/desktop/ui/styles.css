@@ -2006,6 +2006,35 @@ h3 {
   gap: 9px;
 }
 
+/* Roadmap intake I5: the per-meeting local barrier.
+
+   Deliberately quiet. The product's colour rule reserves emphasis for
+   recording and attention, and a locked meeting is neither -- it is an
+   ordinary state the operator chose. Nothing here uses the record red or the
+   attention amber, and nothing uses a padlock glyph: the word "Locked" says
+   it, and the sheet says what it is and is not. */
+.meeting-row[data-locked="true"] .meeting-row-title {
+  color: var(--ink-soft);
+}
+
+.meeting-row[data-locked="true"] .meeting-row-meta {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.04em;
+}
+
+.meeting-lock-card {
+  border-color: var(--line-strong);
+}
+
+.meeting-lock-open {
+  color: var(--ink-soft);
+  background: var(--paper-soft);
+}
+
+.meeting-lock-sheet .eyebrow {
+  color: var(--ink-soft);
+}
+
 .destructive-sheet {
   border-color: rgb(166 61 50 / 42%);
 }

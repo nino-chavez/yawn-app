@@ -33,6 +33,12 @@ const PRODUCT_COMMANDS: &[&str] = &[
     // Roadmap intake I7+I8: exports a reviewed meeting as plain per-item files
     // plus a compact archive, written only inside that meeting's own directory.
     "library_export_meeting",
+    // Roadmap intake I5: lock a meeting behind a local-access barrier, remove
+    // that lock after a device-owner check, and mint one single-use
+    // confirmation for one action on one locked meeting.
+    "lock_meeting",
+    "unlock_meeting",
+    "authorize_locked_action",
     "correct_speaker_name",
     "local_vocabulary_list",
     "local_vocabulary_add",
@@ -93,6 +99,9 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-library-open-transcript",
     "allow-library-open-transcript-file",
     "allow-library-export-meeting",
+    "allow-lock-meeting",
+    "allow-unlock-meeting",
+    "allow-authorize-locked-action",
     "allow-correct-speaker-name",
     "allow-local-vocabulary-list",
     "allow-local-vocabulary-add",

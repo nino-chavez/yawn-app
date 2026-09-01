@@ -24,12 +24,18 @@ use local_meeting_notes_session_core::note_projection::{ClaimType, NoteProjector
 use local_meeting_notes_session_core::retention::meeting_dir;
 use local_meeting_notes_session_core::storage::StorageRoot;
 use local_meeting_notes_session_core::transcript_deletion::transcript_deletion_completed;
+use crate::meeting_lock::MeetingLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const STALE_MESSAGE: &str = "That view is no longer current. Reopen it and try again.";
 const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the app and try again.";
+/// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
+/// and deliberately not a security claim: the meeting is behind a local
+/// barrier that a confirmation lifts, and the sentence says exactly that.
+pub(crate) const LOCKED_MESSAGE: &str =
+    "This meeting is locked on this Mac. Confirm it's you to continue.";
 
 /// Brings the derived corpus index up to date beside the projection that just
 /// validated the files, and **never lets its failure reach the operator**.
@@ -172,7 +178,21 @@ pub(crate) struct LibrarySnapshotRow {
     /// this field exists to promise exactly that. The governing constraint
     /// is "real generated content only; never a placeholder line", so an
     /// absent field renders no preview line at all, not a filler sentence.
+    ///
+    /// Also `None` for every locked row, whatever the meeting's note says —
+    /// see `locked` below.
     pub(crate) note_preview: Option<String>,
+    /// Roadmap intake I5: whether this meeting is behind the local lock.
+    ///
+    /// When true, `note_preview` above is suppressed at source rather than
+    /// hidden by the shell (Bear's obscured-previews move): the preview is
+    /// generated content about what was said, and a locked meeting's list row
+    /// must not carry it. `transcript_available` stays truthful — it is one
+    /// bit of metadata about a row already showing its title and date, and a
+    /// field asserting "no transcript" about a meeting that has one would be
+    /// the same class of lie this product forbids for withheld turns. The
+    /// shell's locked branch renders neither the preview nor that meta line.
+    pub(crate) locked: bool,
 }
 
 /// Operator title, then the meeting's own opening line, then nothing.
@@ -375,6 +395,37 @@ pub(crate) struct LibraryNoteResponse {
     /// when the projection is not current, this response is `stale` before
     /// either field is populated, and both come back empty.
     pub(crate) turns_cited: Vec<TurnCitation>,
+    /// Roadmap intake I5: this meeting's lock, so the shell can offer to lock,
+    /// unlock, or say why it is showing nothing.
+    ///
+    /// A locked meeting opened without a fresh confirmation comes back as
+    /// `state: "locked"` with every content field empty and **every handle
+    /// `None`** — no transcript, no operator note, no playback, no deletion of
+    /// audio or transcript. That is the gate: the webview is not asked to hide
+    /// controls it holds authority for, it is never given the authority. The
+    /// one exception is `meeting_deletion_handle`, which a locked meeting
+    /// still issues — see the locked branch in `open_note_current`.
+    pub(crate) lock: crate::meeting_lock::MeetingLock,
+    /// A fresh single-use confirmation for reading this same locked meeting
+    /// again, set by `library_open_note` after a read that passed the gate.
+    ///
+    /// Always `None` here: minting is the command's business, not the
+    /// reader's, and every constructor in this file leaves it empty. See
+    /// `library_open_note` in `main.rs` for why a successful read re-issues.
+    pub(crate) lock_token: Option<String>,
+    /// Whether this Mac can run the device-owner check at all, set by
+    /// `library_open_note` from the app's confirmation seam.
+    ///
+    /// It is a fact about the machine, not about this meeting, and it rides
+    /// the note response only because the meeting surface is where the lock
+    /// affordance lives. The shell uses it to refuse to *offer* locking on a
+    /// Mac with no Touch ID and no password set — locking there would make a
+    /// meeting this app could never reopen. It gates no access: a meeting that
+    /// is already locked stays locked whatever this says.
+    ///
+    /// Defaults to `false` in every content-free constructor here, so a
+    /// response that never reached the command layer cannot invite a lock.
+    pub(crate) can_confirm_operator: bool,
     pub(crate) message: String,
 }
 
@@ -723,6 +774,15 @@ impl LibraryReader {
                 )
             })
             .collect();
+        // Roadmap intake I5. Read before the previews below, because a locked
+        // row skips its preview entirely rather than computing and discarding
+        // one -- `note_claims` clears the projection's sealed-hit store on
+        // every call (the D1 hazard documented below), so an opened-and-thrown-
+        // away preview is not free.
+        let locks: Vec<bool> = source_rows
+            .iter()
+            .map(|(meeting_id, ..)| self.meeting_lock(meeting_id).locked)
+            .collect();
         // Design intake D1: every row's note preview is read before any
         // snapshot handle is minted below. `note_claims` clears the
         // projection's own sealed-hit store on every call -- documented on
@@ -735,20 +795,28 @@ impl LibraryReader {
         // state it was in before this field existed.
         let note_previews: Vec<Option<String>> = source_rows
             .iter()
-            .map(|(meeting_id, ..)| note_preview_for(&self.projection, meeting_id))
+            .zip(&locks)
+            .map(|((meeting_id, ..), locked)| {
+                (!locked)
+                    .then(|| note_preview_for(&self.projection, meeting_id))
+                    .flatten()
+            })
             .collect();
         let mut rows = Vec::new();
         for (
             (
-                meeting_id,
-                label,
-                label_source,
-                folder_id,
-                created_at_epoch_seconds,
-                transcript_available,
+                (
+                    meeting_id,
+                    label,
+                    label_source,
+                    folder_id,
+                    created_at_epoch_seconds,
+                    transcript_available,
+                ),
+                note_preview,
             ),
-            note_preview,
-        ) in source_rows.into_iter().zip(note_previews)
+            locked,
+        ) in source_rows.into_iter().zip(note_previews).zip(locks)
         {
             let Ok(hit) = self.projection.meeting_handle(&meeting_id) else {
                 return Self::unavailable_snapshot();
@@ -762,6 +830,7 @@ impl LibraryReader {
                 created_at_epoch_seconds,
                 transcript_available,
                 note_preview,
+                locked,
             });
         }
         LibrarySnapshot {
@@ -1010,21 +1079,30 @@ impl LibraryReader {
         }
     }
 
+    /// Opens one meeting's detail view.
+    ///
+    /// `unlocked_meeting_id` is roadmap intake I5's gate input: the meeting a
+    /// freshly spent `LockedAction::Open` confirmation authorizes, or `None`
+    /// when the caller presented no valid token. Token custody stays in
+    /// `main.rs` — this reader is told only which meeting was authorized, and
+    /// compares it against the one the handle actually resolves to.
     pub(crate) fn open_note(
         &mut self,
         handle: &str,
         active_meeting_ids: &HashSet<String>,
+        unlocked_meeting_id: Option<&str>,
     ) -> LibraryNoteResponse {
         if !self.revalidate(active_meeting_ids) {
             return Self::stale_note("");
         }
-        self.open_note_current(handle, active_meeting_ids)
+        self.open_note_current(handle, active_meeting_ids, unlocked_meeting_id)
     }
 
     fn open_note_current(
         &mut self,
         handle: &str,
         active_meeting_ids: &HashSet<String>,
+        unlocked_meeting_id: Option<&str>,
     ) -> LibraryNoteResponse {
         // Opening a note establishes the next evidence-response boundary.
         let Some(hit) = self.handles.get(handle).cloned() else {
@@ -1036,6 +1114,45 @@ impl LibraryReader {
             Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => meeting_id,
             Ok(_) | Err(_) => return Self::stale_note(""),
         };
+        // Roadmap intake I5's read gate, before anything about this meeting is
+        // read or any capability is minted. A locked meeting without a fresh
+        // confirmation returns here: no claims, no transcript, no personal
+        // note, no context, and no handle that could reach any of them.
+        let lock = self.meeting_lock(&meeting_id);
+        if !crate::meeting_lock::permits(lock, unlocked_meeting_id, &meeting_id) {
+            return LibraryNoteResponse {
+                state: "locked",
+                transcript_handle: None,
+                operator_note_handle: None,
+                audio_deletion_handle: None,
+                microphone_playback_handle: None,
+                system_playback_handle: None,
+                transcript_deletion_handle: None,
+                // The one capability a locked meeting still hands out.
+                // Deletion is already double-confirmed and recoverable from
+                // Trash for thirty days, and gating it would make a meeting
+                // whose confirmation is unavailable permanently undeletable.
+                // The lock rides the move to Trash and comes back with it.
+                meeting_deletion_handle: self.retain_meeting_deletion_handle(&meeting_id),
+                meeting_id: meeting_id.clone(),
+                regeneration_source_sha256: None,
+                claims: Vec::new(),
+                // Content-free by construction, exactly like the `unavailable`
+                // and `stale` shapes: retention facts, pause facts, and the
+                // capture record all describe this meeting and none of them
+                // renders behind the lock.
+                audio_retention: Self::unavailable_audio_retention(),
+                capture_pauses:
+                    local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
+                operator_note: crate::operator_note::OperatorNote::none(),
+                meeting_context: crate::meeting_context::MeetingContext::none(),
+                turns_cited: Vec::new(),
+                lock,
+                lock_token: None,
+                can_confirm_operator: false,
+                message: "This meeting is locked on this Mac.".into(),
+            };
+        }
         let Some((lifecycle, row_transcript_sha256)) = self
             .projection
             .rows()
@@ -1104,6 +1221,9 @@ impl LibraryReader {
                     operator_note,
                     meeting_context: meeting_context.clone(),
                     turns_cited: Vec::new(),
+                    lock,
+                    lock_token: None,
+                    can_confirm_operator: false,
                     message: "A note was not produced. Retained transcript text remains available."
                         .into(),
                 };
@@ -1128,6 +1248,9 @@ impl LibraryReader {
                     operator_note,
                     meeting_context: meeting_context.clone(),
                     turns_cited: Vec::new(),
+                    lock,
+                    lock_token: None,
+                    can_confirm_operator: false,
                     message: if transcript_handle.is_some() {
                         "No admitted note is available. Retained transcript text remains available."
                             .into()
@@ -1195,6 +1318,9 @@ impl LibraryReader {
             operator_note,
             meeting_context,
             turns_cited: turns_cited(&turn_citations),
+            lock,
+            lock_token: None,
+            can_confirm_operator: false,
             message: "Claim words can be opened against their exact transcript locators.".into(),
         }
     }
@@ -1390,6 +1516,9 @@ impl LibraryReader {
             operator_note: crate::operator_note::OperatorNote::none(),
             meeting_context: crate::meeting_context::MeetingContext::none(),
             turns_cited: Vec::new(),
+            lock: crate::meeting_lock::MeetingLock::none(),
+            lock_token: None,
+            can_confirm_operator: false,
             message: UNAVAILABLE_MESSAGE.into(),
         }
     }
@@ -1453,10 +1582,17 @@ impl LibraryReader {
     /// Consumes an opaque source-specific playback handle and returns only an
     /// already-open, digest-verified native file grant. A fixed player can use
     /// that file; no generic file path or filesystem capability escapes here.
+    ///
+    /// `unlocked_meeting_id` is roadmap intake I5's gate input: the meeting a
+    /// freshly spent `LockedAction::Playback` confirmation authorizes, or
+    /// `None`. The check happens **here** rather than in the calling command
+    /// because the grant deliberately carries no meeting identity — this is
+    /// the last point at which the meeting behind the handle is known.
     pub(crate) fn authorize_audio_playback(
         &mut self,
         handle: &str,
         active_meeting_ids: &HashSet<String>,
+        unlocked_meeting_id: Option<&str>,
     ) -> Result<LibraryAudioPlaybackGrant, LibraryAudioPlaybackAccess> {
         if !self.revalidate(active_meeting_ids) {
             return Err(Self::stale_audio_playback());
@@ -1476,6 +1612,15 @@ impl LibraryReader {
         };
         if active_meeting_ids.contains(&meeting_id) {
             return Err(Self::stale_audio_playback());
+        }
+        // Roadmap intake I5. Refused before the file is opened or hashed, so a
+        // locked meeting's recording is never read, not merely never played.
+        if !crate::meeting_lock::permits(
+            self.meeting_lock(&meeting_id),
+            unlocked_meeting_id,
+            &meeting_id,
+        ) {
+            return Err(Self::locked_audio_playback());
         }
         let Some(current) =
             Self::retained_audio_artifact(&self.storage, &meeting_id, playback.source)
@@ -1959,6 +2104,53 @@ impl LibraryReader {
         }
     }
 
+    /// Resolves the meeting behind a snapshot handle **without spending it**,
+    /// and reports its lock.
+    ///
+    /// Roadmap intake I5's three lock commands need to know which meeting they
+    /// are about before they do anything, and they must not consume the handle
+    /// while finding out: `authorize_locked_action` mints a confirmation for a
+    /// meeting the shell is about to open with the same handle, so spending it
+    /// would break the very call the confirmation was for. Nothing is minted
+    /// here and no handle map is cleared — this is a read.
+    ///
+    /// It deliberately answers only for the meeting-shaped handles a library
+    /// row and a note response carry. A claim, transcript, or withheld handle
+    /// resolves to `None`: those name a passage, and locking is a per-meeting
+    /// act.
+    pub(crate) fn with_locked_meeting<T>(
+        &self,
+        handle: &str,
+        run: impl FnOnce(&StorageRoot, &str, MeetingLock) -> T,
+    ) -> Option<T> {
+        let hit = self.handles.get(handle)?;
+        let meeting_id = match self.projection.open_snapshot(hit) {
+            Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => meeting_id,
+            Ok(_) | Err(_) => return None,
+        };
+        let lock = self.meeting_lock(&meeting_id);
+        Some(run(&self.storage, &meeting_id, lock))
+    }
+
+    /// Roadmap intake I5's lock state, read from the same resolved directory
+    /// as the two sidecars above — with the opposite failure posture.
+    ///
+    /// A meeting whose directory cannot be resolved reports *unlocked*, not
+    /// locked, and that is deliberate rather than an inconsistency: every
+    /// caller of this method has already resolved that meeting through the
+    /// verified projection, so an unresolvable directory here means the
+    /// meeting is gone, and the caller's own stale or unavailable path is what
+    /// answers. Reporting a phantom lock would put a locked-looking row in
+    /// front of a meeting that no longer exists. The fail-closed decision that
+    /// matters lives one level down, in `meeting_lock::read`, where an
+    /// unreadable file on a resolvable meeting reads as locked.
+    fn meeting_lock(&self, meeting_id: &str) -> crate::meeting_lock::MeetingLock {
+        match meeting_dir(&self.storage, meeting_id) {
+            Ok(directory) => crate::meeting_lock::read(&directory),
+            Err(_) => crate::meeting_lock::MeetingLock::none(),
+        }
+    }
+
     pub(crate) fn read_audio_retention(
         storage: &StorageRoot,
         meeting_id: &str,
@@ -2145,7 +2337,21 @@ impl LibraryReader {
             operator_note: crate::operator_note::OperatorNote::none(),
             meeting_context: crate::meeting_context::MeetingContext::none(),
             turns_cited: Vec::new(),
+            lock: crate::meeting_lock::MeetingLock::none(),
+            lock_token: None,
+            can_confirm_operator: false,
             message: STALE_MESSAGE.into(),
+        }
+    }
+
+    /// Roadmap intake I5's playback refusal. Distinct from `stale` and
+    /// `unavailable`, because "reopen it and try again" is wrong advice here —
+    /// nothing is out of date, the meeting is locked and needs a confirmation.
+    /// Like its siblings it carries no meeting identity.
+    fn locked_audio_playback() -> LibraryAudioPlaybackAccess {
+        LibraryAudioPlaybackAccess {
+            state: "locked",
+            message: LOCKED_MESSAGE.into(),
         }
     }
 
@@ -2619,7 +2825,7 @@ mod tests {
         let snapshot = reader.snapshot(&HashSet::new());
         let handle = snapshot.rows[0].handle.clone();
 
-        let note = reader.open_note(&handle, &HashSet::new());
+        let note = reader.open_note(&handle, &HashSet::new(), None);
         assert_eq!(note.state, "note");
         assert_eq!(note.claims.len(), 3);
 
@@ -2667,7 +2873,7 @@ mod tests {
         let snapshot = reader.snapshot(&HashSet::new());
         let handle = snapshot.rows[0].handle.clone();
 
-        let fresh = reader.open_note(&handle, &HashSet::new());
+        let fresh = reader.open_note(&handle, &HashSet::new(), None);
         assert_eq!(fresh.state, "note");
         assert!(!fresh.turns_cited.is_empty());
 
@@ -2680,7 +2886,7 @@ mod tests {
         ), b"{\"changed\":true}\n")
         .unwrap();
 
-        let stale = reader.open_note(&handle, &HashSet::new());
+        let stale = reader.open_note(&handle, &HashSet::new(), None);
         assert_eq!(stale.state, "stale");
         assert!(stale.claims.is_empty());
         assert!(
@@ -2845,7 +3051,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
 
-        let note = reader.open_note(&handle, &HashSet::new());
+        let note = reader.open_note(&handle, &HashSet::new(), None);
         assert_eq!(note.meeting_context.text, "what must get decided");
         assert!(!note.meeting_context.unreadable);
     }
@@ -2862,7 +3068,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
 
-        let note = reader.open_note(&handle, &HashSet::new());
+        let note = reader.open_note(&handle, &HashSet::new(), None);
         assert!(note.meeting_context.text.is_empty());
         assert!(!note.meeting_context.unreadable);
     }
@@ -2880,7 +3086,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
 
-        let note = reader.open_note(&handle, &HashSet::new());
+        let note = reader.open_note(&handle, &HashSet::new(), None);
         assert!(note.meeting_context.unreadable);
         // Distinct from empty: an unreadable context must never surface bytes
         // from a file this build could not parse.
@@ -3076,7 +3282,7 @@ mod tests {
         assert_eq!(refused.meeting_id, None);
 
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let deletion_handle = note
             .audio_deletion_handle
             .expect("retained meeting deletion handle");
@@ -3100,7 +3306,7 @@ mod tests {
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let transcript_handle = note.transcript_handle.unwrap();
         let audio_handle = note.audio_deletion_handle.unwrap();
         reader
@@ -3114,7 +3320,7 @@ mod tests {
         );
 
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let transcript_handle = note.transcript_handle.unwrap();
         let deletion_handle = note.transcript_deletion_handle.unwrap();
         reader
@@ -3147,7 +3353,7 @@ mod tests {
 
         // The overview read minted no handle and cleared none: the snapshot
         // generation the operator is navigating still opens.
-        let note = reader.open_note(&handle, &HashSet::new());
+        let note = reader.open_note(&handle, &HashSet::new(), None);
         assert_ne!(note.state, "stale");
 
         let retention = LibraryReader::read_audio_retention(&fixture.storage, MEETING_ID);
@@ -3198,7 +3404,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage, projection);
         let snapshot = reader.snapshot(&HashSet::new());
         assert_eq!(
-            reader.open_note(&snapshot.rows[0].handle, &changed).state,
+            reader.open_note(&snapshot.rows[0].handle, &changed, None).state,
             "stale"
         );
     }
@@ -3214,7 +3420,7 @@ mod tests {
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let transcript_handle = note.transcript_handle.unwrap();
         let called = Cell::new(false);
 
@@ -3230,7 +3436,7 @@ mod tests {
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage, projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let transcript_handle = note.transcript_handle.unwrap();
         called.set(false);
         let refused = reader.open_transcript_bound(
@@ -3264,7 +3470,7 @@ mod tests {
         assert!(!called.get());
 
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let note_handle = note
             .operator_note_handle
             .expect("readable meeting gets an edit handle");
@@ -3278,7 +3484,7 @@ mod tests {
             .open_transcript_bound(&transcript_handle, &HashSet::new(), |_, _, _| ())
             .unwrap();
         reader
-            .authorize_audio_playback(&playback_handle, &HashSet::new())
+            .authorize_audio_playback(&playback_handle, &HashSet::new(), None)
             .expect("listening keeps the adjacent personal-note handle valid");
         let saved = reader
             .open_operator_note_bound(&note_handle, &HashSet::new(), |storage, meeting_id| {
@@ -3295,7 +3501,7 @@ mod tests {
         assert_eq!(reused.unwrap_err().state, "stale");
 
         let snapshot = reader.snapshot(&HashSet::new());
-        let refreshed = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let refreshed = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         assert_eq!(refreshed.operator_note.text, "capture the budget risk");
         let active_handle = refreshed.operator_note_handle.unwrap();
         called.set(false);
@@ -3321,7 +3527,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
 
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         let transcript_handle = note.transcript_handle.unwrap();
         let transcript_bytes = reader
             .open_transcript_bound(
@@ -3350,7 +3556,7 @@ mod tests {
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage, projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
 
         assert_eq!(note.audio_retention.state, "released");
         assert_eq!(note.audio_deletion_handle, None);
@@ -3457,7 +3663,7 @@ mod tests {
             )
             .expect("verified retained microphone gets a native handle");
         let grant = reader
-            .authorize_audio_playback(&handle, &HashSet::new())
+            .authorize_audio_playback(&handle, &HashSet::new(), None)
             .expect("current verified artifact grants playback");
         assert_eq!(grant.source(), RetainedAudioSource::Microphone);
         let mut file = grant.file();
@@ -3473,7 +3679,7 @@ mod tests {
             )
             .expect("verified retained system audio gets a distinct native handle");
         let system_grant = reader
-            .authorize_audio_playback(&system_handle, &HashSet::new())
+            .authorize_audio_playback(&system_handle, &HashSet::new(), None)
             .expect("current verified system artifact grants playback");
         assert_eq!(system_grant.source(), RetainedAudioSource::System);
         let mut system_file = system_grant.file();
@@ -3483,11 +3689,254 @@ mod tests {
 
         assert_eq!(
             reader
-                .authorize_audio_playback(&handle, &HashSet::new())
+                .authorize_audio_playback(&handle, &HashSet::new(), None)
                 .unwrap_err()
                 .state,
             "stale"
         );
+    }
+
+    /// Roadmap intake I5 (a): a locked row shows its title and date and
+    /// nothing about what the meeting said. The preview is generated content
+    /// about the meeting's outcome, so it is suppressed at source rather than
+    /// hidden by the shell -- Bear's obscured-previews move.
+    #[test]
+    fn a_locked_row_carries_no_note_preview_while_the_same_meeting_unlocked_does() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            std::sync::Arc::new(SummaryProjector),
+        )
+        .unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let unlocked = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert!(!unlocked.locked);
+        assert!(unlocked.note_preview.is_some());
+
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let locked = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert!(locked.locked);
+        assert_eq!(locked.note_preview, None);
+        // The title and the date are exactly what a locked row still shows.
+        assert_eq!(locked.label, unlocked.label);
+        assert_eq!(
+            locked.created_at_epoch_seconds,
+            unlocked.created_at_epoch_seconds
+        );
+        // And `transcript_available` stays truthful. A field asserting "no
+        // transcript" about a meeting that has one would be the same class of
+        // thing this product forbids for a withheld turn; the shell's locked
+        // branch simply does not render that line.
+        assert_eq!(locked.transcript_available, unlocked.transcript_available);
+    }
+
+    /// Roadmap intake I5 (b): opening a locked meeting without a confirmation
+    /// returns no content **and no capability**. The refusal is not the shell
+    /// declining to draw controls -- it is the response never carrying the
+    /// authority those controls would spend.
+    #[test]
+    fn a_locked_meeting_opens_with_no_content_and_no_handle_but_one() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+        crate::operator_note::write(&fixture.directory, "my private note").unwrap();
+        crate::meeting_context::write(&fixture.directory, "why we met").unwrap();
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+
+        let handle = reader.snapshot(&HashSet::new()).rows.remove(0).handle;
+        let note = reader.open_note(&handle, &HashSet::new(), None);
+        assert_eq!(note.state, "locked");
+        assert!(note.lock.locked);
+        assert!(!note.lock.unreadable);
+        assert_eq!(note.transcript_handle, None);
+        assert_eq!(note.operator_note_handle, None);
+        assert_eq!(note.audio_deletion_handle, None);
+        assert_eq!(note.microphone_playback_handle, None);
+        assert_eq!(note.system_playback_handle, None);
+        assert_eq!(note.transcript_deletion_handle, None);
+        assert_eq!(note.regeneration_source_sha256, None);
+        assert!(note.claims.is_empty());
+        assert!(note.turns_cited.is_empty());
+        // The operator's own words -- note and context alike -- do not travel
+        // in a locked response.
+        assert_eq!(note.operator_note.text, "");
+        assert_eq!(note.meeting_context.text, "");
+        // Decision 7: deletion is the one act a lock never blocks. Blocking it
+        // would make a meeting nobody can confirm for permanently immortal,
+        // and moving to Trash is already double-confirmed and recoverable.
+        assert!(note.meeting_deletion_handle.is_some());
+    }
+
+    /// The same open, with the confirmation the shell just spent. Content
+    /// comes back, and so does the full set of capabilities.
+    #[test]
+    fn a_locked_meeting_opens_normally_for_the_meeting_its_confirmation_names() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+        crate::operator_note::write(&fixture.directory, "my private note").unwrap();
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+
+        let handle = reader.snapshot(&HashSet::new()).rows.remove(0).handle;
+        let note = reader.open_note(&handle, &HashSet::new(), Some(MEETING_ID));
+        assert_ne!(note.state, "locked");
+        assert!(note.lock.locked, "reading it does not clear the lock");
+        assert_eq!(note.operator_note.text, "my private note");
+        assert!(note.transcript_handle.is_some());
+        assert!(note.microphone_playback_handle.is_some());
+    }
+
+    /// A confirmation names one meeting. Presenting it against a different
+    /// meeting's handle refuses -- which is what stops a token minted for a
+    /// meeting the operator is allowed to read from opening another.
+    #[test]
+    fn a_confirmation_for_another_meeting_does_not_open_this_one() {
+        let fixture = fixture(
+            AudioState::Released,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone",
+            b"system",
+        );
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let handle = reader.snapshot(&HashSet::new()).rows.remove(0).handle;
+        assert_eq!(
+            reader
+                .open_note(&handle, &HashSet::new(), Some("some-other-meeting"))
+                .state,
+            "locked"
+        );
+    }
+
+    /// An unreadable lock file gates exactly like a readable one, and says so
+    /// -- the shell needs the second fact to explain why removing the lock is
+    /// the only way forward.
+    #[test]
+    fn an_unreadable_lock_file_still_closes_the_meeting_and_reports_itself() {
+        let fixture = fixture(
+            AudioState::Released,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone",
+            b"system",
+        );
+        std::fs::write(fixture.directory.join("meeting-lock.json"), b"{ broken").unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let row = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert!(row.locked);
+        let note = reader.open_note(&row.handle, &HashSet::new(), None);
+        assert_eq!(note.state, "locked");
+        assert!(note.lock.unreadable);
+    }
+
+    /// Roadmap intake I5 (c): playback is refused for a locked meeting with no
+    /// confirmation, and refused with its own state -- "reopen it and try
+    /// again" is wrong advice when nothing is out of date.
+    #[test]
+    fn locked_retained_audio_refuses_without_a_confirmation_and_plays_with_one() {
+        let microphone = b"microphone recording";
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            microphone,
+            b"system recording",
+        );
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+
+        let handle = reader
+            .retain_audio_playback_handle(
+                MEETING_ID,
+                RetainedAudioSource::Microphone,
+                &HashSet::new(),
+            )
+            .expect("a handle still mints; the gate is at authorization");
+        let refused = reader
+            .authorize_audio_playback(&handle, &HashSet::new(), None)
+            .expect_err("a locked meeting refuses playback");
+        assert_eq!(refused.state, "locked");
+        assert_eq!(refused.message, LOCKED_MESSAGE);
+
+        let handle = reader
+            .retain_audio_playback_handle(
+                MEETING_ID,
+                RetainedAudioSource::Microphone,
+                &HashSet::new(),
+            )
+            .unwrap();
+        let grant = reader
+            .authorize_audio_playback(&handle, &HashSet::new(), Some(MEETING_ID))
+            .expect("a confirmation for this meeting plays it");
+        let mut bytes = Vec::new();
+        grant.file().read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, microphone);
+    }
+
+    /// Decision 3: the unlocked default path takes no friction anywhere. This
+    /// is the case that would silently regress if a gate were ever written to
+    /// require a token unconditionally.
+    #[test]
+    fn an_unlocked_meeting_needs_no_confirmation_for_reading_or_playback() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+
+        let row = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert!(!row.locked);
+        let note = reader.open_note(&row.handle, &HashSet::new(), None);
+        assert_ne!(note.state, "locked");
+        assert!(!note.lock.locked);
+        let playback = note
+            .microphone_playback_handle
+            .expect("retained audio offers playback with no lock in the way");
+        assert!(
+            reader
+                .authorize_audio_playback(&playback, &HashSet::new(), None)
+                .is_ok()
+        );
+    }
+
+    /// Deleting a locked meeting's audio proceeds and leaves the lock exactly
+    /// as it was. The retention promise outranks the lock: a meeting nobody
+    /// can confirm for must still release its recording on schedule.
+    #[test]
+    fn releasing_a_locked_meetings_audio_is_not_gated_and_does_not_disturb_the_lock() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"microphone recording",
+            b"system recording",
+        );
+        crate::meeting_lock::write(&fixture.directory, true).unwrap();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let handle = reader
+            .retain_audio_deletion_handle(MEETING_ID, true)
+            .expect("a locked meeting still mints audio-deletion authority");
+        let access = reader.authorize_audio_deletion(&handle, &HashSet::new());
+        assert_eq!(
+            access.state, "authorized",
+            "audio release is never behind the lock"
+        );
+        assert!(crate::meeting_lock::read(&fixture.directory).locked);
     }
 
     #[test]
@@ -3527,7 +3976,7 @@ mod tests {
         fs::write(fixture.directory.join("capture/mic.wav"), b"changed").unwrap();
         assert_eq!(
             reader
-                .authorize_audio_playback(&handle, &HashSet::new())
+                .authorize_audio_playback(&handle, &HashSet::new(), None)
                 .unwrap_err()
                 .state,
             "unavailable"

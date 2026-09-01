@@ -47,6 +47,16 @@ mod capture_shortcut;
 // over data `library_reader` has already digest-verified; see the module docs
 // for what is copied verbatim versus freshly derived.
 mod meeting_export;
+// Roadmap intake I5: a per-meeting local-access barrier. Owns the
+// `meeting-lock/1` sidecar, the closed set of actions a locked meeting
+// refuses, the one gate decision every refusal is made by, and the single-use
+// confirmation tokens that lift it. It is a barrier, not encryption — see the
+// module docs for the honest ceiling of that claim.
+mod meeting_lock;
+// Roadmap intake I5's other half: the macOS device-owner check (Touch ID with
+// the system's password fallback) behind a trait, so every gate path above is
+// testable with a fake and the real prompt stays live-run evidence.
+mod operator_confirmation;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -233,6 +243,16 @@ struct ApplicationState {
     // no catalog entry, weights not yet downloaded) is cheap to re-derive and
     // must retry so a model installed mid-session activates without restart.
     note_projector: Mutex<Option<Arc<dyn NoteProjector>>>,
+    /// Roadmap intake I5. At most one outstanding single-use confirmation for
+    /// one action on one locked meeting. Held beside the library rather than
+    /// inside it because minting one runs a human-scale prompt, which must
+    /// happen with no library or storage lock held.
+    locked_actions: Mutex<meeting_lock::LockedActionAuthority>,
+    /// The device-owner check the lock commands run. A trait object so the
+    /// gate paths are written against a seam rather than against
+    /// LocalAuthentication directly; the shipped app always installs the real
+    /// one.
+    confirmation: Arc<dyn operator_confirmation::ConfirmsOperator>,
 }
 
 impl Default for ApplicationState {
@@ -261,6 +281,8 @@ impl Default for ApplicationState {
             preview_profile: Mutex::new(PreviewProfileSnapshot::unavailable()),
             preview_enrollment: Mutex::new(PreviewEnrollmentSurface::unavailable()),
             note_projector: Mutex::new(None),
+            locked_actions: Mutex::new(meeting_lock::LockedActionAuthority::default()),
+            confirmation: Arc::new(operator_confirmation::DeviceOwnerConfirmation),
         }
     }
 }
@@ -4955,9 +4977,15 @@ fn preview_library_open_search_result(
     )
 }
 
+/// `lockToken` is roadmap intake I5's read gate: a single-use confirmation
+/// minted by `authorize_locked_action` for this exact meeting and the `open`
+/// action. It is absent for every unlocked meeting, which is the ordinary
+/// case, and a locked meeting without it comes back as `state: "locked"`
+/// holding no content and no capability.
 #[tauri::command]
 fn library_open_note(
     handle: String,
+    lock_token: Option<String>,
     state: State<'_, ApplicationState>,
 ) -> library_reader::LibraryNoteResponse {
     let Ok(_command) = state.command_lock.lock() else {
@@ -4966,10 +4994,35 @@ fn library_open_note(
     // A detail view is a playback boundary: reopening it must never leave an
     // earlier recording playing behind a different meeting.
     stop_owned_audio_playback(&state);
-    state.with_preview_library(
+    // Spent before the library is touched, so a token is consumed exactly once
+    // whether or not the open then succeeds.
+    let unlocked = consume_locked_action(
+        &state,
+        lock_token.as_deref(),
+        meeting_lock::LockedAction::Open,
+    );
+    let mut response = state.with_preview_library(
         || library_reader::LibraryReader::unavailable_note(""),
-        |reader, active| reader.open_note(&handle, active),
-    )
+        |reader, active| reader.open_note(&handle, active, unlocked.as_deref()),
+    );
+    // Spend and re-issue, exactly as `library_open_transcript_file` and
+    // `library_export_meeting` do with the transcript handle. This is the
+    // "unlocked for reading" session made concrete: one confirmation opened
+    // the meeting, and each successful read hands the next one its authority.
+    // The chain is rooted in that single confirmation and can only ever open
+    // this same meeting — it authorizes no export and no playback, it dies the
+    // moment the shell drops it by leaving the meeting, and locking the
+    // meeting revokes it outright.
+    // A fact about this Mac, not this meeting. See the field's docs for why it
+    // rides the note response and what it may and may not decide.
+    response.can_confirm_operator = state.confirmation.available();
+    if response.lock.locked && response.state != "locked" {
+        if let Ok(mut authority) = state.locked_actions.lock() {
+            response.lock_token =
+                Some(authority.mint(&response.meeting_id, meeting_lock::LockedAction::Open));
+        }
+    }
+    response
 }
 
 /// Starts the only retained-audio playback route. `handle` is an opaque,
@@ -4978,6 +5031,7 @@ fn library_open_note(
 #[tauri::command]
 fn library_play_retained_audio(
     handle: String,
+    lock_token: Option<String>,
     state: State<'_, ApplicationState>,
 ) -> RetainedAudioPlaybackResponse {
     let Ok(_command) = state.command_lock.lock() else {
@@ -4990,6 +5044,11 @@ fn library_play_retained_audio(
     // A new source always owns the sole player slot. Reap the former child
     // before consuming the freshly revalidated capability for this launch.
     stop_owned_audio_playback(&state);
+    let unlocked = consume_locked_action(
+        &state,
+        lock_token.as_deref(),
+        meeting_lock::LockedAction::Playback,
+    );
     let grant = match state.with_preview_library(
         || {
             Err(library_reader::LibraryAudioPlaybackAccess {
@@ -4997,9 +5056,15 @@ fn library_play_retained_audio(
                 message: "Retained audio is unavailable. Reopen Library and try again.".into(),
             })
         },
-        |reader, active| reader.authorize_audio_playback(&handle, active),
+        |reader, active| reader.authorize_audio_playback(&handle, active, unlocked.as_deref()),
     ) {
         Ok(grant) => grant,
+        Err(access) if access.state == "locked" => {
+            // Roadmap intake I5. Said with the reader's own sentence rather
+            // than the generic unavailable one: nothing is out of date here,
+            // and "reopen it" is the wrong next step.
+            return audio_playback_response("locked", None, library_reader::LOCKED_MESSAGE);
+        }
         Err(access) if access.state == "stale" => {
             return audio_playback_response(
                 "unavailable",
@@ -5773,20 +5838,340 @@ fn library_save_operator_note(
     )
 }
 
+/// Roadmap intake I5. What one lock command did, and the meeting's lock now.
+///
+/// It carries no meeting content and no capability. The shell reopens the
+/// meeting after a change rather than being handed a fresh set of handles
+/// here, so a lock action can never be the thing that grants access.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MeetingLockResponse {
+    /// `locked`, `unlocked`, `declined`, `unavailable`, or `stale`.
+    state: &'static str,
+    lock: meeting_lock::MeetingLock,
+    message: String,
+}
+
+/// Roadmap intake I5. A fresh single-use confirmation for one action on one
+/// locked meeting, or the honest reason there is none.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LockedActionAuthorizationResponse {
+    /// `authorized`, `declined`, `unavailable`, `not-locked`, or `stale`.
+    state: &'static str,
+    /// Present only on `authorized`. Opaque, single-use, and scoped to one
+    /// meeting and one action; the native side holds its meaning.
+    token: Option<String>,
+    message: String,
+}
+
+/// Said whenever this Mac cannot run the device-owner check at all.
+///
+/// The second sentence is the packet's whole honesty burden in one line: an
+/// unavailable check does not open the meeting. There is no bypass here, and
+/// building one would make the lock decorative. What remains true — and is
+/// stated in the module docs rather than shouted at the operator — is that the
+/// lock is a plain file, so a person with this Mac's filesystem can still get
+/// at the meeting. That is the deterrent's honest ceiling, not a loophole this
+/// command should offer.
+const CONFIRMATION_UNAVAILABLE_MESSAGE: &str =
+    "This Mac cannot confirm it's you (no Touch ID or password available). The lock stays on.";
+
+/// Said when the person cancelled or the check did not pass. Deliberately not
+/// the sentence above: "not this time" and "not on this Mac" are different
+/// facts, and collapsing them would tell someone to go buy hardware they have.
+const CONFIRMATION_DECLINED_MESSAGE: &str =
+    "Yawn could not confirm it's you. This meeting stays locked.";
+
+/// What macOS renders under the prompt when the operator asks to take the lock
+/// off. Removing a lock is not one of the three gated actions -- it changes the
+/// meeting rather than reaching into it -- so it carries its own sentence
+/// instead of borrowing `LockedAction::Open`'s, which would say "open a locked
+/// meeting" to someone who clicked Remove lock.
+const UNLOCK_CONFIRMATION_REASON: &str = "remove the lock from a meeting on this Mac";
+
+/// Runs the device-owner check off every lock this app holds.
+///
+/// The prompt blocks on a person for as long as they take. `with_preview_library`
+/// holds the meeting-storage sequence and the library mutex for its whole
+/// closure, and `command_lock` serializes commands, so confirming inside any of
+/// them would stall the app behind a panel the operator may never answer. Every
+/// caller here therefore follows the same three steps: resolve the meeting
+/// (holding locks), release, then confirm.
+///
+/// `reason` is product copy: macOS shows it inside its own panel, so it names
+/// the act the operator just asked for and never a meeting's title.
+fn confirm_operator(
+    state: &State<'_, ApplicationState>,
+    reason: &str,
+) -> operator_confirmation::Confirmation {
+    state.confirmation.confirm(reason)
+}
+
+/// Locks one meeting the operator already opened in Library.
+///
+/// Locking needs no confirmation — it only ever removes this app's own access,
+/// and asking to prove identity before giving something up is friction with no
+/// safety in it. Bear's per-note lock behaves the same way.
+///
+/// Two things happen besides the write, and both are the point rather than
+/// housekeeping. Every outstanding confirmation is revoked, and the library
+/// reader is dropped so its handle maps go with it. Without them a meeting
+/// opened a moment ago would leave live transcript, export, playback, and
+/// personal-note capabilities in the webview that outlived the lock — writing
+/// a sidecar does not reach into a handle map.
+#[tauri::command(async)]
+fn lock_meeting(
+    handle: String,
+    state: State<'_, ApplicationState>,
+) -> Result<MeetingLockResponse, String> {
+    let Ok(_command) = state.command_lock.lock() else {
+        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+    };
+    let resolved = state
+        .with_preview_library(
+            || None,
+            |reader, _active| {
+                reader.with_locked_meeting(&handle, |storage, meeting_id, _lock| {
+                    meeting_dir(storage, meeting_id).ok()
+                })
+            },
+        )
+        .flatten();
+    let Some(directory) = resolved else {
+        return Err("That view is no longer current. Reopen it and try again.".into());
+    };
+    meeting_lock::write(&directory, true)?;
+    if let Ok(mut authority) = state.locked_actions.lock() {
+        authority.revoke_all();
+    }
+    // Drop the reader with every capability it minted for this meeting while
+    // it was open.
+    let _ = with_preview_library_invalidated(&state, || ());
+    Ok(MeetingLockResponse {
+        state: "locked",
+        lock: meeting_lock::read(&directory),
+        message: "This meeting is locked on this Mac.".into(),
+    })
+}
+
+/// Removes the lock from one meeting, after the device-owner check passes.
+///
+/// This is the only command that clears the flag, and it is the reason the
+/// check exists: without it, anything that could set `locked: false` would be
+/// the bypass. An unreadable lock file is unlocked the same way — the check
+/// still runs first, so "unreadable" never becomes the path that skips it.
+#[tauri::command(async)]
+fn unlock_meeting(
+    handle: String,
+    state: State<'_, ApplicationState>,
+) -> Result<MeetingLockResponse, String> {
+    // Resolve while holding the locks, then release them before the prompt.
+    let resolved = {
+        let Ok(_command) = state.command_lock.lock() else {
+            return Err(
+                "The local meeting library is unavailable. Reopen the app and try again.".into(),
+            );
+        };
+        state
+            .with_preview_library(
+                || None,
+                |reader, _active| {
+                    reader.with_locked_meeting(&handle, |storage, meeting_id, lock| {
+                        meeting_dir(storage, meeting_id)
+                            .ok()
+                            .map(|directory| (directory, lock))
+                    })
+                },
+            )
+            .flatten()
+    };
+    let Some((directory, lock)) = resolved else {
+        return Err("That view is no longer current. Reopen it and try again.".into());
+    };
+    if !lock.locked {
+        return Ok(MeetingLockResponse {
+            state: "unlocked",
+            lock,
+            message: "This meeting is not locked.".into(),
+        });
+    }
+    // No lock held from here to the answer.
+    match confirm_operator(&state, UNLOCK_CONFIRMATION_REASON) {
+        operator_confirmation::Confirmation::Confirmed => {}
+        operator_confirmation::Confirmation::Declined => {
+            return Ok(MeetingLockResponse {
+                state: "declined",
+                lock,
+                message: CONFIRMATION_DECLINED_MESSAGE.into(),
+            });
+        }
+        operator_confirmation::Confirmation::Unavailable => {
+            return Ok(MeetingLockResponse {
+                state: "unavailable",
+                lock,
+                message: CONFIRMATION_UNAVAILABLE_MESSAGE.into(),
+            });
+        }
+    }
+    let Ok(_command) = state.command_lock.lock() else {
+        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+    };
+    meeting_lock::write(&directory, false)?;
+    Ok(MeetingLockResponse {
+        state: "unlocked",
+        lock: meeting_lock::read(&directory),
+        message: "This meeting is no longer locked.".into(),
+    })
+}
+
+/// Runs the device-owner check for one action on one locked meeting and, on
+/// success, mints the single-use token that action's command requires.
+///
+/// One confirmation authorizes exactly one act. There is no session grant and
+/// no window to expire, which is why nothing here reads a clock: the token dies
+/// when it is spent, when another is minted, or when the meeting is locked.
+/// Reading a locked meeting is itself one of the three acts, so reopening it
+/// asks again rather than trading on the last answer.
+#[tauri::command(async)]
+fn authorize_locked_action(
+    handle: String,
+    action: String,
+    state: State<'_, ApplicationState>,
+) -> Result<LockedActionAuthorizationResponse, String> {
+    let Some(action) = meeting_lock::LockedAction::parse(&action) else {
+        return Err("That action cannot be confirmed.".into());
+    };
+    let resolved = {
+        let Ok(_command) = state.command_lock.lock() else {
+            return Err(
+                "The local meeting library is unavailable. Reopen the app and try again.".into(),
+            );
+        };
+        state.with_preview_library(
+            || None,
+            |reader, _active| {
+                reader.with_locked_meeting(&handle, |_storage, meeting_id, lock| {
+                    (meeting_id.to_owned(), lock)
+                })
+            },
+        )
+    };
+    let Some((meeting_id, lock)) = resolved else {
+        return Ok(LockedActionAuthorizationResponse {
+            state: "stale",
+            token: None,
+            message: "That view is no longer current. Reopen it and try again.".into(),
+        });
+    };
+    if !lock.locked {
+        // Decision 3: no friction on the default path. An unlocked meeting is
+        // told plainly that it needs nothing, rather than being handed a token
+        // that would only be ignored.
+        return Ok(LockedActionAuthorizationResponse {
+            state: "not-locked",
+            token: None,
+            message: "This meeting is not locked.".into(),
+        });
+    }
+    match confirm_operator(&state, action.reason()) {
+        operator_confirmation::Confirmation::Confirmed => {}
+        operator_confirmation::Confirmation::Declined => {
+            return Ok(LockedActionAuthorizationResponse {
+                state: "declined",
+                token: None,
+                message: CONFIRMATION_DECLINED_MESSAGE.into(),
+            });
+        }
+        operator_confirmation::Confirmation::Unavailable => {
+            return Ok(LockedActionAuthorizationResponse {
+                state: "unavailable",
+                token: None,
+                message: CONFIRMATION_UNAVAILABLE_MESSAGE.into(),
+            });
+        }
+    }
+    let Ok(mut authority) = state.locked_actions.lock() else {
+        return Err("The local meeting library is unavailable. Reopen the app and try again.".into());
+    };
+    Ok(LockedActionAuthorizationResponse {
+        state: "authorized",
+        token: Some(authority.mint(&meeting_id, action)),
+        message: "Confirmed on this Mac.".into(),
+    })
+}
+
+/// Spends a presented confirmation for `action`, returning the meeting it
+/// authorizes. `None` covers every failure the gate treats identically: no
+/// token, an unknown one, one already spent, one minted for another action.
+fn consume_locked_action(
+    state: &State<'_, ApplicationState>,
+    token: Option<&str>,
+    action: meeting_lock::LockedAction,
+) -> Option<String> {
+    state
+        .locked_actions
+        .lock()
+        .ok()
+        .and_then(|mut authority| authority.consume(token, action))
+}
+
+/// Roadmap intake I5's refusal for the two commands that reach a meeting
+/// through a bounded callback rather than through the reader's own access
+/// types. Both receive the storage root and an already-verified meeting id, so
+/// the gate runs on exactly the meeting about to be acted on.
+///
+/// A meeting whose directory cannot be resolved is *not* treated as locked:
+/// the surrounding command's own failure is the honest answer, and refusing
+/// with a lock message would name a barrier that is not what stopped it.
+fn refuse_locked_meeting(
+    storage: &StorageRoot,
+    meeting_id: &str,
+    unlocked_meeting_id: Option<&str>,
+) -> Result<(), String> {
+    let Ok(directory) = meeting_dir(storage, meeting_id) else {
+        return Ok(());
+    };
+    if meeting_lock::permits(
+        meeting_lock::read(&directory),
+        unlocked_meeting_id,
+        meeting_id,
+    ) {
+        return Ok(());
+    }
+    Err(library_reader::LOCKED_MESSAGE.into())
+}
+
 /// Opens the exact transcript artifact selected by a fresh Library handle. The
 /// handle is spent before the file is checked and launched, so this does not
 /// turn Library into generic filesystem access.
+///
+/// `lockToken` is roadmap intake I5's gate, and this command takes the same
+/// `export` scope as `library_export_meeting` rather than a scope of its own.
+/// Both do the same escalating thing: they put a locked meeting's transcript
+/// somewhere outside Yawn, where nothing about the lock reaches it. The
+/// in-app transcript read (`library_open_transcript`) is not gated here,
+/// because its handle is minted only by a `library_open_note` that already
+/// passed the gate, and locking a meeting invalidates the reader that holds
+/// every such handle.
 #[tauri::command]
 fn library_open_transcript_file(
     handle: String,
+    lock_token: Option<String>,
     state: State<'_, ApplicationState>,
 ) -> Result<LibraryTranscriptFileOpenResponse, String> {
+    let unlocked = consume_locked_action(
+        &state,
+        lock_token.as_deref(),
+        meeting_lock::LockedAction::Export,
+    );
     state.with_preview_library(
         || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
         |reader, active| match reader.open_transcript_bound(
             &handle,
             active,
             |storage, meeting_id, artifact| {
+                refuse_locked_meeting(storage, meeting_id, unlocked.as_deref())?;
                 open_verified_transcript_file(storage, meeting_id, artifact)?;
                 Ok::<_, String>(meeting_id.to_owned())
             },
@@ -5825,21 +6210,31 @@ struct LibraryExportMeetingResponse {
 #[tauri::command(async)]
 fn library_export_meeting(
     handle: String,
+    lock_token: Option<String>,
     state: State<'_, ApplicationState>,
 ) -> Result<LibraryExportMeetingResponse, String> {
+    let unlocked = consume_locked_action(
+        &state,
+        lock_token.as_deref(),
+        meeting_lock::LockedAction::Export,
+    );
     state.with_preview_library(
         || Err("The local meeting library is unavailable. Reopen the app and try again.".into()),
         |reader, active| match reader.open_export_bound(
             &handle,
             active,
             |storage, meeting_id, label, created_at_epoch_seconds, claims| {
-                let outcome = meeting_export::export_meeting(
-                    storage,
-                    meeting_id,
-                    label,
-                    created_at_epoch_seconds,
-                    claims,
-                );
+                // Roadmap intake I5, checked before a single file is written.
+                let outcome = refuse_locked_meeting(storage, meeting_id, unlocked.as_deref())
+                    .and_then(|()| {
+                        meeting_export::export_meeting(
+                            storage,
+                            meeting_id,
+                            label,
+                            created_at_epoch_seconds,
+                            claims,
+                        )
+                    });
                 (meeting_id.to_owned(), outcome)
             },
         ) {
@@ -6663,6 +7058,11 @@ fn main() {
             library_open_transcript,
             library_open_transcript_file,
             library_export_meeting,
+            // Roadmap intake I5: the per-meeting local-access barrier and its
+            // action-scoped confirmations.
+            lock_meeting,
+            unlock_meeting,
+            authorize_locked_action,
             correct_speaker_name,
             local_vocabulary_list,
             local_vocabulary_add,
@@ -9619,6 +10019,168 @@ mod tests {
     use std::sync::Barrier;
     use tempfile::TempDir;
 
+    /// Roadmap intake I5, decision 4, verbatim. The sentence is the packet's
+    /// honesty burden on the machine that cannot run the check: the lock does
+    /// not open, and the reader is told which of the two failures happened.
+    #[test]
+    fn the_unavailable_confirmation_sentence_is_the_one_the_packet_requires() {
+        assert_eq!(
+            CONFIRMATION_UNAVAILABLE_MESSAGE,
+            "This Mac cannot confirm it's you (no Touch ID or password available). The lock stays on."
+        );
+        // A decline is a different fact and gets a different sentence. Telling
+        // someone who cancelled that their Mac lacks the hardware would send
+        // them to buy what they already own.
+        assert_ne!(
+            CONFIRMATION_DECLINED_MESSAGE,
+            CONFIRMATION_UNAVAILABLE_MESSAGE
+        );
+        assert_eq!(
+            CONFIRMATION_DECLINED_MESSAGE,
+            "Yawn could not confirm it's you. This meeting stays locked."
+        );
+    }
+
+    /// The governing constraint says to state the honest claim -- a
+    /// local-access deterrent -- unless encryption at rest actually ships. It
+    /// has not. No native lock string may claim otherwise.
+    #[test]
+    fn no_native_lock_sentence_claims_encryption_or_security() {
+        for sentence in [
+            CONFIRMATION_UNAVAILABLE_MESSAGE,
+            CONFIRMATION_DECLINED_MESSAGE,
+            library_reader::LOCKED_MESSAGE,
+            UNLOCK_CONFIRMATION_REASON,
+            meeting_lock::LockedAction::Open.reason(),
+            meeting_lock::LockedAction::Export.reason(),
+            meeting_lock::LockedAction::Playback.reason(),
+        ] {
+            let lowered = sentence.to_lowercase();
+            for forbidden in ["encrypt", "secure", "protected"] {
+                assert!(!lowered.contains(forbidden), "{sentence}");
+            }
+        }
+    }
+
+    /// Each prompt sentence names the act the operator just asked for.
+    ///
+    /// macOS renders these inside its own panel, so a mismatch is a lie on
+    /// screen: someone who clicked "Remove lock" being told Yawn wants to
+    /// "open a locked meeting" cannot tell what they are approving. The
+    /// forbidden-word test above cannot see this -- it checks what the
+    /// sentences must not claim, and this checks that they describe the right
+    /// act.
+    #[test]
+    fn every_confirmation_prompt_names_the_act_it_was_raised_for() {
+        assert!(UNLOCK_CONFIRMATION_REASON.contains("remove the lock"));
+        assert!(meeting_lock::LockedAction::Open.reason().contains("open"));
+        assert!(meeting_lock::LockedAction::Export.reason().contains("export"));
+        assert!(meeting_lock::LockedAction::Playback.reason().contains("play"));
+        // Removing a lock is not one of the three gated actions and must not
+        // borrow one of their sentences.
+        for action in [
+            meeting_lock::LockedAction::Open,
+            meeting_lock::LockedAction::Export,
+            meeting_lock::LockedAction::Playback,
+        ] {
+            assert_ne!(UNLOCK_CONFIRMATION_REASON, action.reason());
+        }
+        // And the command that removes a lock uses it. Read from source
+        // because the prompt itself cannot run here.
+        let source = include_str!("main.rs");
+        let start = source.find("fn unlock_meeting(").unwrap();
+        assert!(
+            source[start..start + 2_600].contains("confirm_operator(&state, UNLOCK_CONFIRMATION_REASON)")
+        );
+    }
+
+    /// The gate in front of export and of opening the transcript file
+    /// natively -- two of this packet's four refusal points, and the two that
+    /// put a locked meeting's contents somewhere the lock does not reach.
+    ///
+    /// `refuse_locked_meeting` is where both of them make the decision, so it
+    /// is tested directly rather than through the commands, which cannot be
+    /// invoked without a Tauri runtime.
+    #[test]
+    fn export_and_transcript_file_refuse_a_locked_meeting_without_a_confirmation() {
+        let temporary = TempDir::new().unwrap();
+        let protected = temporary.path().join("protected");
+        local_meeting_notes_session_core::storage::create_private_dir(&protected).unwrap();
+        let storage =
+            StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let meeting_id = "11111111-1111-4111-8111-111111111111";
+        let directory = storage.path().join("meetings").join(meeting_id);
+        local_meeting_notes_session_core::storage::create_private_dir(&directory).unwrap();
+
+        // Decision 3: the unlocked default path takes no friction, with or
+        // without a token in hand.
+        assert!(refuse_locked_meeting(&storage, meeting_id, None).is_ok());
+
+        meeting_lock::write(&directory, true).unwrap();
+        // Refuses without a confirmation, with the sentence every locked
+        // refusal uses.
+        assert_eq!(
+            refuse_locked_meeting(&storage, meeting_id, None).unwrap_err(),
+            library_reader::LOCKED_MESSAGE
+        );
+        // Refuses a confirmation minted for a different meeting. This is what
+        // stops a token the operator gave for a meeting they may read from
+        // exporting one they may not.
+        assert!(refuse_locked_meeting(&storage, meeting_id, Some("another-meeting")).is_err());
+        // Allows the meeting its own confirmation names.
+        assert!(refuse_locked_meeting(&storage, meeting_id, Some(meeting_id)).is_ok());
+
+        // A meeting whose directory cannot be resolved is not reported as
+        // locked: the surrounding command's own failure is the honest answer,
+        // and a lock message would name a barrier that is not what stopped it.
+        // `..` is what `StorageRoot::resolve` refuses, which is the only way
+        // to reach that branch from here.
+        assert!(
+            meeting_dir(&storage, "../escape").is_err(),
+            "this id must be the one storage refuses, or the branch below is untested"
+        );
+        assert!(refuse_locked_meeting(&storage, "../escape", None).is_ok());
+        // And a meeting that simply has no lock file is not locked either --
+        // the ordinary case, reached through the other branch.
+        assert!(refuse_locked_meeting(&storage, "not-a-meeting", None).is_ok());
+    }
+
+    /// The three commands run the device-owner check with no app lock held.
+    ///
+    /// The prompt blocks on a person, so confirming while holding
+    /// `command_lock`, the meeting-storage sequence, or the library mutex
+    /// would stall every other command behind a panel that may never be
+    /// answered. This reads the source rather than exercising it because the
+    /// real prompt cannot run in a test: each command resolves its meeting in
+    /// a scope that ends, and only then confirms.
+    #[test]
+    fn the_confirmation_prompt_is_never_raised_while_a_lock_is_held() {
+        let source = include_str!("main.rs");
+        for command in ["fn unlock_meeting(", "fn authorize_locked_action("] {
+            let start = source.find(command).expect(command);
+            let body = &source[start..start + 2_600];
+            // The library read is what takes the meeting-storage sequence and
+            // the library mutex, and `command_lock` is taken in the same
+            // scope. Its enclosing block must close -- releasing all three --
+            // strictly before the prompt goes up.
+            let resolve = body
+                .find("state\n            .with_preview_library(")
+                .or_else(|| body.find("state.with_preview_library("))
+                .expect("the command must resolve its meeting through the library");
+            let resolve_end = resolve
+                + body[resolve..]
+                    .find("\n    };\n")
+                    .expect("the resolving scope must close");
+            let confirm = body
+                .find("confirm_operator(&state")
+                .expect("the command must confirm");
+            assert!(
+                resolve < resolve_end && resolve_end < confirm,
+                "{command} confirms while still holding its resolving scope"
+            );
+        }
+    }
+
     fn valid_attestation() -> StartAttestation {
         StartAttestation {
             participants_consented: true,
@@ -10898,7 +11460,7 @@ mod tests {
             let mut reader = library_reader::LibraryReader::rebuild(storage.clone(), active)
                 .expect("synthetic Preview reader");
             let snapshot = reader.snapshot(active);
-            let note = reader.open_note(&snapshot.rows[0].handle, active);
+            let note = reader.open_note(&snapshot.rows[0].handle, active, None);
             let transcript_handle = note.transcript_handle.unwrap();
             let opened = reader
                 .open_transcript_bound(

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-unlock-meeting"
+description = "Enables the unlock_meeting command without any pre-configured scope."
+commands.allow = ["unlock_meeting"]
+
+[[permission]]
+identifier = "deny-unlock-meeting"
+description = "Denies the unlock_meeting command without any pre-configured scope."
+commands.deny = ["unlock_meeting"]

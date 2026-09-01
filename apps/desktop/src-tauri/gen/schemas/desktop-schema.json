@@ -183,6 +183,12 @@
           "markdownDescription": "Enables the app_snapshot command without any pre-configured scope."
         },
         {
+          "description": "Enables the authorize_locked_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-authorize-locked-action",
+          "markdownDescription": "Enables the authorize_locked_action command without any pre-configured scope."
+        },
+        {
           "description": "Enables the corpus_embed_pending command without any pre-configured scope.",
           "type": "string",
           "const": "allow-corpus-embed-pending",
@@ -355,6 +361,12 @@
           "type": "string",
           "const": "allow-local-vocabulary-set-enabled",
           "markdownDescription": "Enables the local_vocabulary_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the lock_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-lock-meeting",
+          "markdownDescription": "Enables the lock_meeting command without any pre-configured scope."
         },
         {
           "description": "Enables the meeting_context command without any pre-configured scope.",
@@ -609,10 +621,22 @@
           "markdownDescription": "Enables the transcript_retry_start command without any pre-configured scope."
         },
         {
+          "description": "Enables the unlock_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-unlock-meeting",
+          "markdownDescription": "Enables the unlock_meeting command without any pre-configured scope."
+        },
+        {
           "description": "Denies the app_snapshot command without any pre-configured scope.",
           "type": "string",
           "const": "deny-app-snapshot",
           "markdownDescription": "Denies the app_snapshot command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the authorize_locked_action command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-authorize-locked-action",
+          "markdownDescription": "Denies the authorize_locked_action command without any pre-configured scope."
         },
         {
           "description": "Denies the corpus_embed_pending command without any pre-configured scope.",
@@ -787,6 +811,12 @@
           "type": "string",
           "const": "deny-local-vocabulary-set-enabled",
           "markdownDescription": "Denies the local_vocabulary_set_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the lock_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-lock-meeting",
+          "markdownDescription": "Denies the lock_meeting command without any pre-configured scope."
         },
         {
           "description": "Denies the meeting_context command without any pre-configured scope.",
@@ -1039,6 +1069,12 @@
           "type": "string",
           "const": "deny-transcript-retry-start",
           "markdownDescription": "Denies the transcript_retry_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the unlock_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-unlock-meeting",
+          "markdownDescription": "Denies the unlock_meeting command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

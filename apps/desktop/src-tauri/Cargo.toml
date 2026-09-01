@@ -23,6 +23,10 @@ tauri-plugin-single-instance = "2"
 uuid.workspace = true
 thiserror.workspace = true
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+objc2-local-authentication = { version = "0.3.2", default-features = false, features = ["LAContext", "LAError", "LAPublicDefines", "block2", "std", "alloc"] }
+block2 = "0.6.2"
+objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["alloc", "NSString", "NSError"] }
 
 [dev-dependencies]
 serde_json.workspace = true

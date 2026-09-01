@@ -429,6 +429,124 @@ export function transcriptCitationSummary(turnsCited, totalTurns) {
 // mirrors `operatorNote`'s own present/empty/unreadable split exactly, so the
 // renderer needs no separate rule for "nothing readable" versus "nothing
 // written."
+// Roadmap intake I5. The governing constraint is verbatim: "State the honest
+// claim -- a local-access deterrent -- unless encryption at rest actually
+// ships." It has not shipped, so every sentence below stays on the honest side
+// of that line, and `meetingLockCopyIsHonest` asserts it mechanically rather
+// than trusting a reviewer to notice a word drifting in later.
+//
+// The words that must appear, and the words that must not, are both load
+// bearing. "not encryption" is the promise this packet makes about itself.
+const LOCK_SHEET_COPY = Object.freeze({
+  lock: Object.freeze({
+    eyebrow: "Local barrier",
+    heading: "Lock this meeting?",
+    detail: "Its note, transcript, and audio will require Touch ID to open on this Mac. This is a local barrier, not encryption — the files on disk are unchanged.",
+    label: "Lock meeting",
+  }),
+  unlock: Object.freeze({
+    eyebrow: "Local barrier",
+    heading: "Remove the lock?",
+    detail: "This meeting will open without Touch ID again. Removing the lock changes nothing on disk — it was never encrypted.",
+    label: "Remove lock",
+  }),
+});
+
+// A Mac with no Touch ID sensor and no login password cannot run the check at
+// all, so locking there would create a meeting this app can never reopen. The
+// lock sheet says so and does not offer the button. This is the one case the
+// packet's decision 4 does not cover -- it names the machine that becomes
+// unable later, not the one that never could -- and refusing up front is
+// cheaper than the unopenable meeting it prevents.
+const LOCK_UNAVAILABLE_DETAIL = "This Mac cannot confirm it's you (no Touch ID or password available), so a locked meeting could not be reopened here.";
+
+export function meetingLockSheetCopy(kind, { canConfirm = true } = {}) {
+  const copy = kind === "unlock" ? LOCK_SHEET_COPY.unlock : LOCK_SHEET_COPY.lock;
+  if (kind !== "unlock" && !canConfirm) {
+    return { ...copy, detail: LOCK_UNAVAILABLE_DETAIL, label: copy.label, blocked: true };
+  }
+  return { ...copy, blocked: false };
+}
+
+// The mechanical half of the honesty rule, kept beside the copy rather than
+// only in the test file so the constraint travels with the sentences it
+// governs.
+//
+// It is a claim check, not a word ban. "This is not encryption" and "it was
+// never encrypted" are the sentences the packet requires, and they contain the
+// very word an outright ban would reject -- so explicit denials are removed
+// first, and only an unqualified claim left standing fails.
+const LOCK_COPY_DENIALS = /\b(?:not|never|no|isn't|is not|does not|doesn't|without)\s+(?:been\s+)?(?:encryption|encrypted|encrypt|secure|secured|protected)\b/g;
+const LOCK_COPY_CLAIMS = ["encrypt", "secure", "protected", "safe from"];
+
+export function meetingLockCopyIsHonest(text) {
+  const value = String(text || "").toLowerCase().replace(LOCK_COPY_DENIALS, " ");
+  return !LOCK_COPY_CLAIMS.some((forbidden) => value.includes(forbidden));
+}
+
+// What the meeting detail shows for one meeting's lock. `state` drives which
+// affordance renders; nothing here decides access, which lives in Rust.
+//
+//   locked      -- the gate refused this open: show the barrier, offer to
+//                  confirm, and render no meeting content at all.
+//   unreadable  -- locked, and Yawn could not read the lock file. Same
+//                  refusal, different sentence: removing the lock is the only
+//                  way forward and the reader should be told that plainly.
+//   unlocked    -- read normally. `lockable` is what the Manage menu offers.
+//   open        -- locked, and open for reading because a confirmation was
+//                  spent. Says so, because a reader who does not know the
+//                  meeting is still locked cannot understand why playing its
+//                  audio asks again.
+export function meetingLockPresentation(note) {
+  if (!note) return null;
+  const lock = note.lock || {};
+  if (note.state === "locked") {
+    return {
+      state: lock.unreadable ? "unreadable" : "locked",
+      heading: "This meeting is locked",
+      detail: lock.unreadable
+        ? "Yawn could not read this meeting's lock, so it stays locked. Removing the lock is the only way to open it here."
+        : "Its note, transcript, and audio stay closed until Touch ID confirms it's you on this Mac. This is a local barrier, not encryption — the files on disk are unchanged.",
+      action: { action: "unlock-meeting-open", label: "Confirm to open" },
+    };
+  }
+  if (lock.locked) {
+    return {
+      state: "open",
+      heading: "Open for now",
+      detail: "This meeting stays locked. Exporting it or playing its audio asks for Touch ID again.",
+      action: null,
+    };
+  }
+  return { state: "unlocked", heading: "", detail: "", action: null };
+}
+
+// A locked row shows its title and its date. It shows no note preview -- the
+// backend already withholds one -- and no transcript or note-only line, which
+// is the detail Bear's obscured previews also drop. "Locked" replaces it, so
+// the row still says something true about itself rather than going blank.
+export function libraryRowMetaPresentation(row) {
+  if (row?.locked) return { locked: true, label: "Locked", preview: null };
+  return {
+    locked: false,
+    label: row?.transcriptAvailable ? "transcript available" : "note only",
+    preview: libraryRowPreview(row),
+  };
+}
+
+// Maps one `authorize_locked_action`, `lock_meeting`, or `unlock_meeting`
+// response onto what the reader is told. The three failure states are kept
+// apart on purpose: "you cancelled", "this Mac cannot ask", and "that view is
+// out of date" lead to three different next moves.
+export function lockedActionOutcome(response) {
+  const state = response?.state || "";
+  const message = typeof response?.message === "string" ? response.message.trim() : "";
+  if (["authorized", "locked", "unlocked"].includes(state)) {
+    return { ok: true, state, message };
+  }
+  return { ok: false, state: state || "unavailable", message };
+}
+
 export function meetingContextPresentation(meetingContext) {
   if (meetingContext?.unreadable) return { state: "unreadable", text: "" };
   const text = typeof meetingContext?.text === "string" ? meetingContext.text.trim() : "";
