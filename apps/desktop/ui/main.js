@@ -1169,7 +1169,20 @@ function renderMeetingPane() {
   // caption inside the ordinary content below, the same way the prior
   // version kept the workspace visible under that one warning.
   const recovery = meetingRecoveryPresentation(note, transcript, state.generatingMeetingId);
-  const blockingRecovery = recovery && recovery.state !== "audio-released" ? recovery : null;
+  // A recovery presentation replaces the whole pane only when nothing about
+  // the meeting is readable. A recovered-interrupted meeting with retained
+  // audio, or any meeting with transcript turns or the operator's own notes,
+  // is content plus a fact: it renders the workspace and the note card
+  // carries the state (DESIGN.md, "a fact is a caption; a problem is a
+  // needs-attention state" -- the needs-attention pane is for the case
+  // where there is nothing else to show).
+  const readable = Boolean(
+    transcript?.turns?.length
+    || note?.microphonePlaybackHandle
+    || note?.systemPlaybackHandle
+    || note?.operatorNote?.text,
+  );
+  const blockingRecovery = recovery && recovery.state !== "audio-released" && !readable ? recovery : null;
   if (blockingRecovery) {
     const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
     return renderNeedsAttentionPane({
