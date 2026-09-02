@@ -1176,11 +1176,17 @@ function renderMeetingPane() {
   // carries the state (DESIGN.md, "a fact is a caption; a problem is a
   // needs-attention state" -- the needs-attention pane is for the case
   // where there is nothing else to show).
+  // The reader issues a meeting-deletion handle for every meeting it admits
+  // as real (library_reader.rs, LibraryNoteResponse), including a
+  // recovered-interrupted one with only partial audio; a response with no
+  // handle at all is the genuinely unreadable case.
   const readable = Boolean(
     transcript?.turns?.length
     || note?.microphonePlaybackHandle
     || note?.systemPlaybackHandle
-    || note?.operatorNote?.text,
+    || note?.operatorNote?.text
+    || note?.meetingDeletionHandle
+    || note?.operatorNoteHandle,
   );
   const blockingRecovery = recovery && recovery.state !== "audio-released" && !readable ? recovery : null;
   if (blockingRecovery) {
