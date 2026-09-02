@@ -22,6 +22,24 @@ Cross-meeting questions can follow once the source record is reliable.
 Cloud accounts, automatic call detection, meeting bots, and live meeting chat do
 not enter the roadmap through competitor comparison alone.
 
+## Design direction rethink — 2026-09-02
+
+The operator rejected the visual direction: the installed app rendered a
+marketing hero over a list inside a native window while the brief said
+Mac-native and light chrome, and the mismatch dated from the first commit of
+the reset. Diagnosis in `design-rethink-2026-09-02.md`; the rethink ran the
+judged-screen pattern's own path: a blind cold review of the installed build
+(nine of ten frames revise), device captures of six installed comparables,
+an experience brief with the platform strategy written for the first time,
+three divergent whole-screen concepts rendered on the same four states in
+both appearances, and a selection ADR. **Concept A, source list beside
+document, was selected** (`design-direction-decision.md`); `DESIGN.md` now
+carries the visual system and `DIRECTION.md` points at the ADR. The rendered
+alternatives B and C stay in `apps/desktop/ui-harness/concepts` with their
+frames. Owed next: the implementation wave that rebuilds Home and the
+meeting view to concept A, carrying the D-LOCK, D-TOAST, and R-series
+findings unchanged, then a cold review of the rebuilt installed app.
+
 ## What the live apps changed
 
 The 2026-08-16 desktop comparison checked Granola 7.478.0, Wispr Flow

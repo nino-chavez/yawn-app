@@ -1,0 +1,178 @@
+/* Concept C — Dated stream. List and document are the same column: a
+   scrolling stream of meetings grouped by day, the current or selected one
+   expanded in place. No sidebar. Tokens only; no hard-coded color. */
+
+.app { position: relative; height: 100%; }
+
+/* ---- Toolbar ---- */
+.toolbar {
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--window);
+  border-bottom: 1px solid var(--separator);
+}
+.win-title {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--label-2);
+}
+.spacer { flex: 1; }
+.toolbar .search { width: 220px; }
+.record-group { display: flex; align-items: center; gap: 6px; }
+.record-group .btn.record.live { display: inline-flex; align-items: center; gap: 6px; }
+.rec-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; display: inline-block; }
+
+/* ---- Stream ---- */
+.stream {
+  position: absolute;
+  top: var(--toolbar-h);
+  left: 0; right: 0; bottom: 0;
+  overflow-y: auto;
+  background: var(--content);
+}
+.stream-col {
+  width: 720px;
+  margin: 0 auto;
+  padding: 22px 0 48px;
+}
+
+/* ---- Day headers ---- */
+.day-group { margin-bottom: 4px; }
+.day-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 6px;
+}
+.day-group:first-child .day-header { margin-top: 0; }
+.day-header .caption { white-space: nowrap; }
+.day-header::after { content: ""; flex: 1; border-top: 1px solid var(--separator); }
+
+/* ---- Collapsed rows ---- */
+.item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 4px;
+  border: none;
+  border-bottom: 1px solid var(--separator);
+  background: none;
+}
+.day-group:last-of-type .item-row:last-child { border-bottom: none; }
+.item-main { min-width: 0; flex: 1; }
+.item-title-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.item-title {
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  min-width: 0;
+}
+.item-caption { margin-top: 2px; }
+.item-excerpt {
+  margin-top: 2px;
+  font-size: var(--t-body);
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attn-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--attention);
+  flex: none;
+}
+.chevron {
+  color: var(--label-3);
+  font-size: 14px;
+  align-self: center;
+  margin-left: auto;
+  flex: none;
+}
+
+/* ---- Expanded items ---- */
+.item.expanded {
+  position: relative;
+  padding: 14px 4px 22px;
+  border-bottom: 1px solid var(--separator);
+}
+.day-group:last-of-type .item.expanded:last-child { border-bottom: none; }
+.item-head { margin-bottom: 10px; }
+.item-title.large { font-size: var(--t-title); font-weight: 600; color: var(--label); }
+
+/* Read body (Overview / Decisions / Follow-ups / Open questions) */
+.read ul { margin: 0 0 6px; padding-left: 18px; }
+.read li { font-size: var(--t-read); line-height: var(--lh-read); margin-bottom: 4px; }
+.source-inline {
+  margin: 6px 0 10px 0;
+  padding: 8px 0 8px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--evidence);
+  max-width: var(--measure);
+}
+.source-quote {
+  font-size: var(--t-body);
+  color: var(--label-2);
+  font-style: italic;
+  margin: 0 0 4px;
+}
+.source-meta { margin: 0 0 8px; }
+.source-open { display: block; }
+
+/* Now (during capture) */
+.item.now .item-caption { color: var(--label-2); }
+.note-canvas {
+  white-space: pre-wrap;
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  max-width: var(--measure);
+  min-height: 54px;
+  margin: 8px 0 14px;
+  color: var(--label);
+}
+details.live-transcript summary {
+  font-size: var(--t-body);
+  color: var(--label-2);
+  margin-bottom: 6px;
+  cursor: default;
+}
+details.live-transcript .turn {
+  margin: 0 0 8px 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--separator);
+}
+details.live-transcript .turn-meta { display: block; }
+details.live-transcript .turn p { margin: 2px 0 0; font-size: var(--t-body); }
+
+/* Needs attention */
+.item.attention { padding: 16px 4px 22px; }
+.attn-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--t-title);
+  font-weight: 600;
+  color: var(--label);
+}
+.attn-title .attn-dot { width: 8px; height: 8px; }
+.attn-body {
+  font-size: var(--t-body);
+  color: var(--label-2);
+  max-width: var(--measure);
+  margin: 8px 0 12px;
+}
+.attn-actions { display: flex; gap: 8px; }
+
+/* Trash */
+.trash-row {
+  margin-top: 26px;
+  padding: 10px 4px 0;
+  border-top: 1px solid var(--separator);
+}

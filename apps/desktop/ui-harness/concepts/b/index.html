@@ -1,0 +1,38 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Yawn — Concept B, Notepad first</title>
+<link rel="stylesheet" href="../shared/tokens.css" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="titlebar" id="toolbar">
+  <div class="tb-left">
+    <span class="traffic"><i></i><i></i><i></i></span>
+    <button class="meetings-btn" id="meetingsBtn" type="button">
+      Meetings
+      <span class="count" id="meetingsCount"></span>
+      <span class="chevron">⌄</span>
+    </button>
+  </div>
+  <div class="tb-title" id="tbTitle"></div>
+  <div class="tb-right">
+    <span class="search" id="search"><input type="text" placeholder="Search" tabindex="-1" /></span>
+    <span class="record-group" id="recordGroup"></span>
+  </div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="note-surface" id="noteSurface"></div>
+  <section class="transcript-split" id="transcriptSplit" hidden></section>
+</main>
+
+<div class="popover" id="popover" hidden></div>
+
+<footer class="statusbar" id="statusbar" hidden></footer>
+
+<script type="module" src="concept.js"></script>
+</body>
+</html>

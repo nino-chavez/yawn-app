@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Yawn — Concept A: Source list beside document</title>
+<link rel="stylesheet" href="../shared/tokens.css" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="app" id="app">
+  <header class="toolbar">
+    <div class="toolbar-left">
+      <span class="traffic" aria-hidden="true"><i></i><i></i><i></i></span>
+      <button class="icon-btn" id="sidebar-toggle" title="Toggle Sidebar (⌘⇧S)" aria-label="Toggle Sidebar">
+        <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="15" height="13" rx="2.5" stroke="currentColor" stroke-opacity="0.85"/>
+          <line x1="5.5" y1="1" x2="5.5" y2="13" stroke="currentColor" stroke-opacity="0.85"/>
+        </svg>
+      </button>
+    </div>
+    <div class="toolbar-title" id="window-title">Yawn</div>
+    <div class="toolbar-right">
+      <div class="search">
+        <input type="text" placeholder="Search meetings" aria-label="Search meetings" />
+      </div>
+      <div class="record-control" id="record-control"></div>
+    </div>
+  </header>
+  <div class="body">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="content" id="content"></main>
+  </div>
+</div>
+<script type="module" src="concept.js"></script>
+</body>
+</html>

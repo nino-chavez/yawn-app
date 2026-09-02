@@ -1,0 +1,60 @@
+/* Platform-native tokens for the rethink concepts. Approximations of macOS
+   semantic colors so a concept reads as an installed app in both appearances.
+   Not a design system; DESIGN.md is an output of the selection ADR. */
+:root {
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --t-caption: 11px; --t-body: 13px; --t-read: 15px; --t-title: 17px; --t-large: 22px;
+  --lh-body: 1.4; --lh-read: 1.6;
+  --measure: 62ch;
+  --r-control: 6px; --r-card: 10px;
+  --toolbar-h: 52px; --sidebar-w: 280px;
+  --motion: 160ms ease-out;
+
+  --window: #ececec; --sidebar: #e8e8e8; --content: #ffffff; --panel: #f5f5f5;
+  --separator: rgba(0,0,0,0.12); --separator-strong: rgba(0,0,0,0.2);
+  --label: #1d1d1f; --label-2: rgba(29,29,31,0.62); --label-3: rgba(29,29,31,0.40);
+  --control: #ffffff; --control-border: rgba(0,0,0,0.16); --control-shadow: 0 0.5px 1px rgba(0,0,0,0.12);
+  --selection: rgba(0,0,0,0.06); --selection-active: #0a60ff; --on-selection: #ffffff;
+  --accent: #0a60ff;                 /* system blue; the user's accent in the real app */
+  --record: #e5372c;                 /* the only red on screen; spent by Record and the live state */
+  --attention: #b7791f; --attention-bg: rgba(255,214,10,0.14);
+  --evidence: rgba(10,96,255,0.10);  /* one evidence accent, tint only */
+}
+:root[data-theme="dark"] {
+  --window: #1e1e1e; --sidebar: #232323; --content: #1e1e1e; --panel: #2a2a2a;
+  --separator: rgba(255,255,255,0.10); --separator-strong: rgba(255,255,255,0.18);
+  --label: #f2f2f2; --label-2: rgba(242,242,242,0.62); --label-3: rgba(242,242,242,0.40);
+  --control: #3a3a3a; --control-border: rgba(255,255,255,0.10); --control-shadow: 0 0.5px 1px rgba(0,0,0,0.4);
+  --selection: rgba(255,255,255,0.07); --selection-active: #0a84ff;
+  --accent: #0a84ff; --record: #ff453a;
+  --attention: #ffd60a; --attention-bg: rgba(255,214,10,0.10);
+  --evidence: rgba(10,132,255,0.16);
+}
+html, body { margin: 0; height: 100%; }
+body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); background: var(--window);
+  -webkit-font-smoothing: antialiased; width: 1080px; height: 900px; overflow: hidden; }
+* { box-sizing: border-box; }
+button, input { font: inherit; color: inherit; }
+.btn { height: 22px; padding: 0 10px; border-radius: var(--r-control); background: var(--control);
+  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; }
+.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn.record { color: var(--record); font-weight: 600; }
+.btn.record.live { background: var(--record); color: #fff; border-color: transparent; }
+.caption { font-size: var(--t-caption); color: var(--label-2); }
+.tertiary { color: var(--label-3); }
+.hairline { border-top: 1px solid var(--separator); }
+.search { height: 22px; width: 200px; border-radius: 6px; border: 1px solid var(--control-border);
+  background: var(--control); padding: 0 8px 0 24px; color: var(--label-2);
+  background-image: none; position: relative; }
+.search::before { content: "⌕"; position: absolute; left: 7px; top: 1px; color: var(--label-3); }
+.read { font-size: var(--t-read); line-height: var(--lh-read); max-width: var(--measure); }
+.read h2 { font-size: var(--t-body); font-weight: 600; color: var(--label-2); text-transform: none; letter-spacing: 0; margin: 20px 0 6px; }
+.read p, .read li { margin: 0 0 6px; }
+.claim { border-bottom: 1px dashed var(--separator-strong); cursor: default; }
+.claim.open { background: var(--evidence); border-bottom-color: var(--accent); }
+.traffic { display: inline-flex; gap: 8px; margin-right: 12px; }
+.traffic i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
+.fixture-tag { position: absolute; right: 8px; bottom: 6px; font-size: 10px; color: var(--label-3); font-family: var(--font-mono); }

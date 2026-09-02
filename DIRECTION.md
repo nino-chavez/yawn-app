@@ -1,15 +1,17 @@
 # Yawn — design direction
 
 design_intent: refit
-<!-- Set from the 2026-09-01 cold review of e7e96f9 (browser-render captures,
-     provisional): revise on 4 of 9 surfaces, including composition on a core
-     surface (two differently-styled Record affordances on Home). The
-     direction itself stands -- the primary journey surfaces (first-run,
-     capture, after, settings) passed cold, so this is refit, not rethink:
-     presentation changes inside the approved direction. Refit's owed
-     experience brief is this file's object/action/state matrix plus the
-     surface roster. Installed-app captures supersede these verdicts and may
-     move this back to preserve. -->
+design_direction: docs/design-direction-decision.md
+<!-- 2026-09-02: the rethink concluded. The operator selected Concept A
+     (source list beside document) from three rendered concepts; the
+     selection ADR above is the direction record and DESIGN.md carries the
+     visual system. Everything below the Thesis was the prior direction's
+     matrix and ledger and still applies; the Character section is
+     rewritten to the selected concept. History of the rethink:
+     docs/design-rethink-2026-09-02.md (diagnosis), docs/experience-brief-
+     2026-09-02.md (brief with platform strategy), docs/evidence/
+     comparables-window-composition-2026-09-02.md, and the concept harness
+     at apps/desktop/ui-harness/concepts (A selected; B and C kept). -->
 
 This file promotes what [docs/product-brief.md](docs/product-brief.md) already
 says into the shape the judged-screen pattern reads, and adds the two things
@@ -25,12 +27,18 @@ dashboard, task manager, CRM, team wiki, or calendar.
 
 ## Character
 
-Short, quiet, Mac-native. One main content column, generous reading width,
-light chrome. Color only for recording or attention, one evidence accent.
-Concrete status language. The generated note is the primary reading surface;
-transcript, provenance, and repair disclose at the point of doubt. Settings
-stay a small auxiliary window. Motion exists to make state changes legible,
-never to perform.
+Short, quiet, Mac-native, in the shape of Apple Notes and Bear: a unified
+toolbar carrying sidebar toggle, title, search, and the one Record control;
+a persistent meetings list on the left grouped by day, never the subject; the
+note in a document pane at the reading measure; the transcript disclosed as
+an inspector at the point of doubt. System font, system semantic colors, the
+user's accent. Color only for recording (Record and the live state) or
+attention (one dot, one needs-attention surface with a next action), plus
+one evidence tint. No hero, no pitch line, no eyebrow labels, no tinted
+content panels. The on-device promise is said once, in Settings. Status is
+small and near its object. Settings behaves like Preferences. Motion exists
+to make state changes legible, never to perform. Rendered reference:
+`apps/desktop/ui-harness/concepts/a/`.
 
 ## Anti-goals
 
@@ -71,6 +79,7 @@ did not produce (brief amendment, 2026-09-01).
 |---|---|---|---|---|
 | cold-e7e96f9 | 01/03/04/06/07 accept; 02/05/08/09 revise (PROVISIONAL, browser-render) | browser render, stubbed bridge (captures at 0155e2d) | blind -- read only captures and the five job questions | judged-screen pattern, section 3a |
 | conformance-w10-e7e96f9 | amendment honored; drifts: color budget (02, 07), note-ordering at 960px (04), prefers-contrast absent (09) (PROVISIONAL) | browser render, stubbed bridge (captures at 0155e2d) | the brief amendment of 2026-09-01 and this file | section 3b |
+| cold-bfa0a80-installed | 01-07, 09, 10 revise; 08 accept. Category read: main window native by chrome; composition faults named (headline persists over populated list, width unused, no split view, Settings reads as splash) | this Mac, packaged preview, real storage, dark and light (captures at bfa0a80) | blind -- ten frames, five job questions, category read | section 3a plus category read; rethink phase 1 step 1 |
 
 ## Content reads
 

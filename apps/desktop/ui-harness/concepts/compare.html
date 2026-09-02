@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>Yawn rethink — concept comparison</title>
+<style>
+  body{margin:0;font:13px/1.4 -apple-system,system-ui,sans-serif;background:#111;color:#eee;padding:24px}
+  h1{font-size:17px;margin:0 0 4px} h2{font-size:13px;color:#aaa;margin:28px 0 8px;font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  figure{margin:0} img{width:100%;display:block;border:1px solid #333;border-radius:6px;background:#000}
+  figcaption{font-size:11px;color:#999;margin-top:4px}
+  .head{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+  .head div{font-weight:600}
+  p.note{color:#999;max-width:70ch}
+</style>
+<h1>Yawn rethink — three concepts on the same four states</h1>
+<p class="note">Concept renders, not product. The four library rows are the real meetings on this Mac as they render today; the note, the capture, and the transcript are synthetic fixtures and each frame that shows them says so. Judge composition, hierarchy, and platform fit. Brief: docs/experience-brief-2026-09-02.md.</p>
+<div class="head"><div>A — Source list beside document</div><div>B — Notepad first, list as popover</div><div>C — Dated stream, expanded inline</div></div>
+<div id="root"></div>
+<script>
+const states={1:"1. Home with meetings, nothing selected",2:"2. During capture, two minutes in, one pause",3:"3. After: a note with one claim's source open",4:"4. Needs attention: the recovered-interrupted meeting"};
+const root=document.getElementById('root');
+for(const s of [1,2,3,4]) for(const t of ['dark','light']){
+  const h=document.createElement('h2'); h.textContent=states[s]+' — '+t; root.appendChild(h);
+  const g=document.createElement('div'); g.className='grid';
+  for(const c of ['a','b','c']){ const f=document.createElement('figure'); f.innerHTML=`<img src="out/${c}-${s}-${t}.png" alt="Concept ${c.toUpperCase()}, state ${s}, ${t}"><figcaption>${c.toUpperCase()} · state ${s} · ${t} · <a style="color:#7ab" href="${c}/index.html?state=${s}&theme=${t}">open live</a></figcaption>`; g.appendChild(f); }
+  root.appendChild(g);
+}
+</script>
