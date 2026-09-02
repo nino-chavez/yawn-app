@@ -118,6 +118,12 @@ under the build hash. Two defects the honest surface exposed:
   hand. Fix in two slices: stage the isolated tree from a hash-pinned lock
   in `build_runtime.sh` with a verify step, and surface generator admission
   to the meeting snapshot so the control and its copy state the fact.
+  Second slice landed (167a9f1 + 06aed65): `library_open_note` now carries
+  `noteGenerationAvailable` and one of two reasons, "Download a note model
+  in Settings first." or "This build cannot generate notes."; the control
+  renders disabled with the reason as its help. First slice in progress
+  (build_runtime.sh stages `generate-site-packages` from a hash-pinned
+  `requirements-generate.lock`, verify checks both trees).
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
