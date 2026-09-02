@@ -350,8 +350,12 @@ function render() {
   // below it says "This meeting is unavailable."). `meetingBlockingRecovery`
   // is the same readability check `renderMeetingPane` uses to decide whether
   // to replace the pane, so the title and the pane can never disagree.
+  // R16 (all-surfaces-41c026b-installed-cold.md finding 2): a meeting the
+  // reader admits keeps its title in every state, including needs attention;
+  // only a note the reader could not read at all ("stale", "unavailable")
+  // drops the title, since there is no meeting behind the pane to name.
   const selectedBlocked = view === "meeting" && state.selected
-    ? Boolean(meetingBlockingRecovery(state.selected.note, state.selected.transcript, state.generatingMeetingId))
+    ? ["stale", "unavailable"].includes(state.selected.note?.state || "")
     : false;
   const selectedTitle = view === "meeting" && state.selected && !selectedBlocked
     ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
@@ -1523,7 +1527,7 @@ function renderFirstRunSheet() {
           </div>
         </div>
         <div class="sheet-actions">
-          <button class="button button-primary" type="button" data-action="dismiss-first-run">Got it</button>
+          <button class="btn primary" type="button" data-action="dismiss-first-run">Got it</button>
         </div>
       </section>
     </div>

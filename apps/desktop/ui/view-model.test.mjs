@@ -1009,7 +1009,8 @@ test("the first-run sheet has exactly one dismiss button and no X, and Escape st
     source.indexOf("function renderRenameMeetingSheet"),
   );
   assert.match(sheetBody, /class="modal-backdrop first-run-backdrop"/);
-  assert.match(sheetBody, /<button class="button button-primary" type="button" data-action="dismiss-first-run">Got it<\/button>/);
+  // R19: the one control is the specimen's primary button, not a legacy shape.
+  assert.match(sheetBody, /<button class="btn primary" type="button" data-action="dismiss-first-run">Got it<\/button>/);
   assert.doesNotMatch(sheetBody, /icon-button/, "no X close control on the first-run sheet");
   assert.doesNotMatch(sheetBody, /aria-label="Close"/);
   assert.match(source, /if \(event\.key === "Escape"\) \{[\s\S]{0,500}if \(firstRunSheetShowing\) \{ void closeFirstRunSheet\(\); return; \}/);
@@ -1540,11 +1541,14 @@ test("toolbarTitlePresentation: recording beats a selection, else the title or Y
   assert.equal(toolbarTitlePresentation(), "Yawn");
 });
 
-test("render() resets the toolbar title to Yawn when the selected meeting is blocked", async () => {
+test("render() keeps the toolbar title for any meeting the reader admits and drops it only for an unreadable one", async () => {
+  // R16 revises R9: an interrupted meeting is a readable meeting in a
+  // needs-attention state, so the toolbar keeps naming it. Only a note the
+  // reader could not read at all leaves the toolbar at "Yawn".
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(
     source,
-    /const selectedBlocked = view === "meeting" && state\.selected\s*\?\s*Boolean\(meetingBlockingRecovery\(state\.selected\.note, state\.selected\.transcript, state\.generatingMeetingId\)\)\s*:\s*false;/,
+    /const selectedBlocked = view === "meeting" && state\.selected\s*\?\s*\["stale", "unavailable"\]\.includes\(state\.selected\.note\?\.state \|\| ""\)\s*:\s*false;/,
   );
   assert.match(
     source,

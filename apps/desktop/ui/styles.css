@@ -784,10 +784,16 @@ h3 {
   margin-bottom: 12px;
 }
 
+/* R17: the box is sized for a few lines and grows by hand; the caption sits
+   directly under it instead of at the foot of a fixed 160px field. */
 .meeting-notes-editor {
   width: 100%;
-  min-height: 160px;
+  min-height: 72px;
   resize: vertical;
+}
+
+.notes-area::placeholder {
+  color: var(--label-3);
 }
 
 /* Refit R8 (all-surfaces-2765401-installed-cold.md finding 1): "Meeting
@@ -2077,10 +2083,6 @@ h3 {
     order: -1;
   }
 
-  .meeting-notes-editor {
-    min-height: 300px;
-    height: min(42dvh, 420px);
-  }
 
   .transcript-workspace {
     height: min(620px, calc(100dvh - 250px));
@@ -2160,10 +2162,6 @@ h3 {
     padding: 19px;
   }
 
-  .meeting-notes-editor {
-    min-height: 280px;
-    height: 320px;
-  }
 
   .transcript-heading p {
     text-align: left;
@@ -2799,14 +2797,21 @@ html, body, #app {
 
 /* -- needs attention -------------------------------------------------------- */
 
+/* R16: the block is centered in the pane on both axes, at the reading
+   measure, with its own text left-aligned; every child takes the same width
+   so the left edges line up. */
 .attention-pane {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 0 64px;
+  padding: 0 48px;
   gap: 12px;
+}
+
+.attention-pane > * {
+  width: min(var(--measure), 100%);
 }
 
 .attention-headline {
