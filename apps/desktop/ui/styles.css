@@ -1278,9 +1278,22 @@ h3 {
   margin: clamp(20px, 5vw, 62px) auto 0;
 }
 
+.model-setup h1 {
+  /* R22 (type half): the model-setup title and copy take the document
+     sizes; the option cards are still the retired shape. */
+  margin: 0 0 8px;
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.25;
+}
+
 .model-setup-copy {
-  max-width: 650px;
-  margin-bottom: 28px;
+  max-width: var(--measure);
+  margin-bottom: 24px;
+  color: var(--label-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .model-options {
