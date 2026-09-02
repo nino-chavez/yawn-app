@@ -566,6 +566,7 @@ verified at source as shipped copy, not fixture artifacts.
 | R4 | Increased contrast produces a legible response | Both reviews converged: no prefers-contrast rule exists; the state renders byte-identical to default (large text already reflows correctly) | An accessibility state that changes nothing misstates what the system asked for |
 | R5 | The color budget holds on idle surfaces | Conformance drift: idle Ready dot, always-coral Record, green In-use tag in Settings | Color only for recording or attention plus one evidence accent; per-element decisions owed — a record-colored Record control may be the budget used correctly, a green third status color is not |
 | R6 | A locked row says why its summary is absent | Cold: the LOCKED row's missing preview reads as ambiguous (real render, I5's deliberate suppression) | Suppression is deliberate; ambiguity is not — one word of explanation, no content leak |
+| R7 | The first-run teaching copy never names a control that is not rendered | Installed-app cold review, confirmed against the genuine frame: the empty state says "Press Record" while a true first run renders only "Allow system audio" | Teaching copy describes the screen the stranger is actually on; if setup precedes Record, the copy walks through setup first |
 
 All six stay provisional until the installed-app capture pass, which
 supersedes the browser-render verdicts and may return design_intent to
