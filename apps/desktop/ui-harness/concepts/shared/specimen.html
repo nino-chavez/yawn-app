@@ -1,0 +1,199 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Yawn — style guide specimen</title>
+<link rel="stylesheet" href="tokens.css"><link rel="stylesheet" href="../a/styles.css">
+<style>
+  body { width: 1080px; height: auto; min-height: 900px; overflow: visible; padding: 24px 32px 48px; background: var(--window); }
+  h1 { font-size: var(--t-large); font-weight: 600; margin: 0 0 4px; }
+  h2 { font-size: var(--t-title); font-weight: 600; margin: 32px 0 10px; padding-top: 16px; border-top: 1px solid var(--separator); }
+  .lead { color: var(--label-2); max-width: 70ch; margin: 0 0 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .cell { background: var(--content); border: 1px solid var(--separator); border-radius: var(--r-card); padding: 12px; }
+  .cell .name { font-size: var(--t-caption); color: var(--label-3); margin-bottom: 8px; font-family: var(--font-mono); }
+  .swatch { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .swatch i { width: 28px; height: 18px; border-radius: 4px; border: 1px solid var(--separator); display: inline-block; }
+  .type-row { display: flex; align-items: baseline; gap: 12px; margin: 6px 0; }
+  .type-row .name { width: 120px; margin: 0; }
+  .space { display: flex; gap: 8px; align-items: flex-end; }
+  .space i { display: block; background: var(--accent); opacity: 0.5; width: 12px; }
+  .side-demo { width: 280px; background: var(--sidebar); border: 1px solid var(--separator); border-radius: 8px; overflow: hidden; }
+  .toolbar-demo { border: 1px solid var(--separator); border-radius: 8px; overflow: hidden; }
+  .toolbar-demo .toolbar { border-bottom: none; }
+  .content-demo { background: var(--content); border: 1px solid var(--separator); border-radius: 8px; padding: 16px 20px; }
+  .inspector-demo { display: flex; width: 100%; border: 1px solid var(--separator); border-radius: 8px; overflow: hidden; height: 240px; }
+  .inspector-demo .doc-wrap { padding: 16px 20px; }
+  .sheet-demo { position: relative; height: 300px; background: var(--content); border: 1px solid var(--separator); border-radius: 8px; overflow: hidden; }
+  .sheet-demo .dim { position: absolute; inset: 0; background: rgba(0,0,0,0.25); }
+  .sheet { position: absolute; left: 50%; top: 24px; transform: translateX(-50%); width: 440px; background: var(--panel); border: 1px solid var(--separator); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); padding: 18px 20px; }
+  .sheet h3 { font-size: var(--t-title); font-weight: 600; margin: 0 0 4px; }
+  .sheet .att { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; }
+  .sheet .att input { margin-top: 3px; }
+  .sheet .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .popover { width: 320px; background: var(--panel); border: 1px solid var(--separator); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); padding: 6px 0; }
+  .toast { display: inline-flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--separator); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
+  .menubar-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 5px; background: var(--selection); font-size: 12px; }
+  .menubar-pill.live { color: var(--record); }
+  .large { font-size: 17px; line-height: 1.5; }
+  .large .row-title { font-size: 17px; } .large .row-caption, .large .row-excerpt { font-size: 14px; }
+  .note { font-size: var(--t-caption); color: var(--label-3); margin-top: 6px; }
+</style></head><body>
+<script type="module">
+  const q = new URLSearchParams(location.search);
+  const t = q.get("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  document.documentElement.dataset.theme = t;
+  if (q.get("contrast") === "more") document.documentElement.dataset.contrast = "more";
+</script>
+<h1>Yawn — style guide specimen</h1>
+<p class="lead">Every component the selected concept (A) uses, in every state, rendered from the shared tokens and A's stylesheet. Rules: <code>DESIGN.md</code>. Load with <code>?theme=dark|light</code> and <code>&amp;contrast=more</code>.</p>
+
+<h2>Type</h2>
+<div class="cell">
+  <div class="type-row"><span class="name">large 22/600</span><span style="font-size:22px;font-weight:600">Settings</span><span class="note">window titles only</span></div>
+  <div class="type-row"><span class="name">title 17/600</span><span style="font-size:17px;font-weight:600">Launch checklist review</span><span class="note">note title, needs-attention headline</span></div>
+  <div class="type-row"><span class="name">read 15/1.6</span><span class="read" style="display:inline">The team reviewed the launch checklist and confirmed next steps.</span></div>
+  <div class="type-row"><span class="name">transcript 14/1.55</span><span style="font-size:14px;line-height:1.55">Everyone agreed to ship the retry review before Friday.</span></div>
+  <div class="type-row"><span class="name">body 13/1.4</span><span>Meeting · Sep 1, 2026</span><span class="note">rows, controls, toolbar</span></div>
+  <div class="type-row"><span class="name">caption 11</span><span class="caption">9:41 AM · 0:32 · Transcript ready</span></div>
+  <div class="type-row"><span class="name">group label 11</span><span class="group-label" style="padding:0">Yesterday</span><span class="note">the only uppercase in the system</span></div>
+</div>
+
+<h2>Color roles</h2>
+<div class="grid">
+  <div class="cell"><div class="name">surfaces</div>
+    <div class="swatch"><i style="background:var(--window)"></i>window</div>
+    <div class="swatch"><i style="background:var(--sidebar)"></i>sidebar</div>
+    <div class="swatch"><i style="background:var(--content)"></i>content</div>
+    <div class="swatch"><i style="background:var(--panel)"></i>panel, inspector, sheet</div></div>
+  <div class="cell"><div class="name">labels</div>
+    <div class="swatch"><i style="background:var(--label)"></i>label</div>
+    <div class="swatch"><i style="background:var(--label-2)"></i>label-2 secondary</div>
+    <div class="swatch"><i style="background:var(--label-3)"></i>label-3 tertiary</div>
+    <div class="swatch"><i style="background:var(--separator)"></i>separator</div></div>
+  <div class="cell"><div class="name">reserved hues</div>
+    <div class="swatch"><i style="background:var(--accent)"></i>accent: selection, primary, focus</div>
+    <div class="swatch"><i style="background:var(--record)"></i>record: Record control, live state</div>
+    <div class="swatch"><i style="background:var(--attention)"></i>attention: one dot, one headline</div>
+    <div class="swatch"><i style="background:var(--evidence)"></i>evidence: open claim, cited turn</div></div>
+</div>
+
+<h2>Spacing</h2>
+<div class="cell"><div class="space">
+  <span><i style="height:4px"></i><div class="note">4</div></span>
+  <span><i style="height:6px"></i><div class="note">6 row pad</div></span>
+  <span><i style="height:8px"></i><div class="note">8 gap</div></span>
+  <span><i style="height:12px"></i><div class="note">12 toolbar pad</div></span>
+  <span><i style="height:16px"></i><div class="note">16 sidebar inset</div></span>
+  <span><i style="height:18px"></i><div class="note">18 inspector pad</div></span>
+  <span><i style="height:24px"></i><div class="note">24 doc top</div></span>
+  <span><i style="height:48px"></i><div class="note">48 doc side</div></span>
+</div><div class="note">Toolbar 52 · sidebar 280 · inspector 320 · controls 22 (26 on a needs-attention surface) · measure 62ch · radii 6 control, 10 card</div></div>
+
+<h2>Controls</h2>
+<div class="cell" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+  <button class="btn">Default</button>
+  <button class="btn primary">Primary</button>
+  <button class="btn pressed">Pressed</button>
+  <button class="btn" disabled>Disabled</button>
+  <button class="btn" style="outline:2px solid var(--accent);outline-offset:1px">Focused</button>
+  <button class="btn record record-idle">Record</button>
+  <span class="record-control"><button class="btn record live"><span class="record-live-badge">2:14</span></button><button class="btn">Pause</button><button class="btn">Stop</button></span>
+  <button class="btn record live"><span class="record-live-badge">Paused 2:14</span></button>
+  <button class="icon-btn" title="Sidebar">▤</button>
+  <span class="search" style="display:inline-block"><input placeholder="Search meetings"></span>
+</div>
+<div class="note">Primary is the one accent-filled control on a surface. Record is the only red. A live Record shows elapsed time and is joined by Pause and Stop; paused shows the word. Disabled is opacity, never a color change.</div>
+
+<h2>Toolbar</h2>
+<div class="toolbar-demo"><div class="toolbar">
+  <div class="toolbar-left"><span class="traffic"><i></i><i></i><i></i></span><button class="icon-btn">▤</button></div>
+  <div class="toolbar-title">Launch checklist review</div>
+  <div class="toolbar-right"><span class="search"><input placeholder="Search meetings"></span><button class="btn record record-idle">Record</button></div>
+</div></div>
+<div class="note">Title area shows the selected meeting's title, "Yawn" when nothing is selected, "New Recording" while recording. Nothing else ever enters the toolbar.</div>
+
+<h2>Sidebar rows</h2>
+<div style="display:flex;gap:16px;align-items:flex-start">
+  <div class="side-demo">
+    <div class="group-label">Yesterday</div>
+    <div class="row"><div class="row-title">Meeting · Sep 1, 2026</div><div class="row-caption caption">9:41 AM · 0:32 · Transcript ready</div><div class="row-excerpt">No note yet. Transcript retained on this Mac.</div></div>
+    <div class="row" style="background:var(--selection)"><div class="row-title">Hovered row</div><div class="row-caption caption">9:41 AM · 0:32 · Transcript ready</div><div class="row-excerpt">Hover is the selection tint, not the accent.</div></div>
+    <div class="row selected"><div class="row-title">Selected row</div><div class="row-caption caption">9:41 AM · 0:32 · Note ready</div><div class="row-excerpt">Selection is the accent, white text.</div></div>
+    <div class="row"><div class="row-title"><span class="attention-dot"></span>Meeting · Sep 1, 2026</div><div class="row-caption caption">8:12 PM · 0:11 · Needs attention</div><div class="row-excerpt">Recording was interrupted before it finished.</div></div>
+    <div class="row recording-now"><div class="row-title">Recording now</div><div class="row-caption caption">2:14</div></div>
+    <div class="trash-row">Trash</div>
+  </div>
+  <div class="side-demo large">
+    <div class="group-label" style="font-size:14px">Large text</div>
+    <div class="row"><div class="row-title">Meeting · Sep 1, 2026</div><div class="row-caption caption">9:41 AM · 0:32 · Transcript ready</div><div class="row-excerpt">Rows grow with the system text size; nothing truncates that did not already.</div></div>
+    <div class="row selected"><div class="row-title">Selected row</div><div class="row-caption caption">9:41 AM · 0:32 · Note ready</div></div>
+  </div>
+</div>
+<div class="note">Row = title (13/500, one line), caption (11), excerpt (11, tertiary). Untitled meetings read "Meeting · date". Transcript text is never a title. The attention dot is the only decoration a row may carry.</div>
+
+<h2>Document</h2>
+<div class="content-demo read">
+  <h1 style="font-size:var(--t-title)">Launch checklist review</h1>
+  <p class="doc-caption caption">Sep 2, 2026 · 10:05 AM · 24:18 · Note ready</p>
+  <h2 style="border:none;padding:0;margin:14px 0 6px">Decisions</h2>
+  <ul><li><span class="claim">A closed claim, underlined by a dashed hairline.</span></li>
+      <li><span class="claim open">The open claim, evidence tint, accent underline.</span></li></ul>
+  <p class="caption">Fact captions sit under the caption line: "Recording was paused once, for 0:03." Never a banner.</p>
+</div>
+
+<h2>Inspector and transcript turns</h2>
+<div class="inspector-demo">
+  <div class="doc-wrap read"><h1 style="font-size:var(--t-title)">Note stays primary</h1><p>The inspector never scrolls or reflows the note.</p></div>
+  <div class="inspector">
+    <div class="inspector-label">Source</div>
+    <div class="transcript-turn dim"><div class="t-meta"><span class="t-who">Me</span><span class="caption">00:00:04</span></div><p>We reviewed the fixture launch checklist today.</p></div>
+    <div class="transcript-turn highlighted"><div class="t-meta"><span class="t-who">Them</span><span class="caption">00:01:12</span></div><p>Everyone agreed to ship the retry review before Friday.</p></div>
+    <div class="transcript-turn dim"><div class="t-meta"><span class="t-who">Me</span><span class="caption">00:03:40</span></div><p>The diff has to be on screen before anyone picks keep or promote.</p></div>
+    <div class="transcript-turn"><div class="t-meta"><span class="t-who">Them</span><span class="caption">00:05:02</span></div><p style="color:var(--label-3);font-style:italic">Withheld turn — held back by the voice check. Restore this turn shows the retained words.</p></div>
+    <button class="btn">Open full transcript</button>
+  </div>
+</div>
+
+<h2>Needs attention</h2>
+<div class="content-demo"><div class="attention-pane" style="padding:0;align-items:flex-start">
+  <p class="attention-headline">This recording was interrupted before it finished.</p>
+  <p class="attention-detail">Yawn quit while finishing the file. The audio is retained on this Mac; no transcript was made.</p>
+  <div class="attention-actions"><button class="btn primary">Transcribe retained audio</button><button class="btn">Move to Trash</button></div>
+</div></div>
+<div class="note">Headline, detail, one primary action, one secondary. No banner, no icon, no color beyond the row's dot. The sidebar stays reachable.</div>
+
+<h2>Sheet, popover, toast, menu-bar pill</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+  <div class="sheet-demo"><div class="dim"></div><div class="sheet">
+    <h3>Before you record</h3><p class="caption" style="margin:0 0 6px">Recording starts only after these three statements are yours.</p>
+    <label class="att"><input type="checkbox"><span>Everyone in this meeting knows it is being recorded.</span></label>
+    <label class="att"><input type="checkbox"><span>I am wearing headphones.</span></label>
+    <label class="att"><input type="checkbox"><span>I am the only person near this microphone.</span></label>
+    <div class="att" style="margin-top:10px"><span class="caption">Keep audio for</span> <button class="btn pressed">1 day</button><button class="btn">7 days</button><button class="btn">30 days</button></div>
+    <div class="actions"><button class="btn">Cancel</button><button class="btn record record-idle" disabled>Record</button></div>
+  </div></div>
+  <div>
+    <div class="popover">
+      <div class="group-label">Yesterday</div>
+      <div class="row"><div class="row-title">Meeting · Sep 1, 2026</div><div class="row-caption caption">9:41 AM · 0:32 · Transcript ready</div></div>
+      <div class="row"><div class="row-title">Meeting · Sep 1, 2026</div><div class="row-caption caption">8:12 PM · 0:11 · Needs attention</div></div>
+    </div>
+    <div class="note">Popover: used only for the speech-model picker in Settings and a row's Manage menu. The meetings list is never a popover in A.</div>
+    <div style="margin-top:14px" class="toast"><span>Transcript ready · Meeting · Sep 1, 2026</span><button class="btn">Open</button></div>
+    <div class="note">Toast: one line, one optional action, bottom center of the window, 4 s. Never for a fact the row already shows.</div>
+    <div style="margin-top:14px"><span class="menubar-pill">Yawn</span> &nbsp; <span class="menubar-pill live">● 2:14</span> &nbsp; <span class="menubar-pill">Paused 2:14</span></div>
+    <div class="note">Menu-bar pill: idle glyph, live elapsed in record color, paused word. Click opens Stop / Pause / Open Yawn.</div>
+  </div>
+</div>
+<div class="note">Sheet: the Start sheet is the only sheet. Record is disabled until all three attestations are checked and a retention choice is made. It is a sheet on the main window, not a separate window.</div>
+
+<h2>Focus and keyboard</h2>
+<div class="cell">
+  <p style="margin:0 0 6px">Focus ring: 2px accent, 1px offset, on every control and row (<code>:focus-visible</code>). Tab order: toolbar left to right, sidebar rows top to bottom, document, inspector.</p>
+  <p style="margin:0" class="caption">⌘R Record · ⌘. Stop · ⌘⇧P Pause · ⌘⇧S Sidebar · ⌘F Search · ⌘, Settings · ↑↓ move selection · ⏎ open · ⌫ Move to Trash · ⌘⌥T Open full transcript · Esc close inspector or sheet</p>
+</div>
+
+<h2>Accessibility states</h2>
+<div class="cell">
+  <p style="margin:0 0 4px">Large text: every size scales with the system setting; rows grow, nothing truncates that did not already, the measure holds in characters not pixels.</p>
+  <p style="margin:0 0 4px">Increased contrast (<code>?contrast=more</code>, or the system setting): separators and secondary labels darken; no new colors. Reduced motion: every transition is 0 ms. Reduce transparency: the sheet dim is opaque panel.</p>
+  <p style="margin:0" class="caption">VoiceOver: rows are a list of buttons named "title, status, date"; the live Record control announces elapsed time on demand, not continuously; the open claim is a disclosure whose expanded content is the cited turn.</p>
+</div>
+</body></html>

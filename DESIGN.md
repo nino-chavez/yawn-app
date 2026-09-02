@@ -68,3 +68,65 @@ The hero headline, eyebrow labels, tinted note card, amber banners, custom
 topbar with hidden title, page-per-route navigation with a "Back to
 meetings" link, and the green Settings accent. Diagnosis:
 `docs/design-rethink-2026-09-02.md`.
+
+## Spacing
+
+4, 6, 8, 12, 16, 18, 24, 48. Row padding 6/8; toolbar padding 12; sidebar
+inset 16; inspector padding 18; document 24 top, 48 sides. Toolbar 52,
+sidebar 280, inspector 320, controls 22 (26 on a needs-attention surface).
+Radii 6 for controls, 10 for cards and sheets.
+
+## Components and states
+
+Rendered specimen, both appearances, increased contrast, and large text:
+`apps/desktop/ui-harness/concepts/shared/specimen.html`
+(`?theme=dark|light&contrast=more`). The specimen is the reference; a
+component not on it is not in the system.
+
+| Component | States | Rule |
+|---|---|---|
+| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change |
+| Record control | idle, live (elapsed + Pause + Stop), paused | The only red. Lives in the toolbar and the menu-bar pill only |
+| Icon button | default, hover | Sidebar toggle. No other icon buttons in the toolbar |
+| Search field | empty, typing, filtered-empty | Title search only; "No matching meetings" is one caption |
+| Toolbar | nothing selected ("Yawn"), meeting selected (title), recording ("New Recording") | Nothing else enters the toolbar |
+| Sidebar row | default, hover, selected, needs-attention (dot), recording-now, large text | Title one line, caption, excerpt. Untitled is "Meeting · date"; transcript text is never a title |
+| Group label | — | The only uppercase in the system |
+| Trash row | — | Last item, hairline above |
+| Document | empty selection, note, canvas (during) | Empty selection is one centered caption |
+| Claim | closed (dashed hairline), open (evidence tint, accent underline) | Opening a claim opens the inspector; Esc closes both |
+| Inspector | closed, open | 320, panel background, never scrolls the note |
+| Transcript turn | default, highlighted, dim, withheld | Withheld renders as withheld text with Restore, never as missing |
+| Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas; caption size |
+| Needs attention | — | Headline, detail, one primary and one secondary action. No banner, no icon |
+| Sheet | Start sheet only | Record disabled until three attestations and a retention choice |
+| Popover | speech-model picker, row Manage menu | Never the meetings list |
+| Toast | one line, optional action | Bottom center, 4 s, never for a fact a row already shows |
+| Menu-bar pill | idle, live, paused | Click: Stop, Pause, Open Yawn |
+
+## Focus and keyboard
+
+Focus ring 2px accent, 1px offset, on every control and row. Tab order:
+toolbar left to right, sidebar rows top to bottom, document, inspector.
+⌘R Record · ⌘. Stop · ⌘⇧P Pause · ⌘⇧S Sidebar · ⌘F Search · ⌘, Settings ·
+↑↓ selection · ⏎ open · ⌫ Move to Trash · ⌘⌥T full transcript · Esc closes
+the inspector or sheet. Every shortcut is also a menu item.
+
+## Accessibility
+
+Large text: sizes follow the system setting; the measure is in characters,
+so it holds. Increased contrast: separators and secondary labels darken, no
+new colors (`prefers-contrast: more`, token override in tokens.css). Reduced
+motion: all transitions 0 ms. Reduce transparency: the sheet dim is opaque
+panel. VoiceOver: rows are buttons named "title, status, date"; the live
+Record control announces elapsed time on demand; an open claim is a
+disclosure whose expanded content is the cited turn. Captures of the large
+text and increased contrast states are operator-run (DIRECTION.md roster
+item 11) and belong in the cold review set of the rebuilt app.
+
+## Icons
+
+SF Symbols only, via the system: sidebar (`sidebar.left`), trash (`trash`),
+record (`record.circle`), pause (`pause.fill`), stop (`stop.fill`), search
+(`magnifyingglass`), settings gear in the toolbar is not used; Settings is
+⌘, and the app menu. No custom glyphs, no emoji, no illustration.
