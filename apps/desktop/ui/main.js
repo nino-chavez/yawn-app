@@ -1522,12 +1522,12 @@ function renderFirstRunSheet() {
       <section class="start-sheet first-run-sheet" role="dialog" aria-modal="true" aria-labelledby="first-run-sheet-title">
         <div class="sheet-head">
           <div>
-            <h2 id="first-run-sheet-title">Before, during, after.</h2>
-            <p>Confirm consent and headphones, then record. Keep your own notes while it runs. Afterward, generate a readable note with decisions and follow-ups that point back to the transcript — all on this Mac.</p>
+            <h2 id="first-run-sheet-title">Yawn records meetings on this Mac.</h2>
+            <p>Nothing leaves it. Next, allow system audio so Yawn can hear the call. Record then asks for consent and headphones before it starts, and afterward you can generate a note whose claims point back to the transcript.</p>
           </div>
         </div>
         <div class="sheet-actions">
-          <button class="btn primary" type="button" data-action="dismiss-first-run">Got it</button>
+          <button class="btn primary" type="button" data-action="dismiss-first-run">Continue</button>
         </div>
       </section>
     </div>

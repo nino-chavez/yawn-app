@@ -1445,11 +1445,15 @@ h3 {
    legible, square top corners where the panel meets the toolbar. Scoped to
    these two modifier classes only; every other sheet (Start, rename,
    speaker correction, vocabulary, retry, delete, lock) is unchanged. */
+/* R15 (all-surfaces-41c026b-installed-cold.md finding 1): the sheet used
+   to sit over a legible, dimmed permission gate it never mentioned. The
+   backdrop is now opaque, so the sheet is the only ask on screen, and its
+   copy names the permission step as what comes next. */
 .first-run-backdrop {
   top: var(--toolbar-h);
   align-items: flex-start;
   padding: 0;
-  background: rgb(0 0 0 / 55%);
+  background: var(--content);
   backdrop-filter: none;
 }
 

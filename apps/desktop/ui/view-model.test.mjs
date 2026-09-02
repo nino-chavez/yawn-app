@@ -1010,7 +1010,7 @@ test("the first-run sheet has exactly one dismiss button and no X, and Escape st
   );
   assert.match(sheetBody, /class="modal-backdrop first-run-backdrop"/);
   // R19: the one control is the specimen's primary button, not a legacy shape.
-  assert.match(sheetBody, /<button class="btn primary" type="button" data-action="dismiss-first-run">Got it<\/button>/);
+  assert.match(sheetBody, /<button class="btn primary" type="button" data-action="dismiss-first-run">[^<]+<\/button>/);
   assert.doesNotMatch(sheetBody, /icon-button/, "no X close control on the first-run sheet");
   assert.doesNotMatch(sheetBody, /aria-label="Close"/);
   assert.match(source, /if \(event\.key === "Escape"\) \{[\s\S]{0,500}if \(firstRunSheetShowing\) \{ void closeFirstRunSheet\(\); return; \}/);
