@@ -180,73 +180,50 @@ textarea:focus-visible {
 }
 
 .button {
+  /* R21: the legacy button family is the specimen .btn shape. One shape,
+     22 high, 10 side padding, radius 6, 13/500; primary is the accent fill,
+     record keeps its color on the bezel, destructive is never the accent. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
+  min-height: 22px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--r-control);
+  color: var(--label);
+  background: var(--control);
+  box-shadow: var(--control-shadow);
+  font-size: var(--t-body);
+  font-weight: 500;
+  cursor: default;
 }
 
-.button:hover:not(:disabled) {
-  transform: translateY(-1px);
+.button:active:not(:disabled) {
+  filter: brightness(0.92);
 }
 
 .button-primary {
   color: #fff;
-  background: var(--ink);
-}
-
-.button-primary:hover:not(:disabled) {
-  background: #353530;
+  border-color: transparent;
+  background: var(--accent);
 }
 
 .button-record {
-  color: #fff;
-  background: var(--record);
+  color: var(--record);
+  font-weight: 600;
 }
 
-.button-record:hover:not(:disabled) {
-  background: #bf3f30;
-}
-
-.button-danger {
-  color: #fff;
-  background: #a63d32;
-}
-
-.button-danger:hover:not(:disabled) {
-  background: #8d3027;
-}
-
-.button-secondary {
-  color: var(--ink);
-  border-color: var(--line-strong);
-  background: var(--paper);
-}
-
-.button-secondary:hover:not(:disabled) {
-  border-color: #aeada5;
-  background: var(--paper-soft);
-}
-
+.button-danger,
+.button-secondary,
 .button-quiet {
-  color: var(--ink-soft);
-  background: transparent;
-}
-
-.button-quiet:hover:not(:disabled) {
-  color: var(--ink);
-  background: rgb(27 27 24 / 5%);
+  color: var(--label);
+  background: var(--control);
 }
 
 .button.small {
-  min-height: 32px;
-  padding: 0 11px;
-  font-size: var(--text-label);
+  min-height: 22px;
+  padding: 0 10px;
+  font-size: var(--t-body);
 }
 
 .icon-button {
@@ -316,21 +293,12 @@ h3 {
   letter-spacing: var(--tracking-heading-sm);
 }
 
-.eyebrow {
-  margin: 0 0 10px;
-  color: var(--ink-faint);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-heavy);
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-}
-
 .lede {
-  max-width: 54ch;
+  max-width: var(--measure);
   margin-bottom: 0;
-  color: var(--ink-soft);
-  font-size: var(--text-intro);
-  line-height: 1.55;
+  color: var(--label-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .inline-actions {
@@ -636,9 +604,9 @@ h3 {
 }
 
 .button-small {
-  min-height: 32px;
-  padding: 7px 10px;
-  font-size: var(--text-label);
+  min-height: 22px;
+  padding: 0 10px;
+  font-size: var(--t-body);
 }
 
 .transcript-action-status {
@@ -1251,29 +1219,32 @@ h3 {
    is styled in the shell block near the end of this file, from tokens.css. */
 
 .startup-card {
-  width: min(620px, 100%);
-  margin: clamp(42px, 10vw, 112px) auto 0;
-  padding: clamp(28px, 6vw, 50px);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--paper);
+  width: min(520px, 100%);
+  margin: 28vh auto 0;
+  padding: 0 48px;
+  border: 0;
+  background: transparent;
 }
 
 .startup-card h1 {
-  max-width: 15ch;
-  font-size: clamp(31px, 4vw, 43px);
+  max-width: none;
+  margin: 0 0 8px;
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.25;
 }
 
 .startup-orb {
   display: grid;
-  width: 38px;
-  height: 38px;
+  width: 20px;
+  height: 20px;
   place-items: center;
-  margin-bottom: 20px;
-  border: 1px solid #d8e2ff;
+  margin-bottom: 12px;
+  border: 1px solid var(--separator-strong);
   border-radius: 50%;
   color: var(--accent);
-  background: var(--accent-soft);
+  background: transparent;
 }
 
 .startup-orb::after {
@@ -1469,6 +1440,7 @@ h3 {
 }
 
 .first-run-sheet .sheet-head h2 {
+  margin-bottom: 8px;
   font-size: var(--t-title);
   font-weight: 600;
   letter-spacing: normal;
@@ -1476,9 +1448,11 @@ h3 {
 }
 
 .first-run-sheet .sheet-head p {
+  max-width: var(--measure);
+  margin-bottom: 0;
+  color: var(--label-2);
   font-size: var(--t-body);
   line-height: var(--lh-body);
-  color: var(--label-2);
 }
 
 .sheet-head {
@@ -2015,21 +1989,17 @@ h3 {
   right: 24px;
   bottom: 24px;
   width: min(380px, calc(100vw - 40px));
-  padding: 13px 15px;
-  border: 1px solid rgb(156 103 21 / 25%);
-  border-radius: var(--radius-sm);
-  color: var(--toast-attention-text);
-  background: var(--attention-soft);
-  box-shadow: 0 12px 30px rgb(71 47 8 / 13%);
-  font-size: var(--text-body);
-  line-height: 1.45;
-  /* W9-B: a toast arrives unbidden, in peripheral vision -- --motion-standard
-     reads as a calm arrival, where --motion-fast on an element the reader
-     was not already looking at would read as a flicker. `#toast-notice` /
-     `#toast-error` (main.js) keep the notice and error toasts on distinct
-     identities, so a switch between them is a real remove-then-insert (this
-     animation plays again) rather than one node's content changing under it
-     (see dom-patch.mjs's id-based keying). */
+  padding: 10px 12px;
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--r-control);
+  color: var(--label);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  /* W9-B: a toast arrives unbidden, in peripheral vision; --motion-standard
+     reads as a calm arrival. #toast-notice / #toast-error keep distinct
+     identities so a switch replays this (dom-patch id keying). */
   animation: motion-rise-in var(--motion-standard) var(--motion-ease);
 }
 
@@ -2041,10 +2011,10 @@ h3 {
 }
 
 .toast-notice {
-  border-color: rgb(62 109 83 / 28%);
-  color: #2c6947;
-  background: #eef8f1;
-  box-shadow: 0 12px 30px rgb(38 91 60 / 12%);
+  border-color: var(--separator-strong);
+  color: var(--label);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
 }
 
 .browser-note {

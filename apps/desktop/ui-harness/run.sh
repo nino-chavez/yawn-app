@@ -20,7 +20,7 @@ trap cleanup EXIT
 # module imports in main.js load without file:// CORS trouble.
 serve="$build_dir/serve"
 mkdir "$serve"
-ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$serve/"
+ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$serve/"
 ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$serve/"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!

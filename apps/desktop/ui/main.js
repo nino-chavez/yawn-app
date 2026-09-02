@@ -506,7 +506,7 @@ function renderBrowserNotice() {
   return `
     <section class="startup-card attention">
       <div class="startup-orb" aria-hidden="true"></div>
-      <p class="eyebrow">Desktop app required</p>
+      
       <h1>Open Yawn from Applications.</h1>
       <p class="browser-note">This page has no access to your microphone, local meetings, or note storage in a browser. Run the desktop app to use Yawn.</p>
     </section>
@@ -519,7 +519,7 @@ function renderStartup(checking) {
   return `
     <section class="startup-card ${checking ? "" : "attention"}">
       <div class="startup-orb" aria-hidden="true"></div>
-      <p class="eyebrow">${checking ? "Checking your local engine" : "Needs attention"}</p>
+      
       <h1>${checking ? "Getting Yawn ready." : "Yawn cannot record yet."}</h1>
       <p class="lede">${checking ? `${escapeHtml(progress)} Recording stays off until that finishes.` : escapeHtml(problem)}</p>
       ${checking ? "" : `<button class="button button-primary" type="button" data-action="retry-startup">Check again</button>`}
@@ -539,13 +539,13 @@ function renderModelSetup() {
   return `
     <section class="model-setup" aria-labelledby="model-setup-title">
       <div class="model-setup-copy">
-        <p class="eyebrow">One-time setup</p>
+        
         <h1 id="model-setup-title">Choose how much space Yawn uses.</h1>
         <p class="lede">Both models run on this Mac. The smaller model saves disk space. The full model keeps the original Turbo weights.</p>
       </div>
       ${working ? `
         <div class="model-download" role="status" aria-live="polite">
-          <p class="eyebrow">${setup.state === "verifying" ? "Verifying" : "Downloading"}</p>
+          
           <h2>${escapeHtml(selected?.title || "Speech model")}</h2>
           <progress max="${total}" value="${downloaded}"></progress>
           <p>${escapeHtml(progressCopy)}</p>
@@ -1467,7 +1467,7 @@ function renderStartSheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet" role="dialog" aria-modal="true" aria-labelledby="start-sheet-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Before recording</p><h2 id="start-sheet-title">Make the start explicit.</h2><p>Yawn records only after you confirm the meeting is ready to capture.</p></div>
+          <div><h2 id="start-sheet-title">Make the start explicit.</h2><p>Yawn records only after you confirm the meeting is ready to capture.</p></div>
           <button class="icon-button" type="button" data-action="close-start" aria-label="Close">×</button>
         </div>
         ${audioReady ? "" : `<div class="message-card attention"><strong>${escapeHtml(permission.title)}</strong><p>${escapeHtml(permission.detail)}</p><button class="text-button" type="button" data-action="${action.action}">${escapeHtml(action.label)}</button></div>`}
@@ -1545,7 +1545,7 @@ function renderRenameMeetingSheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet" role="dialog" aria-modal="true" aria-labelledby="rename-meeting-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Meeting name</p><h2 id="rename-meeting-title">Give this meeting a useful name.</h2><p>Only this local meeting’s label changes. The recording, transcript, and notes stay as they are.</p></div>
+          <div><h2 id="rename-meeting-title">Give this meeting a useful name.</h2><p>Only this local meeting’s label changes. The recording, transcript, and notes stay as they are.</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <form data-form="rename-meeting">
@@ -1593,7 +1593,7 @@ function renderSpeakerCorrectionSheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet speaker-correction-sheet" role="dialog" aria-modal="true" aria-labelledby="speaker-correction-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Transcript attribution</p><h2 id="speaker-correction-title">Name this speaker.</h2><p>This changes the review label for ${affected} matching transcript ${affected === 1 ? "turn" : "turns"}. The retained transcript file stays unchanged.</p></div>
+          <div><h2 id="speaker-correction-title">Name this speaker.</h2><p>This changes the review label for ${affected} matching transcript ${affected === 1 ? "turn" : "turns"}. The retained transcript file stays unchanged.</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <div class="speaker-correction-source"><span>Source label</span><strong>${escapeHtml(correction.sourceLabel)}</strong></div>
@@ -1735,7 +1735,7 @@ function renderVocabularySheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet vocabulary-sheet" role="dialog" aria-modal="true" aria-labelledby="vocabulary-sheet-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Transcript vocabulary</p><h2 id="vocabulary-sheet-title">Keep exact words consistent.</h2><p>These local Before → After replacements apply to future note regenerations. They do not rewrite this transcript, change the words shown here, or regenerate a note.</p></div>
+          <div><h2 id="vocabulary-sheet-title">Keep exact words consistent.</h2><p>These local Before → After replacements apply to future note regenerations. They do not rewrite this transcript, change the words shown here, or regenerate a note.</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close vocabulary">×</button>
         </div>
         <section class="vocabulary-ledger" aria-labelledby="vocabulary-ledger-title">
@@ -1832,7 +1832,7 @@ function renderRetryComparisonTurns(turns, label) {
   const spansByTurn = label === "current" ? diffPresentation.current : diffPresentation.candidate;
   return `
     <section class="retry-transcript-column" data-side="${escapeHtml(label)}" aria-labelledby="retry-${label}-heading">
-      <header><p class="eyebrow">${escapeHtml(label === "current" ? "Retained transcript" : "New local result")}</p><h3 id="retry-${label}-heading">${label === "current" ? "Current" : "Retry candidate"}</h3></header>
+      <header><h3 id="retry-${label}-heading">${label === "current" ? "Current" : "Retry candidate"}</h3></header>
       ${renderRetryWarnings(label === "current" ? state.transcriptRetry?.current?.warnings : state.transcriptRetry?.candidate?.warnings, label === "current" ? "Current transcript" : "Retry candidate")}
       <div class="retry-transcript-turns" tabindex="0" aria-label="${escapeHtml(label === "current" ? "Current transcript turns" : "Retry candidate transcript turns")}">
         ${rows.length ? rows.map((turn, index) => {
@@ -1866,7 +1866,7 @@ function renderTranscriptRetrySheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet transcript-retry-sheet" role="dialog" aria-modal="true" aria-labelledby="transcript-retry-sheet-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">Transcript retry</p><h2 id="transcript-retry-sheet-title">Compare before changing the source.</h2><p>Nothing changes until you choose. The retained transcript stays as it is unless you explicitly use this retry.</p></div>
+          <div><h2 id="transcript-retry-sheet-title">Compare before changing the source.</h2><p>Nothing changes until you choose. The retained transcript stays as it is unless you explicitly use this retry.</p></div>
           <button class="icon-button" type="button" data-action="decide-retry-later" aria-label="Decide later">×</button>
         </div>
         ${renderRetryQuality(retry.quality)}
@@ -1971,7 +1971,7 @@ function renderMeetingDeletionSheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet destructive-sheet" role="dialog" aria-modal="true" aria-labelledby="delete-meeting-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">${escapeHtml(copy.eyebrow)}</p><h2 id="delete-meeting-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
+          <div><h2 id="delete-meeting-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <p class="destructive-target">${escapeHtml(title)}</p>
@@ -2008,7 +2008,7 @@ function renderMeetingLockSheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet meeting-lock-sheet" role="dialog" aria-modal="true" aria-labelledby="meeting-lock-sheet-title">
         <div class="sheet-head">
-          <div><p class="eyebrow">${escapeHtml(copy.eyebrow)}</p><h2 id="meeting-lock-sheet-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
+          <div><h2 id="meeting-lock-sheet-title">${escapeHtml(copy.heading)}</h2><p>${escapeHtml(copy.detail)}</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <p class="destructive-target">${escapeHtml(title)}</p>
