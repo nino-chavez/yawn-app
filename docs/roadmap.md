@@ -92,6 +92,14 @@ under the build hash. Two defects the honest surface exposed:
   (89fe963) and the honest released-audio message (4180458) were each real,
   and the second one was the only defect in the reader for the meetings on
   this Mac.
+- **D-GATE, fixed (9fe067d).** Settings disabled "Download and use" with
+  "Finish the current meeting before changing speech models" while no
+  meeting was running (seen on the 88da6b6 captures, 04 and 07). Opening a
+  past meeting restores the reducer to `TranscriptReady`, and both model
+  gates read any non-Idle capture as a meeting in progress. The mic and tap
+  are released in that state, and the app already treats
+  `Idle | TranscriptReady` as safe for other operations. One helper now
+  owns the check for both gates, with a unit test.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
@@ -119,6 +127,7 @@ from it, all inside the selected direction:
 | R17 | Notes box (01, 03, 05): about 200px of fixed empty space between the placeholder and its own caption; the dark-mode placeholder is nearly body contrast | Size the box to its content with a small minimum, put the caption directly under the field, and set the placeholder to label-3 in both appearances. The 62ch measure and the right gutter are by design (DESIGN.md Composition); not a finding |
 | R18 | Settings (04, 07): content clipped at the 720 window with no scroll cue; bordered cards read as a web settings page; five to six type levels; "1.61 GB" and "In use" hard to read | Grouped-list rows without the card border, a scrollable window that shows its scrollbar, type held to 13 body and 11 caption, size and badge at body size |
 | R19 | Button family (08, all): "Got it" is a near-white one-off; Record is bare red text that reads as a link | "Got it" becomes the specimen `.btn.primary`; Record keeps its color but takes the `.btn` bezel |
+| R20 | Needs attention (02, 06, review of 88da6b6): the block's only action, Move to Trash…, wears the accent primary fill, so a destructive action reads as the thing to press | A destructive action never takes the primary style, even alone (10c434a; DESIGN.md Button row) |
 
 Landed 2026-09-02 evening, verified on the installed preview: R15 (92ab547,
 opaque backdrop, copy names the permission step), R16 (d04e143 and 73d68c9,
@@ -129,7 +138,9 @@ only because it is disabled in the preview). R18 (8ef4f94 grouped list,
 three type sizes, one primary per group, scrollable window; 88da6b6 buttons
 at the specimen size and weight). Captures of 88da6b6 filed under
 `docs/evidence/screen-reviews/captures/88da6b6-installed/`; blind review
-pending.
+filed (all-surfaces-88da6b6-installed-cold.md): six accept, two revise, both
+windows read as native. R20 fixed (10c434a), pending the next installed
+capture.
 
 ## What the live apps changed
 
