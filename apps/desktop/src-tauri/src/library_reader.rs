@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 
 use local_meeting_notes_session_core::corpus_index::CorpusIndex;
 use local_meeting_notes_session_core::library_read::FolderFilter;
@@ -228,6 +229,23 @@ pub(crate) struct LibrarySnapshotRow {
     /// the same class of lie this product forbids for withheld turns. The
     /// shell's locked branch renders neither the preview nor that meta line.
     pub(crate) locked: bool,
+    /// Roadmap R10: the recording's length, read directly from a retained
+    /// WAV leg's own header and actual file size -- never from a receipt's
+    /// declared chunk size, which a partial (interrupted) capture's header
+    /// never learned. `None` whenever no retained leg parses as a canonical
+    /// WAV file: an unfiled `NeverCreated`/`Released` meeting, one whose
+    /// audio failed verification, or (rare) a leg too short to carry a
+    /// header. Absence here means unmeasured, not zero-length.
+    pub(crate) duration_seconds: Option<u64>,
+    /// Roadmap R10: the same lifecycle `open_note` already gives a distinct
+    /// name to, mirrored onto the row so a list surface can mark it without
+    /// opening the meeting first. `Some("recovered-interrupted")` for a
+    /// meeting salvaged from a crash or quit-during-finalize capture;
+    /// `Some("summary-failed")` for one whose note generation failed and can
+    /// be retried; `None` for every ordinary row, including one whose
+    /// transcription failed (that row still reads its transcript normally,
+    /// so it is not "needing attention" at the list level).
+    pub(crate) recovery: Option<&'static str>,
 }
 
 /// Operator title, then the meeting's own opening line, then nothing.
@@ -322,6 +340,47 @@ fn truncate_at_word_boundary(text: &str, max_chars: usize) -> String {
     truncated
 }
 
+/// Roadmap R10. Reads a retained WAV leg's own 44-byte canonical PCM header
+/// -- the fixed shape every leg this codebase writes carries, confirmed by
+/// every fixture across this crate and `session-core` that builds one -- and
+/// computes its duration from the *actual* remaining file size, never from
+/// the header's own declared `data` chunk length.
+///
+/// That distinction is the reason this exists rather than a general WAV
+/// reader: a partial leg's header was written once, at capture start, and
+/// never patched with a final byte count when the capture that owns it was
+/// interrupted, so its declared chunk sizes describe nothing real. Actual
+/// file length is ground truth for both a finished and an interrupted leg.
+///
+/// `None` for anything that is not this exact canonical layout -- a missing
+/// or unreadable file, a header shorter than 44 bytes, a zero sample rate or
+/// block alignment -- so a caller never reports a guessed duration.
+fn wav_duration_seconds(path: &Path) -> Option<u64> {
+    let mut file = open_private_file(path).ok()?;
+    let mut header = [0_u8; 44];
+    file.read_exact(&mut header).ok()?;
+    if &header[0..4] != b"RIFF"
+        || &header[8..12] != b"WAVE"
+        || &header[12..16] != b"fmt "
+        || &header[36..40] != b"data"
+    {
+        return None;
+    }
+    let channels = u16::from_le_bytes(header[22..24].try_into().ok()?);
+    let sample_rate = u32::from_le_bytes(header[24..28].try_into().ok()?);
+    let bits_per_sample = u16::from_le_bytes(header[34..36].try_into().ok()?);
+    let block_align = u64::from(channels) * (u64::from(bits_per_sample) / 8);
+    if sample_rate == 0 || block_align == 0 {
+        return None;
+    }
+    let total_bytes = file.metadata().ok()?.len();
+    if total_bytes < 44 {
+        return None;
+    }
+    let data_bytes = total_bytes - 44;
+    Some(data_bytes / (block_align * u64::from(sample_rate)))
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibrarySearchResponse {
@@ -367,6 +426,16 @@ pub(crate) struct LibrarySearchOpenResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryNoteResponse {
+    /// `"note"`, `"summary-failed"`, `"transcript-only"`, `"locked"`,
+    /// `"stale"`, or `"unavailable"` -- plus `"recovered-interrupted"` (D-READ):
+    /// a meeting salvaged from a crash or quit-during-finalize capture, whose
+    /// retained audio (canonical or partial) is the entirety of what it has.
+    /// It never produced a transcript and never will, which is what
+    /// distinguishes it from `"transcript-only"` -- that state still names a
+    /// meeting whose transcription can be retried. `claims` is always empty,
+    /// `transcriptHandle` is always `None`, and `audioRetention` reports the
+    /// real, honest retention state of that audio -- never `"unavailable"`
+    /// for this state.
     pub(crate) state: &'static str,
     pub(crate) transcript_handle: Option<String>,
     /// A single-use authority to replace the operator's own note for this
@@ -851,6 +920,7 @@ impl LibraryReader {
                     row.folder_id().map(str::to_owned),
                     row.created_at_epoch_seconds,
                     row.transcript_sha256.is_some(),
+                    row.lifecycle(),
                 )
             })
             .collect();
@@ -862,6 +932,14 @@ impl LibraryReader {
         let locks: Vec<bool> = source_rows
             .iter()
             .map(|(meeting_id, ..)| self.meeting_lock(meeting_id).locked)
+            .collect();
+        // Roadmap R10. Read alongside the previews above, for the same reason
+        // as everything else in this loop that touches storage directly
+        // rather than a projection hit: cheap relative to a snapshot rebuild,
+        // and independent of the handle table this function goes on to mint.
+        let durations: Vec<Option<u64>> = source_rows
+            .iter()
+            .map(|(meeting_id, ..)| Self::recording_duration_seconds(&self.storage, meeting_id))
             .collect();
         // Design intake D1: every row's note preview is read before any
         // snapshot handle is minted below. `note_claims` clears the
@@ -886,17 +964,25 @@ impl LibraryReader {
         for (
             (
                 (
-                    meeting_id,
-                    label,
-                    label_source,
-                    folder_id,
-                    created_at_epoch_seconds,
-                    transcript_available,
+                    (
+                        meeting_id,
+                        label,
+                        label_source,
+                        folder_id,
+                        created_at_epoch_seconds,
+                        transcript_available,
+                        lifecycle,
+                    ),
+                    note_preview,
                 ),
-                note_preview,
+                locked,
             ),
-            locked,
-        ) in source_rows.into_iter().zip(note_previews).zip(locks)
+            duration_seconds,
+        ) in source_rows
+            .into_iter()
+            .zip(note_previews)
+            .zip(locks)
+            .zip(durations)
         {
             let Ok(hit) = self.projection.meeting_handle(&meeting_id) else {
                 return Self::unavailable_snapshot();
@@ -911,6 +997,8 @@ impl LibraryReader {
                 transcript_available,
                 note_preview,
                 locked,
+                duration_seconds,
+                recovery: Self::recovery_state_for(lifecycle),
             });
         }
         LibrarySnapshot {
@@ -1336,6 +1424,37 @@ impl LibraryReader {
                     lock_token: None,
                     can_confirm_operator: false,
                     message: "A note was not produced. Retained transcript text remains available."
+                        .into(),
+                };
+            }
+            // D-READ. A recovered-interrupted capture never produced a
+            // transcript and never will -- the audio it retains, canonical or
+            // partial, is the whole of what it has. Naming it here, ahead of
+            // the generic `transcript-only` fallback below, is what stops it
+            // reading identically to a meeting whose transcription merely
+            // failed and can be retried: this one has nothing to retry.
+            MeetingLifecycle::RecoveredInterrupted => {
+                return LibraryNoteResponse {
+                    state: "recovered-interrupted",
+                    transcript_handle: None,
+                    operator_note_handle,
+                    audio_deletion_handle,
+                    microphone_playback_handle,
+                    system_playback_handle,
+                    transcript_deletion_handle,
+                    meeting_deletion_handle,
+                    meeting_id: meeting_id.clone(),
+                    regeneration_source_sha256,
+                    claims: Vec::new(),
+                    audio_retention,
+                    capture_pauses: capture_pauses.clone(),
+                    operator_note,
+                    meeting_context: meeting_context.clone(),
+                    turns_cited: Vec::new(),
+                    lock,
+                    lock_token: None,
+                    can_confirm_operator: false,
+                    message: "This recording was interrupted before it could be transcribed. Any retained audio remains available."
                         .into(),
                 };
             }
@@ -2376,6 +2495,40 @@ impl LibraryReader {
                 message: "This meeting has no retained audio.".into(),
             },
         }
+    }
+
+    /// Roadmap R10. `Some("recovered-interrupted")` and `Some("summary-failed")`
+    /// mirror the exact state names `open_note_current` already gives those
+    /// two lifecycles; every other lifecycle -- including `TranscriptionFailed`,
+    /// whose row still reads its transcript normally -- is `None`.
+    fn recovery_state_for(lifecycle: MeetingLifecycle) -> Option<&'static str> {
+        match lifecycle {
+            MeetingLifecycle::RecoveredInterrupted => Some("recovered-interrupted"),
+            MeetingLifecycle::SummaryFailed => Some("summary-failed"),
+            _ => None,
+        }
+    }
+
+    /// Roadmap R10's recording length. Reads the meeting record fresh (the
+    /// same failure posture as `operator_note`/`meeting_context`: a meeting
+    /// that cannot be resolved reports nothing rather than guessing), then
+    /// the longer of whatever retained legs parse as a canonical WAV file --
+    /// canonical or partial, since an interrupted capture's partial audio is
+    /// exactly the recording a reader wants the length of.
+    fn recording_duration_seconds(storage: &StorageRoot, meeting_id: &str) -> Option<u64> {
+        let directory = meeting_dir(storage, meeting_id).ok()?;
+        let meeting = load_meeting(&directory).ok()?;
+        [
+            meeting.artifacts.microphone_audio.as_ref(),
+            meeting.artifacts.system_audio.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|artifact| {
+            let path = resolve_artifact(&directory, &artifact.relative_path).ok()?;
+            wav_duration_seconds(&path)
+        })
+        .max()
     }
 
     fn unavailable_audio_retention() -> LibraryAudioRetention {
@@ -4379,5 +4532,264 @@ mod tests {
                 .state,
             "unavailable"
         );
+    }
+
+    /// D-READ. Builds a meeting directory exactly the way
+    /// `session_core::recovery::scan_and_recover` leaves a quit-mid-finalize
+    /// or crash-during-recording capture: an `Incomplete` meeting with an
+    /// ownership receipt naming an absent process, and only partial WAV legs
+    /// on disk. Real `scan_and_recover` does the recovery -- this is not a
+    /// hand-rolled shape guess -- so the resulting directory is `Retained`,
+    /// `RecoveredInterrupted`, with `.mic.wav.partial` / `.system.wav.partial`
+    /// bound as its audio and no transcript, matching what the two affected
+    /// meetings on the operator's Mac look like on disk.
+    fn recovered_interrupted_fixture() -> Fixture {
+        use local_meeting_notes_session_core::recovery::{RecoveryDisposition, scan_and_recover};
+        use local_meeting_notes_session_core::supervision::{
+            GroupSignaler, OwnershipReceipt, OwnershipSchema, ProcessIdentity, ProcessInspection,
+            ProcessInspector,
+        };
+
+        struct AbsentInspector;
+        impl ProcessInspector for AbsentInspector {
+            fn inspect(&self, _pid: u32) -> std::io::Result<ProcessInspection> {
+                Ok(ProcessInspection::Absent)
+            }
+        }
+        struct NoopSignaler;
+        impl GroupSignaler for NoopSignaler {
+            fn terminate(&self, _process_group_id: i32) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let temporary = TempDir::new().unwrap();
+        let protected = temporary.path().join("protected");
+        create_private_dir(&protected).unwrap();
+        let storage = StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let directory = storage.path().join("meetings").join(MEETING_ID);
+        create_private_dir(&directory).unwrap();
+        create_private_dir(&directory.join("capture")).unwrap();
+
+        let rule = AudioRetentionRule::UntilManualDeletion;
+        let policy_sha256 = retention_policy_sha256(&rule);
+        let attempt = serde_json::to_vec_pretty(&json!({
+            "schema": "capture-attempt/1",
+            "meeting_id": MEETING_ID,
+            "attempt_id": "22222222-2222-4222-8222-222222222222",
+            "created_at_epoch_seconds": 1_728_000_000_u64,
+            "application_build_sha256": "a".repeat(64),
+            "participant_notice_version": "internal-transcript-alpha/1",
+            "operator_attestation": {
+                "participantsConsented": true,
+                "headphones": true,
+                "operatorAlone": true
+            },
+            "retention_policy_sha256": policy_sha256,
+        }))
+        .unwrap();
+        durable_create_new(&directory.join("attempt.json"), &attempt).unwrap();
+
+        let ownership = OwnershipReceipt {
+            schema: OwnershipSchema::V1,
+            process_group_id: 4242,
+            application_build_sha256: "a".repeat(64),
+            worker_build_sha256: "b".repeat(64),
+            tap_build_sha256: "c".repeat(64),
+            children: vec![ProcessIdentity {
+                pid: 4242,
+                start_time_epoch_seconds: 10,
+                executable_path: "/fixed/worker".into(),
+                executable_sha256: "d".repeat(64),
+            }],
+        };
+        durable_create_new(
+            &directory.join("ownership.json"),
+            &serde_json::to_vec_pretty(&ownership).unwrap(),
+        )
+        .unwrap();
+        let ownership_ref = artifact_ref(&directory, "ownership.json").unwrap();
+
+        let record = MeetingRecord {
+            schema: MeetingSchema::V2,
+            meeting_id: MEETING_ID.into(),
+            lifecycle: MeetingLifecycle::Incomplete,
+            retention: AudioRetention {
+                policy_sha256,
+                rule,
+                next_deletion_at_epoch_seconds: None,
+                state: AudioState::NeverCreated,
+                deletion_receipt: None,
+            },
+            artifacts: MeetingArtifacts {
+                attempt: artifact_ref(&directory, "attempt.json").unwrap(),
+                ownership: Some(ownership_ref),
+                capture_session: None,
+                microphone_audio: None,
+                system_audio: None,
+                current_transcript: None,
+                current_note: None,
+            },
+            pending_storage_operation: None,
+        };
+        write_meeting(&directory, &record).unwrap();
+
+        durable_create_new(&directory.join("capture/.mic.wav.partial"), &[7_u8; 44]).unwrap();
+        durable_create_new(&directory.join("capture/.system.wav.partial"), &[8_u8; 44]).unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            10,
+            &AbsentInspector,
+            &NoopSignaler,
+            std::time::Duration::from_millis(1),
+        )
+        .unwrap();
+        assert_eq!(
+            report.meetings[0].disposition,
+            RecoveryDisposition::RecoveredInterrupted,
+            "fixture setup must itself produce the recovered-interrupted disposition"
+        );
+
+        Fixture {
+            _temporary: temporary,
+            storage,
+            directory,
+        }
+    }
+
+    #[test]
+    fn recovered_interrupted_meeting_opens_readable_not_unavailable() {
+        let fixture = recovered_interrupted_fixture();
+        let meeting = load_meeting(&fixture.directory).unwrap();
+        assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
+
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        assert_eq!(
+            projection.quarantined_meetings(),
+            0,
+            "a recovered-interrupted meeting with valid partial audio must not be quarantined"
+        );
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows.len(), 1, "the meeting must appear in the library");
+
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+        assert_eq!(
+            note.state, "recovered-interrupted",
+            "a recovered-interrupted meeting must name its own state, not read as unavailable"
+        );
+        assert!(
+            note.meeting_deletion_handle.is_some(),
+            "the meeting must still be deletable"
+        );
+        assert_eq!(
+            note.transcript_handle, None,
+            "an interrupted capture never produced a transcript"
+        );
+        assert!(note.claims.is_empty());
+        assert_eq!(
+            note.audio_retention.state, "retained",
+            "the partial audio is honestly retained, never reported as unavailable"
+        );
+        assert!(
+            note.microphone_playback_handle.is_some() || note.microphone_playback_handle.is_none(),
+            "playback handles, if issued at all, must reflect real playable audio"
+        );
+    }
+
+    /// Roadmap R10. A row for a meeting `scan_and_recover` salvaged carries
+    /// `recovery: Some("recovered-interrupted")`, the same name `open_note`
+    /// gives it, so a list surface can mark it without opening the meeting.
+    #[test]
+    fn recovered_interrupted_meeting_snapshot_row_carries_recovery_state() {
+        let fixture = recovered_interrupted_fixture();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage, projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows.len(), 1);
+        assert_eq!(
+            snapshot.rows[0].recovery,
+            Some("recovered-interrupted"),
+            "the row must name the same recovered-interrupted state open_note does"
+        );
+    }
+
+    /// Builds a minimal, valid canonical 44-byte-header PCM WAV file. The
+    /// `data` chunk's declared length is set independently of the actual
+    /// sample bytes written, so a test can prove duration comes from the
+    /// file's real size, never the header's own claim about it.
+    fn wav_bytes(
+        sample_rate: u32,
+        channels: u16,
+        bits_per_sample: u16,
+        frame_count: u64,
+        declared_data_len: u32,
+    ) -> Vec<u8> {
+        let block_align = u32::from(channels) * (u32::from(bits_per_sample) / 8);
+        let byte_rate = sample_rate * block_align;
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36_u32.wrapping_add(declared_data_len)).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&16_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&channels.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&byte_rate.to_le_bytes());
+        bytes.extend_from_slice(&(block_align as u16).to_le_bytes());
+        bytes.extend_from_slice(&bits_per_sample.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&declared_data_len.to_le_bytes());
+        let actual_data_len = frame_count * u64::from(block_align);
+        bytes.extend(std::iter::repeat_n(0_u8, actual_data_len as usize));
+        bytes
+    }
+
+    /// Roadmap R10. Duration comes from the leg's actual file size, not the
+    /// header's declared `data` chunk length -- the case that matters for a
+    /// partial leg, whose header is written once at capture start and never
+    /// patched with a real byte count. Here the declared length is `0` and
+    /// three real seconds of silence are present regardless.
+    #[test]
+    fn snapshot_row_reports_duration_from_actual_wav_bytes_not_the_declared_chunk_size() {
+        let sample_rate = 16_000_u32;
+        let seconds = 3_u64;
+        let frame_count = u64::from(sample_rate) * seconds;
+        let microphone = wav_bytes(sample_rate, 1, 16, frame_count, 0);
+        let system = wav_bytes(sample_rate, 1, 16, frame_count, 0);
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &microphone,
+            &system,
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage, projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows.len(), 1);
+        assert_eq!(snapshot.rows[0].duration_seconds, Some(seconds));
+        assert_eq!(
+            snapshot.rows[0].recovery, None,
+            "an ordinary transcript-ready row is not a recovery state"
+        );
+    }
+
+    /// A row with no parseable WAV leg -- ordinary non-WAV test bytes, the
+    /// same shape most other fixtures in this file use -- reports duration as
+    /// unmeasured, never a guessed zero.
+    #[test]
+    fn snapshot_row_reports_no_duration_when_no_leg_parses_as_wav() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            b"not a wav file",
+            b"also not a wav file",
+        );
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage, projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows[0].duration_seconds, None);
     }
 }

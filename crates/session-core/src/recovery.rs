@@ -3,7 +3,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-use serde_json::from_slice;
+use serde_json::{Value, from_slice};
 use thiserror::Error;
 
 use crate::meeting::{
@@ -321,10 +321,46 @@ fn bind_interrupted_artifacts(
     };
     meeting.retention.deletion_receipt = None;
     meeting.pending_storage_operation = None;
+    // `capture/session.json` can already exist here as the live worker's
+    // genuine `capture-session/2` completion record, written before it
+    // renamed the partial WAV legs to their canonical names -- the crash that
+    // stranded this meeting at `Incomplete` landed between those two steps,
+    // before `meeting.json` ever learned the receipt existed. Reusing that
+    // receipt verbatim would hand a canonical-only schema the partial
+    // (`capture/.`-prefixed) paths it was never written to describe, which
+    // `verify_recovered_capture_receipt` correctly refuses as "not a complete
+    // canonical acquisition" -- quarantining a recovery this narrow case
+    // should instead admit. Only that exact, genuinely-parseable stranded
+    // completion receipt is discarded and replaced with an honest one;
+    // anything else already on disk (unparseable bytes, a mismatched or
+    // tampered `capture-interruption/1`, an unrecognized schema) is left
+    // exactly as found, so `verify_recovered_capture_receipt` stays the
+    // authority on whether it is trustworthy and a meeting whose receipt
+    // does not check out is still quarantined untouched, never rewritten.
+    let audio_is_partial = matches!(
+        meeting
+            .artifacts
+            .microphone_audio
+            .as_ref()
+            .map(|artifact| artifact.relative_path.as_str()),
+        Some(MICROPHONE_PARTIAL_AUDIO_PATH)
+    ) || matches!(
+        meeting
+            .artifacts
+            .system_audio
+            .as_ref()
+            .map(|artifact| artifact.relative_path.as_str()),
+        Some(SYSTEM_PARTIAL_AUDIO_PATH)
+    );
+    let discard_stranded_completion_receipt =
+        inventory.session_present && audio_is_partial && receipt_is_stranded_completion(meeting_dir);
     meeting.artifacts.capture_session = if meeting.retention.state == AudioState::Retained {
-        if inventory.session_present {
+        if inventory.session_present && !discard_stranded_completion_receipt {
             Some(artifact_ref(meeting_dir, "capture/session.json")?)
         } else {
+            if inventory.session_present {
+                fs::remove_file(meeting_dir.join("capture/session.json"))?;
+            }
             Some(write_capture_interruption_receipt(meeting_dir, meeting)?)
         }
     } else {
@@ -332,6 +368,21 @@ fn bind_interrupted_artifacts(
     };
     verify_record_static_artifacts(meeting_dir, meeting)?;
     Ok(())
+}
+
+/// True only when `capture/session.json` parses as a genuine
+/// `capture-session/2` completion receipt. See `bind_interrupted_artifacts`
+/// for why that specific, narrow case is the one meant to be discarded and
+/// replaced -- any read or parse failure, or any other schema, answers
+/// `false` so the caller leaves the file exactly as found.
+fn receipt_is_stranded_completion(meeting_dir: &Path) -> bool {
+    let Ok(bytes) = fs::read(meeting_dir.join("capture/session.json")) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+        return false;
+    };
+    value.get("schema").and_then(Value::as_str) == Some("capture-session/2")
 }
 
 struct InterruptedCaptureInventory {
@@ -1133,6 +1184,74 @@ mod tests {
         assert!(directory.join("capture/mic.wav").exists());
         assert!(directory.join("capture/system.wav").exists());
         assert!(!directory.join("transcription-queue").exists());
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.join("capture/session.json")).unwrap())
+                .unwrap();
+        assert_eq!(receipt["schema"], "capture-interruption/1");
+        verify_record_artifacts(&directory, &meeting).unwrap();
+    }
+
+    /// D-READ's root cause. The live capture worker can write a genuine,
+    /// parseable `capture-session/2` completion receipt to `capture/session.json`
+    /// before it renames the partial WAV legs to their canonical names and
+    /// before `meeting.json` ever learns the receipt exists (`meeting.json`
+    /// still reads `Incomplete`, `artifacts.capture_session: null`). A crash or
+    /// quit between those two steps leaves exactly this on disk: a real,
+    /// complete-looking session receipt sitting next to `.mic.wav.partial` /
+    /// `.system.wav.partial`.
+    ///
+    /// Recovery's `Incomplete`-lifecycle path (unlike the `Captured` path's
+    /// `salvage_unfinalized_capture`, which always discards `session.json`
+    /// first) used to reuse whatever receipt it found on disk verbatim. A
+    /// `capture-session/2` receipt naming partial (`capture/.`-prefixed) legs
+    /// fails `verify_recovered_capture_receipt`'s "not a complete canonical
+    /// acquisition" guard -- so the very verification `bind_interrupted_artifacts`
+    /// runs on itself before returning failed, and the meeting was quarantined
+    /// instead of recovered.
+    #[test]
+    fn stale_complete_session_receipt_next_to_partial_audio_is_not_trusted() {
+        let (_temp, storage) = make_storage();
+        let expected = identity(46, 10);
+        let directory = write_incomplete(&storage, "stale-receipt", Some(ownership(expected)));
+        create_private_dir(&directory.join("capture")).unwrap();
+        durable_create_new(
+            &directory.join("capture/session.json"),
+            &complete_session_receipt(),
+        )
+        .unwrap();
+        durable_create_new(&directory.join("capture/.mic.wav.partial"), &private_wav(6)).unwrap();
+        durable_create_new(&directory.join("capture/.system.wav.partial"), &private_wav(7))
+            .unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            10,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert_eq!(
+            report.meetings[0].disposition,
+            RecoveryDisposition::RecoveredInterrupted,
+            "a real crash-before-promotion capture must recover, not quarantine, \
+             even when a stale complete-session receipt sits next to partial audio"
+        );
+        let meeting = load_meeting(&directory).unwrap();
+        assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
+        assert_eq!(meeting.retention.state, AudioState::Retained);
+        assert_eq!(
+            meeting.artifacts.microphone_audio.clone().unwrap().relative_path,
+            "capture/.mic.wav.partial"
+        );
+        assert_eq!(
+            meeting.artifacts.system_audio.clone().unwrap().relative_path,
+            "capture/.system.wav.partial"
+        );
+        // The stale complete-session receipt is replaced with an honest
+        // interruption receipt -- it must never be reused verbatim to
+        // describe partial audio it was not written against.
         let receipt: serde_json::Value =
             serde_json::from_slice(&fs::read(directory.join("capture/session.json")).unwrap())
                 .unwrap();
