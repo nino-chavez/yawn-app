@@ -153,14 +153,29 @@ export function transcriptionWorkerHeartbeatAgeSeconds(snapshot, nowEpochSeconds
 // made structural: "Back to Meetings" (dismiss → capture idle, startup ready)
 // always resolves to "home", from every needs-attention state, so the library
 // and its per-meeting delete/trash actions are always reachable.
+// Rethink phase 1 (docs/experience-brief-2026-09-02.md, docs/design-direction
+// -decision.md): a terminal capture state (transcript-ready, transcription
+// -failed, recovered-interrupted) is content -- the After or needs-attention
+// moment -- not the live During canvas (DESIGN.md's "capture" is only the
+// in-progress canvas). Cold review bfa0a80 finding 03/08: launching Yawn with
+// a stale terminal snapshot left over from a previous run showed that special
+// terminal screen instead of the library. The fix: once the library has
+// indexed that meeting and main.js has auto-selected it (`hasSelected` true),
+// route to the ordinary "meeting" pane. Until that lookup resolves -- the one
+// tick right after a live recording just stopped, before the library reflects
+// it -- this still falls back to "capture" so the reader is never shown
+// nothing. `hasSelected` is checked before the terminal fallback (the only
+// order change from the prior version of this function), so it is the one
+// thing that can turn a terminal snapshot into "meeting".
 export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpen = false } = {}) {
   if (!hasInvoke) return "browser-notice";
   const startup = snapshot?.startup;
   if (!snapshot || startup === "checking") return "startup-checking";
   if (startup === "model-required") return "model-setup";
   if (startup !== "ready") return "startup-attention";
-  if (snapshot.capture !== "idle") return "capture";
+  if (captureIsInProgress(snapshot)) return "capture";
   if (hasSelected) return "meeting";
+  if (snapshot.capture !== "idle") return "capture";
   if (trashOpen) return "trash";
   return "home";
 }
@@ -778,6 +793,75 @@ export function libraryRowMetaPresentation(row) {
     label: row?.transcriptAvailable ? "transcript available" : "note only",
     preview: libraryRowPreview(row),
   };
+}
+
+// DESIGN.md's sidebar row title: an operator-named or transcript-derived
+// title stays as-is; a meeting with neither reads "Meeting · date" (never a
+// raw transcript fragment as a title, and never blank).
+export function sidebarRowTitle(row, dateLabelText) {
+  const label = typeof row?.label === "string" ? row.label.trim() : "";
+  return label || `Meeting · ${dateLabelText}`;
+}
+
+// Newest first. The backend's own row order is not a contract this frontend
+// can rely on (no sort is documented on `library_snapshot`), so the sidebar
+// derives its own order from the one timestamp every row already carries.
+// Both the day-grouped sidebar and "the most recent meeting" (launch
+// selection) read this same order, so they can never disagree with each
+// other about which meeting is newest.
+export function sortLibraryRows(rows) {
+  return [...(Array.isArray(rows) ? rows : [])]
+    .sort((a, b) => Number(b?.createdAtEpochSeconds || 0) - Number(a?.createdAtEpochSeconds || 0));
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(epochSeconds) {
+  const d = new Date(Number(epochSeconds) * 1000);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// DESIGN.md's sidebar groups: Today, Yesterday, Previous 7 days, Previous 30
+// days, then a month label ("August 2026") for anything older. `now` is
+// injectable so a day-boundary test can pin it rather than racing the clock.
+export function sidebarGroupLabel(createdAtEpochSeconds, nowEpochSeconds = Date.now() / 1000) {
+  if (!Number.isFinite(Number(createdAtEpochSeconds))) return "Previous 30 days";
+  const diffDays = Math.round((startOfLocalDay(nowEpochSeconds) - startOfLocalDay(createdAtEpochSeconds)) / DAY_MS);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays <= 7) return "Previous 7 days";
+  if (diffDays <= 30) return "Previous 30 days";
+  return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" })
+    .format(new Date(Number(createdAtEpochSeconds) * 1000));
+}
+
+const GROUP_ORDER = ["Today", "Yesterday", "Previous 7 days", "Previous 30 days"];
+
+// Buckets library rows into DESIGN.md's day groups, newest group first, rows
+// within a group newest first. Month buckets (anything older than 30 days)
+// keep insertion order, which is recency order because the source rows are
+// already sorted -- see `sortLibraryRows`.
+export function sidebarGroups(rows, nowEpochSeconds = Date.now() / 1000) {
+  const sorted = sortLibraryRows(rows);
+  const byLabel = new Map();
+  for (const row of sorted) {
+    const label = sidebarGroupLabel(row.createdAtEpochSeconds, nowEpochSeconds);
+    if (!byLabel.has(label)) byLabel.set(label, []);
+    byLabel.get(label).push(row);
+  }
+  const monthLabels = [...byLabel.keys()].filter((label) => !GROUP_ORDER.includes(label));
+  const order = [...GROUP_ORDER.filter((label) => byLabel.has(label)), ...monthLabels];
+  return order.map((label) => ({ label, rows: byLabel.get(label) }));
+}
+
+// The toolbar's title area (DESIGN.md: "Yawn" / the selected meeting's title
+// / "New Recording"). Recording (in-progress capture) always wins -- the
+// title must say what the window is doing right now, not what was last
+// selected underneath it.
+export function toolbarTitlePresentation({ capturing = false, selectedTitle = "" } = {}) {
+  if (capturing) return "New Recording";
+  const title = typeof selectedTitle === "string" ? selectedTitle.trim() : "";
+  return title || "Yawn";
 }
 
 // Maps one `authorize_locked_action`, `lock_meeting`, or `unlock_meeting`

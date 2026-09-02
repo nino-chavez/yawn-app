@@ -4,6 +4,7 @@ import {
   contentView,
   captureActivity,
   captureActivityElapsedSeconds,
+  captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
   humanize,
@@ -28,16 +29,17 @@ import {
   capturePauseControlPresentation,
   capturePausePresentation,
   evidencePopoverPresentation,
-  evidenceSplitAllowed,
-  evidenceSyncTarget,
   firstRunSheetVisible,
-  isManualTranscriptScroll,
   nextEscapeTarget,
   retainedAudioPlaybackPresentation,
   retentionLabel,
   retryTurnDiffSegments,
   shouldPollSnapshot,
+  sidebarGroups,
+  sidebarRowTitle,
+  sortLibraryRows,
   startSheetGuidedHint,
+  toolbarTitlePresentation,
   transcriptCitationSummary,
   transcriptPlainText,
   transcriptRetryDiffPresentation,
@@ -49,7 +51,6 @@ import {
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
-  trashLinkPresentation,
   trashListPresentation,
   turnCitationPresentation,
   withheldTurnPresentation,
@@ -99,6 +100,17 @@ const state = {
   search: "",
   searchTimer: null,
   selected: null,
+  // Rethink phase 1 (DESIGN.md): the sidebar toggle's own state, plus the
+  // one-shot launch-selection flags below. `sidebarCollapsed` is explicit
+  // operator intent (the toolbar toggle or ⌘⇧S / menu:toggle-sidebar); the
+  // width-based collapse below 900pt (DESIGN.md) is read live from the
+  // window in `render()`, not mirrored into state.
+  sidebarCollapsed: false,
+  // Launch state (experience-brief-2026-09-02.md "Window state restoration"):
+  // open to the library with the most recent meeting selected, attempted
+  // exactly once so it never fights a later, deliberate deselection.
+  launchSelectionAttempted: false,
+  autoSelecting: false,
   snapshot: null,
   speakerCorrection: null,
   speakerCorrectionDraft: "",
@@ -206,24 +218,17 @@ function takeJourneyTimingForConfirm() {
   return { t0EpochMs, t1EpochMs, t2EpochMs };
 }
 
-// Design intake D5's evidence-depth affordances. None of this lives in
-// `state`: the popover is a transient, cursor-anchored overlay outside the
-// patched tree entirely (see `showEvidencePopover`), and the sync-suppression
-// window and rAF batching flags are scheduling detail, not something any
-// render depends on. `state.selected.evidenceSplit` is the one piece that
-// *is* rendered (which column layout shows), and it lives there so it resets
+// Design intake D5's evidence-depth affordances, simplified by rethink phase
+// 1 (see the Inspector section below). The popover is a transient, cursor-
+// anchored overlay outside the patched tree entirely (see
+// `showEvidencePopover`). `state.selected.evidenceSplit` is whether the
+// inspector is open and which turn it targets; it lives there so it resets
 // with the rest of `state.selected` on every meeting load -- see
 // `loadSelectedMeeting`.
 let evidenceHoverTimer = null;
 let evidencePopoverEl = null;
 let evidencePopoverAnchor = null;
-let evidenceSyncSuppressedUntil = 0;
-let evidenceSyncRafPending = false;
-let evidenceSyncManualUntilNoteScroll = false;
-let evidenceSplitAllowedLast = null;
-let evidenceScrolledToTurnIndex = null;
 const EVIDENCE_HOVER_DELAY_MS = 350;
-const EVIDENCE_SYNC_SUPPRESS_MS = 500;
 
 // Roadmap packet W10: whether the first-run sheet is showing as of the most
 // recent render. Not part of `state` -- it is fully derived from `state.library`
@@ -280,31 +285,6 @@ function byteSizeLabel(bytes) {
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-function statusLabel(snapshot, permission) {
-  const presentation = capturePresentation(snapshot);
-  if (!snapshot) return { label: "Opening", tone: "working" };
-  if (snapshot.startup !== "ready") {
-    const modelWorking = snapshot.startup === "model-required"
-      && ["downloading", "verifying"].includes(snapshot.model_setup?.state);
-    return {
-      label: snapshot.startup === "model-required"
-        ? (modelWorking ? "Installing model" : "Choose a model")
-        : snapshot.startup === "checking" ? "Opening" : "Needs attention",
-      tone: snapshot.startup === "checking" || modelWorking ? "working" : "attention",
-    };
-  }
-  if (presentation.capture === "idle" && permissionSummary(permission).state !== "ready") {
-    return {
-      label: permission ? "Audio setup" : "Checking audio",
-      tone: permission ? "attention" : "working",
-    };
-  }
-  if (presentation.capture === "idle") return { label: "Ready", tone: "ready" };
-  if (presentation.capture === "recording") return { label: "Recording", tone: "recording" };
-  if (presentation.capture === "transcript-ready") return { label: "Ready to read", tone: "complete" };
-  return { label: presentation.eyebrow, tone: presentation.tone };
-}
-
 function noteSaveCopy() {
   if (state.noteUnreadable) return "Not editable";
   if (state.noteSaveState === "saving") return "Saving…";
@@ -326,67 +306,83 @@ function permissionAction(permission) {
   return { action: "open-settings", label: "Open Settings" };
 }
 
+// DESIGN.md's composition: below this width the sidebar collapses behind its
+// toggle and nothing else reflows. Read live, like the evidence-split width
+// gate this replaces -- never mirrored into state.
+const SIDEBAR_COLLAPSE_WIDTH = 900;
+
 function render() {
   const editorFocus = captureEditorFocus();
-  const status = statusLabel(state.snapshot, state.permissions);
-  const audioReady = canOpenStart(state.snapshot, state.permissions);
-  let content;
-  // Roadmap packet W10: `isHomeReady` is true in exactly the one branch below
-  // that renders Home -- the same set of conditions, kept alongside them
-  // rather than re-derived, so the first-run sheet can never show over a
-  // startup screen, an active capture, or a meeting/Trash view.
-  let isHomeReady = false;
-  // Single router seam (see contentView): every needs-attention state that is
-  // not a genuine startup failure still resolves to a reachable library, so
-  // "Back to Meetings" never lands on a screen with no way out.
-  switch (contentView({
+  const view = contentView({
     hasInvoke: Boolean(invoke),
     snapshot: state.snapshot,
     hasSelected: Boolean(state.selected),
     trashOpen: Boolean(state.trashOpen),
-  })) {
-    case "browser-notice": content = renderBrowserNotice(); break;
-    case "startup-checking": content = renderStartup(true); break;
-    case "model-setup": content = renderModelSetup(); break;
-    case "startup-attention": content = renderStartup(false); break;
-    case "capture": content = renderCapture(); break;
-    case "meeting": content = renderMeeting(); break;
-    case "trash": content = renderTrash(); break;
-    default:
-      content = renderHome();
-      isHomeReady = true;
+  });
+  // These four states cannot function as a shell: there is no library to
+  // show beside a document yet (still checking, choosing a model, or a real
+  // startup failure), or there is no Tauri bridge to read one from at all.
+  // DESIGN.md's toolbar/sidebar/document composition governs every ready
+  // state; these render full-window, same as before this rethink.
+  if (["browser-notice", "startup-checking", "model-setup", "startup-attention"].includes(view)) {
+    patchInto(root, `<div class="app-shell app-shell-preshell">${
+      view === "browser-notice" ? renderBrowserNotice()
+        : view === "startup-checking" ? renderStartup(true)
+          : view === "model-setup" ? renderModelSetup()
+            : renderStartup(false)
+    }</div>`);
+    restoreEditorFocus(editorFocus);
+    return;
   }
-  // Only when Home is what's showing, no other sheet is already open, and
-  // the library has loaded with zero meetings still undismissed. See
+
+  // Roadmap packet W10: the first-run sheet shows only over the ready shell,
+  // with nothing selected, capture idle, no other sheet already open, and
+  // the library loaded with zero meetings still undismissed. See
   // `firstRunSheetVisible` for the truth table.
-  const firstRunVisible = isHomeReady && !state.modal && firstRunSheetVisible(state.library);
+  const firstRunVisible = view === "home" && !state.modal && firstRunSheetVisible(state.library);
   firstRunSheetShowing = firstRunVisible;
+
+  const capturing = captureIsInProgress(state.snapshot);
+  const selectedTitle = view === "meeting" && state.selected
+    ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
+    : "";
+  const title = toolbarTitlePresentation({ capturing, selectedTitle });
+  const collapsed = state.sidebarCollapsed || currentWindowWidth() < SIDEBAR_COLLAPSE_WIDTH;
+
+  let paneContent;
+  if (view === "capture") paneContent = renderCapturePane();
+  else if (view === "meeting") paneContent = renderMeetingPane();
+  else if (view === "trash") paneContent = renderTrashPane();
+  else paneContent = renderEmptyPane();
 
   // Patched in place, never assigned wholesale: replacing root.innerHTML
   // destroyed every editor node per 900 ms poll tick, which reset WebKit's
   // per-element undo stack (and collapsed reader-opened <details>). See
   // dom-patch.mjs for the preservation rules.
   patchInto(root, `
-    <div class="app-shell" data-capture="${escapeHtml(state.snapshot?.capture || "opening")}">
-      <header class="topbar" data-tauri-drag-region>
-        <button class="brand" type="button" data-action="home" data-tauri-drag-region="false">
-          <span>Yawn</span>
-        </button>
-        <div class="topbar-actions" data-tauri-drag-region="false">
-          <div class="topbar-status" aria-label="${escapeHtml(status.label)}">
-            <span class="status-dot" data-tone="${escapeHtml(status.tone)}"></span>
-            <span>${escapeHtml(status.label)}</span>
-          </div>
-          ${state.snapshot?.startup === "ready" && state.snapshot?.capture === "idle" ? `
-            <button class="button button-quiet" type="button" data-action="meetings">Meetings</button>
-            ${audioReady ? `<button class="button button-primary" type="button" data-action="open-start">Record</button>` : ""}
-          ` : ""}
-          <button class="icon-button" type="button" data-action="settings" aria-label="Open Settings">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Zm8.3 3.6a6.8 6.8 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a8.2 8.2 0 0 0-1.7-1L15.8 3h-4l-.3 2.1a8.2 8.2 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a6.8 6.8 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a8.2 8.2 0 0 0 1.7 1l.3 2.1h4l.3-2.1a8.2 8.2 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5a6.8 6.8 0 0 0 .1-1Z" /></svg>
+    <div class="app-shell${collapsed ? " sidebar-collapsed" : ""}" data-capture="${escapeHtml(state.snapshot?.capture || "opening")}">
+      <header class="toolbar" data-tauri-drag-region>
+        <div class="toolbar-left" data-tauri-drag-region="false">
+          <button class="icon-button sidebar-toggle" type="button" data-action="toggle-sidebar" title="Toggle Sidebar (⌘⇧S)" aria-label="Toggle Sidebar" aria-pressed="${collapsed ? "false" : "true"}">
+            <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+              <rect x="0.5" y="0.5" width="15" height="13" rx="2.5" stroke="currentColor" stroke-opacity="0.85" />
+              <line x1="5.5" y1="1" x2="5.5" y2="13" stroke="currentColor" stroke-opacity="0.85" />
+            </svg>
           </button>
         </div>
+        <div class="toolbar-title">${escapeHtml(title)}</div>
+        <div class="toolbar-right" data-tauri-drag-region="false">
+          <label class="search-field">
+            <span class="visually-hidden">Search meetings</span>
+            <input type="search" data-field="library-search" value="${escapeHtml(state.search)}" placeholder="Search meetings" aria-label="Search meetings" autocorrect="off" spellcheck="false" />
+          </label>
+          <div class="record-control">${renderToolbarRecordControl()}</div>
+        </div>
       </header>
-      <main class="stage">${content}</main>
+      <div class="body">
+        <nav class="sidebar" id="sidebar" aria-label="Meetings">${renderSidebar()}</nav>
+        <main class="content">${paneContent}</main>
+      </div>
       ${firstRunVisible ? renderFirstRunSheet() : ""}
       ${state.modal === "start" ? renderStartSheet() : ""}
       ${state.modal === "rename-meeting" ? renderRenameMeetingSheet() : ""}
@@ -402,7 +398,6 @@ function render() {
   restoreEditorFocus(editorFocus);
   if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
-  syncEvidenceSplitScroll();
   dismissEvidencePopoverIfDetached();
 }
 
@@ -463,6 +458,34 @@ function listenForNoteCaptureHotkey() {
     // is unaffected, so this stays silent rather than raising a toast for a
     // convenience feature.
   });
+}
+
+// The main-window brief's app-menu contract: the shell (native menu bar)
+// emits these three events, this frontend answers them. `menu:stop` reuses
+// the exact same path as the toolbar Stop control -- `stopRecording` already
+// guards on capture being recording/paused, so a Stop with nothing recording
+// is a harmless no-op either way it's reached.
+function listenForMenuEvents() {
+  if (!tauriListen) return;
+  tauriListen("menu:new-recording", () => openStart()).catch(() => {});
+  tauriListen("menu:stop", () => { void stopRecording(); }).catch(() => {});
+  tauriListen("menu:toggle-sidebar", () => toggleSidebar()).catch(() => {});
+  tauriListen("menu:open-transcript", () => openFullTranscriptFromInspector()).catch(() => {});
+}
+
+// tokens.css keys dark mode on `html[data-theme="dark"]` only -- it carries
+// no `prefers-color-scheme` fallback of its own (that's `settings.js`'s
+// job for the Settings window; this is the same pattern for the main
+// window). Set at load and kept in sync with the system appearance so
+// "both appearances from tokens alone" (DESIGN.md) actually holds here.
+function syncThemeFromSystem() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+  const query = window.matchMedia("(prefers-color-scheme: dark)");
+  const apply = () => {
+    document.documentElement.dataset.theme = query.matches ? "dark" : "light";
+  };
+  apply();
+  query.addEventListener("change", apply);
 }
 
 function renderBrowserNotice() {
@@ -537,49 +560,172 @@ function renderModelSetup() {
   `;
 }
 
-function renderHome() {
-  const permission = permissionSummary(state.permissions);
-  const audioReady = permission.state === "ready";
+// -- Toolbar -------------------------------------------------------------
+
+// DESIGN.md's Record control: idle ("Record"), live (elapsed + Pause/Resume
+// + Stop). Every non-idle capture state shows the live badge -- only
+// recording/paused get Pause or Resume (`capturePauseControlPresentation`
+// returns null for arming/stopping/captured/transcribing/summarizing, which
+// still show elapsed time and Stop, matching the toolbar title's "New
+// Recording" for the same states).
+function renderToolbarRecordControl() {
+  const snapshot = state.snapshot;
+  if (captureIsInProgress(snapshot)) {
+    const capture = snapshot?.capture;
+    const elapsed = captureActivityElapsedSeconds(snapshot);
+    const elapsedLabel = elapsed === null ? humanize(capture) : timeLabel(elapsed);
+    const badgeLabel = capture === "paused" ? `Paused ${elapsedLabel}` : elapsedLabel;
+    const pauseControl = capturePauseControlPresentation(snapshot);
+    const stopping = state.busyAction === "stop";
+    const changing = state.busyAction === "pause" || state.busyAction === "resume";
+    return `
+      <span class="btn record live record-live-badge" aria-label="${escapeHtml(humanize(capture))}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
+      ${pauseControl ? `<button class="btn" type="button" data-action="${pauseControl.action}" ${pauseControl.disabled || changing || stopping ? "disabled" : ""}>${escapeHtml(pauseControl.label)}</button>` : ""}
+      <button class="btn" type="button" data-action="stop-recording" title="Stop (⌘.)" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button>
+    `;
+  }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
-  const setupAction = permissionAction(state.permissions);
-  const library = state.library;
+  return `<button class="btn record record-idle" type="button" data-action="open-start" title="Record (⌘R)" ${startAvailable ? "" : "disabled"}>Record</button>`;
+}
+
+// -- Sidebar ---------------------------------------------------------------
+
+function timeOfDayLabel(epochSeconds) {
+  if (!Number.isFinite(Number(epochSeconds))) return "";
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
+    .format(new Date(Number(epochSeconds) * 1000));
+}
+
+function renderSidebarRow(row, { selected = false } = {}) {
+  const meta = libraryRowMetaPresentation(row);
+  const title = sidebarRowTitle(row, dateLabel(row.createdAtEpochSeconds));
   return `
-    <section class="home-workbench" aria-labelledby="home-title">
-      <div class="home-copy">
-        <p class="eyebrow">New meeting</p>
-        <h1 id="home-title">Capture the conversation. Keep your own judgment.</h1>
-        <p class="lede">A local recording, your private notes, and a transcript you can check when a detail matters.</p>
-      </div>
-      <div class="home-action">
-        ${audioReady ? `
-          <div class="inline-actions">
-            <button class="button button-record" type="button" data-action="open-start" ${startAvailable ? "" : "disabled"}>Record</button>
-            <span class="shortcut" aria-label="Keyboard shortcut">⌘ R</span>
-          </div>
-          <p>Everything stays on this Mac. No account, bot, or automatic sharing.</p>
-        ` : `
-          <button class="button button-primary" type="button" data-action="${setupAction.action}">${escapeHtml(setupAction.label)}</button>
-          <p><strong>${escapeHtml(permission.title)}</strong><br />${escapeHtml(permission.detail)}</p>
-        `}
-      </div>
-    </section>
-    ${renderBackgroundTranscription(state.snapshot)}
-    <section aria-labelledby="meetings-heading">
-      <div class="section-heading">
-        <h2 id="meetings-heading">Recent meetings</h2>
-        ${library?.total ? `<input class="search-input" type="search" data-field="library-search" data-meeting-id="library" value="${escapeHtml(state.search)}" placeholder="Find a meeting by title" aria-label="Find a meeting by title" autocorrect="off" spellcheck="false" />` : ""}
-      </div>
-      ${renderLibrary(library, state.libraryStalled)}
-      ${renderTranscriptSearchAffordance(library)}
-      ${renderTranscriptSearchResults()}
-      ${(() => {
-        const link = trashLinkPresentation(state.trash);
-        return link
-          ? `<button class="button button-quiet button-small trash-link" type="button" data-action="open-trash">${escapeHtml(link.label)}</button>`
-          : "";
-      })()}
-    </section>
-  `;
+    <button class="row${selected ? " selected" : ""}" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}>
+      <span class="row-title">${escapeHtml(title)}</span>
+      <span class="row-caption caption">${escapeHtml(timeOfDayLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meta.label)}</span>
+      ${meta.preview ? `<span class="row-excerpt">${escapeHtml(meta.preview)}</span>` : ""}
+    </button>`;
+}
+
+function renderSidebarGroups(rows, selectedHandle) {
+  return sidebarGroups(rows).map((group) => `
+    <div class="group-label">${escapeHtml(group.label)}</div>
+    ${group.rows.map((row) => renderSidebarRow(row, { selected: row.handle === selectedHandle })).join("")}
+  `).join("");
+}
+
+function renderRecordingNowRow() {
+  const elapsed = captureActivityElapsedSeconds(state.snapshot);
+  const label = elapsed === null ? humanize(state.snapshot?.capture) : timeLabel(elapsed);
+  return `
+    <div class="row recording-now" aria-current="true">
+      <span class="row-title">Recording now</span>
+      <span class="row-caption caption">${escapeHtml(label)}</span>
+    </div>`;
+}
+
+function renderSidebar() {
+  const library = state.library;
+  const capturing = captureIsInProgress(state.snapshot);
+  const selectedHandle = state.selected?.row?.handle || "";
+
+  let body;
+  const waiting = libraryLoadingPresentation(library, state.libraryStalled);
+  const recovery = library ? libraryRecoveryPresentation(library) : null;
+  if (waiting) {
+    body = `
+      <p class="quiet-copy sidebar-message">${escapeHtml(waiting.message)}</p>
+      ${waiting.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(waiting.action.action)}">${escapeHtml(waiting.action.label)}</button>` : ""}`;
+  } else if (recovery) {
+    body = `
+      <p class="quiet-copy sidebar-message">${escapeHtml(recovery.detail)}</p>
+      <button class="button button-quiet button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button>`;
+  } else {
+    const empty = libraryEmptyStatePresentation(library);
+    body = empty
+      ? `
+        <p class="quiet-copy sidebar-message">${escapeHtml(empty.message)}</p>
+        ${empty.showGuidedInvite ? `<button class="button button-quiet button-small" type="button" data-action="open-start-guided" ${canOpenStart(state.snapshot, state.permissions) ? "" : "disabled"}>Try it: record a 30-second note to yourself.</button>` : ""}`
+      : renderSidebarGroups(library.rows, selectedHandle);
+    body += renderTranscriptSearchAffordance(library);
+    body += renderTranscriptSearchResults();
+  }
+
+  return `
+    <div class="sidebar-scroll">
+      ${capturing ? renderRecordingNowRow() : ""}
+      ${body}
+    </div>
+    <button class="trash-row${state.trashOpen ? " selected" : ""}" type="button" data-action="open-trash" aria-current="${state.trashOpen ? "true" : "false"}">
+      <svg width="13" height="14" viewBox="0 0 13 14" fill="none" aria-hidden="true">
+        <path d="M1 3.5h11M4.5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 3.5l.6 9a1 1 0 0 0 1 .95h4.8a1 1 0 0 0 1-.95l.6-9" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+      <span>Trash</span>
+    </button>`;
+}
+
+// -- Document pane -----------------------------------------------------------
+
+// DESIGN.md's needs-attention surface: headline, detail, one primary and one
+// secondary action, nothing else -- no banner, no icon. Shared by the empty
+// pane's audio-permission block, a locked-meeting barrier, and a meeting's
+// own recovery/failure state, so the shape stays the same wherever a
+// condition actually blocks or endangers the record.
+function renderNeedsAttentionPane({ headline, detail, action = null, secondaryAction = null }) {
+  return `
+    <div class="attention-pane">
+      <h1 class="attention-headline">${escapeHtml(headline)}</h1>
+      <p class="attention-detail">${escapeHtml(detail)}</p>
+      ${action || secondaryAction ? `
+      <div class="attention-actions">
+        ${action ? `<button class="btn primary" type="button" data-action="${escapeHtml(action.action)}" ${action.disabled ? "disabled" : ""}>${escapeHtml(action.label)}</button>` : ""}
+        ${secondaryAction ? `<button class="btn" type="button" data-action="${escapeHtml(secondaryAction.action)}">${escapeHtml(secondaryAction.label)}</button>` : ""}
+      </div>` : ""}
+    </div>`;
+}
+
+function renderEmptyPane() {
+  const permission = permissionSummary(state.permissions);
+  if (permission.state !== "ready" && permission.state !== "checking") {
+    // DESIGN.md: a full-width surface is reserved for a condition that
+    // blocks or endangers the record, and it always carries a next action.
+    // Audio access not being ready blocks the one thing this window is for.
+    const action = permissionAction(state.permissions);
+    return renderNeedsAttentionPane({ headline: permission.title, detail: permission.detail, action });
+  }
+  const processing = backgroundTranscriptionPresentation(state.snapshot);
+  return `
+    <div class="empty-pane">
+      <p class="caption">Select a meeting, or press Record</p>
+      ${processing ? `<p class="caption">${escapeHtml(processing.detail)}</p>` : ""}
+    </div>`;
+}
+
+function renderTrashPane() {
+  const presentation = trashListPresentation(state.trash);
+  return `
+    <div class="doc-wrap">
+      <article class="read trash-pane" aria-labelledby="trash-heading">
+        <h1 id="trash-heading">Trash</h1>
+        <p class="caption doc-caption">Deleted meetings stay here for 30 days, then Yawn removes them permanently. There is no server copy, so a meeting cannot be recovered after that.</p>
+        ${presentation.state === "loading" ? `<p class="caption">Loading Trash…</p>` : ""}
+        ${presentation.state === "empty" ? `<p class="caption">Trash is empty.</p>` : ""}
+        ${presentation.state === "populated" ? `
+          <ul class="trash-list">
+            ${presentation.entries.map((entry) => {
+              const busy = state.busyAction === `restore-${entry.meetingId}`;
+              return `
+              <li>
+                <span>
+                  <span class="row-title">${escapeHtml(entry.label)}</span>
+                  <span class="row-caption caption">Deleted ${escapeHtml(dateLabel(entry.deletedAtEpochSeconds))} · removed permanently ${escapeHtml(dateLabel(entry.purgeAfterEpochSeconds))}</span>
+                </span>
+                <button class="btn" type="button" data-action="restore-trash-entry" data-meeting-id="${escapeHtml(entry.meetingId)}" ${busy ? "disabled" : ""}>${busy ? "Restoring…" : "Restore"}</button>
+              </li>`;
+            }).join("")}
+          </ul>` : ""}
+      </article>
+    </div>`;
 }
 
 // Roadmap intake W8-B: the probe's entire UI. With the flag off (the
@@ -625,144 +771,55 @@ function renderTranscriptSearchResults() {
   `;
 }
 
-function renderTrash() {
-  const presentation = trashListPresentation(state.trash);
-  return `
-    <section aria-labelledby="trash-heading">
-      <div class="section-heading">
-        <button class="icon-button" type="button" data-action="close-trash" aria-label="Back to Meetings">‹</button>
-        <h2 id="trash-heading">Trash</h2>
-      </div>
-      <p class="quiet-copy">Deleted meetings stay here for 30 days, then Yawn removes them permanently. There is no server copy, so a meeting cannot be recovered after that.</p>
-      ${presentation.state === "loading" ? `<p class="quiet-copy">Loading Trash…</p>` : ""}
-      ${presentation.state === "empty" ? `<p class="quiet-copy">Trash is empty.</p>` : ""}
-      ${presentation.state === "populated" ? `
-        <div class="meeting-list" role="list">
-          ${presentation.entries.map((entry) => {
-            const busy = state.busyAction === `restore-${entry.meetingId}`;
-            return `
-            <div class="meeting-row trash-row" role="listitem">
-              <span>
-                <span class="meeting-row-title">${escapeHtml(entry.label)}</span>
-                <span class="meeting-row-meta">Deleted ${escapeHtml(dateLabel(entry.deletedAtEpochSeconds))} · removed permanently ${escapeHtml(dateLabel(entry.purgeAfterEpochSeconds))}</span>
-              </span>
-              <button class="button button-secondary button-small" type="button" data-action="restore-trash-entry" data-meeting-id="${escapeHtml(entry.meetingId)}" ${busy ? "disabled" : ""}>${busy ? "Restoring…" : "Restore"}</button>
-            </div>
-          `;
-          }).join("")}
-        </div>
-      ` : ""}
-    </section>
-  `;
-}
-
-function renderBackgroundTranscription(snapshot) {
-  const processing = backgroundTranscriptionPresentation(snapshot);
-  if (!processing) return "";
-  return `
-    <section class="message-card background-transcription" data-state="${escapeHtml(processing.state)}" aria-live="polite">
-      <p class="eyebrow">Processing on this Mac</p>
-      <h2>${escapeHtml(processing.label)}</h2>
-      <p>${escapeHtml(processing.detail)}</p>
-    </section>
-  `;
-}
-
-function renderLibrary(library, stalled) {
-  const waiting = libraryLoadingPresentation(library, stalled);
-  if (waiting) {
-    return `
-      <p class="quiet-copy">${escapeHtml(waiting.message)}</p>
-      ${waiting.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(waiting.action.action)}">${escapeHtml(waiting.action.label)}</button>` : ""}
-    `;
-  }
-  const recovery = libraryRecoveryPresentation(library);
-  if (recovery) {
-    return `<section class="empty-library recovery-card attention" aria-labelledby="library-recovery-title"><h3 id="library-recovery-title">${escapeHtml(recovery.title)}</h3><p>${escapeHtml(recovery.detail)}</p><button class="button button-primary button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button></section>`;
-  }
-  const empty = libraryEmptyStatePresentation(library);
-  if (empty) {
-    return `
-      <div class="empty-library">
-        <h3>${escapeHtml(empty.title)}</h3>
-        <p>${escapeHtml(empty.message)}</p>
-        ${empty.showGuidedInvite ? `<button class="button button-quiet button-small empty-library-invite" type="button" data-action="open-start-guided" ${canOpenStart(state.snapshot, state.permissions) ? "" : "disabled"}>Try it: record a 30-second note to yourself.</button>` : ""}
-      </div>
-    `;
-  }
-  return `
-    <div class="meeting-list" role="list">
-      ${library.rows.map((row) => {
-        // Roadmap intake I5 (a): a locked row keeps its title and date and
-        // drops both the note preview and the transcript detail. The preview
-        // is already absent from the backend response; this branch is the
-        // rendered half of the same suppression.
-        const meta = libraryRowMetaPresentation(row);
-        return `
-        <button class="meeting-row" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}>
-          <span>
-            <span class="meeting-row-title">${escapeHtml(row.label || `Meeting · ${dateLabel(row.createdAtEpochSeconds)}`)}</span>
-            ${meta.preview ? `<span class="meeting-row-preview">${escapeHtml(meta.preview)}</span>` : ""}
-            <span class="meeting-row-meta">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meta.label)}</span>
-          </span>
-          <span class="meeting-row-arrow" aria-hidden="true">›</span>
-        </button>
-      `;
-      }).join("")}
-    </div>
-  `;
-}
-
-function renderCapture() {
+// DESIGN.md's During moment: the document pane becomes the note canvas --
+// the operator's own notes at the reading measure, the pause/state fact as a
+// caption, a collapsed live-transcript disclosure beneath. This also renders
+// the one-tick terminal-capture fallback (see contentView): a terminal
+// snapshot the library has not yet indexed into a `meeting` selection. That
+// branch keeps a "Back to Meetings" / "Record another meeting" action so the
+// reader is never stranded while the lookup resolves.
+function renderCapturePane() {
   const snapshot = state.snapshot;
+  const inProgress = captureIsInProgress(snapshot);
   const presentation = capturePresentation(snapshot);
-  const terminal = ["transcript-ready", "transcription-failed", "recovered-interrupted"].includes(snapshot.capture);
   const disabled = state.noteUnreadable || !snapshot.meeting_id;
   const contextDisabled = state.contextUnreadable || !snapshot.meeting_id;
   const context = snapshot.error || snapshot.warnings?.[0] || "";
   return `
-    <section class="session-workspace" aria-labelledby="capture-title">
-      <header class="session-toolbar">
-        <div class="session-status">
-          <span class="record-dot" data-tone="${escapeHtml(presentation.tone)}" aria-hidden="true"></span>
-          <div>
-            <p class="eyebrow">${escapeHtml(presentation.eyebrow)}</p>
-            <h1 id="capture-title">${escapeHtml(presentation.title)}</h1>
-            <p>${escapeHtml(presentation.detail)}</p>
-          </div>
-        </div>
-        ${captureAction(snapshot, terminal)}
-      </header>
-      <div class="capture-facts" aria-label="Recording state">
-        <span class="status-pill" data-tone="${escapeHtml(presentation.tone)}">${escapeHtml(humanize(snapshot.capture))}</span>
-        ${snapshot.mic_state ? `<span class="fact-pill">Mic: ${escapeHtml(snapshot.mic_state)}</span>` : ""}
-        ${snapshot.system_state ? `<span class="fact-pill">System audio: ${escapeHtml(snapshot.system_state)}</span>` : ""}
-      </div>
+    <div class="canvas-wrap">
+      <div class="canvas-caption caption">${escapeHtml(presentation.detail)}</div>
+      ${context ? `<p class="caption canvas-context-note" data-tone="${escapeHtml(presentation.tone)}">${escapeHtml(context)}</p>` : ""}
+      ${!inProgress ? `<div class="canvas-terminal-actions">${captureAction(snapshot, true)}</div>` : ""}
       ${renderActivityMonitor(snapshot)}
-      ${context ? `<p class="message-card ${presentation.tone === "attention" ? "attention" : ""}">${escapeHtml(context)}</p>` : ""}
-      <article class="note-workbench context-workbench">
-        <div class="note-editor-head"><strong>What is this meeting for? (optional)</strong><span class="save-state" id="context-save-state">${escapeHtml(contextSaveCopy())}</span></div>
-        <textarea class="note-editor" data-field="meeting-context" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="What is this meeting for? Optional." placeholder="What is this meeting for? What must get decided?" ${contextDisabled ? "disabled" : ""}>${escapeHtml(state.contextDraft)}</textarea>
-        <div class="capture-foot">
-          <p>${state.contextUnreadable ? "This context could not be read, so Yawn will not overwrite it." : "Your context, used to guide the generated note. Not a transcript."}</p>
-        </div>
-      </article>
-      <article class="note-workbench">
-        <div class="note-editor-head"><strong>Your notes</strong><span class="save-state" id="note-save-state">${escapeHtml(noteSaveCopy())}</span></div>
-        <textarea class="note-editor" data-field="operator-note" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${disabled ? "disabled" : ""}>${escapeHtml(state.noteDraft)}</textarea>
-        <div class="capture-foot">
-          <p>${state.noteUnreadable ? "This note could not be read, so Yawn will not overwrite it." : "Saved separately from the transcript. These are your notes, not generated claims."}</p>
-        </div>
-      </article>
-      ${snapshot.turns?.length ? renderTranscript(snapshot.turns, terminal ? "Source transcript" : "Live transcript", terminal ? "The retained record for checking a detail that matters." : "Yawn adds local transcription here as it becomes available.", {
-        copyAction: "copy-current-transcript",
-        openFileAction: snapshot.capture === "transcript-ready" && snapshot.current_transcript_sha256 ? "open-current-transcript-file" : "",
-      }) : ""}
-    </section>
+      <textarea class="notes-area" data-field="operator-note" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${disabled ? "disabled" : ""}>${escapeHtml(state.noteDraft)}</textarea>
+      <div class="canvas-field-foot caption">${escapeHtml(state.noteUnreadable ? "This note could not be read, so Yawn will not overwrite it." : noteSaveCopy())}</div>
+      <details class="canvas-context-disclosure">
+        <summary class="caption">What is this meeting for? (optional)</summary>
+        <textarea class="notes-area canvas-context-area" data-field="meeting-context" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="What is this meeting for? Optional." placeholder="What is this meeting for? What must get decided?" ${contextDisabled ? "disabled" : ""}>${escapeHtml(state.contextDraft)}</textarea>
+        <div class="canvas-field-foot caption">${escapeHtml(state.contextUnreadable ? "This context could not be read, so Yawn will not overwrite it." : contextSaveCopy())}</div>
+      </details>
+      ${snapshot.turns?.length ? `
+        <details class="transcript-disclosure">
+          <summary>Live transcript (${snapshot.turns.length} turns)</summary>
+          <div class="transcript-disclosure-content">${renderTranscript(snapshot.turns, inProgress ? "Live transcript" : "Source transcript", inProgress ? "Yawn adds local transcription here as it becomes available." : "The retained record for checking a detail that matters.", {
+            copyAction: "copy-current-transcript",
+            openFileAction: snapshot.capture === "transcript-ready" && snapshot.current_transcript_sha256 ? "open-current-transcript-file" : "",
+          })}</div>
+        </details>` : ""}
+    </div>
   `;
 }
 
+// Rethink phase 1: during ordinary recording or paused, the toolbar's own
+// Record control already carries the live elapsed time, and the canvas
+// caption above already states what's happening -- a third restatement here
+// is exactly the "same status stated three times" the cold review flagged
+// (finding 3). This line earns its place only for the transitional steps
+// (arming, stopping, captured, transcribing, summarizing), where the elapsed-
+// in-this-step timer and transcription heartbeat are information the reader
+// cannot get anywhere else on screen.
 function renderActivityMonitor(snapshot) {
+  if (["recording", "paused"].includes(snapshot?.capture)) return "";
   const activity = captureActivity(snapshot);
   if (!activity) return "";
   const startedAt = Number(snapshot.capture_state_started_at_epoch_seconds);
@@ -770,18 +827,13 @@ function renderActivityMonitor(snapshot) {
   const heartbeatAt = Number(snapshot.transcription_last_worker_heartbeat_at_epoch_seconds);
   const heartbeatAge = transcriptionWorkerHeartbeatAgeSeconds(snapshot);
   return `
-    <section class="activity-monitor" data-tone="${escapeHtml(activity.tone)}" aria-labelledby="activity-title">
-      <div>
-        <p class="eyebrow">Activity</p>
-        <h2 id="activity-title">${escapeHtml(activity.label)}</h2>
-        <p>${escapeHtml(activity.detail)}</p>
-      </div>
-      <div class="activity-timing">
+    <div class="activity-monitor caption" data-tone="${escapeHtml(activity.tone)}" aria-label="${escapeHtml(activity.label)}">
+      <span>${escapeHtml(activity.label)} · ${escapeHtml(activity.detail)}</span>
+      <span class="activity-timing">
         <strong data-activity-elapsed data-activity-started-at="${Number.isFinite(startedAt) ? startedAt : ""}">${elapsed === null ? "Working" : timeLabel(elapsed)}</strong>
-        <span>elapsed in this step</span>
         ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for a confirmation on this Mac" : `Last confirmed on this Mac ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
-      </div>
-    </section>
+      </span>
+    </div>
   `;
 }
 
@@ -949,7 +1001,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
 function renderMeetingNoteItems(claims, claimEvidence) {
   return `
     <ul class="meeting-note-list">${claims.map((claim) => `<li class="meeting-note-item"${Number.isInteger(claim.ordinal) ? ` data-claim-item="${escapeHtml(claim.ordinal)}"` : ""}>
-          <p>${escapeHtml(claim.claim)}</p>
+          <p>${renderClaimText(claim)}</p>
           ${renderClaimEvidence(claim, claimEvidence[claim.ordinal])}
         </li>`).join("")}</ul>
   `;
@@ -962,9 +1014,8 @@ function renderMeetingNote(note, claimEvidence) {
     return `
       <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
         <header class="meeting-note-header">
-          <p class="eyebrow">Meeting note</p>
           <h2 id="meeting-note-heading">No meeting note yet.</h2>
-          <p>${escapeHtml(note?.message || "Yawn has no generated note for this meeting.")}</p>
+          <p class="caption">${escapeHtml(note?.message || "Yawn has no generated note for this meeting.")}</p>
         </header>
       </section>
     `;
@@ -974,29 +1025,23 @@ function renderMeetingNote(note, claimEvidence) {
     return `
       <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
         <header class="meeting-note-header">
-          <p class="eyebrow">Meeting note</p>
           <h2 id="meeting-note-heading">A summary wasn’t produced.</h2>
-          <p>Yawn selected ${count} transcript ${count === 1 ? "excerpt" : "excerpts"}, but those excerpts are source material, not a meeting summary.</p>
+          <p class="caption">Yawn selected ${count} transcript ${count === 1 ? "excerpt" : "excerpts"}, but those excerpts are source material, not a meeting summary. Labeled <strong>Transcript highlights</strong> rather than a draft note.</p>
         </header>
         <details class="transcript-highlights">
-          <summary><span>Review selected excerpts</span><span>${count}</span></summary>
+          <summary><span>Transcript highlights</span><span>${count}</span></summary>
           <div class="transcript-highlights-content">${renderMeetingNoteItems(presentation.highlights, claimEvidence)}</div>
         </details>
       </section>
     `;
   }
   return `
-    <section class="meeting-note" aria-labelledby="meeting-note-heading">
-      <header class="meeting-note-header">
-        <p class="eyebrow">Meeting note</p>
-        <h2 id="meeting-note-heading">What happened and what comes next</h2>
-        <p>Generated from the transcript. Use the source links to check anything that matters.</p>
-      </header>
+    <section class="meeting-note" aria-label="Meeting note">
       ${presentation.summary.length ? `
         <section class="meeting-note-section meeting-note-overview" aria-labelledby="meeting-overview-heading">
           <h3 id="meeting-overview-heading">Overview</h3>
           ${presentation.summary.map((claim) => `<div class="meeting-note-summary-item"${Number.isInteger(claim.ordinal) ? ` data-claim-item="${escapeHtml(claim.ordinal)}"` : ""}>
-            <p>${escapeHtml(claim.claim)}</p>
+            <p>${renderClaimText(claim)}</p>
             ${claim.handle ? renderClaimEvidence(claim, claimEvidence[claim.ordinal]) : ""}
           </div>`).join("")}
         </section>
@@ -1033,18 +1078,6 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
         }) : `<section class="note-section transcript-unavailable"><p class="message-card">${escapeHtml(transcript.message)}</p></section>`}
       </div>
     </details>
-  `;
-}
-
-function renderMeetingRecovery(recovery) {
-  if (!recovery) return "";
-  const headingId = `meeting-recovery-${recovery.state}`;
-  return `
-    <section class="message-card recovery-card ${recovery.tone === "working" ? "" : "attention"}" aria-labelledby="${headingId}">
-      <h2 id="${headingId}">${escapeHtml(recovery.title)}</h2>
-      <p>${escapeHtml(recovery.detail)}</p>
-      ${recovery.action ? `<button class="button button-primary button-small" type="button" data-action="${escapeHtml(recovery.action.action)}">${escapeHtml(recovery.action.label)}</button>` : ""}
-    </section>
   `;
 }
 
@@ -1085,74 +1118,77 @@ function renderTranscriptRetryAction(note, transcript, recovery) {
   `;
 }
 
-// Design intake D5's depth-2 split, and its own governing width fallback:
-// below `EVIDENCE_SPLIT_MIN_WINDOW_WIDTH` the surface renders exactly as it
-// did before this packet -- the full transcript stays a below-the-note
-// disclosure. Both branches render the workspace-mode transcript through the
-// same `renderTranscript` call, and never both at once: `renderTranscript`'s
-// workspace branch hardcodes ids (`transcript-heading`,
-// `transcript-search-input`, ...), so two live instances would collide under
-// the patcher's id-keying the moment either one re-rendered.
-function renderMeetingWorkspace({ note, transcript, recovery, claimEvidence, playback, operatorNote, selectedNoteCopy, noteEditable, row }) {
-  const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
-  const splitActive = Boolean(
-    evidenceSplit.open
-    && transcript?.turns?.length
-    && evidenceSplitAllowed(currentWindowWidth()),
-  );
-  const citations = note ? { turnsCited: note.turnsCited, claims: note.claims } : null;
+// DESIGN.md's Inspector: the cited turn plus one neighbour on each side,
+// target highlighted, neighbours dimmed, "Open full transcript" at the foot.
+// Static once opened -- it never scrolls the note (that's the entire
+// simplification from the prior depth-3 synced-scroll split).
+function renderInspector(transcript, evidenceSplit) {
+  const turnIndex = evidenceSplit.turnIndex;
+  const turns = (transcript?.turns || []).filter((turn) => (
+    Number.isInteger(Number(turn?.sourceTurnIndex))
+    && Number(turn.sourceTurnIndex) >= turnIndex - 1
+    && Number(turn.sourceTurnIndex) <= turnIndex + 1
+  ));
   return `
-      <div class="meeting-workspace" data-evidence-split="${splitActive ? "open" : "closed"}">
-        <main class="meeting-source-pane" id="meeting-source-pane">
-          ${renderMeetingNote(note, claimEvidence)}
-          ${renderGenerateNote(note, recovery)}
-          ${renderTranscriptRetryAction(note, transcript, recovery)}
-          ${splitActive ? "" : renderTranscriptDisclosure(transcript, recovery, note)}
-        </main>
-        ${splitActive ? renderEvidenceSplitColumn(transcript, citations, evidenceSplit.turnIndex) : ""}
-        <aside class="meeting-notes-pane">
-          ${renderRetainedAudioPlayback(playback)}
-          ${renderMeetingContextSection(note)}
-          <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
-          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="save-state" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
-          ${operatorNote?.unreadable
-            ? `<p class="message-card attention">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
-            : `<textarea class="note-editor meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
-              <p class="note-editor-help">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
-          </section>
-        </aside>
-      </div>`;
-}
-
-// The split column itself: a close affordance (Escape does the same, see
-// `handleKeydown`), then the exact same workspace-mode transcript the
-// below-the-note disclosure renders -- same citations, same search, same
-// speaker-correction affordances. Scrolling to and highlighting the target
-// turn happens after this markup is patched into the DOM (see `render`'s
-// tail and `syncEvidenceSplitScroll`), because the target element does not
-// exist yet while this string is being built.
-function renderEvidenceSplitColumn(transcript, citations, targetTurnIndex) {
-  return `
-    <section class="evidence-split-column" id="evidence-split-column" aria-label="Cited transcript">
-      <div class="evidence-split-head">
-        <p class="eyebrow">Cited transcript</p>
+    <aside class="inspector" id="evidence-split-column" aria-label="Cited transcript">
+      <div class="inspector-head">
+        <span class="inspector-label">Source</span>
         <button class="icon-button" type="button" data-action="close-evidence-split" aria-label="Close cited transcript">×</button>
       </div>
-      ${renderTranscript(transcript.turns, "Source transcript", "Scrolled to the cited passage.", {
-        copyAction: "copy-library-transcript",
-        openFileAction: "open-library-transcript-file",
-        exportAction: "export-meeting",
-        workspace: true,
-        citations,
-        targetTurnIndex,
-      })}
-    </section>
-  `;
+      ${turns.map((turn) => {
+        const target = Number(turn.sourceTurnIndex) === turnIndex;
+        const speakerLabel = transcriptSpeakerLabel(turn);
+        return `
+        <div class="transcript-turn${target ? " highlighted" : " dim"}" data-turn-index="${escapeHtml(turn.sourceTurnIndex)}">
+          <div class="t-meta"><span class="t-who">${escapeHtml(speakerLabel || "Unattributed")}</span><span class="caption">${escapeHtml(timeLabel(turn.start))}</span></div>
+          <p>${turn.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn.text)}</p>
+        </div>`;
+      }).join("")}
+      <button class="btn" type="button" data-action="open-full-transcript">Open full transcript</button>
+    </aside>`;
 }
 
-function renderMeeting() {
+function renderMeetingPane() {
   const { row, note, transcript } = state.selected;
-  const title = row.label || `Meeting · ${dateLabel(row.createdAtEpochSeconds)}`;
+  const title = sidebarRowTitle(row, dateLabel(row.createdAtEpochSeconds));
+
+  // Roadmap intake I5. A locked meeting renders only the barrier -- there is
+  // no meeting content behind it to hide, because the response carried none.
+  const lock = meetingLockPresentation(note);
+  if (lock && lock.state !== "unlocked" && lock.state !== "open") {
+    const busy = state.busyAction === "unlock-meeting-open";
+    return renderNeedsAttentionPane({
+      headline: lock.heading,
+      detail: lock.detail,
+      action: lock.action ? { ...lock.action, disabled: busy } : null,
+    });
+  }
+
+  // "audio-released" is not a blocking condition -- the transcript and note
+  // stay fully readable; only retranscription is gone. It renders as a
+  // caption inside the ordinary content below, the same way the prior
+  // version kept the workspace visible under that one warning.
+  const recovery = meetingRecoveryPresentation(note, transcript, state.generatingMeetingId);
+  const blockingRecovery = recovery && recovery.state !== "audio-released" ? recovery : null;
+  if (blockingRecovery) {
+    const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
+    return renderNeedsAttentionPane({
+      headline: blockingRecovery.title,
+      detail: blockingRecovery.detail,
+      action: blockingRecovery.action,
+      secondaryAction: canDeleteMeeting ? { action: "delete-meeting", label: "Move to Trash…" } : null,
+    });
+  }
+
+  if (lock?.state === "open") {
+    return `
+      <div class="doc-wrap"><article class="read">
+        <h1>${escapeHtml(title)}</h1>
+        <p class="caption doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))}</p>
+        <p class="caption">${escapeHtml(lock.detail)}</p>
+      </article></div>`;
+  }
+
   const claims = note?.claims || [];
   const operatorNote = note?.operatorNote;
   const selectedNoteState = state.selected?.operatorNoteSaveState || "local";
@@ -1170,70 +1206,64 @@ function renderMeeting() {
   const canDeleteRecording = Boolean(note?.audioDeletionHandle);
   const canDeleteTranscript = Boolean(note?.transcriptDeletionHandle);
   const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
-  const lock = meetingLockPresentation(note);
   // Roadmap intake I5. Locking is offered on any readable meeting; removing a
-  // lock is offered wherever one exists, including on the barrier screen
-  // itself, so an unreadable lock is never a dead end.
+  // lock is offered wherever one exists.
   const canLock = lock?.state === "unlocked";
   const canUnlock = Boolean(note?.lock?.locked);
   const canManage = canDeleteRecording || canDeleteTranscript || canDeleteMeeting || canLock || canUnlock;
-  const retentionMessage = note?.audioRetention?.message || "Audio-retention details are unavailable for this meeting.";
-  const recovery = meetingRecoveryPresentation(note, transcript, state.generatingMeetingId);
   const playback = retainedAudioPlaybackPresentation(note, recovery, state.audioPlayback);
+  const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
+  const inspectorOpen = Boolean(evidenceSplit.open && transcript?.turns?.length);
+
+  // DESIGN.md: Retry, export, rename, lock, Manage, Move to Trash stay
+  // available but demoted to the Manage menu / secondary controls next to
+  // the title -- nothing removed from the command surface.
+  const manageMenu = canManage ? `
+    <div class="meeting-manage-control">
+      <button class="btn" type="button" data-action="toggle-meeting-management" aria-expanded="${state.meetingManagementOpen ? "true" : "false"}" aria-controls="meeting-manage-menu">Manage</button>
+      ${state.meetingManagementOpen ? `
+      <div class="meeting-manage-menu" id="meeting-manage-menu" role="group" aria-label="Manage this meeting">
+        <p class="caption">These actions affect only this meeting on this Mac.</p>
+        ${canLock ? `<button class="btn" type="button" data-action="lock-meeting">Lock meeting…</button>` : ""}
+        ${canUnlock ? `<button class="btn" type="button" data-action="unlock-meeting">Remove lock…</button>` : ""}
+        ${canDeleteRecording ? `<button class="btn" type="button" data-action="delete-recording">Delete recording</button>` : ""}
+        ${canDeleteTranscript ? `<button class="btn" type="button" data-action="delete-transcript">Delete transcript</button>` : ""}
+        ${canDeleteMeeting ? `<button class="btn danger" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
+      </div>` : ""}
+    </div>` : "";
+
   return `
-    <article class="meeting-page meeting-workspace-page" aria-labelledby="meeting-title">
-      <button class="text-button" type="button" data-action="meetings">Back to meetings</button>
-      <header class="meeting-detail-header">
-        <p class="eyebrow">Saved on this Mac</p>
-        <div class="meeting-title-row">
-          <h1 class="meeting-title" id="meeting-title">${escapeHtml(title)}</h1>
-          <div class="meeting-header-actions">
-            ${canRename ? `<button class="button button-quiet button-small" type="button" data-action="rename-meeting">Rename</button>` : ""}
-            ${canManage ? `<div class="meeting-manage-control">
-              <button class="button button-secondary button-small" type="button" data-action="toggle-meeting-management" aria-expanded="${state.meetingManagementOpen ? "true" : "false"}" aria-controls="meeting-manage-menu">Manage</button>
-              ${state.meetingManagementOpen ? `<div class="meeting-manage-menu" id="meeting-manage-menu" role="group" aria-label="Manage this meeting">
-                <p>These actions affect only this meeting on this Mac.</p>
-                ${canLock ? `<button class="button button-secondary button-small" type="button" data-action="lock-meeting">Lock meeting…</button>` : ""}
-                ${canUnlock ? `<button class="button button-secondary button-small" type="button" data-action="unlock-meeting">Remove lock…</button>` : ""}
-                ${canDeleteRecording ? `<button class="button button-secondary button-small" type="button" data-action="delete-recording">Delete recording</button>` : ""}
-                ${canDeleteTranscript ? `<button class="button button-secondary button-small" type="button" data-action="delete-transcript">Delete transcript</button>` : ""}
-                ${canDeleteMeeting ? `<button class="button button-danger button-small" type="button" data-action="delete-meeting">Delete meeting…</button>` : ""}
-              </div>` : ""}
-            </div>` : ""}
+    <div class="doc-wrap">
+      <div class="doc-main">
+      <article class="read" aria-labelledby="meeting-title">
+        <div class="doc-head">
+          <h1 id="meeting-title">${escapeHtml(title)}</h1>
+          <div class="doc-head-actions">
+            ${canRename ? `<button class="btn" type="button" data-action="rename-meeting">Rename</button>` : ""}
+            ${manageMenu}
           </div>
         </div>
-        <div class="meeting-meta"><span>${escapeHtml(dateLabel(row.createdAtEpochSeconds))}</span><span>${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</span></div>
-        <p class="meeting-storage-note">${escapeHtml(retentionMessage)}</p>
+        <p class="caption doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
-      </header>
-      ${renderMeetingLock(lock)}
-      ${lock?.state === "locked" || lock?.state === "unreadable" ? "" : `
-      ${renderMeetingRecovery(recovery)}
-      ${!recovery && note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="message-card ${note.state === "summary-failed" ? "attention" : ""}">${escapeHtml(note.message)}</p>` : ""}
-      ${renderMeetingWorkspace({ note, transcript, recovery, claimEvidence, playback, operatorNote, selectedNoteCopy, noteEditable, row })}`}
-    </article>
-  `;
-}
-
-// Roadmap intake I5. The barrier itself, and the "still locked" note above a
-// meeting that a confirmation opened for reading.
-//
-// A locked meeting renders this and nothing else -- there is no meeting
-// content behind it to hide, because the response carried none. The sentence
-// is the packet's honest claim, said where the reader meets the lock rather
-// than only in a confirmation sheet they may never reopen.
-function renderMeetingLock(lock) {
-  if (!lock || lock.state === "unlocked") return "";
-  if (lock.state === "open") {
-    return `<p class="message-card meeting-lock-open" data-lock-state="open">${escapeHtml(lock.detail)}</p>`;
-  }
-  const busy = state.busyAction === "unlock-meeting-open";
-  return `
-    <section class="empty-library recovery-card meeting-lock-card" data-lock-state="${escapeHtml(lock.state)}" aria-labelledby="meeting-lock-title">
-      <h3 id="meeting-lock-title">${escapeHtml(lock.heading)}</h3>
-      <p>${escapeHtml(lock.detail)}</p>
-      ${lock.action ? `<button class="button button-primary button-small" type="button" data-action="${escapeHtml(lock.action.action)}" ${busy ? "disabled" : ""}>${busy ? "Confirming…" : escapeHtml(lock.action.label)}</button>` : ""}
-    </section>
+        ${recovery?.state === "audio-released" ? `<p class="caption">${escapeHtml(recovery.detail)}</p>` : ""}
+        ${note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="caption">${escapeHtml(note.message)}</p>` : ""}
+        ${renderMeetingNote(note, claimEvidence)}
+        ${renderGenerateNote(note, recovery)}
+        ${renderTranscriptRetryAction(note, transcript, recovery)}
+        ${renderRetainedAudioPlayback(playback)}
+        ${renderMeetingContextSection(note)}
+        <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
+          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="caption" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
+          ${operatorNote?.unreadable
+            ? `<p class="caption">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
+            : `<textarea class="notes-area meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
+              <p class="caption">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
+        </section>
+      </article>
+      <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
+      </div>
+      ${inspectorOpen ? renderInspector(transcript, evidenceSplit) : ""}
+    </div>
   `;
 }
 
@@ -1248,11 +1278,11 @@ function renderMeetingContextSection(note) {
     <section class="note-section meeting-context-section" aria-labelledby="meeting-context-heading">
       <div class="note-editor-head"><h3 id="meeting-context-heading">Meeting context</h3></div>
       ${presentation.state === "unreadable"
-        ? `<p class="message-card attention">Yawn could not read this meeting’s pre-meeting context.</p>`
+        ? `<p class="caption">Yawn could not read this meeting’s pre-meeting context.</p>`
         : presentation.state === "present"
           ? `<p class="meeting-context-text">${escapeHtml(presentation.text)}</p>
-             <p class="note-editor-help">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
-          : `<p class="note-editor-help">No pre-meeting context was written for this meeting.</p>`}
+             <p class="caption">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
+          : `<p class="caption">No pre-meeting context was written for this meeting.</p>`}
     </section>
   `;
 }
@@ -1264,11 +1294,14 @@ function renderMeetingContextSection(note) {
 // gap Yawn could not check for, is what the reader needs told. Nothing renders
 // until the note response has actually arrived, so a meeting still loading
 // never reads as unverifiable.
+// DESIGN.md: a fact is a caption, never a banner -- whether the fact is
+// routine ("paused once, 0:03") or genuinely unverifiable. Neither carries an
+// action, so neither qualifies for the needs-attention treatment either.
 function renderMeetingCapturePauses(pauses) {
   if (!pauses) return "";
   const presentation = capturePausePresentation(pauses);
   if (presentation.state === "not-paused") return "";
-  return `<p class="message-card attention" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
+  return `<p class="caption" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
 }
 
 function renderRetainedAudioPlayback(playback) {
@@ -1283,12 +1316,12 @@ function renderRetainedAudioPlayback(playback) {
   return `
     <section class="note-section retained-audio-section" aria-labelledby="retained-audio-heading">
       <h3 id="retained-audio-heading">Listen to saved audio</h3>
-      <p class="note-editor-help">Microphone and system audio are separate recordings.</p>
+      <p class="caption">Microphone and system audio are separate recordings.</p>
       <div class="retained-audio-controls">
-        ${playback.controls.map((control) => `<button class="button button-secondary button-small" type="button" data-action="play-retained-audio" data-source="${escapeHtml(control.source)}" ${playback.isPlaying ? "disabled" : ""}>${escapeHtml(control.label)}</button>`).join("")}
-        ${playback.isPlaying ? `<button class="button button-quiet button-small" type="button" data-action="stop-retained-audio">Stop</button>` : ""}
+        ${playback.controls.map((control) => `<button class="btn" type="button" data-action="play-retained-audio" data-source="${escapeHtml(control.source)}" ${playback.isPlaying ? "disabled" : ""}>${escapeHtml(control.label)}</button>`).join("")}
+        ${playback.isPlaying ? `<button class="btn" type="button" data-action="stop-retained-audio">Stop</button>` : ""}
       </div>
-      <p class="save-state" aria-live="polite">${escapeHtml(playingLabel)}</p>
+      <p class="caption" aria-live="polite">${escapeHtml(playingLabel)}</p>
     </section>
   `;
 }
@@ -1299,14 +1332,34 @@ function renderGenerateNote(note, recovery = meetingRecoveryPresentation(note, s
   if (!control) return "";
   return `
     <section class="note-section generate-note-section" aria-label="Generate a meeting note">
-      <button class="button button-primary" type="button" data-action="${control.action}" ${control.disabled ? "disabled" : ""}>${escapeHtml(control.label)}</button>
-      <p class="note-editor-help">${escapeHtml(control.help)}</p>
+      <button class="btn primary" type="button" data-action="${control.action}" ${control.disabled ? "disabled" : ""}>${escapeHtml(control.label)}</button>
+      <p class="caption">${escapeHtml(control.help)}</p>
     </section>
   `;
 }
 
+// DESIGN.md's claim row: the claim's own text is the affordance -- a dashed
+// hairline closed, an evidence tint and accent underline open (`.claim` in
+// styles.css) -- not a separate "Show source" control. Keeps the
+// `.claim-source-button` class so the existing depth-1 hover popover still
+// targets it (`evidenceSourceButtonFromEvent`), and the same
+// `data-action="open-evidence-split"` so click handling is unchanged. `id`
+// (not a positional match) is this element's identity across a render patch:
+// the hover popover and the inspector-open action both need the same node
+// reachable by ordinal regardless of where sibling claims shift it.
+function renderClaimText(claim) {
+  const text = escapeHtml(claim.claim);
+  if (!claim.locatorCount || !claim.spans?.length) return `<span>${text}</span>`;
+  const evidenceSplit = state.selected?.evidenceSplit;
+  const open = Boolean(evidenceSplit?.open && Number(evidenceSplit.ordinal) === Number(claim.ordinal));
+  return `<span class="claim claim-source-button${open ? " open" : ""}" id="claim-source-${escapeHtml(claim.ordinal)}" data-action="open-evidence-split" data-ordinal="${escapeHtml(claim.ordinal)}" role="button" tabindex="0">${text}</span>`;
+}
+
+// The honest note under a claim whose source cannot be shown -- never a
+// placeholder, never invented wording. `evidence?.state === "evidence"` is
+// the legacy `open-claim-evidence` fetch path (superseded by D5's
+// `claim.spans`, kept only because reachable state can still carry it).
 function renderClaimEvidence(claim, evidence) {
-  if (!claim.locatorCount) return `<span class="claim-source-unavailable">No source passage is available for this point.</span>`;
   if (evidence?.state === "evidence" && evidence.text) {
     return `
       <div class="claim-evidence">
@@ -1315,6 +1368,7 @@ function renderClaimEvidence(claim, evidence) {
       </div>
     `;
   }
+  if (!claim.locatorCount) return `<span class="claim-source-unavailable">No source passage is available for this point.</span>`;
   // Design intake D5, decision 2: `claim.spans` is already the digest-quoted
   // transcript text for every one of this claim's locators, batched onto the
   // note response -- see `library_reader.rs`'s `LibraryClaim.spans`. A claim
@@ -1324,10 +1378,7 @@ function renderClaimEvidence(claim, evidence) {
   if (!claim.spans?.length) {
     return `<span class="claim-source-unavailable">This point’s exact wording could not be verified against the transcript.</span>`;
   }
-  // `id` (not a positional match) is this button's identity across a render
-  // patch: the hover popover and the split-open action both need the same
-  // node reachable by ordinal regardless of where sibling claims shift it.
-  return `<button class="claim-source-button" type="button" id="claim-source-${escapeHtml(claim.ordinal)}" data-action="open-evidence-split" data-ordinal="${escapeHtml(claim.ordinal)}">Show source</button>`;
+  return "";
 }
 
 // -- W9-B: the eight sheets below share one entrance-motion mechanism -------
@@ -1410,32 +1461,22 @@ function renderStartSheet() {
 // never re-animated while it stays open across a poll tick. One primary
 // action ("Got it") and nothing else in the action row: this is an
 // acknowledgment, not a decision, so there is no Cancel beside it.
+// Cold review bfa0a80 finding 01: "three-card layout is heavier than a
+// one-time dismissible explainer needs." DESIGN.md drops eyebrow labels
+// system-wide; the product brief's amendment (2026-09-01) permits "one short
+// orientation," not seeded content -- so this is one paragraph naming the
+// three moments, not a three-card dl.
 function renderFirstRunSheet() {
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet first-run-sheet" role="dialog" aria-modal="true" aria-labelledby="first-run-sheet-title">
         <div class="sheet-head">
           <div>
-            <p class="eyebrow">Before you record</p>
-            <h2 id="first-run-sheet-title">A meeting has three moments.</h2>
-            <p>This appears once. It shows what happens before, during, and after you press Record.</p>
+            <h2 id="first-run-sheet-title">Before, during, after.</h2>
+            <p>Confirm consent and headphones, then record. Keep your own notes while it runs. Afterward, generate a readable note with decisions and follow-ups that point back to the transcript — all on this Mac.</p>
           </div>
           <button class="icon-button" type="button" data-action="dismiss-first-run" aria-label="Close">×</button>
         </div>
-        <dl class="first-run-moments">
-          <div class="first-run-moment">
-            <dt>Before</dt>
-            <dd>Confirm participant consent, put on headphones, and choose how long the recording audio stays — 1, 7, or 30 days.</dd>
-          </div>
-          <div class="first-run-moment">
-            <dt>During</dt>
-            <dd>Keep your own notes in a calm canvas while Yawn records in the background.</dd>
-          </div>
-          <div class="first-run-moment">
-            <dt>After</dt>
-            <dd>Generate a readable note with decisions and follow-ups, each pointing back to the transcript so you can check it. Everything stays on this Mac.</dd>
-          </div>
-        </dl>
         <div class="sheet-actions">
           <button class="button button-primary" type="button" data-action="dismiss-first-run">Got it</button>
         </div>
@@ -2108,6 +2149,15 @@ async function requestPermission(kind) {
 // invitation. It changes nothing about the start journey itself -- the same
 // t0 mark, the same sheet, the same consent gate -- only whether
 // `renderStartSheet` shows the one-line guided hint above the attestations.
+// DESIGN.md: the sidebar collapses behind its toggle (⌘⇧S, the View menu,
+// or below 900pt window width -- read live in `render()`, not mirrored
+// here). This is the operator's own explicit choice; it does not override
+// the width-based collapse, which stays in effect either way.
+function toggleSidebar() {
+  state.sidebarCollapsed = !state.sidebarCollapsed;
+  render();
+}
+
 function openStart(guided = false) {
   if (!canOpenStart(state.snapshot, state.permissions)) return;
   // t0: the operator's start intent -- this is the entry point every start
@@ -2219,6 +2269,7 @@ async function openMeeting(handle) {
   const row = state.library?.rows?.find((candidate) => candidate.handle === handle);
   if (!row) return;
   await flushSelectedNoteSave();
+  state.trashOpen = false;
   await runBusy("meeting", async () => {
     let lockToken = null;
     if (row.locked) {
@@ -2802,7 +2853,15 @@ function dismissEvidencePopoverIfDetached() {
   if (evidencePopoverAnchor && !document.contains(evidencePopoverAnchor)) dismissEvidencePopover();
 }
 
-// -- Depths 2 and 3: split view and synced scroll ---------------------------
+// -- Inspector: DESIGN.md's simplified depth 2 -------------------------------
+//
+// Rethink phase 1 replaces the prior split view's depth 3 (synced scroll
+// tracking the note pane's topmost visible claim) with a fixed 320pt
+// inspector: the cited turn plus one neighbour on each side, static once
+// opened. DESIGN.md: "Inspector | closed, open | 320, panel background,
+// never scrolls the note." There is nothing to scroll and no width gate --
+// the prior `evidenceSplitAllowed(width)` fallback existed only for the two-
+// reading-column split this replaces.
 
 function openEvidenceSplit(ordinal) {
   if (!state.selected || !Number.isFinite(ordinal)) return;
@@ -2810,8 +2869,6 @@ function openEvidenceSplit(ordinal) {
   const span = claim?.spans?.[0];
   if (!span) return;
   dismissEvidencePopover();
-  evidenceSyncManualUntilNoteScroll = false;
-  evidenceScrolledToTurnIndex = null;
   state.selected.evidenceSplit = { open: true, ordinal, turnIndex: span.sourceTurnIndex };
   render();
 }
@@ -2819,110 +2876,17 @@ function openEvidenceSplit(ordinal) {
 function closeEvidenceSplit() {
   if (!state.selected?.evidenceSplit?.open) return;
   state.selected.evidenceSplit = { open: false, ordinal: null, turnIndex: null };
-  evidenceSyncManualUntilNoteScroll = false;
-  evidenceScrolledToTurnIndex = null;
   render();
 }
 
-// Called from `render()`'s tail on every render, not only ones this module
-// triggered: it is a no-op unless `evidenceSplit.turnIndex` actually changed
-// since the DOM last caught up, so an unrelated re-render (typing in the
-// operator-note textarea beside an open split) does not re-scroll or
-// re-animate anything.
-function syncEvidenceSplitScroll() {
-  const evidenceSplit = state.selected?.evidenceSplit;
-  if (!evidenceSplit?.open || !Number.isInteger(evidenceSplit.turnIndex)) {
-    evidenceScrolledToTurnIndex = null;
-    return;
-  }
-  if (evidenceSplit.turnIndex === evidenceScrolledToTurnIndex) return;
-  // The very first landing (opening the split) jumps straight there --
-  // there is no prior scroll position worth animating away from. Every
-  // later retarget (depth 3's live sync) animates, so the reader can follow
-  // the transcript moving rather than have it jump under their eyes.
-  const animate = evidenceScrolledToTurnIndex !== null;
-  evidenceScrolledToTurnIndex = evidenceSplit.turnIndex;
-  scrollEvidenceTranscriptToTurn(evidenceSplit.turnIndex, { animate });
-}
-
-function scrollEvidenceTranscriptToTurn(turnIndex, { animate = false } = {}) {
-  const container = root.querySelector("#evidence-split-column .transcript-scroll");
-  const target = container?.querySelector(`[data-turn-index="${turnIndex}"]`);
-  if (!container || !target) return;
-  const targetTop = Math.max(0, target.offsetTop - 12);
-  // Marks the window during which the transcript column's own `scroll`
-  // events are this call's doing, not the reader's -- see
-  // `isManualTranscriptScroll` and `handleEvidenceTranscriptScroll`.
-  evidenceSyncSuppressedUntil = Date.now() + EVIDENCE_SYNC_SUPPRESS_MS;
-  container.scrollTo({ top: targetTop, behavior: animate && !prefersReducedMotion() ? "smooth" : "auto" });
-}
-
-// The note column's currently fully-visible claims, topmost first -- the
-// geometry read `evidenceSyncTarget` (a pure function) needs but must not
-// perform itself.
-function topmostVisibleClaimOrdinals(notePane) {
-  const paneRect = notePane.getBoundingClientRect();
-  return Array.from(notePane.querySelectorAll("[data-claim-item]"))
-    .map((item) => ({ ordinal: Number(item.dataset.claimItem), rect: item.getBoundingClientRect() }))
-    .filter(({ rect }) => rect.top >= paneRect.top - 0.5 && rect.bottom <= paneRect.bottom + 0.5)
-    .sort((a, b) => a.rect.top - b.rect.top)
-    .map(({ ordinal }) => ordinal);
-}
-
-function performEvidenceSync() {
-  const evidenceSplit = state.selected?.evidenceSplit;
-  if (!evidenceSplit?.open || evidenceSyncManualUntilNoteScroll) return;
-  const notePane = root.querySelector("#meeting-source-pane");
-  const claims = state.selected?.note?.claims;
-  if (!notePane || !Array.isArray(claims)) return;
-  const targetTurn = evidenceSyncTarget(topmostVisibleClaimOrdinals(notePane), claims);
-  if (targetTurn === null || targetTurn === evidenceSplit.turnIndex) return;
-  evidenceSplit.turnIndex = targetTurn;
-  render();
-}
-
-// rAF-batched: a scrollbar drag or a trackpad fling can fire dozens of
-// `scroll` events per second, and the geometry read above is not free.
-// However many land in one animation frame, only the last one is acted on.
-function scheduleEvidenceSyncFromNote() {
-  // Scrolling the note is depth 3's own resume trigger -- "no fighting the
-  // reader" (design decision 4) -- so this lifts a manual-scroll suspension
-  // before the frame that recomputes the target, not after.
-  evidenceSyncManualUntilNoteScroll = false;
-  if (evidenceSyncRafPending) return;
-  evidenceSyncRafPending = true;
-  window.requestAnimationFrame(() => {
-    evidenceSyncRafPending = false;
-    performEvidenceSync();
-  });
-}
-
-function handleEvidenceTranscriptScroll() {
-  if (isManualTranscriptScroll(Date.now(), evidenceSyncSuppressedUntil)) {
-    evidenceSyncManualUntilNoteScroll = true;
-  }
-}
-
-// `scroll` does not bubble, so this listens on `document` in the capture
-// phase, which still sees it: capture runs top-down before the (skipped)
-// bubble phase, so it is unaffected by `scroll`'s non-bubbling behavior.
-// That keeps this to one listener rather than one per scrollable element,
-// which would otherwise need re-attaching every time the split opens.
-function handleEvidenceGlobalScroll(event) {
-  if (!state.selected?.evidenceSplit?.open) return;
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.id === "meeting-source-pane") scheduleEvidenceSyncFromNote();
-  else if (target.classList.contains("transcript-scroll") && target.closest("#evidence-split-column")) {
-    handleEvidenceTranscriptScroll();
-  }
-}
-
-function handleEvidenceResize() {
-  const allowed = evidenceSplitAllowed(currentWindowWidth());
-  if (allowed === evidenceSplitAllowedLast) return;
-  evidenceSplitAllowedLast = allowed;
-  if (state.selected?.evidenceSplit?.open) render();
+// The inspector's own "Open full transcript" (DESIGN.md): expands the
+// document's below-the-note transcript disclosure and brings it into view.
+// The inspector itself stays open -- Esc or its own close control dismiss it.
+function openFullTranscriptFromInspector() {
+  const details = root.querySelector(".transcript-disclosure");
+  if (!details) return;
+  details.open = true;
+  details.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
 function queueNoteSave(text = state.noteDraft, meetingId = state.snapshot?.meeting_id) {
@@ -3276,6 +3240,8 @@ function handleClick(event) {
   if (!control || control.disabled) return;
   const action = control.dataset.action;
   if (action === "home" || action === "meetings") void openMeetings();
+  else if (action === "toggle-sidebar") toggleSidebar();
+  else if (action === "open-full-transcript") openFullTranscriptFromInspector();
   else if (action === "open-start") openStart();
   else if (action === "open-start-guided") openStart(true);
   else if (action === "dismiss-first-run") void closeFirstRunSheet();
@@ -3459,9 +3425,29 @@ function handleKeydown(event) {
     if (target === "modal") { closeModal(); render(); return; }
     if (target === "split") { closeEvidenceSplit(); return; }
     if (state.meetingManagementOpen) { state.meetingManagementOpen = false; render(); return; }
+    return;
   }
-  if (!event.metaKey || event.altKey || event.ctrlKey) return;
-  if (event.key.toLowerCase() === "r" && canOpenStart(state.snapshot, state.permissions)) {
+  // DESIGN.md: "⌫ Move to Trash" -- scoped to a focused sidebar row so an
+  // ordinary Backspace while editing a note or a search field never deletes
+  // a meeting.
+  if (event.key === "Backspace" && state.selected && document.activeElement?.closest?.(".sidebar .row")) {
+    event.preventDefault();
+    openMeetingDeletion("delete-meeting");
+    render();
+    return;
+  }
+  if (!event.metaKey || event.ctrlKey) return;
+  const key = event.key.toLowerCase();
+  // DESIGN.md: "⌘⌥T full transcript" is the one shortcut that uses Option,
+  // so it is resolved before the general Option-key guard below rejects
+  // every other combination.
+  if (event.altKey && key === "t") {
+    event.preventDefault();
+    openFullTranscriptFromInspector();
+    return;
+  }
+  if (event.altKey) return;
+  if (key === "r" && !event.shiftKey && canOpenStart(state.snapshot, state.permissions)) {
     event.preventDefault();
     // Roadmap packet W10: the first-run sheet is not tracked in `state.modal`,
     // so ⌘R would otherwise set `state.modal = "start"` in the same tick the
@@ -3473,10 +3459,32 @@ function handleKeydown(event) {
     // transition to one mount per tick; a second ⌘R then opens Start normally.
     if (firstRunSheetShowing) { void closeFirstRunSheet(); return; }
     openStart();
+    return;
   }
-  if (event.key.toLowerCase() === "k" && state.snapshot?.capture === "idle") {
+  if (key === "." && !event.shiftKey && ["recording", "paused"].includes(state.snapshot?.capture)) {
+    event.preventDefault();
+    void stopRecording();
+    return;
+  }
+  if (key === "p" && event.shiftKey) {
+    event.preventDefault();
+    if (state.snapshot?.capture === "recording") void pauseRecording();
+    else if (state.snapshot?.capture === "paused") void resumeRecording();
+    return;
+  }
+  if (key === "s" && event.shiftKey) {
+    event.preventDefault();
+    toggleSidebar();
+    return;
+  }
+  if (key === "f" && !event.shiftKey && state.snapshot?.capture === "idle") {
     event.preventDefault();
     void openMeetings().then(() => document.querySelector("[data-field='library-search']")?.focus());
+    return;
+  }
+  if (key === "," && !event.shiftKey) {
+    event.preventDefault();
+    if (invoke) void invoke("open_settings_window").catch(reportError);
   }
 }
 
@@ -3489,10 +3497,45 @@ function handleSubmit(event) {
   else void saveVocabulary();
 }
 
+// Rethink phase 1: launch/router fix (experience-brief-2026-09-02.md's
+// "Window state restoration"; cold review bfa0a80 finding 03/08, "a stale
+// terminal capture view" instead of the library). Attempted after every
+// snapshot+library pairing, so it is safe to call repeatedly from the poll
+// loop -- each branch is a no-op once it no longer applies.
+async function maybeAutoSelectMeeting() {
+  if (!invoke || state.autoSelecting || state.selected || state.modal || !state.library) return;
+
+  // A terminal capture state (this session's just-finished recording, or a
+  // stale one left over from a previous run) is content, not the live
+  // canvas -- select it into the ordinary meeting pane the moment the
+  // library has indexed it. Retried on every poll tick, not one-shot: a
+  // capture that just finished may not be in `state.library` yet.
+  const meetingId = state.snapshot?.meeting_id;
+  if (meetingId && !captureIsInProgress(state.snapshot) && state.snapshot?.capture !== "idle") {
+    const row = state.library.rows?.find((candidate) => candidate.meetingId === meetingId);
+    if (!row) return;
+    state.autoSelecting = true;
+    try { await openMeeting(row.handle); } finally { state.autoSelecting = false; }
+    return;
+  }
+
+  // Attempted exactly once, and only once capture is genuinely idle, so it
+  // never fights a later, deliberate deselection (Trash, a needs-attention
+  // "Back to Meetings").
+  if (state.launchSelectionAttempted || state.snapshot?.capture !== "idle") return;
+  state.launchSelectionAttempted = true;
+  const top = sortLibraryRows(state.library.rows)[0];
+  if (!top) return;
+  state.autoSelecting = true;
+  try { await openMeeting(top.handle); } finally { state.autoSelecting = false; }
+}
+
 async function initialize() {
+  syncThemeFromSystem();
   render();
   if (!invoke) return;
   listenForNoteCaptureHotkey();
+  listenForMenuEvents();
   try {
     await Promise.all([
       refreshSnapshot({ shouldRender: false }),
@@ -3502,10 +3545,13 @@ async function initialize() {
   } catch (error) {
     state.error = errorRecoveryPresentation(error || "Yawn could not open its local workspace.");
   }
+  await maybeAutoSelectMeeting();
   render();
   window.setInterval(() => {
     if (shouldPollSnapshot(state.snapshot)) {
-      void refreshSnapshot().catch(reportError);
+      void refreshSnapshot().then(maybeAutoSelectMeeting).catch(reportError);
+    } else {
+      void maybeAutoSelectMeeting();
     }
     void refreshRetainedAudioPlayback();
   }, 900);
@@ -3520,15 +3566,11 @@ window.addEventListener("focus", refreshPermissionsOnReturn);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) refreshPermissionsOnReturn();
 });
-// Design intake D5: hover/keyboard-focus preview (depth 1) and the split's
-// synced scroll (depth 3). `mouseover`/`mouseout`/`focusin`/`focusout` bubble
-// normally; `scroll` does not, hence the capture-phase listener -- see
-// `handleEvidenceGlobalScroll`'s own comment.
+// Design intake D5's depth 1: hover/keyboard-focus preview of a claim's
+// cited passage. `mouseover`/`mouseout`/`focusin`/`focusout` bubble normally.
 document.addEventListener("mouseover", handleEvidenceHoverIn);
 document.addEventListener("mouseout", handleEvidenceHoverOut);
 document.addEventListener("focusin", handleEvidenceFocusIn);
 document.addEventListener("focusout", handleEvidenceFocusOut);
-document.addEventListener("scroll", handleEvidenceGlobalScroll, true);
-window.addEventListener("resize", handleEvidenceResize);
 
 void initialize();
