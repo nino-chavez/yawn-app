@@ -135,9 +135,13 @@ function renderModels() {
     const progress = selected && busy
       ? `<div class="model-progress"><progress max="${Math.max(1, models.totalBytes)}" value="${Math.min(models.totalBytes, models.downloadedBytes)}"></progress><small>${models.state === "verifying" ? "Checking the downloaded files…" : `${byteSizeLabel(models.downloadedBytes)} of ${byteSizeLabel(models.totalBytes)}`}</small></div>`
       : "";
+    // Refit R18: one primary action per group. An unstored option is the primary
+    // (it acquires a resource); a stored option is secondary (it switches to
+    // what's already available). Permission rows are always primary (allow access).
+    const isPrimaryUseAction = !option.stored;
     const use = option.active
       ? ""
-      : `<button class="allow-button" type="button" data-action="use-model" data-model-id="${escapeHtml(option.id)}" ${disabled ? "disabled" : ""}>${option.stored ? "Use this model" : "Download and use"}</button>`;
+      : `<button class="${isPrimaryUseAction ? "allow-button" : "quiet-button"}" type="button" data-action="use-model" data-model-id="${escapeHtml(option.id)}" ${disabled ? "disabled" : ""}>${option.stored ? "Use this model" : "Download and use"}</button>`;
     const remove = option.stored && !option.active
       ? `<button class="quiet-button" type="button" data-action="remove-model" data-model-id="${escapeHtml(option.id)}" data-model-title="${escapeHtml(option.title)}" ${disabled ? "disabled" : ""}>Remove download</button>`
       : "";
@@ -183,9 +187,13 @@ function renderNoteModels() {
     const progress = selected && busy
       ? `<div class="model-progress"><progress max="${Math.max(1, noteModels.totalBytes)}" value="${Math.min(noteModels.totalBytes, noteModels.downloadedBytes)}"></progress><small>${noteModels.state === "verifying" ? "Checking the downloaded files…" : `${byteSizeLabel(noteModels.downloadedBytes)} of ${byteSizeLabel(noteModels.totalBytes)}`}</small></div>`
       : "";
+    // Refit R18: one primary action per group. An unstored option is the primary
+    // (it acquires a resource); a stored option is secondary (it switches to
+    // what's already available).
+    const isPrimaryUseAction = !option.stored;
     const use = option.active
       ? ""
-      : `<button class="allow-button" type="button" data-action="use-note-model" data-model-id="${escapeHtml(option.id)}" ${disabled ? "disabled" : ""}>${option.stored ? "Use this model" : "Download and use"}</button>`;
+      : `<button class="${isPrimaryUseAction ? "allow-button" : "quiet-button"}" type="button" data-action="use-note-model" data-model-id="${escapeHtml(option.id)}" ${disabled ? "disabled" : ""}>${option.stored ? "Use this model" : "Download and use"}</button>`;
     const remove = option.stored
       ? `<button class="quiet-button" type="button" data-action="remove-note-model" data-model-id="${escapeHtml(option.id)}" data-model-title="${escapeHtml(option.title)}" ${disabled ? "disabled" : ""}>Remove download</button>`
       : "";

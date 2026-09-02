@@ -47,3 +47,54 @@ test("every other rejection keeps the genuine-failure path: one row error, retri
   // pill and the row's own "Retrying…" line (refit R11's one-line fix).
   assert.match(renderFn, /row\("Couldn't check speech model", "unavailable", `\$\{modelLoadError\} Retrying…`\)/);
 });
+
+test("settings groups follow grouped-list structure: heading outside, rows inside, aria-labelledby", async () => {
+  // Refit R18: settings groups use the macOS System Settings grouped-list
+  // pattern: a group heading (h2) outside the .settings-group-box, rows inside
+  // with aria-labelledby connecting them. No label copy is asserted.
+  const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+
+  // Check for the grouped-list structure in the HTML:
+  // 1. Each section.settings-group has aria-labelledby
+  // 2. Each section contains an h2 followed by .settings-group-box
+  // 3. The h2 has an id matching the section's aria-labelledby
+
+  // Pattern: <section ... aria-labelledby="IDNAME"> ... <h2 id="IDNAME">
+  assert.match(html, /aria-labelledby="[a-z\-]+".*?<h2 id="[a-z\-]+"/s);
+
+  // Find all sections and their aria-labelledby values
+  const sectionPattern = /section[^>]*class="[^"]*settings-group[^"]*"[^>]*aria-labelledby="([^"]+)"/g;
+  const sections = [...html.matchAll(sectionPattern)];
+  assert.ok(sections.length > 0, "settings.html must contain section.settings-group elements");
+
+  sections.forEach((match) => {
+    const labelledBy = match[1];
+    // Check that this h2 id exists in the HTML
+    const h2Pattern = new RegExp(`<h2[^>]*id="${labelledBy}"`, "s");
+    assert.match(html, h2Pattern, `h2#${labelledBy} referenced by aria-labelledby must exist`);
+  });
+
+  // Verify that .settings-group-box elements exist and follow the h2
+  assert.match(html, /<h2[^>]*id="[^"]*".*?<\/h2>.*?<div[^>]*class="[^"]*settings-group-box/s,
+    "section must have heading outside the box, then .settings-group-box inside");
+});
+
+test("button primary actions follow one-per-group rule", async () => {
+  // Refit R18: one primary (accent-filled) button per group maximum.
+  // Permission rows: primary. Model rows: only the unstored option is primary.
+  const source = await readFile(new URL("./settings.js", import.meta.url), "utf8");
+
+  // Check that model/note-model buttons apply the "primary" class (allow-button)
+  // only when the option is not stored.
+  const renderModels = source.slice(source.indexOf("function renderModels"), source.indexOf("function renderNoteModels"));
+  assert.match(
+    renderModels,
+    /const isPrimaryUseAction = !option\.stored;/,
+    "must determine primary action per option, based on stored status"
+  );
+  assert.match(
+    renderModels,
+    /class="\$\{isPrimaryUseAction \? "allow-button" : "quiet-button"\}"/,
+    "must apply allow-button (primary) only for unstored options"
+  );
+});
