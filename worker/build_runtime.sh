@@ -102,7 +102,7 @@ verify() {
     # Verify the shared tree still has mlx 0.29.3 and can import mlx_whisper independently.
     # Without the isolated dir, the shared mlx is used.
     (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
-      'import mlx; assert mlx.__version__.startswith("0.29.3"), f"Expected mlx 0.29.3, got {mlx.__version__}"; import mlx_whisper' 1>/dev/null)
+      'from importlib.metadata import version; v = version("mlx"); assert v.startswith("0.29.3"), f"shared mlx must stay 0.29.3, got {v}"; import mlx.core, mlx_whisper' 1>/dev/null)
     for index in "${!EMBEDDER_FILES[@]}"; do
       echo "${EMBEDDER_SHA256[$index]}  $STAGE/$EMBEDDER_STAGE_RELATIVE/${EMBEDDER_FILES[$index]}" \
         | shasum -a 256 -c - >/dev/null
