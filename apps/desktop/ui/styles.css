@@ -778,8 +778,18 @@ h3 {
   resize: vertical;
 }
 
+/* Refit R8 (all-surfaces-2765401-installed-cold.md finding 1): "Meeting
+   context" and "Your notes" are the same rank as Overview/Decisions below --
+   13/600, secondary color, no hero tracking -- via the shared tokens.css
+   scale so this stays theme-correct in both appearances regardless of this
+   file's own light/dark split (tokens.css keys color off `[data-theme]`,
+   which main.js sets unconditionally at load). */
 .note-section h3 {
   margin-bottom: 12px;
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--label-2);
 }
 
 /* DESIGN.md: "Content areas are never tinted." The note is document content
@@ -789,11 +799,19 @@ h3 {
   max-width: var(--measure-reading);
 }
 
+/* Refit R8: this heading ("No meeting note yet." / "A summary wasn't
+   produced.") rendered at clamp(23px, 3vw, 30px) -- larger and heavier than
+   the meeting's own title (`.doc-head h1`, --t-title = 17px/600), so an
+   absence outranked the meeting's identity. Demoted to body weight per the
+   finding: 13-15px, 500 at most. The title now stays the largest line on the
+   surface in every state, which is the fix DESIGN.md's type scale asks for. */
 .meeting-note-header h2 {
-  max-width: 24ch;
+  max-width: 32ch;
   margin: 6px 0 9px;
-  font-size: clamp(23px, 3vw, 30px);
-  line-height: 1.12;
+  font-size: var(--t-read);
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.35;
 }
 
 .meeting-note-header > p:last-child {
@@ -803,15 +821,25 @@ h3 {
   line-height: 1.55;
 }
 
+/* Refit R8 audit clause ("hairlines only where DESIGN.md puts them"): the
+   concept's Overview/Decisions/Follow-ups/Open questions read as plain
+   document flow -- vertical space only, no divider between them (concepts/a
+   `.read h2`). The border-top here added a hairline the concept doesn't
+   have; kept the spacing, dropped the rule. */
 .meeting-note-section {
-  padding-top: 24px;
   margin-top: 24px;
-  border-top: 1px solid var(--line);
+}
+
+.meeting-note-section:first-child {
+  margin-top: 0;
 }
 
 .meeting-note-section h3 {
   margin: 0 0 10px;
-  font-size: var(--text-subtitle);
+  font-size: var(--t-body);
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--label-2);
 }
 
 .meeting-note-summary-item > p {
@@ -882,11 +910,24 @@ h3 {
   font-weight: var(--weight-semibold);
 }
 
-.transcript-highlights summary span:last-child,
-.transcript-disclosure-state {
+.transcript-highlights summary span:last-child {
   color: var(--ink-faint);
   font-size: var(--text-meta);
   font-weight: var(--weight-medium);
+}
+
+/* Refit R13 (finding 4/11): replaces the plain-text "Open" trailing label,
+   which read as a web link rather than a control. <summary> is already the
+   whole row's click target (native <details> behavior); this only makes
+   that visible the way a native disclosure triangle does. */
+.transcript-disclosure-chevron {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.transcript-disclosure[open] > summary .transcript-disclosure-chevron {
+  transform: rotate(180deg);
 }
 
 .transcript-highlights[open] summary,
@@ -1374,6 +1415,45 @@ h3 {
   background: var(--paper);
   box-shadow: 0 20px 60px rgb(22 22 20 / 20%);
   animation: motion-rise-in var(--motion-standard) var(--motion-ease);
+}
+
+/* Refit R12 (all-surfaces-2765401-installed-cold.md finding 07 / "category
+   read"): the first-run orientation reused the centered web-modal shape
+   every decision sheet uses. It gets its own attached-sheet treatment --
+   flush under the toolbar, opaque dim with no blur so nothing behind it is
+   legible, square top corners where the panel meets the toolbar. Scoped to
+   these two modifier classes only; every other sheet (Start, rename,
+   speaker correction, vocabulary, retry, delete, lock) is unchanged. */
+.first-run-backdrop {
+  top: var(--toolbar-h);
+  align-items: flex-start;
+  padding: 0;
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: none;
+}
+
+.first-run-sheet {
+  width: min(480px, 100%);
+  max-width: 100%;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+}
+
+.first-run-sheet .sheet-head {
+  margin-bottom: 20px;
+}
+
+.first-run-sheet .sheet-head h2 {
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.25;
+}
+
+.first-run-sheet .sheet-head p {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--label-2);
 }
 
 .sheet-head {

@@ -89,8 +89,12 @@ function renderModels() {
     modelsRoot.innerHTML = modelLoadError
       ? row("Couldn't check speech model", "unavailable", `${modelLoadError} Retrying…`)
       : row("Checking speech model", "checking", "Yawn is checking what is stored on this Mac.");
-    modelMessage.textContent = modelLoadError;
-    modelMessage.dataset.tone = modelLoadError ? "attention" : "neutral";
+    // Refit R11 (all-surfaces-2765401-installed-cold.md finding 03/06): the
+    // row above already states the one error once (title + "Retrying…"
+    // detail); this footnote used to restate the exact same sentence a
+    // second time. One error, one line — the footnote stays empty here.
+    modelMessage.textContent = "";
+    modelMessage.dataset.tone = "neutral";
     return;
   }
   const busy = models.changeActive;
@@ -135,8 +139,10 @@ function renderNoteModels() {
     noteModelsRoot.innerHTML = noteModelLoadError
       ? row("Couldn't check note model", "unavailable", `${noteModelLoadError} Retrying…`)
       : row("Checking note model", "checking", "Yawn is checking what is stored on this Mac.");
-    noteModelMessage.textContent = noteModelLoadError;
-    noteModelMessage.dataset.tone = noteModelLoadError ? "attention" : "neutral";
+    // Refit R11: same fix as renderModels above — the row already states the
+    // one error, so the footnote does not restate it a second time.
+    noteModelMessage.textContent = "";
+    noteModelMessage.dataset.tone = "neutral";
     return;
   }
   const busy = noteModels.changeActive;

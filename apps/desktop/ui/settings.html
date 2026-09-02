@@ -14,54 +14,62 @@
         <h1>Settings</h1>
         <p>Recording access and on-device storage live here.</p>
       </header>
-      <section class="settings-card" aria-labelledby="privacy-title">
-        <div class="section-heading">
+      <section class="settings-group" aria-labelledby="privacy-title">
+        <div class="settings-group-title">
           <div>
             <h2 id="privacy-title">What happens with your meeting</h2>
             <p>Three facts about this Mac, not a policy promise.</p>
           </div>
         </div>
-        <dl class="privacy-rows">
-          <div class="privacy-row">
-            <dt>What leaves this Mac</dt>
-            <dd>Nothing. Recording, transcription, and notes run and stay here. Yawn has no account and makes no network calls with meeting data.</dd>
-          </div>
-          <div class="privacy-row">
-            <dt>Where transcription runs</dt>
-            <dd>On this Mac, using the local speech model shown below.</dd>
-          </div>
-          <div class="privacy-row">
-            <dt>What is kept, and for how long</dt>
-            <dd>Transcript and notes: until you delete them (deleted meetings stay in Trash for 30 days). Recording audio: 1, 7, or 30 days — you choose at the start of each meeting.</dd>
-          </div>
-        </dl>
+        <div class="settings-group-box">
+          <dl class="privacy-rows">
+            <div class="privacy-row">
+              <dt>What leaves this Mac</dt>
+              <dd>Nothing. Recording, transcription, and notes run and stay here. Yawn has no account and makes no network calls with meeting data.</dd>
+            </div>
+            <div class="privacy-row">
+              <dt>Where transcription runs</dt>
+              <dd>On this Mac, using the local speech model shown below.</dd>
+            </div>
+            <div class="privacy-row">
+              <dt>What is kept, and for how long</dt>
+              <dd>Transcript and notes: until you delete them (deleted meetings stay in Trash for 30 days). Recording audio: 1, 7, or 30 days — you choose at the start of each meeting.</dd>
+            </div>
+          </dl>
+        </div>
       </section>
-      <section class="settings-card" aria-labelledby="model-title">
-        <div class="section-heading">
+      <section class="settings-group" aria-labelledby="model-title">
+        <div class="settings-group-title">
           <div>
             <h2 id="model-title">Speech model</h2>
             <p>Choose the model Yawn uses for transcripts. Meeting audio stays on this Mac.</p>
           </div>
         </div>
-        <div id="models" class="model-list" aria-live="polite"></div>
-        <p id="model-message" class="card-message" role="status"></p>
+        <div class="settings-group-box">
+          <div id="models" class="model-list" aria-live="polite"></div>
+          <p id="model-message" class="card-message" role="status"></p>
+        </div>
       </section>
-      <section class="settings-card" aria-labelledby="note-model-title">
-        <div class="section-heading">
+      <section class="settings-group" aria-labelledby="note-model-title">
+        <div class="settings-group-title">
           <div>
             <h2 id="note-model-title">Note model</h2>
             <p>An optional model that turns finished transcripts into meeting notes, on this Mac.</p>
           </div>
         </div>
-        <div id="note-models" class="model-list" aria-live="polite"></div>
-        <p id="note-model-message" class="card-message" role="status"></p>
+        <div class="settings-group-box">
+          <div id="note-models" class="model-list" aria-live="polite"></div>
+          <p id="note-model-message" class="card-message" role="status"></p>
+        </div>
       </section>
-      <section class="settings-card" aria-labelledby="audio-title">
-        <div class="section-heading">
+      <section class="settings-group" aria-labelledby="audio-title">
+        <div class="settings-group-title">
           <div><h2 id="audio-title">Audio access</h2><p>Yawn needs both sources before it can record a meeting.</p></div>
           <button class="quiet-button" type="button" data-action="refresh">Check again</button>
         </div>
-        <div id="permissions" class="permission-list" aria-live="polite"></div>
+        <div class="settings-group-box">
+          <div id="permissions" class="permission-list" aria-live="polite"></div>
+        </div>
       </section>
       <p id="message" class="message" role="status"></p>
     </main>

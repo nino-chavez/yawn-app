@@ -55,7 +55,7 @@ h2 {
 }
 
 header > p:last-child,
-.section-heading p,
+.settings-group-title p,
 .permission-copy p {
   margin-bottom: 0;
   color: var(--label-2);
@@ -70,21 +70,33 @@ header > p:last-child,
   line-height: 1.45;
 }
 
-.settings-card {
-  margin-top: 20px;
-  border: 1px solid var(--separator);
+/* Refit R13 (all-surfaces-2765401-installed-cold.md finding 11): grouped-list
+   material, the same idiom macOS System Settings uses -- a group title
+   outside the box, rows inside with hairlines between them. The box carries
+   no border in light mode (--content already reads distinctly against
+   --window there); dark mode gets a subtle border because --content and
+   --window are the same value in dark (tokens.css), so a border is the only
+   thing that makes the box read as its own surface. */
+.settings-group {
+  margin-top: 24px;
+}
+
+.settings-group-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 2px 8px;
+}
+
+.settings-group-box {
   border-radius: var(--r-card);
   background: var(--content);
   overflow: hidden;
 }
 
-.section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--separator);
+:root[data-theme="dark"] .settings-group-box {
+  border: 1px solid var(--separator-strong);
 }
 
 .quiet-button,
@@ -157,6 +169,17 @@ header > p:last-child,
 }
 
 .model-line:first-child { border-top: 0; }
+
+/* Refit R11 (all-surfaces-2765401-installed-cold.md finding 03/06): every
+   row hairline above used `--separator`, which in dark mode is rgba(255 255
+   255 / 10%) -- close enough to invisible against the near-black window that
+   a card barely read as a distinct surface. Light mode's card contrast was
+   already fine (per the review), so this only strengthens dark. */
+:root[data-theme="dark"] .privacy-row,
+:root[data-theme="dark"] .permission-line,
+:root[data-theme="dark"] .model-line {
+  border-color: var(--separator-strong);
+}
 
 .model-copy { min-width: 0; }
 

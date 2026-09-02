@@ -13,6 +13,7 @@ import {
   capturePresentation,
   capturePauseControlPresentation,
   capturePausePresentation,
+  durationLabel,
   errorRecoveryPresentation,
   evidencePopoverPresentation,
   evidenceSplitAllowed,
@@ -29,6 +30,7 @@ import {
   libraryStallTransition,
   localVocabularyPresentation,
   lockedActionOutcome,
+  meetingBlockingRecovery,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
   meetingLockCopyIsHonest,
@@ -995,6 +997,24 @@ test("⌘R dismisses the first-run sheet rather than opening Start over it in th
   assert.match(rBranch, /openStart\(\);/);
 });
 
+// Refit R12 (all-surfaces-2765401-installed-cold.md finding 07): the sheet
+// dismisses via "Got it" or Esc only -- no X. Esc already routed through
+// `firstRunSheetShowing` before this packet (checked ahead of
+// `nextEscapeTarget`, since that function knows nothing about this
+// once-only sheet); this pins that it still does, and that the X is gone.
+test("the first-run sheet has exactly one dismiss button and no X, and Escape still closes it", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const sheetBody = source.slice(
+    source.indexOf("function renderFirstRunSheet"),
+    source.indexOf("function renderRenameMeetingSheet"),
+  );
+  assert.match(sheetBody, /class="modal-backdrop first-run-backdrop"/);
+  assert.match(sheetBody, /<button class="button button-primary" type="button" data-action="dismiss-first-run">Got it<\/button>/);
+  assert.doesNotMatch(sheetBody, /icon-button/, "no X close control on the first-run sheet");
+  assert.doesNotMatch(sheetBody, /aria-label="Close"/);
+  assert.match(source, /if \(event\.key === "Escape"\) \{[\s\S]{0,500}if \(firstRunSheetShowing\) \{ void closeFirstRunSheet\(\); return; \}/);
+});
+
 test("a row's preview is the backend's own sentence, trimmed, or nothing at all", () => {
   // Design intake D1: real generated content only, never a placeholder line.
   assert.equal(libraryRowPreview({ notePreview: "We reviewed Q3 pricing." }), "We reviewed Q3 pricing.");
@@ -1138,6 +1158,40 @@ test("speaker corrections no longer create a recovery block before note generati
     claims: [{ claimType: "summary", claim: "The current note." }],
   }, { state: "transcript", turns: [{ speakerCorrected: true }] });
   assert.equal(recovery, null);
+});
+
+// Refit R9: the same readable/unreadable split `renderMeetingPane` used
+// inline before this packet, now shared with `render()`'s toolbar-title
+// computation so the title can never keep naming a meeting the pane just
+// replaced with a needs-attention message.
+test("meetingBlockingRecovery is null once anything about the meeting is readable", () => {
+  assert.equal(
+    meetingBlockingRecovery({ state: "stale", meetingId: "m-1" }, { state: "stale", turns: [] }).state,
+    "transcript-unavailable",
+  );
+  assert.equal(
+    meetingBlockingRecovery({ state: "stale", meetingId: "m-1" }, { state: "ready", turns: [] }).state,
+    "meeting-unavailable",
+  );
+  assert.equal(
+    meetingBlockingRecovery({ state: "stale", meetingId: "m-1" }, { state: "transcript", turns: [{ text: "kept" }] }),
+    null,
+    "transcript turns make it readable",
+  );
+  assert.equal(
+    meetingBlockingRecovery({ state: "stale", meetingId: "m-1", meetingDeletionHandle: "h" }, { state: "stale", turns: [] }),
+    null,
+    "a deletion handle alone counts as readable (the meeting is real, just unreadable content)",
+  );
+  assert.equal(
+    meetingBlockingRecovery({
+      state: "transcript-only",
+      meetingId: "m-1",
+      audioRetention: { state: "released" },
+    }, { state: "transcript", turns: [{ text: "kept" }] }),
+    null,
+    "audio-released never blocks the pane",
+  );
 });
 
 test("meeting detail exposes only explicit retained-audio controls and polls the owned player", async () => {
@@ -1374,6 +1428,8 @@ test("a locked row keeps its title and date and drops preview and transcript det
     locked: false,
     label: "transcript available",
     preview: "We agreed to ship on Friday.",
+    duration: null,
+    needsAttention: false,
   });
 
   // Bear's obscured previews. Both the generated preview and the
@@ -1384,7 +1440,31 @@ test("a locked row keeps its title and date and drops preview and transcript det
     transcriptAvailable: true,
     notePreview: "We agreed to ship on Friday.",
   });
-  assert.deepEqual(locked, { locked: true, label: "Locked", preview: null });
+  assert.deepEqual(locked, { locked: true, label: "Locked", preview: null, duration: null, needsAttention: false });
+});
+
+// Refit R10: length and a needs-attention dot, both read defensively so a
+// row from a build without the matching Rust fields is unaffected.
+test("a row's duration and needs-attention read defensively from optional snapshot fields", () => {
+  assert.equal(libraryRowMetaPresentation({ durationSeconds: 45 }).duration, "0:45");
+  assert.equal(libraryRowMetaPresentation({ durationSeconds: 125 }).duration, "2:05");
+  assert.equal(libraryRowMetaPresentation({ durationSeconds: 3725 }).duration, "1:02:05");
+  assert.equal(libraryRowMetaPresentation({ durationSeconds: null }).duration, null);
+  assert.equal(libraryRowMetaPresentation({}).duration, null);
+  assert.equal(libraryRowMetaPresentation({ recovery: "recovered-interrupted" }).needsAttention, true);
+  assert.equal(libraryRowMetaPresentation({ recovery: "needs-attention" }).needsAttention, true);
+  assert.equal(libraryRowMetaPresentation({ recovery: "ready" }).needsAttention, false);
+  assert.equal(libraryRowMetaPresentation({}).needsAttention, false);
+});
+
+test("durationLabel formats m:ss under an hour and h:mm:ss at or above it", () => {
+  assert.equal(durationLabel(0), "0:00");
+  assert.equal(durationLabel(9), "0:09");
+  assert.equal(durationLabel(59), "0:59");
+  assert.equal(durationLabel(60), "1:00");
+  assert.equal(durationLabel(3599), "59:59");
+  assert.equal(durationLabel(3600), "1:00:00");
+  assert.equal(durationLabel(7325), "2:02:05");
 });
 
 test("a row with no transcript still reads honestly when unlocked", () => {
@@ -1444,11 +1524,34 @@ test("sidebarGroups orders groups newest-first and rows within a group newest-fi
   assert.deepEqual(sidebarGroups([], now), []);
 });
 
+// Refit R10: the sidebar row's dot and length read from `libraryRowMetaPresentation`
+// (pure-function coverage above) rather than a second copy of the recovery
+// check -- this pins that `renderSidebarRow` actually renders them, keyed
+// off `meta.needsAttention` and `meta.duration`.
+test("renderSidebarRow renders a needs-attention dot and duration from the row's meta", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const fn = source.slice(source.indexOf("function renderSidebarRow"), source.indexOf("function renderSidebarGroups"));
+  assert.match(fn, /meta\.needsAttention \? `<span class="attention-dot" aria-hidden="true"><\/span>` : ""/);
+  assert.match(fn, /if \(meta\.duration\) captionParts\.push\(meta\.duration\);/);
+});
+
 test("toolbarTitlePresentation: recording beats a selection, else the title or Yawn", () => {
   assert.equal(toolbarTitlePresentation({ capturing: true, selectedTitle: "Kickoff" }), "New Recording");
   assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "Kickoff" }), "Kickoff");
   assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "" }), "Yawn");
   assert.equal(toolbarTitlePresentation(), "Yawn");
+});
+
+test("render() resets the toolbar title to Yawn when the selected meeting is blocked", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /const selectedBlocked = view === "meeting" && state\.selected\s*\?\s*Boolean\(meetingBlockingRecovery\(state\.selected\.note, state\.selected\.transcript, state\.generatingMeetingId\)\)\s*:\s*false;/,
+  );
+  assert.match(
+    source,
+    /const selectedTitle = view === "meeting" && state\.selected && !selectedBlocked\s*\?\s*sidebarRowTitle\(state\.selected\.row, dateLabel\(state\.selected\.row\?\.createdAtEpochSeconds\)\)\s*:\s*"";/,
+  );
 });
 
 test("the three confirmation failures stay three different answers", () => {

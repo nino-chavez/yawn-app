@@ -782,16 +782,41 @@ export function meetingLockPresentation(note) {
   return { state: "unlocked", heading: "", detail: "", action: null };
 }
 
+// Refit R10: a sidebar row's length, m:ss under an hour and h:mm:ss at or
+// above it. Pure so it is testable without a DOM; called only when a row
+// actually carries a finite `durationSeconds` (see `libraryRowMetaPresentation`)
+// -- older or not-yet-populated rows never reach it, so absent fields render
+// exactly as before this packet.
+export function durationLabel(totalSeconds) {
+  const total = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // A locked row shows its title and its date. It shows no note preview -- the
 // backend already withholds one -- and no transcript or note-only line, which
 // is the detail Bear's obscured previews also drop. "Locked" replaces it, so
 // the row still says something true about itself rather than going blank.
+//
+// Refit R10 (all-surfaces-2765401-installed-cold.md finding 3): a parallel
+// Rust change adds two optional `LibrarySnapshotRow` fields this reads
+// defensively -- `durationSeconds` (a finite number or absent/null) and
+// `recovery` (a string state or absent/null). Neither field existing yet
+// leaves `duration` and `needsAttention` at their same off defaults, so a
+// row from a build that hasn't shipped the Rust side renders byte-identical
+// to before this packet.
 export function libraryRowMetaPresentation(row) {
-  if (row?.locked) return { locked: true, label: "Locked", preview: null };
+  if (row?.locked) return { locked: true, label: "Locked", preview: null, duration: null, needsAttention: false };
+  const durationSeconds = row?.durationSeconds;
   return {
     locked: false,
     label: row?.transcriptAvailable ? "transcript available" : "note only",
     preview: libraryRowPreview(row),
+    duration: typeof durationSeconds === "number" && Number.isFinite(durationSeconds) ? durationLabel(durationSeconds) : null,
+    needsAttention: ["recovered-interrupted", "needs-attention"].includes(row?.recovery),
   };
 }
 
@@ -1273,9 +1298,13 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
       state: "transcript-unavailable",
       tone: "attention",
       title: "The transcript is unavailable.",
+      // Refit R9 (all-surfaces-2765401-installed-cold.md finding 2): this
+      // detail used to say "Reopen Meetings to try again" while the one
+      // button on screen says "Back to meetings" -- name the control that
+      // actually exists instead of an instruction with no matching control.
       detail: typeof transcript?.message === "string" && transcript.message.trim()
         ? transcript.message.trim()
-        : "Yawn could not load this meeting’s transcript. Reopen Meetings to try this meeting again.",
+        : "Yawn could not load this meeting’s transcript. Go back to meetings and open it again.",
       action: { action: "meetings", label: "Back to meetings" },
     };
   }
@@ -1317,12 +1346,42 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
       state: "meeting-unavailable",
       tone: "attention",
       title: "This meeting is unavailable.",
-      detail: "Yawn could not read this meeting. Nothing already saved here was replaced. Reopen Meetings to try again.",
+      // Refit R9: same fix as transcript-unavailable above -- the detail
+      // names the button that is actually on screen ("Back to meetings"),
+      // not an instruction ("Reopen Meetings") that matches no control. Does
+      // not name Move to Trash: that secondary action only appears when the
+      // meeting has a deletion handle (renderMeetingPane), so this detail
+      // stays true regardless of which buttons the pane actually offers.
+      detail: "Yawn could not read this meeting. Nothing already saved here was replaced. Go back to meetings to try it again.",
       action: { action: "meetings", label: "Back to meetings" },
     };
   }
 
   return null;
+}
+
+// Refit R9 (all-surfaces-2765401-installed-cold.md finding 2): the toolbar
+// title used to keep naming a meeting that had just failed to load, directly
+// contradicting the needs-attention pane's own message underneath it. This
+// is the one fact both `render()`'s title computation and `renderMeetingPane`
+// need to agree on -- "is there nothing readable about this meeting" -- so it
+// is factored out once here rather than kept as two copies that could drift.
+// Same readability check `renderMeetingPane` used inline before this packet:
+// a recovered-interrupted meeting with retained audio, or any meeting with
+// transcript turns or the operator's own notes, is content plus a fact (the
+// workspace renders with a caption), not a full-pane replacement.
+export function meetingBlockingRecovery(note, transcript, generatingMeetingId = "") {
+  const recovery = meetingRecoveryPresentation(note, transcript, generatingMeetingId);
+  if (!recovery || recovery.state === "audio-released") return null;
+  const readable = Boolean(
+    transcript?.turns?.length
+    || note?.microphonePlaybackHandle
+    || note?.systemPlaybackHandle
+    || note?.operatorNote?.text
+    || note?.meetingDeletionHandle
+    || note?.operatorNoteHandle,
+  );
+  return readable ? null : recovery;
 }
 
 // Roadmap intake I2: the global hotkey summons the operator-note editor and

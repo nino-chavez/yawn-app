@@ -15,6 +15,7 @@ import {
   libraryStallTransition,
   localVocabularyPresentation,
   lockedActionOutcome,
+  meetingBlockingRecovery,
   meetingContextPresentation,
   meetingDeletionConfirmationCopy,
   meetingLockPresentation,
@@ -343,7 +344,16 @@ function render() {
   firstRunSheetShowing = firstRunVisible;
 
   const capturing = captureIsInProgress(state.snapshot);
-  const selectedTitle = view === "meeting" && state.selected
+  // Refit R9: a meeting the reader can't actually read yet must not keep
+  // naming itself in the toolbar -- that is the exact contradiction the cold
+  // review caught (title bar says "Meeting · Sep 1, 2026", the pane right
+  // below it says "This meeting is unavailable."). `meetingBlockingRecovery`
+  // is the same readability check `renderMeetingPane` uses to decide whether
+  // to replace the pane, so the title and the pane can never disagree.
+  const selectedBlocked = view === "meeting" && state.selected
+    ? Boolean(meetingBlockingRecovery(state.selected.note, state.selected.transcript, state.generatingMeetingId))
+    : false;
+  const selectedTitle = view === "meeting" && state.selected && !selectedBlocked
     ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
     : "";
   const title = toolbarTitlePresentation({ capturing, selectedTitle });
@@ -596,13 +606,23 @@ function timeOfDayLabel(epochSeconds) {
     .format(new Date(Number(epochSeconds) * 1000));
 }
 
+// Refit R10 (all-surfaces-2765401-installed-cold.md finding 3): "three rows
+// read 'Meeting · Sep 1, 2026' and differ only by fine print." Length in the
+// caption and a needs-attention dot on the title give the reader a second
+// and third way to tell rows apart at a glance, on top of the excerpt that
+// already exists. `libraryRowMetaPresentation` reads both defensively -- a
+// row without the new Rust fields renders with neither, byte-identical to
+// before this packet.
 function renderSidebarRow(row, { selected = false } = {}) {
   const meta = libraryRowMetaPresentation(row);
   const title = sidebarRowTitle(row, dateLabel(row.createdAtEpochSeconds));
+  const captionParts = [timeOfDayLabel(row.createdAtEpochSeconds)];
+  if (meta.duration) captionParts.push(meta.duration);
+  captionParts.push(meta.label);
   return `
     <button class="row${selected ? " selected" : ""}" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}>
-      <span class="row-title">${escapeHtml(title)}</span>
-      <span class="row-caption caption">${escapeHtml(timeOfDayLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meta.label)}</span>
+      <span class="row-title">${meta.needsAttention ? `<span class="attention-dot" aria-hidden="true"></span>` : ""}<span>${escapeHtml(title)}</span></span>
+      <span class="row-caption caption">${escapeHtml(captionParts.join(" · "))}</span>
       ${meta.preview ? `<span class="row-excerpt">${escapeHtml(meta.preview)}</span>` : ""}
     </button>`;
 }
@@ -1065,9 +1085,14 @@ function renderMeetingNote(note, claimEvidence) {
 function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
   if (recovery?.state === "transcript-unavailable" && !transcript?.turns?.length) return "";
   if (!transcript?.turns?.length && !transcript?.message) return "";
+  // Refit R13 (all-surfaces-2765401-installed-cold.md findings 4/11): the
+  // "Open" text read as a web link, not a control -- the trailing element
+  // stated its state as a word instead of the disclosure triangle a native
+  // list uses. <summary> is already the row's whole click target; this
+  // changes only what marks that, to a chevron that flips on `[open]`.
   return `
     <details class="transcript-disclosure">
-      <summary><span><strong>Full transcript</strong><small>The retained record for checking a decision, owner, or follow-up.</small></span><span class="transcript-disclosure-state">Open</span></summary>
+      <summary><span><strong>Full transcript</strong><small>The retained record for checking a decision, owner, or follow-up.</small></span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="transcript-disclosure-content">
         ${transcript?.turns?.length ? renderTranscript(transcript.turns, "Source transcript", "Search or read the complete retained conversation.", {
           copyAction: "copy-library-transcript",
@@ -1175,20 +1200,14 @@ function renderMeetingPane() {
   // is content plus a fact: it renders the workspace and the note card
   // carries the state (DESIGN.md, "a fact is a caption; a problem is a
   // needs-attention state" -- the needs-attention pane is for the case
-  // where there is nothing else to show).
-  // The reader issues a meeting-deletion handle for every meeting it admits
-  // as real (library_reader.rs, LibraryNoteResponse), including a
+  // where there is nothing else to show). The reader issues a
+  // meeting-deletion handle for every meeting it admits as real
+  // (library_reader.rs, LibraryNoteResponse), including a
   // recovered-interrupted one with only partial audio; a response with no
-  // handle at all is the genuinely unreadable case.
-  const readable = Boolean(
-    transcript?.turns?.length
-    || note?.microphonePlaybackHandle
-    || note?.systemPlaybackHandle
-    || note?.operatorNote?.text
-    || note?.meetingDeletionHandle
-    || note?.operatorNoteHandle,
-  );
-  const blockingRecovery = recovery && recovery.state !== "audio-released" && !readable ? recovery : null;
+  // handle at all is the genuinely unreadable case. `meetingBlockingRecovery`
+  // (view-model.mjs) is this same check, shared with render()'s toolbar-title
+  // computation so the two can never disagree (refit R9).
+  const blockingRecovery = meetingBlockingRecovery(note, transcript, state.generatingMeetingId);
   if (blockingRecovery) {
     const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
     return renderNeedsAttentionPane({
@@ -1485,16 +1504,24 @@ function renderStartSheet() {
 // system-wide; the product brief's amendment (2026-09-01) permits "one short
 // orientation," not seeded content -- so this is one paragraph naming the
 // three moments, not a three-card dl.
+// Refit R12 (all-surfaces-2765401-installed-cold.md finding 07/"category
+// read"): the shared `.modal-backdrop`/`.start-sheet` this reused rendered as
+// a centered web-modal card over a blurred, legible library -- readable
+// enough to invite a second read of the backdrop instead of receding. This
+// keeps the same dismiss mechanics (Esc via `firstRunSheetShowing`, "Got it")
+// but the `first-run-backdrop`/`first-run-sheet` modifier classes (styles.css)
+// attach the panel under the toolbar with an opaque, unblurred dim behind it.
+// No X: this is a one-time acknowledgment with exactly one way out plus Esc,
+// not a decision with a Cancel.
 function renderFirstRunSheet() {
   return `
-    <div class="modal-backdrop" role="presentation">
+    <div class="modal-backdrop first-run-backdrop" role="presentation">
       <section class="start-sheet first-run-sheet" role="dialog" aria-modal="true" aria-labelledby="first-run-sheet-title">
         <div class="sheet-head">
           <div>
             <h2 id="first-run-sheet-title">Before, during, after.</h2>
             <p>Confirm consent and headphones, then record. Keep your own notes while it runs. Afterward, generate a readable note with decisions and follow-ups that point back to the transcript — all on this Mac.</p>
           </div>
-          <button class="icon-button" type="button" data-action="dismiss-first-run" aria-label="Close">×</button>
         </div>
         <div class="sheet-actions">
           <button class="button button-primary" type="button" data-action="dismiss-first-run">Got it</button>
