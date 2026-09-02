@@ -1433,7 +1433,20 @@ impl LibraryReader {
             // the generic `transcript-only` fallback below, is what stops it
             // reading identically to a meeting whose transcription merely
             // failed and can be retried: this one has nothing to retry.
+            //
+            // D-READ follow-up. The one-day (or longer) retention rule
+            // eventually releases even a recovered-interrupted meeting's
+            // partial audio, same as any other meeting's. When that has
+            // already happened (`audio_retention.state == "released"`), the
+            // retained-audio message above would be false: there is nothing
+            // left to play. The message names that honestly instead of
+            // repeating the retained-audio sentence over audio that is gone.
             MeetingLifecycle::RecoveredInterrupted => {
+                let message = if audio_retention.state == "released" {
+                    "This recording was interrupted before it could be transcribed. Its audio has since been deleted."
+                } else {
+                    "This recording was interrupted before it could be transcribed. Any retained audio remains available."
+                };
                 return LibraryNoteResponse {
                     state: "recovered-interrupted",
                     transcript_handle: None,
@@ -1454,8 +1467,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
-                    message: "This recording was interrupted before it could be transcribed. Any retained audio remains available."
-                        .into(),
+                    message: message.into(),
                 };
             }
             MeetingLifecycle::Ready => {}
@@ -4712,6 +4724,216 @@ mod tests {
             snapshot.rows[0].recovery,
             Some("recovered-interrupted"),
             "the row must name the same recovered-interrupted state open_note does"
+        );
+    }
+
+    /// D-READ, the case commit 89fe963 did not cover: a recovered-interrupted
+    /// meeting whose partial audio has since been released by the one-day
+    /// retention rule -- exactly the shape of the two real meetings on the
+    /// operator's Mac (`36c3bc59-a357-4764-9aa8-2830f51ff802` and
+    /// `97c23a50-2db7-4d87-8300-12586a89d327`): `lifecycle` is
+    /// `recovered-interrupted`, `retention.state` is `released` with a real
+    /// deletion receipt naming both partials by digest, and the `.mic.wav.partial`
+    /// / `.system.wav.partial` files themselves are gone from disk. Built by
+    /// hand (not through `scan_and_recover` + a real deletion pass) so the test
+    /// pins the exact on-disk shape independently of how release is triggered.
+    fn recovered_interrupted_released_fixture() -> Fixture {
+        let temporary = TempDir::new().unwrap();
+        let protected = temporary.path().join("protected");
+        create_private_dir(&protected).unwrap();
+        let storage = StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let directory = storage.path().join("meetings").join(MEETING_ID);
+        create_private_dir(&directory).unwrap();
+        create_private_dir(&directory.join("capture")).unwrap();
+        create_private_dir(&directory.join("deletion")).unwrap();
+
+        let rule = AudioRetentionRule::DeleteAfter { seconds: 86_400 };
+        let policy_sha256 = retention_policy_sha256(&rule);
+        let attempt = serde_json::to_vec_pretty(&json!({
+            "schema": "capture-attempt/1",
+            "meeting_id": MEETING_ID,
+            "attempt_id": "22222222-2222-4222-8222-222222222222",
+            "created_at_epoch_seconds": 1_728_000_000_u64,
+            "application_build_sha256": "a".repeat(64),
+            "participant_notice_version": "internal-transcript-alpha/1",
+            "operator_attestation": {
+                "participantsConsented": true,
+                "headphones": true,
+                "operatorAlone": true
+            },
+            "retention_policy_sha256": policy_sha256,
+        }))
+        .unwrap();
+        durable_create_new(&directory.join("attempt.json"), &attempt).unwrap();
+        durable_create_new(&directory.join("ownership.json"), b"ownership").unwrap();
+
+        // The partial legs exist just long enough to mint their real digests
+        // and populate a real capture-interruption receipt -- the same receipt
+        // a genuine interrupted capture would have written -- then are removed,
+        // matching a meeting whose one-day retention already fired.
+        let microphone = vec![7_u8; 128];
+        let system = vec![8_u8; 96];
+        durable_create_new(&directory.join("capture/.mic.wav.partial"), &microphone).unwrap();
+        durable_create_new(&directory.join("capture/.system.wav.partial"), &system).unwrap();
+        let microphone_ref = artifact_ref(&directory, "capture/.mic.wav.partial").unwrap();
+        let system_ref = artifact_ref(&directory, "capture/.system.wav.partial").unwrap();
+        let session_json = serde_json::to_vec_pretty(&json!({
+            "schema": "capture-interruption/1",
+            "status": "interrupted",
+            "reason": "fresh-process-recovery",
+            "meeting_id": MEETING_ID,
+            "artifacts": [
+                {
+                    "name": ".mic.wav.partial",
+                    "bytes": microphone.len(),
+                    "sha256": microphone_ref.sha256,
+                    "mode": "0600",
+                },
+                {
+                    "name": ".system.wav.partial",
+                    "bytes": system.len(),
+                    "sha256": system_ref.sha256,
+                    "mode": "0600",
+                },
+            ],
+        }))
+        .unwrap();
+        durable_create_new(&directory.join("capture/session.json"), &session_json).unwrap();
+        let session_ref = artifact_ref(&directory, "capture/session.json").unwrap();
+        fs::remove_file(directory.join("capture/.mic.wav.partial")).unwrap();
+        fs::remove_file(directory.join("capture/.system.wav.partial")).unwrap();
+
+        durable_create_new(&directory.join("deletion/audio-deletion.json"), b"released").unwrap();
+        let deletion_ref = artifact_ref(&directory, "deletion/audio-deletion.json").unwrap();
+
+        let record = MeetingRecord {
+            schema: MeetingSchema::V2,
+            meeting_id: MEETING_ID.into(),
+            lifecycle: MeetingLifecycle::RecoveredInterrupted,
+            retention: AudioRetention {
+                policy_sha256,
+                rule,
+                next_deletion_at_epoch_seconds: Some(1_728_000_060),
+                state: AudioState::Released,
+                deletion_receipt: Some(deletion_ref),
+            },
+            artifacts: MeetingArtifacts {
+                attempt: artifact_ref(&directory, "attempt.json").unwrap(),
+                ownership: Some(artifact_ref(&directory, "ownership.json").unwrap()),
+                capture_session: Some(session_ref),
+                microphone_audio: Some(microphone_ref),
+                system_audio: Some(system_ref),
+                current_transcript: None,
+                current_note: None,
+            },
+            pending_storage_operation: None,
+        };
+        write_meeting(&directory, &record).unwrap();
+
+        Fixture {
+            _temporary: temporary,
+            storage,
+            directory,
+        }
+    }
+
+    /// D-READ. Today, before the fix in this change, a recovered-interrupted
+    /// meeting whose partials were already released reads identically to the
+    /// still-open-book cases this file already covers: it must not fall back
+    /// to `unavailable`, its `audio_retention` must honestly say `released`
+    /// (never claim retained audio that is gone), it must still carry a
+    /// deletion handle, and it must not offer playback handles for audio that
+    /// no longer exists. The row must carry the same recovery state and no
+    /// duration for a shape with nothing to measure.
+    #[test]
+    fn recovered_interrupted_meeting_with_released_audio_opens_readable_and_honest() {
+        let fixture = recovered_interrupted_released_fixture();
+        let meeting = load_meeting(&fixture.directory).unwrap();
+        assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
+        assert_eq!(meeting.retention.state, AudioState::Released);
+
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        assert_eq!(
+            projection.quarantined_meetings(),
+            0,
+            "a recovered-interrupted meeting whose released audio is receipted must not be quarantined"
+        );
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows.len(), 1, "the meeting must appear in the library");
+        assert_eq!(
+            snapshot.rows[0].recovery,
+            Some("recovered-interrupted"),
+            "the row must name its recovery state whether or not its audio is still retained"
+        );
+        assert_eq!(
+            snapshot.rows[0].duration_seconds, None,
+            "released partial audio leaves nothing on disk to measure a duration from"
+        );
+
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+        assert_eq!(
+            note.state, "recovered-interrupted",
+            "a recovered-interrupted meeting must name its own state, never unavailable, \
+             whether or not its partial audio is still on disk"
+        );
+        assert!(
+            note.meeting_deletion_handle.is_some(),
+            "the meeting must still be deletable once its audio is gone"
+        );
+        assert_eq!(
+            note.transcript_handle, None,
+            "an interrupted capture never produced a transcript"
+        );
+        assert!(note.claims.is_empty());
+        assert_eq!(
+            note.audio_retention.state, "released",
+            "the audio is honestly reported as released, never as retained or unavailable"
+        );
+        assert_eq!(
+            note.microphone_playback_handle, None,
+            "there is no microphone audio left on disk to play back"
+        );
+        assert_eq!(
+            note.system_playback_handle, None,
+            "there is no system audio left on disk to play back"
+        );
+        assert_eq!(
+            note.message,
+            "This recording was interrupted before it could be transcribed. Its audio has since been deleted.",
+            "the message must not claim retained audio remains available once it is gone"
+        );
+    }
+
+    /// D-READ's tampering counterpart to the fixture above: the same
+    /// recovered-interrupted meeting, but with its partials removed from disk
+    /// by hand -- no deletion receipt, `retention.state` left at `retained`.
+    /// This must still be refused; an absent deletion receipt is exactly what
+    /// tells a real release apart from a partial that simply went missing.
+    #[test]
+    fn recovered_interrupted_meeting_missing_partials_without_a_deletion_receipt_stays_refused() {
+        let fixture = recovered_interrupted_fixture();
+        fs::remove_file(fixture.directory.join("capture/.mic.wav.partial")).unwrap();
+        fs::remove_file(fixture.directory.join("capture/.system.wav.partial")).unwrap();
+
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        assert_eq!(
+            projection.quarantined_meetings(),
+            1,
+            "partial audio missing with no deletion receipt to explain it must not read as a clean row"
+        );
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert!(
+            snapshot.rows.is_empty(),
+            "a tampered recovered-interrupted meeting must not appear in the library"
+        );
+
+        let audio_retention =
+            LibraryReader::read_audio_retention(&fixture.storage, MEETING_ID);
+        assert_eq!(
+            audio_retention.state, "unavailable",
+            "retained audio that vanished with no deletion receipt must never be reported as released or retained"
         );
     }
 
