@@ -125,7 +125,11 @@ opaque backdrop, copy names the permission step), R16 (d04e143 and 73d68c9,
 title kept, block centered with one left edge), R17 (d04e143, notes box sized
 to a few lines, caption under it, placeholder at label-3), R19 (d04e143, Got
 it is the specimen primary; Record already carried the bezel and reads bare
-only because it is disabled in the preview). R18 in progress.
+only because it is disabled in the preview). R18 (8ef4f94 grouped list,
+three type sizes, one primary per group, scrollable window; 88da6b6 buttons
+at the specimen size and weight). Captures of 88da6b6 filed under
+`docs/evidence/screen-reviews/captures/88da6b6-installed/`; blind review
+pending.
 
 ## What the live apps changed
 
