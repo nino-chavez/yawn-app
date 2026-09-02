@@ -130,3 +130,21 @@ SF Symbols only, via the system: sidebar (`sidebar.left`), trash (`trash`),
 record (`record.circle`), pause (`pause.fill`), stop (`stop.fill`), search
 (`magnifyingglass`), settings gear in the toolbar is not used; Settings is
 ⌘, and the app menu. No custom glyphs, no emoji, no illustration.
+
+## Family invariants (shared with Minder)
+
+Yawn and Minder share no palette, type, radii, or components: one is a Mac
+document window, the other a one-handed phone screen. They share the rules
+below, stated once here and once in Minder's DIRECTION.md and DESIGN.md, so
+both apps are built the same way even though they look different.
+
+| Invariant | Minder | Yawn |
+|---|---|---|
+| The five job questions in under five seconds are the thesis and the review protocol | Today screen thesis | Every surface; the blind review's protocol |
+| State is carried in words and structure, never color alone | Accessibility contract | Status words plus the dot; no color-only meaning |
+| No explanatory chrome in steady state | Copy about the app appears only when something is broken and actionable | No pitch line; on-device promise said once, in Settings |
+| Attention is not completion; a fact is not a problem | Attention, completion, freshness are distinct | A fact is a caption; a problem is a needs-attention state with an action |
+| Four semantic tones with the same names, different values | violet, rose, gold, neutral | accent, record, attention, neutral |
+| Source authority is shown, never restated | Source facts panel vs local details | Claim and its cited turn; the transcript is the record |
+| Customer terminology, no internal jargon | Minder, activity, handoff, source calendar | meeting, note, transcript, recording; never queue, claim gate, router |
+| Tokens are a schema, not a stylesheet | packages/design-tokens/tokens.json | The same schema, Yawn's values (implementation wave) |
