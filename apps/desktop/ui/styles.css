@@ -2814,8 +2814,11 @@ html, body, #app {
   gap: 12px;
 }
 
+/* Pixels, not ch: 62ch differs between the 17px headline and the 15px
+   detail, which centered each line on its own width and broke the left edge. */
 .attention-pane > * {
-  width: min(var(--measure), 100%);
+  width: min(520px, 100%);
+  max-width: none;
 }
 
 .attention-headline {
