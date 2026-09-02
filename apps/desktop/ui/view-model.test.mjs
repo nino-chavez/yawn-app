@@ -1116,13 +1116,11 @@ test("stale transcript routes back to meetings instead of inventing a transcript
 
 test("an empty transcript-only note remains explicit and only receives a generate control from its source pin", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  assert.match(source, /<h2 id="meeting-note-heading">No meeting note yet\.<\/h2>/);
+  // R14: the empty state is one sentence at reading size carrying the
+  // heading id, not an h2 plus the reader's generic message repeated.
+  assert.match(source, /<p id="meeting-note-heading" class="empty-note-state">/);
   assert.match(source, /if \(note\?\.state !== "transcript-only"\) return "";/);
-  // Rethink phase 1: any blocking recovery already short-circuits to the
-  // needs-attention pane above this line (see renderMeetingPane), so this
-  // condition no longer needs its own `!recovery` guard -- it is only ever
-  // reached when there isn't one (or it's the non-blocking audio-released).
-  assert.match(source, /note\?\.state !== "transcript-only" && note\?\.message && !claims\.length/);
+  assert.doesNotMatch(source, /note\?\.message && !claims\.length/);
   assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}/);
   assert.match(source, /function renderGenerateNote[\s\S]*noteGenerationPresentation\(note, state\.generatingMeetingId\)/);
 });

@@ -1221,7 +1221,6 @@ function renderMeetingPane() {
       </article></div>`;
   }
 
-  const claims = note?.claims || [];
   const operatorNote = note?.operatorNote;
   const selectedNoteState = state.selected?.operatorNoteSaveState || "local";
   const selectedNoteCopy = operatorNote?.unreadable
@@ -1305,6 +1304,9 @@ function renderMeetingPane() {
 // currently being captured.
 function renderMeetingContextSection(note) {
   const presentation = meetingContextPresentation(note?.meetingContext);
+  // DESIGN.md: no heading over an empty caption. Absent context is nothing
+  // to read, so the section is not drawn.
+  if (presentation.state === "absent" || presentation.state === "empty") return "";
   return `
     <section class="note-section meeting-context-section" aria-labelledby="meeting-context-heading">
       <div class="note-editor-head"><h3 id="meeting-context-heading">Meeting context</h3></div>
@@ -1313,7 +1315,7 @@ function renderMeetingContextSection(note) {
         : presentation.state === "present"
           ? `<p class="meeting-context-text">${escapeHtml(presentation.text)}</p>
              <p class="doc-fact">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
-          : `<p class="doc-fact">No pre-meeting context was written for this meeting.</p>`}
+          : ""}
     </section>
   `;
 }

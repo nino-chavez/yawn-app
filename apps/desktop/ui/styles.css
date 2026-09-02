@@ -488,11 +488,23 @@ h3 {
 
 .note-editor-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
-  padding: 15px 18px;
-  border-bottom: 1px solid var(--line);
+  max-width: var(--measure);
+  margin: 0 0 8px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.note-editor-head h3 {
+  margin: 0;
+}
+
+.note-editor-head .doc-fact {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .note-editor-head strong {
@@ -713,7 +725,7 @@ h3 {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .meeting-manage-control {
@@ -737,12 +749,12 @@ h3 {
 
 .meeting-manage-menu p {
   margin: 0 0 3px;
-  color: var(--ink-faint);
-  font-size: var(--text-meta);
-  line-height: 1.45;
+  color: var(--label-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
-.meeting-manage-menu .button {
+.meeting-manage-menu .btn {
   width: 100%;
   justify-content: flex-start;
 }
@@ -751,9 +763,9 @@ h3 {
    context, your notes) gets the same plain top divider -- document flow,
    not a stack of tinted cards. */
 .note-section {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .your-notes-section {
@@ -785,12 +797,12 @@ h3 {
    file's own light/dark split (tokens.css keys color off `[data-theme]`,
    which main.js sets unconditionally at load). */
 .note-section h3 {
-  margin-bottom: 12px;
+  margin: 0 0 8px;
   font-size: var(--t-read);
   font-weight: 600;
   line-height: var(--lh-read);
   letter-spacing: normal;
-  color: var(--label-2);
+  color: var(--label);
 }
 
 /* DESIGN.md: "Content areas are never tinted." The note is document content
@@ -836,12 +848,12 @@ h3 {
 }
 
 .meeting-note-section h3 {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   font-size: var(--t-read);
   font-weight: 600;
   line-height: var(--lh-read);
   letter-spacing: normal;
-  color: var(--label-2);
+  color: var(--label);
 }
 
 .meeting-note-summary-item > p {
@@ -863,8 +875,8 @@ h3 {
 
 .meeting-note-item {
   position: relative;
-  padding: 12px 0 13px 18px;
-  border-top: 1px solid var(--line);
+  padding: 4px 0 4px 18px;
+  border-top: 0;
 }
 
 .meeting-note-item:first-child {
@@ -873,7 +885,7 @@ h3 {
 
 .meeting-note-item::before {
   position: absolute;
-  top: 21px;
+  top: 13px;
   left: 1px;
   width: 5px;
   height: 5px;
@@ -916,9 +928,13 @@ h3 {
   font-weight: var(--weight-medium);
 }
 
+/* DESIGN.md Disclosure: one line at reading size inside the measure, the
+   hairline above it is the only rule below the title block. */
 .transcript-disclosure {
-  margin-top: 22px;
+  margin-top: 24px;
   max-width: var(--measure);
+  padding-top: 12px;
+  border-top: 1px solid var(--separator);
 }
 
 .transcript-disclosure > summary {
@@ -966,7 +982,7 @@ h3 {
 }
 
 .transcript-disclosure-content {
-  padding: 14px;
+  padding: 14px 0;
 }
 
 .transcript-retry-action {
@@ -974,25 +990,25 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding-top: 18px;
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
+  max-width: var(--measure);
+  margin-top: 24px;
 }
 
 .transcript-retry-action h3 {
-  margin: 0 0 3px;
-  font-size: var(--text-body);
+  margin: 0 0 2px;
+  font-size: var(--t-read);
+  font-weight: 600;
+  line-height: var(--lh-read);
 }
 
 .transcript-retry-action p {
-  max-width: 58ch;
   margin: 0;
-  color: var(--ink-faint);
-  font-size: var(--text-label);
-  line-height: 1.45;
+  color: var(--label-2);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
 }
 
-.transcript-retry-action .button {
+.transcript-retry-action .btn {
   flex: 0 0 auto;
 }
 
@@ -2684,24 +2700,29 @@ html, body, #app {
   margin: 4px 0 18px;
 }
 
+/* A fact about the meeting is a sentence, so it reads at reading size; only
+   the metadata line under the title and the save-state caption are 13. */
 .doc-fact {
-  font-size: var(--t-body);
-  color: var(--label-2);
-  margin: 0 0 6px;
-}
-
-.note-help {
+  max-width: var(--measure);
   font-size: var(--t-read);
   line-height: var(--lh-read);
   color: var(--label-2);
-  margin: 0 0 6px;
+  margin: 0 0 4px;
+}
+
+.note-help {
+  max-width: var(--measure);
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  color: var(--label-2);
+  margin: 8px 0 0;
 }
 
 .empty-note-state {
   font-size: var(--t-read);
   line-height: var(--lh-read);
   color: var(--label);
-  margin: 0 0 12px;
+  margin: 16px 0 0;
 }
 
 .trash-pane h1 {
