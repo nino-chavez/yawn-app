@@ -4,6 +4,7 @@
 // is live and the snapshot poll re-renders every 900 ms.
 // mode=library: idle capture with one finished meeting, so the transcript
 // search input is live and every keystroke re-renders synchronously.
+// mode=startup / mode=model-setup: the startup-check and no-model surfaces.
 (() => {
   const mode = new URLSearchParams(location.search).get("mode") || "capture";
   const captureSnapshot = {
@@ -26,7 +27,13 @@
     transcriptAvailable: true,
   };
   const responses = {
-    app_snapshot: () => (mode === "capture" ? { ...captureSnapshot } : { ...idleSnapshot }),
+    // mode=startup: the local startup check still running; mode=model-setup:
+    // no speech model installed yet. Both render surfaces the other modes
+    // never reach, so the harness can show them without a packaged build.
+    app_snapshot: () => (mode === "capture" ? { ...captureSnapshot }
+      : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
+      : mode === "model-setup" ? { ...idleSnapshot, startup: "model-required", model_setup: { state: "idle", options: [], selectedModelId: "" } }
+      : { ...idleSnapshot }),
     first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
     library_snapshot: () => (mode === "library"
       ? { rows: [{ ...libraryRow }], total: 1, metadataRevision: 1 }
