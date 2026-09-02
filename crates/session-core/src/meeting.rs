@@ -453,6 +453,49 @@ pub(crate) fn write_capture_interruption_receipt(
     artifact_ref(meeting_dir, "capture/session.json")
 }
 
+/// Whether a captured meeting's on-disk capture receipt is a complete,
+/// finalized `capture-session/2` — the shape a real finish writes.
+///
+/// A quit a moment into worker-finalize can leave a meeting at `captured`
+/// lifecycle whose `capture/session.json` was never written as a finished
+/// session (missing entirely, still `incomplete`, or lacking its `health` /
+/// `reconciliation` audit blocks). Recovery uses this to tell a legitimate
+/// transcription source apart from a quit-mid-finalize meeting: the first is
+/// left for the background queue, the second is salvaged to the interrupted
+/// shape. A receipt that cannot be read at all reads as not finalized rather
+/// than raising — an unreadable receipt is exactly the interrupted case.
+pub(crate) fn captured_capture_is_finalized(
+    meeting_dir: &Path,
+    meeting: &MeetingRecord,
+) -> Result<bool, MeetingError> {
+    let Some(session) = &meeting.artifacts.capture_session else {
+        return Ok(false);
+    };
+    if verify_artifact_ref(meeting_dir, session).is_err() {
+        return Ok(false);
+    }
+    let path = match resolve_artifact(meeting_dir, &session.relative_path) {
+        Ok(path) => path,
+        Err(_) => return Ok(false),
+    };
+    let bytes = match read_private_bytes(&path, MAX_RECEIPT_BYTES) {
+        Ok(bytes) => bytes,
+        Err(_) => return Ok(false),
+    };
+    let value: Value = match serde_json::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(_) => return Ok(false),
+    };
+    if value.get("schema").and_then(Value::as_str) != Some("capture-session/2") {
+        return Ok(false);
+    }
+    Ok(value.get("status").and_then(Value::as_str) == Some("complete")
+        && value.get("started_at").is_some_and(Value::is_string)
+        && value.get("finalized_at").is_some_and(Value::is_string)
+        && value.get("health").is_some_and(Value::is_object)
+        && value.get("reconciliation").is_some_and(Value::is_object))
+}
+
 fn verify_recovered_capture_receipt(
     meeting_dir: &Path,
     meeting: &MeetingRecord,

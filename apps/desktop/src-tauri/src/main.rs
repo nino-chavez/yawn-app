@@ -2284,10 +2284,14 @@ fn dismiss_meeting(app: AppHandle) -> Result<AppSnapshot, String> {
     }
     transition_capture(&mut model, CaptureState::Idle)?;
     model.clear_meeting_projection();
+    // Leaving a meeting always returns to the library. If retention is degraded,
+    // that is surfaced as a home-screen condition (Record is held with its
+    // reason), never by transitioning startup into the needs-attention blocker
+    // — dismissing a meeting must not route the operator into a screen with no
+    // way back to their meetings (Order 4: a recovery action must not trap).
     if !model.retention_operational && model.reducer.startup() == StartupState::Ready {
         model.error =
             Some("Audio retention needs attention before another meeting can start.".into());
-        transition_startup(&mut model, StartupState::DiagnosticWritten)?;
     }
     Ok(model.snapshot())
 }
@@ -2460,7 +2464,14 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
                 | StartupState::ServiceTimeout
                 | StartupState::DiagnosticWritten
         ) {
-            return Err("The installation check is not waiting for a retry.".into());
+            // "Check again" clicked when the check is not waiting for a retry —
+            // a double-click, or a click racing a state that already cleared.
+            // There is nothing to tell the operator and nothing to redo, so
+            // this is a no-op returning the current state, not an error whose
+            // internal-state wording ("not waiting for a retry") means nothing
+            // to a reader. The honest surface is whatever screen the snapshot
+            // already describes.
+            return Ok(model.snapshot());
         }
         prepare_startup_retry(&mut model)?;
         model.snapshot()
@@ -8294,22 +8305,30 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
             let state = app.state::<ApplicationState>();
             let retention_result =
                 execute_scheduled_retention(&state, &storage, now_epoch_seconds());
+            // Decided before the match consumes the result, and never from a
+            // per-meeting outcome: only a genuine retention-machine failure may
+            // refuse app-wide readiness.
+            let holds_readiness = scheduled_retention_holds_app_readiness(&retention_result);
             match retention_result {
                 Ok(None) => {}
                 Ok(Some(report)) => {
-                    let mut retention_failed = false;
+                    // A per-meeting quarantine is a per-meeting condition: it is
+                    // logged and surfaced on that meeting, but it never marks
+                    // retention app-wide unavailable. One un-releasable meeting
+                    // blocking every future recording was the D-LOCK hard lock;
+                    // only a genuine retention-machine failure (the two Err arms
+                    // below) may refuse app-wide readiness. This mirrors the
+                    // trash-purge rule already documented below — separate
+                    // promises, kept separate.
                     for outcome in report.retention {
-                        if let RetentionOutcome::Quarantined(meeting_id) = outcome {
-                            retention_failed = true;
-                            if reported_quarantines.insert(meeting_id.clone()) {
-                                let _ = write_private_diagnostic(
-                                    &diagnostics,
-                                    "retention_meeting_quarantined",
-                                    &format!(
-                                        "meeting {meeting_id} was quarantined without mutation"
-                                    ),
-                                );
-                            }
+                        if let RetentionOutcome::Quarantined(meeting_id) = outcome
+                            && reported_quarantines.insert(meeting_id.clone())
+                        {
+                            let _ = write_private_diagnostic(
+                                &diagnostics,
+                                "retention_meeting_quarantined",
+                                &format!("meeting {meeting_id} was quarantined without mutation"),
+                            );
                         }
                     }
                     // A trash entry that fails to purge is logged the same way
@@ -8327,9 +8346,6 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
                             );
                         }
                     }
-                    if retention_failed {
-                        mark_retention_unavailable(&state);
-                    }
                 }
                 Err(ScheduledRetentionError::Coordination(message)) => {
                     let _ = write_private_diagnostic(
@@ -8337,7 +8353,6 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
                         "retention_coordination_failed",
                         message,
                     );
-                    mark_retention_unavailable(&state);
                 }
                 Err(ScheduledRetentionError::Retention) => {
                     let _ = write_private_diagnostic(
@@ -8345,11 +8360,30 @@ fn start_retention_executor(app: &AppHandle, context: &StorageContext) {
                         "retention_tick_failed",
                         "scheduled retained-audio release could not complete",
                     );
-                    mark_retention_unavailable(&state);
                 }
+            }
+            if holds_readiness {
+                mark_retention_unavailable(&state);
             }
         }
     });
+}
+
+/// Whether one scheduled retention tick may refuse app-wide readiness.
+///
+/// Only a genuine failure of the retention machine itself — its coordination
+/// lock or the release pass — holds readiness. A completed tick never does, no
+/// matter what its per-meeting outcomes were: a single quarantined or
+/// deferred meeting is a per-meeting condition, surfaced on that meeting, and
+/// must never block every future recording. Collapsing the two was the D-LOCK
+/// hard lock.
+fn scheduled_retention_holds_app_readiness(
+    result: &Result<Option<ScheduledRetentionReport>, ScheduledRetentionError>,
+) -> bool {
+    matches!(
+        result,
+        Err(ScheduledRetentionError::Coordination(_)) | Err(ScheduledRetentionError::Retention)
+    )
 }
 
 #[derive(Debug)]
@@ -12030,6 +12064,47 @@ mod tests {
             .unwrap(),
             Some("transcript-ready-handle")
         );
+    }
+
+    /// The D-LOCK invariant: one ineligible meeting must never refuse app-wide
+    /// recording readiness. A completed retention tick — whatever its
+    /// per-meeting outcomes — never holds readiness; only a genuine failure of
+    /// the retention machine itself does. Property-checked across the outcomes
+    /// that used to (wrongly) trip the global flag.
+    #[test]
+    fn a_per_meeting_retention_outcome_never_holds_app_readiness() {
+        let per_meeting_reports = [
+            ScheduledRetentionReport {
+                retention: vec![RetentionOutcome::Quarantined("stuck".into())],
+                trash_purge: vec![],
+            },
+            ScheduledRetentionReport {
+                retention: vec![RetentionOutcome::DeferredTranscription("awaiting".into())],
+                trash_purge: vec![],
+            },
+            ScheduledRetentionReport {
+                retention: vec![
+                    RetentionOutcome::Quarantined("stuck".into()),
+                    RetentionOutcome::AudioReleased("done".into()),
+                ],
+                trash_purge: vec![TrashPurgeOutcome::Quarantined("trash-stuck".into())],
+            },
+        ];
+        for report in per_meeting_reports {
+            assert!(
+                !scheduled_retention_holds_app_readiness(&Ok(Some(report))),
+                "a per-meeting quarantine or defer must not block all recording"
+            );
+        }
+        assert!(!scheduled_retention_holds_app_readiness(&Ok(None)));
+
+        // Only a genuine failure of the retention machine itself holds readiness.
+        assert!(scheduled_retention_holds_app_readiness(&Err(
+            ScheduledRetentionError::Coordination("lock unavailable")
+        )));
+        assert!(scheduled_retention_holds_app_readiness(&Err(
+            ScheduledRetentionError::Retention
+        )));
     }
 
     #[test]
