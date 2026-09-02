@@ -64,6 +64,21 @@ under the build hash. Two defects the honest surface exposed:
   suspects: model-file verification in the storage models directory, or
   the private workspace lookup.
 
+Blind cold review of the rebuilt installed app
+(`evidence/screen-reviews/all-surfaces-2765401-installed-cold.md`): seven of
+seven revise, and the category read moved from "native by chrome" to
+"window mechanics native, interior treatment web-in-a-window." Refit intake
+from it, all inside the selected direction:
+
+| Id | Finding | Remedy |
+|---|---|---|
+| R8 | "No meeting note yet." outranks the meeting's own title (01, 04) | Note-card empty state at body weight; the title stays the largest line |
+| R9 | The unavailable pane says "Reopen Meetings" while its one button says "Back to meetings," and the toolbar keeps naming the meeting that failed (02, 05) | Copy names the control; the toolbar title resets to "Yawn" on failure; D-READ removes the case for these two meetings |
+| R10 | Three rows read "Meeting · Sep 1, 2026" and differ only by fine print (01) | Rows carry length and a note excerpt when one exists (needs the snapshot row to expose duration and recovery state: the UI agent's request); an untitled meeting still reads "Meeting · date" |
+| R11 | Settings repeats the same model error three times (03, 06); card hairlines near-invisible in dark | One line per error; dark separators at the contrast token |
+| R12 | First-run sheet reads as a web modal (centered card, X, pill button) with the blurred library bleeding through (07) | Render as a native-shaped sheet attached to the title bar, opaque, no X |
+| R13 | Settings groups read as bordered divs, not grouped lists; "Open" beside Full transcript reads as link text | Grouped-list material for Settings; a button or chevron for Open |
+
 ## What the live apps changed
 
 The 2026-08-16 desktop comparison checked Granola 7.478.0, Wispr Flow
