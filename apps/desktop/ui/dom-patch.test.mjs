@@ -54,14 +54,13 @@ test("a reader-opened details element never snaps shut on a render", async () =>
 //   first place -- it is appended straight to `document.body` by
 //   `showEvidencePopover` in main.js, so `patchInto`/`patchChildren` never
 //   walks it and cannot detach or mismatch it mid-hover.
-// - The split view (depths 2/3) needs no *node* preserved at all: its
-//   visible/highlighted state (`state.selected.evidenceSplit`) is read at
-//   render time and rendered back into the template
-//   (`data-evidence-split`, `transcript-line-target`) on every call, the
-//   same way the app's status pill or save-state label already are. There is
-//   nothing for the patcher to lose, because nothing about it lives only in
-//   the DOM between renders.
-test("the evidence popover never enters the patched tree, and the split's visible state is state-driven, not DOM-cached", async () => {
+// - The inspector (rethink phase 1's simplified depth 2) needs no *node*
+//   preserved at all: its open/closed state (`state.selected.evidenceSplit`)
+//   is read at render time and decides whether `renderInspector` is called
+//   at all, the same way the app's status pill or save-state label already
+//   are. There is nothing for the patcher to lose, because nothing about it
+//   lives only in the DOM between renders.
+test("the evidence popover never enters the patched tree, and the inspector's visible state is state-driven, not DOM-cached", async () => {
   const patcher = await readFile(new URL("./dom-patch.mjs", import.meta.url), "utf8");
   const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // No popover-specific key, class, or id check was added to the patcher.
@@ -72,9 +71,9 @@ test("the evidence popover never enters the patched tree, and the split's visibl
   // reference, never looked up through `root.querySelector`.
   assert.match(main, /document\.body\.appendChild\(el\)/);
   assert.match(main, /evidencePopoverEl\?\.remove\(\)/);
-  // The split's own layout attribute is computed from `state` on every
-  // `renderMeetingWorkspace` call, not read back from a previous DOM node.
-  assert.match(main, /data-evidence-split="\$\{splitActive \? "open" : "closed"\}"/);
+  // The inspector's own visibility is computed from `state` on every
+  // `renderMeetingPane` call, not read back from a previous DOM node.
+  assert.match(main, /const inspectorOpen = Boolean\(evidenceSplit\.open && transcript\?\.turns\?\.length\);/);
 });
 
 // W9-B: the motion vocabulary's entrance animations are plain, permanent CSS

@@ -38,6 +38,11 @@ import {
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
+  sidebarGroupLabel,
+  sidebarGroups,
+  sidebarRowTitle,
+  sortLibraryRows,
+  toolbarTitlePresentation,
   noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
@@ -583,13 +588,20 @@ test("retry comparison UI keeps the decision explicit and uses exact backend com
 test("retry comparison redacts withheld text and keeps the summary before personal notes", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /turn\.withheld \? "This turn was withheld by the voice check\." : escapeHtml\(turn\.text\)/);
-  // Design intake D5: the below-the-note transcript disclosure now renders
-  // only when the evidence split is not showing the same workspace-mode
-  // transcript elsewhere (see `renderMeetingWorkspace`) -- the two must never
-  // render at once, since `renderTranscript`'s workspace branch hardcodes ids
-  // the patcher would then have to choose between.
-  assert.match(source, /renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}\n\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\n\s*\$\{splitActive \? "" : renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
-  assert.match(source, /<aside class="meeting-notes-pane">\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  // Rethink phase 1: the inspector (DESIGN.md) replaced the prior depth-2
+  // split view, so the below-the-note transcript disclosure always renders
+  // -- there is no second live workspace-mode transcript instance for it to
+  // collide with any more (the inspector shows only the cited turn ± 1
+  // neighbour, not the full workspace transcript). Operator notes and
+  // meeting context are sections of the document flow, not a separate
+  // right-hand pane -- the inspector occupies that space when open.
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  // The transcript disclosure sits outside `.read` (a sibling in
+  // `.doc-main`, not nested inside the 62ch reading measure) so its own
+  // search/action toolbar gets the full pane width instead of being
+  // squeezed into prose width.
+  assert.match(source, /<\/section>\s*<\/article>\s*<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>/);
+  assert.match(source, /\$\{inspectorOpen \? renderInspector\(transcript, evidenceSplit\) : ""\}/);
   assert.match(source, /function renderRetryWarnings\(warnings, label\)/);
   assert.match(source, /renderRetryRecordingDevice\(retry\.recordingDevice\)/);
   assert.doesNotMatch(source, /retry\.recordingDevice\.(name|index|hostapi|message)/);
@@ -865,8 +877,8 @@ test("main.js arms the stall timer only for a load that has not yet succeeded, a
   // The timer callback is the only writer of `state.libraryStalled` besides
   // the disarm path -- render() must run so the escalation actually shows.
   assert.match(source, /state\.libraryStalled = true;\s*render\(\);/);
-  // renderLibrary reads the flag from state on every render, not from the DOM.
-  assert.match(source, /renderLibrary\(library, state\.libraryStalled\)/);
+  // renderSidebar reads the flag from state on every render, not from the DOM.
+  assert.match(source, /libraryLoadingPresentation\(library, state\.libraryStalled\)/);
 });
 
 test("unavailable library keeps its backend message and offers a real refresh", () => {
@@ -961,7 +973,7 @@ test("the ordinary start-sheet path never carries the guided hint", async () => 
   // form; only the guided invitation's handler passes `true`.
   assert.match(source, /data-action="open-start"[^-]/);
   assert.match(source, /else if \(action === "open-start"\) openStart\(\);/);
-  assert.match(source, /if \(event\.key\.toLowerCase\(\) === "r" && canOpenStart\(state\.snapshot, state\.permissions\)\) \{\s*event\.preventDefault\(\);/);
+  assert.match(source, /if \(key === "r" && !event\.shiftKey && canOpenStart\(state\.snapshot, state\.permissions\)\) \{\s*event\.preventDefault\(\);/);
   assert.match(source, /else if \(action === "open-start-guided"\) openStart\(true\);/);
 });
 
@@ -976,8 +988,8 @@ test("the ordinary start-sheet path never carries the guided hint", async () => 
 test("⌘R dismisses the first-run sheet rather than opening Start over it in the same tick", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   const rBranch = source.slice(
-    source.indexOf('if (event.key.toLowerCase() === "r"'),
-    source.indexOf('if (event.key.toLowerCase() === "k"'),
+    source.indexOf('if (key === "r" && !event.shiftKey'),
+    source.indexOf('if (key === "." && !event.shiftKey'),
   );
   assert.match(rBranch, /if \(firstRunSheetShowing\) \{ void closeFirstRunSheet\(\); return; \}/);
   assert.match(rBranch, /openStart\(\);/);
@@ -1086,8 +1098,12 @@ test("an empty transcript-only note remains explicit and only receives a generat
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /<h2 id="meeting-note-heading">No meeting note yet\.<\/h2>/);
   assert.match(source, /if \(note\?\.state !== "transcript-only"\) return "";/);
-  assert.match(source, /!recovery && note\?\.state !== "transcript-only" && note\?\.message && !claims\.length/);
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\n\s*\$\{renderGenerateNote\(note, recovery\)\}/);
+  // Rethink phase 1: any blocking recovery already short-circuits to the
+  // needs-attention pane above this line (see renderMeetingPane), so this
+  // condition no longer needs its own `!recovery` guard -- it is only ever
+  // reached when there isn't one (or it's the non-blocking audio-released).
+  assert.match(source, /note\?\.state !== "transcript-only" && note\?\.message && !claims\.length/);
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}/);
   assert.match(source, /function renderGenerateNote[\s\S]*noteGenerationPresentation\(note, state\.generatingMeetingId\)/);
 });
 
@@ -1216,10 +1232,11 @@ test("main.js wires the Trash list, restore action, and confirmation copy throug
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /invoke\("preview_list_trash"\)/);
   assert.match(source, /invoke\("restore_meeting_from_trash_command", \{ meetingId \}\)/);
-  assert.match(source, /trashLinkPresentation\(state\.trash\)/);
   assert.match(source, /trashListPresentation\(state\.trash\)/);
   assert.match(source, /meetingDeletionConfirmationCopy\(state\.modal\)/);
-  // The link must be able to disappear entirely, not render an empty row.
+  // DESIGN.md: Trash is the last item in the sidebar, always present (a
+  // place, not a conditional link) -- so this is unconditional in the
+  // sidebar's own render, not gated by whether Trash has entries.
   assert.match(source, /data-action="open-trash"/);
   assert.match(source, /data-action="restore-trash-entry"/);
 });
@@ -1378,6 +1395,62 @@ test("a row with no transcript still reads honestly when unlocked", () => {
   assert.equal(libraryRowMetaPresentation(undefined).label, "note only");
 });
 
+test("sidebarRowTitle falls back to Meeting · date, never a raw fragment", () => {
+  assert.equal(sidebarRowTitle({ label: "Kickoff" }, "Sep 1, 2026"), "Kickoff");
+  assert.equal(sidebarRowTitle({ label: "" }, "Sep 1, 2026"), "Meeting · Sep 1, 2026");
+  assert.equal(sidebarRowTitle({}, "Sep 1, 2026"), "Meeting · Sep 1, 2026");
+  assert.equal(sidebarRowTitle(null, "Sep 1, 2026"), "Meeting · Sep 1, 2026");
+});
+
+test("sortLibraryRows orders newest first and tolerates a missing timestamp", () => {
+  const rows = [
+    { meetingId: "old", createdAtEpochSeconds: 100 },
+    { meetingId: "new", createdAtEpochSeconds: 300 },
+    { meetingId: "mid", createdAtEpochSeconds: 200 },
+    { meetingId: "no-timestamp" },
+  ];
+  assert.deepEqual(
+    sortLibraryRows(rows).map((row) => row.meetingId),
+    ["new", "mid", "old", "no-timestamp"],
+  );
+  assert.deepEqual(sortLibraryRows(null), []);
+});
+
+test("sidebarGroupLabel buckets by local-day distance from now", () => {
+  // 2026-09-02 12:00 local, used as `now` throughout.
+  const now = new Date(2026, 8, 2, 12, 0, 0).getTime() / 1000;
+  const at = (y, m, d, h = 9) => new Date(y, m, d, h).getTime() / 1000;
+  assert.equal(sidebarGroupLabel(at(2026, 8, 2, 23), now), "Today");
+  assert.equal(sidebarGroupLabel(at(2026, 8, 2, 0, 1), now), "Today");
+  assert.equal(sidebarGroupLabel(at(2026, 8, 1), now), "Yesterday");
+  assert.equal(sidebarGroupLabel(at(2026, 7, 27), now), "Previous 7 days");
+  assert.equal(sidebarGroupLabel(at(2026, 7, 10), now), "Previous 30 days");
+  assert.equal(sidebarGroupLabel(at(2026, 6, 15), now), "July 2026");
+  assert.equal(sidebarGroupLabel(undefined, now), "Previous 30 days");
+});
+
+test("sidebarGroups orders groups newest-first and rows within a group newest-first", () => {
+  const now = new Date(2026, 8, 2, 12, 0, 0).getTime() / 1000;
+  const at = (y, m, d) => new Date(y, m, d, 9).getTime() / 1000;
+  const rows = [
+    { meetingId: "yesterday-early", createdAtEpochSeconds: at(2026, 8, 1) },
+    { meetingId: "today-late", createdAtEpochSeconds: at(2026, 8, 2) + 3600 },
+    { meetingId: "today-early", createdAtEpochSeconds: at(2026, 8, 2) },
+    { meetingId: "july", createdAtEpochSeconds: at(2026, 6, 15) },
+  ];
+  const groups = sidebarGroups(rows, now);
+  assert.deepEqual(groups.map((g) => g.label), ["Today", "Yesterday", "July 2026"]);
+  assert.deepEqual(groups[0].rows.map((r) => r.meetingId), ["today-late", "today-early"]);
+  assert.deepEqual(sidebarGroups([], now), []);
+});
+
+test("toolbarTitlePresentation: recording beats a selection, else the title or Yawn", () => {
+  assert.equal(toolbarTitlePresentation({ capturing: true, selectedTitle: "Kickoff" }), "New Recording");
+  assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "Kickoff" }), "Kickoff");
+  assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "" }), "Yawn");
+  assert.equal(toolbarTitlePresentation(), "Yawn");
+});
+
 test("the three confirmation failures stay three different answers", () => {
   // "you cancelled", "this Mac cannot ask", and "that view is out of date"
   // lead to three different next moves and must never collapse into one.
@@ -1424,7 +1497,15 @@ test("main.js gates every locked action through the Rust confirmation, not throu
     "unlock-meeting-open",
   );
   assert.match(source, /action === "unlock-meeting-open"/);
-  assert.match(source, /data-action="\$\{escapeHtml\(lock\.action\.action\)\}"/);
+  // The barrier renders through the shared needs-attention pane, whose
+  // action button is built from whatever action object it's handed --
+  // never a literal action name.
+  assert.match(source, /function renderNeedsAttentionPane\(\{ headline, detail, action = null, secondaryAction = null \}\)/);
+  assert.match(source, /data-action="\$\{escapeHtml\(action\.action\)\}"/);
+  assert.match(
+    source,
+    /return renderNeedsAttentionPane\(\{\s*headline: lock\.heading,\s*detail: lock\.detail,\s*action: lock\.action \? \{ \.\.\.lock\.action, disabled: busy \} : null,\s*\}\);/,
+  );
   assert.match(source, /meetingLockSheetCopy\(unlock \? "unlock" : "lock"/);
   assert.match(source, /meetingLockPresentation\(note\)/);
   assert.match(source, /libraryRowMetaPresentation\(row\)/);
@@ -1530,6 +1611,58 @@ test("Escape closes the innermost surface first: popover, then modal, then split
   assert.equal(nextEscapeTarget({}), null);
 });
 
+test("the Start sheet's Record stays disabled until audio is ready and all three attestations are checked", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /const allConfirmed = Object\.values\(state\.consent\)\.every\(Boolean\);/);
+  assert.match(
+    source,
+    /data-action="start-recording" \$\{!audioReady \|\| !allConfirmed \|\| state\.busyAction === "start" \? "disabled" : ""\}/,
+  );
+  // All three attestations, and a retention choice among exactly the
+  // product brief's three accepted values -- no fourth option.
+  assert.match(source, /attestation\("participantsConsented",/);
+  assert.match(source, /attestation\("headphones",/);
+  assert.match(source, /attestation\("operatorAlone",/);
+  assert.match(source, /\[1, 7, 30\]\.map\(\(days\) =>/);
+  assert.deepEqual(
+    Object.keys({ participantsConsented: false, headphones: false, operatorAlone: false }),
+    ["participantsConsented", "headphones", "operatorAlone"],
+  );
+});
+
+test("the inspector opens and closes through state, keyed by claim ordinal", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /function openEvidenceSplit\(ordinal\) \{[\s\S]*?state\.selected\.evidenceSplit = \{ open: true, ordinal, turnIndex: span\.sourceTurnIndex \};[\s\S]*?render\(\);\s*\}/,
+  );
+  assert.match(
+    source,
+    /function closeEvidenceSplit\(\) \{[\s\S]*?state\.selected\.evidenceSplit = \{ open: false, ordinal: null, turnIndex: null \};[\s\S]*?render\(\);\s*\}/,
+  );
+  // Esc closes the inspector the same way it closes a popover or a modal.
+  assert.match(source, /if \(target === "split"\) \{ closeEvidenceSplit\(\); return; \}/);
+  assert.match(source, /data-action="close-evidence-split"/);
+});
+
+test("launch opens to the library with the most recent meeting selected, one shot, never re-fighting a deselection", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /async function maybeAutoSelectMeeting\(\) \{/);
+  // Attempted exactly once, and only once idle -- see the state field's own
+  // comment for why a later deliberate deselection must never be reversed.
+  assert.match(source, /if \(state\.launchSelectionAttempted \|\| state\.snapshot\?\.capture !== "idle"\) return;/);
+  assert.match(source, /state\.launchSelectionAttempted = true;/);
+  assert.match(source, /const top = sortLibraryRows\(state\.library\.rows\)\[0\];/);
+  // A terminal capture state (this session's just-finished recording, or a
+  // stale one from a previous run) is auto-selected by meetingId, not
+  // one-shot -- retried until the library has indexed it.
+  assert.match(
+    source,
+    /if \(meetingId && !captureIsInProgress\(state\.snapshot\) && state\.snapshot\?\.capture !== "idle"\) \{/,
+  );
+  assert.match(source, /await maybeAutoSelectMeeting\(\);\s*render\(\);/);
+});
+
 test("Show source renders only when a claim has a batched span to show, and never re-fetches on click", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // The button's own action now opens the split directly from already-batched
@@ -1544,37 +1677,39 @@ test("Show source renders only when a claim has a batched span to show, and neve
   assert.doesNotMatch(source, /data-action="open-claim-evidence"[^>]*>\$\{state\.busyAction/);
 });
 
-test("the evidence split and the below-the-note disclosure never render at once", async () => {
+// Rethink phase 1 (DESIGN.md) replaces the prior depth-2/3 split view with a
+// static 320pt inspector: the cited turn plus one neighbour each side, never
+// scrolling or reflowing the note. There is no width gate (the split's
+// two-reading-column fallback no longer exists to gate) and no synced
+// scroll (nothing to keep in sync -- the inspector doesn't show the note's
+// visible claims, only the one turn that was clicked). The four tests this
+// replaces asserted exactly the machinery this simplification removes.
+test("the inspector shows only the cited turn's neighbourhood, and the transcript disclosure always renders", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  // `renderTranscript`'s workspace branch hardcodes ids
-  // (transcript-heading, transcript-search-input, ...); two live instances
-  // would collide under the patcher's id-keying. `splitActive` gates both
-  // branches from the same variable, so they cannot both be true.
-  assert.match(source, /\$\{splitActive \? "" : renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
-  assert.match(source, /\$\{splitActive \? renderEvidenceSplitColumn\(transcript, citations, evidenceSplit\.turnIndex\) : ""\}/);
-  assert.match(source, /const splitActive = Boolean\(/);
-  assert.match(source, /evidenceSplitAllowed\(currentWindowWidth\(\)\)/);
+  assert.match(source, /\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}/);
+  assert.match(source, /const inspectorOpen = Boolean\(evidenceSplit\.open && transcript\?\.turns\?\.length\);/);
+  assert.match(source, /\$\{inspectorOpen \? renderInspector\(transcript, evidenceSplit\) : ""\}/);
+  assert.match(
+    source,
+    /Number\(turn\.sourceTurnIndex\) >= turnIndex - 1\s*&& Number\(turn\.sourceTurnIndex\) <= turnIndex \+ 1/,
+  );
+  // `currentWindowWidth` still exists (the sidebar's own width-based
+  // collapse reads it), but the evidence-split width gate that used to call
+  // it is gone.
+  assert.doesNotMatch(source, /evidenceSplit.*currentWindowWidth|currentWindowWidth.*evidenceSplit/);
 });
 
-test("the split column's width fallback reads the live window, gated by the shared 1100px threshold", async () => {
+test("the inspector has no synced scroll and no width gate to reach it", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  assert.match(source, /function currentWindowWidth\(\) \{/);
-  assert.match(source, /window\.addEventListener\("resize", handleEvidenceResize\)/);
-  assert.match(source, /function handleEvidenceResize\(\) \{\s*const allowed = evidenceSplitAllowed\(currentWindowWidth\(\)\);/);
+  assert.doesNotMatch(source, /scheduleEvidenceSyncFromNote/);
+  assert.doesNotMatch(source, /performEvidenceSync/);
+  assert.doesNotMatch(source, /topmostVisibleClaimOrdinals/);
+  assert.doesNotMatch(source, /handleEvidenceGlobalScroll/);
+  assert.doesNotMatch(source, /handleEvidenceResize/);
+  assert.doesNotMatch(source, /syncEvidenceSplitScroll/);
 });
 
-test("the sync-scroll handler is rAF-batched, not a per-scroll-event geometry read", async () => {
-  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  assert.match(source, /function scheduleEvidenceSyncFromNote\(\) \{/);
-  assert.match(source, /if \(evidenceSyncRafPending\) return;\s*evidenceSyncRafPending = true;\s*window\.requestAnimationFrame\(\(\) => \{/);
-  // The geometry read (topmostVisibleClaimOrdinals) and the pure decision
-  // (evidenceSyncTarget) both live inside the rAF callback's function,
-  // performEvidenceSync -- never inside the scroll listener itself.
-  assert.match(source, /function performEvidenceSync\(\) \{[\s\S]*?topmostVisibleClaimOrdinals\(notePane\)/);
-  assert.doesNotMatch(source, /function handleEvidenceGlobalScroll\(event\) \{[\s\S]{0,400}getBoundingClientRect/);
-});
-
-test("popover state lives outside the patched tree, and the split's own state survives a render tick", async () => {
+test("popover state lives outside the patched tree, and the inspector's own state survives a render tick", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // The popover is a plain node appended to document.body -- never part of
   // the template string patchInto(root, ...) patches -- so an unrelated
@@ -1584,13 +1719,10 @@ test("popover state lives outside the patched tree, and the split's own state su
   // never putting the popover inside the patched tree at all.
   assert.match(source, /document\.body\.appendChild\(el\)/);
   assert.doesNotMatch(source, /evidence-popover[\s\S]{0,200}patchInto/);
-  // The split's own state (`state.selected.evidenceSplit`) is read at render
-  // time and rendered back out (`data-evidence-split`), so it is what makes
-  // the split survive a patch tick -- not a DOM node the patcher happens to
-  // leave alone. `render()`'s tail reconciles the DOM to that state on every
-  // call, the same way `restoreEditorFocus` and `syncActivityClock` already
-  // do for their own concerns.
-  assert.match(source, /syncEvidenceSplitScroll\(\);\s*dismissEvidencePopoverIfDetached\(\);/);
+  // The inspector's own state (`state.selected.evidenceSplit`) is read at
+  // render time and decides whether `renderInspector` runs at all, so it is
+  // what makes the inspector survive a patch tick -- not a DOM node the
+  // patcher happens to leave alone.
   assert.match(source, /evidenceSplit: \{ open: false, ordinal: null, turnIndex: null \}/);
 });
 
@@ -1603,10 +1735,22 @@ test("Back to Meetings reaches the library from every needs-attention state (D-L
   const homeReady = { startup: "ready", capture: "idle", error: "Audio retention needs attention before another meeting can start." };
   assert.equal(contentView({ hasInvoke: true, snapshot: homeReady }), "home");
 
-  // The capture terminal states carry a "Back to Meetings" affordance; leaving
-  // (dismiss) always returns to that same reachable home.
+  // The capture terminal states are content (the After or needs-attention
+  // moment), not the live During canvas -- rethink phase 1, fixing cold
+  // review bfa0a80 finding 03/08 ("a stale terminal capture view" instead of
+  // the library). Once main.js has auto-selected that meeting from the
+  // library, the router shows it as an ordinary meeting; until that lookup
+  // resolves (hasSelected still false) it falls back to the capture pane
+  // rather than showing nothing.
   for (const capture of ["transcript-ready", "transcription-failed", "recovered-interrupted"]) {
-    assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "ready", capture } }), "capture");
+    assert.equal(
+      contentView({ hasInvoke: true, snapshot: { startup: "ready", capture }, hasSelected: false }),
+      "capture",
+    );
+    assert.equal(
+      contentView({ hasInvoke: true, snapshot: { startup: "ready", capture }, hasSelected: true }),
+      "meeting",
+    );
     // After dismiss: capture goes idle, startup stays ready -> home.
     assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "ready", capture: "idle" } }), "home");
   }

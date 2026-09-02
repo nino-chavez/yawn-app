@@ -158,93 +158,18 @@ textarea:focus-visible {
   outline-offset: 3px;
 }
 
-.app-shell {
-  min-height: 100vh;
-}
+/* app-shell layout (toolbar + sidebar + document + inspector) moved to the
+   "Rethink phase 1 shell" block near the end of this file, which consumes
+   tokens.css directly per DESIGN.md. Everything below this point that still
+   reads --ink/--canvas/etc. is the surface this rewrite did not touch this
+   pass (sheets, modals, transcript/note detail inside the document pane) --
+   see the closeout note in the implementation PR for what a full token-file
+   port (DESIGN.md's "ui/styles.css becomes the token source") still owes. */
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 58px;
-  padding: 10px clamp(20px, 4vw, 48px);
-  border-bottom: 1px solid var(--line);
-  background: rgb(247 247 244 / 92%);
-  backdrop-filter: blur(14px);
-}
-
-.brand {
-  padding: 3px 0;
-  color: var(--ink);
-  background: transparent;
-  font-size: var(--text-subtitle);
-  font-weight: var(--weight-heavy);
-  letter-spacing: var(--tracking-brand);
-}
-
-.topbar-actions,
-.topbar-status,
 .inline-actions,
-.section-heading,
-.meeting-meta,
-.capture-facts,
 .sheet-actions {
   display: flex;
   align-items: center;
-}
-
-.topbar-actions {
-  gap: 7px;
-}
-
-.topbar-status {
-  gap: 7px;
-  margin-right: 5px;
-  color: var(--ink-soft);
-  font-size: var(--text-label);
-  font-weight: var(--weight-medium);
-}
-
-.status-dot,
-.record-dot {
-  display: block;
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ink-faint);
-}
-
-.status-dot[data-tone="ready"],
-.status-dot[data-tone="complete"] {
-  background: var(--accent);
-}
-
-.status-dot[data-tone="recording"],
-.record-dot[data-tone="recording"] {
-  background: var(--record);
-}
-
-.status-dot[data-tone="recording"] {
-  box-shadow: 0 0 0 4px rgb(216 78 60 / 15%);
-}
-
-.status-dot[data-tone="attention"],
-.record-dot[data-tone="attention"] {
-  background: var(--attention);
-}
-
-.record-dot[data-tone="working"] {
-  background: var(--accent);
-  animation: pulse 1.25s ease-in-out infinite;
-}
-
-.record-dot[data-tone="recording"] {
-  box-shadow: 0 0 0 5px rgb(216 78 60 / 14%);
-  animation: pulse 1.5s ease-in-out infinite;
 }
 
 .button,
@@ -364,12 +289,6 @@ textarea:focus-visible {
   text-decoration: underline;
 }
 
-.stage {
-  width: min(1040px, 100%);
-  margin: 0 auto;
-  padding: clamp(34px, 6vw, 66px) clamp(20px, 4vw, 48px) 60px;
-}
-
 h1,
 h2,
 h3,
@@ -412,40 +331,6 @@ h3 {
   color: var(--ink-soft);
   font-size: var(--text-intro);
   line-height: 1.55;
-}
-
-.home-workbench {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.47fr);
-  gap: clamp(32px, 7vw, 100px);
-  align-items: end;
-  padding-bottom: 40px;
-  border-bottom: 1px solid var(--line);
-}
-
-.home-copy h1 {
-  max-width: 17ch;
-}
-
-.home-action {
-  display: grid;
-  justify-items: start;
-  gap: 15px;
-  padding: 0 0 2px 26px;
-  border-left: 1px solid var(--line);
-}
-
-.home-action p {
-  max-width: 31ch;
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: var(--text-label);
-  line-height: 1.5;
-}
-
-.home-action p strong {
-  color: var(--ink);
-  font-weight: var(--weight-semibold);
 }
 
 .inline-actions {
@@ -576,137 +461,22 @@ h3 {
   margin-top: 14px;
 }
 
-.session-workspace {
-  width: min(900px, 100%);
-  margin: 0 auto;
-}
-
-.session-toolbar {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 22px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.session-status {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
-
-.session-status .record-dot {
-  margin-top: 8px;
-}
-
-.session-status .eyebrow {
-  margin-bottom: 5px;
-}
-
-.session-status h1 {
-  margin-bottom: 5px;
-  font-size: clamp(26px, 3.2vw, 36px);
-}
-
-.session-status p:last-child {
-  max-width: 54ch;
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: var(--text-body-lg);
-  line-height: 1.5;
-}
-
-.capture-facts {
-  flex-wrap: wrap;
-  gap: 7px;
-  margin: 16px 0;
-}
-
+/* DESIGN.md: a fact is a caption, never a tinted card -- the During canvas's
+   activity line sits inline with the rest of the caption-scale copy above
+   the notes textarea, not in a bordered panel. */
 .activity-monitor {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
-  align-items: start;
-  margin: 16px 0;
-  padding: 17px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--paper-soft);
-}
-
-.activity-monitor[data-tone="recording"] {
-  border-color: rgb(216 78 60 / 28%);
-  background: var(--record-soft);
-}
-
-.activity-monitor .eyebrow {
-  margin-bottom: 5px;
-}
-
-.activity-monitor h2 {
-  margin-bottom: 4px;
-  font-size: var(--text-intro);
-  letter-spacing: var(--tracking-card-heading);
-}
-
-.activity-monitor p:last-child {
-  max-width: 52ch;
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: var(--text-body);
-  line-height: 1.45;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
 }
 
 .activity-timing {
-  display: grid;
-  gap: 2px;
-  min-width: 105px;
-  text-align: right;
-}
-
-.activity-timing strong {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-variant-numeric: tabular-nums;
-  font-size: var(--text-metric);
-  letter-spacing: var(--tracking-metric);
-}
-
-.activity-timing span {
-  color: var(--ink-faint);
-  font-size: var(--text-meta);
-  line-height: 1.3;
-}
-
-.activity-timing .activity-heartbeat {
-  max-width: 170px;
-  margin-top: 6px;
-}
-
-.fact-pill,
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 25px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--ink-soft);
-  background: var(--paper);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-medium-plus);
-}
-
-.status-pill[data-tone="recording"] {
-  border-color: rgb(216 78 60 / 25%);
-  color: var(--status-record-text);
-  background: var(--record-soft);
-}
-
-.status-pill[data-tone="attention"] {
-  border-color: rgb(156 103 21 / 25%);
-  color: var(--status-attention-text);
-  background: var(--attention-soft);
 }
 
 .note-workbench {
@@ -939,39 +709,7 @@ h3 {
   font-style: italic;
 }
 
-.meeting-page {
-  width: min(1220px, 100%);
-  margin: 0 auto;
-}
-
-.meeting-page > .text-button {
-  margin-bottom: 24px;
-}
-
-.meeting-detail-header {
-  position: relative;
-}
-
-.meeting-title {
-  max-width: 22ch;
-  margin-bottom: 9px;
-  font-size: clamp(32px, 4vw, 46px);
-  line-height: 1.03;
-}
-
-.meeting-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.meeting-title-row .meeting-title {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.meeting-header-actions {
+.doc-head-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
@@ -1009,56 +747,18 @@ h3 {
   justify-content: flex-start;
 }
 
-.meeting-meta {
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0;
-  color: var(--ink-faint);
-  font-size: var(--text-label);
+/* Every note-section (generate-note, retry action, retained audio, meeting
+   context, your notes) gets the same plain top divider -- document flow,
+   not a stack of tinted cards. */
+.note-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
-.meeting-meta span + span::before {
-  margin-right: 8px;
-  color: var(--line-strong);
-  content: "•";
-}
-
-.meeting-storage-note {
-  max-width: 72ch;
-  margin: 10px 0 0;
-  color: var(--ink-faint);
-  font-size: var(--text-label);
-  line-height: 1.45;
-}
-
-.meeting-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(380px, 0.85fr);
-  gap: clamp(24px, 4vw, 56px);
-  align-items: start;
-  margin-top: 28px;
-}
-
-.meeting-source-pane {
-  display: grid;
-  min-width: 0;
-  gap: 18px;
-}
-
-.meeting-notes-pane {
-  position: sticky;
-  top: 78px;
-  min-width: 0;
-  align-self: start;
-  display: grid;
-  gap: 14px;
-}
-
-.retained-audio-section {
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--paper);
+.your-notes-section {
+  display: flex;
+  flex-direction: column;
 }
 
 .retained-audio-section .note-editor-help {
@@ -1072,24 +772,9 @@ h3 {
   margin-bottom: 12px;
 }
 
-.meeting-notes-pane .your-notes-section {
-  display: flex;
-  flex-direction: column;
-  padding: 18px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--paper);
-}
-
-.meeting-notes-pane .note-editor-head {
-  padding: 0 0 14px;
-}
-
 .meeting-notes-editor {
   width: 100%;
-  min-height: clamp(300px, calc(100dvh - 470px), 520px);
-  height: clamp(300px, calc(100dvh - 470px), 520px);
-  max-height: calc(100dvh - 174px);
+  min-height: 160px;
   resize: vertical;
 }
 
@@ -1097,13 +782,9 @@ h3 {
   margin-bottom: 12px;
 }
 
-.meeting-note {
-  padding: clamp(22px, 3vw, 32px);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--paper);
-}
-
+/* DESIGN.md: "Content areas are never tinted." The note is document content
+   at the reading measure, not a bordered card -- so this and
+   `.meeting-note-unavailable` carry no box of their own any more. */
 .meeting-note-header {
   max-width: var(--measure-reading);
 }
@@ -1120,11 +801,6 @@ h3 {
   color: var(--ink-soft);
   font-size: var(--text-body-lg);
   line-height: 1.55;
-}
-
-.meeting-note-unavailable {
-  border-color: rgb(156 103 21 / 34%);
-  background: var(--attention-soft);
 }
 
 .meeting-note-section {
@@ -1258,10 +934,9 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 15px 17px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--paper-soft);
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
 }
 
 .transcript-retry-action h3 {
@@ -1393,19 +1068,11 @@ h3 {
   border: 0;
 }
 
-.claim-source-button {
-  min-height: 44px;
-  padding: 0 4px;
-  color: var(--accent);
-  background: transparent;
-  font-size: var(--text-label);
-  font-weight: var(--weight-semibold);
-}
-
-.claim-source-button:hover:not(:disabled) {
-  color: var(--link-hover);
-  text-decoration: underline;
-}
+/* Rethink phase 1: `.claim-source-button` is now only a hover-popover hook
+   (`evidenceSourceButtonFromEvent`) -- the claim's own visible styling
+   (dashed hairline closed, evidence tint + accent underline open) comes
+   entirely from tokens.css's `.claim` / `.claim.open`, per DESIGN.md. No
+   declarations of its own left to conflict with that. */
 
 .claim-source-unavailable {
   color: var(--ink-faint);
@@ -1518,71 +1185,8 @@ h3 {
   line-height: 1.5;
 }
 
-/* Design intake D5, depth 2: the split view. Only ever rendered at/above
-   `EVIDENCE_SPLIT_MIN_WINDOW_WIDTH` (main.js/view-model.mjs's shared 1100px
-   gate) -- below that, `renderMeetingWorkspace` falls back to the ordinary
-   below-the-note disclosure instead, so no narrower breakpoint is needed
-   here. The note column keeps its own measure (`.meeting-note`,
-   `.meeting-note-item` etc. already cap at `--measure-reading`); the
-   transcript column takes the remaining width. */
-.meeting-workspace[data-evidence-split="open"] {
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 1fr) minmax(300px, 0.72fr);
-}
-
-/* Independently scrollable while the split is open, the same way
-   `.meeting-notes-pane` already stays put with `position: sticky` in this
-   same grid -- reusing that precedent's `top` rather than inventing a second
-   sticky offset. `.transcript-workspace` (inside `.evidence-split-column`)
-   already self-bounds its own height and scrolls its own turns internally
-   (the same card `renderTranscriptDisclosure` already ships); nothing here
-   overrides that, it only gives the column around it the same sticky
-   treatment so the two columns track each other as the page scrolls. */
-.meeting-workspace[data-evidence-split="open"] .meeting-source-pane,
-.evidence-split-column {
-  position: sticky;
-  top: 78px;
-  max-height: calc(100dvh - 96px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-}
-
-.evidence-split-column {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 12px;
-  padding-bottom: 4px;
-}
-
-.evidence-split-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.evidence-split-head .eyebrow {
-  margin: 0;
-}
-
-/* Design intake D5, depth 3: the synced-scroll target. Rendered from state
-   (`targetTurnIndex` in `renderTranscript`), not toggled as an imperative
-   class -- see that function's comment for why. Same accent family as
-   `.claim-item-navigated`'s landing cue, kept visible (not a fading pulse)
-   for as long as it stays the sync target. */
-.transcript-line-target {
-  border-radius: var(--radius-sm);
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  background: var(--accent-soft);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .meeting-workspace[data-evidence-split="open"] .meeting-source-pane,
-  .evidence-split-column {
-    scroll-behavior: auto;
-  }
-}
+/* The inspector itself (rethink phase 1's static replacement for depth 2/3)
+   is styled in the shell block near the end of this file, from tokens.css. */
 
 .startup-card {
   width: min(620px, 100%);
@@ -2662,5 +2266,518 @@ h3 {
 
   .startup-orb {
     border-color: #384d85;
+  }
+}
+
+/* ==========================================================================
+   Rethink phase 1 shell — DESIGN.md composition (toolbar, sidebar, document
+   pane, inspector, canvas, needs-attention). Consumes tokens.css directly
+   ("both appearances from tokens alone"); nothing above this point was
+   ported to tokens.css this pass (see the note near .inline-actions above).
+   ========================================================================== */
+
+html, body, #app {
+  height: 100%;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  background: var(--window);
+}
+
+/* -- toolbar -------------------------------------------------------------- */
+
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: var(--toolbar-h);
+  /* macOS overlay title bar (tauri.conf.json titleBarStyle: Overlay,
+     hiddenTitle: true): the traffic lights are native, drawn in the
+     top-left ~70px. This reserves that space instead of drawing our own. */
+  padding: 0 12px 0 78px;
+  gap: 12px;
+  border-bottom: 1px solid var(--separator);
+  background: var(--window);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.toolbar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: var(--t-body);
+  font-weight: 600;
+  color: var(--label-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.search-field {
+  display: inline-flex;
+}
+
+.search-field input {
+  height: 22px;
+  width: 180px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  padding: 0 8px;
+  color: var(--label-2);
+  font: inherit;
+}
+
+.search-field input::placeholder {
+  color: var(--label-3);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.record-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-live-badge {
+  font-variant-numeric: tabular-nums;
+}
+
+.record-live-badge::before {
+  content: "●";
+  margin-right: 5px;
+  font-size: 8px;
+  vertical-align: 1px;
+}
+
+/* -- body: sidebar + content ----------------------------------------------- */
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 auto;
+  background: var(--sidebar);
+  border-right: 1px solid var(--separator);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: margin-left var(--motion);
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  margin-left: calc(-1 * var(--sidebar-w));
+  border-right-color: transparent;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 0;
+}
+
+.sidebar-message {
+  margin: 0;
+  padding: 8px 16px;
+}
+
+.group-label {
+  padding: 12px 16px 4px;
+  font-size: var(--t-caption);
+  color: var(--label-3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.group-label:first-child {
+  padding-top: 8px;
+}
+
+.row {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  padding: 6px 8px;
+  border-radius: var(--r-control);
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: default;
+  color: inherit;
+  font: inherit;
+}
+
+.row:hover {
+  background: var(--selection);
+}
+
+.row.selected {
+  background: var(--selection-active);
+}
+
+.row.selected .row-title,
+.row.selected .row-caption,
+.row.selected .row-excerpt {
+  color: var(--on-selection);
+}
+
+.row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-body);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-caption {
+  display: block;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-excerpt {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--t-caption);
+  color: var(--label-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.selected .row-excerpt {
+  color: rgb(255 255 255 / 78%);
+}
+
+.attention-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--attention);
+  flex: 0 0 auto;
+}
+
+.row.recording-now {
+  color: var(--record);
+}
+
+.row.recording-now .row-title {
+  color: var(--record);
+  font-weight: 600;
+}
+
+.row.recording-now .row-title::before {
+  content: "●";
+  font-size: 8px;
+}
+
+.row.recording-now .row-caption {
+  color: var(--record);
+  opacity: 0.8;
+}
+
+.trash-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: none;
+  border-top: 1px solid var(--separator);
+  background: transparent;
+  color: var(--label-2);
+  font: inherit;
+  font-size: var(--t-body);
+  text-align: left;
+  cursor: default;
+}
+
+.trash-row:hover,
+.trash-row[aria-current="true"] {
+  background: var(--selection);
+}
+
+.trash-row svg {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+/* -- content / document pane ------------------------------------------------ */
+
+.content {
+  flex: 1;
+  min-width: 0;
+  background: var(--content);
+  display: flex;
+  overflow: hidden;
+}
+
+.empty-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.doc-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.doc-wrap > .read {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The scrolling column: the note at the reading measure, then the
+   below-the-note transcript disclosure -- deliberately NOT nested inside
+   `.read`, so the disclosure's own search/action toolbar gets the full
+   pane width instead of being squeezed into the 62ch prose measure. */
+.doc-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 30px 48px 40px;
+}
+
+.doc-transcript-disclosure-wrap {
+  margin-top: 22px;
+}
+
+.doc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.doc-head h1 {
+  font-size: var(--t-title);
+  font-weight: 600;
+  margin: 0;
+  max-width: var(--measure);
+}
+
+.doc-caption {
+  margin: 4px 0 18px;
+}
+
+.trash-pane h1 {
+  font-size: var(--t-title);
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.trash-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.trash-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+/* -- canvas (During capture) ------------------------------------------------ */
+
+.canvas-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 22px 48px 24px;
+  overflow-y: auto;
+}
+
+.canvas-wrap .notes-area {
+  flex: 1;
+  min-height: 200px;
+}
+
+.canvas-context-note[data-tone="attention"] {
+  color: var(--attention);
+}
+
+.canvas-terminal-actions {
+  align-self: flex-start;
+}
+
+.canvas-context-disclosure summary {
+  cursor: default;
+}
+
+.canvas-context-area {
+  min-height: 80px;
+  margin-top: 6px;
+}
+
+.canvas-field-foot {
+  margin-top: -4px;
+}
+
+.notes-area {
+  max-width: var(--measure);
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--label);
+  font: var(--t-read) / var(--lh-read) var(--font);
+}
+
+/* -- needs attention -------------------------------------------------------- */
+
+.attention-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 64px;
+  gap: 12px;
+}
+
+.attention-headline {
+  font-size: var(--t-title);
+  font-weight: 600;
+  margin: 0;
+  max-width: var(--measure);
+}
+
+.attention-detail {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--label-2);
+  margin: 0;
+  max-width: var(--measure);
+}
+
+.attention-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* -- inspector --------------------------------------------------------------- */
+
+.inspector {
+  width: 320px;
+  flex: 0 0 auto;
+  border-left: 1px solid var(--separator);
+  background: var(--panel);
+  padding: 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inspector-label {
+  font-size: var(--t-caption);
+  color: var(--label-3);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.transcript-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.transcript-turn.dim {
+  opacity: 0.4;
+}
+
+.transcript-turn.highlighted {
+  background: var(--evidence);
+  border-radius: var(--r-control);
+  padding: 8px 10px;
+  margin: 0 -10px;
+}
+
+.transcript-turn .t-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.transcript-turn .t-who {
+  font-size: var(--t-caption);
+  font-weight: 600;
+  color: var(--label-2);
+}
+
+.transcript-turn p {
+  margin: 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}
+
+.inspector .btn {
+  align-self: flex-start;
+}
+
+/* -- reduced motion / narrow width ------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
   }
 }
