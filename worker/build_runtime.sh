@@ -191,14 +191,6 @@ if [[ "$mode" == build-alpha* ]]; then
       --only-binary=:all: --no-deps \
       -r "$REPO/worker/requirements-encoder.lock"
   fi
-  # Stage the isolated mlx-lm tree, separate from the shared site-packages so
-  # only the generate role imports it (via generate-site-packages on sys.path).
-  # This keeps mlx_whisper using the shared mlx==0.29.3 unchanged.
-  mkdir -p "$STAGE/python-runtime/lib/python3.12/generate-site-packages"
-  "$VENDOR/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
-    --only-binary=:all: \
-    --target "$STAGE/python-runtime/lib/python3.12/generate-site-packages" \
-    -r "$REPO/worker/requirements-generate.lock"
 else
   "$VENDOR/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
     --only-binary=:all: \
@@ -206,6 +198,16 @@ else
 fi
 
 cp -R "$VENDOR/python-runtime" "$STAGE/python-runtime"
+# Stage the isolated mlx-lm tree after copy, separate from the shared site-packages so
+# only the generate role imports it (via generate-site-packages on sys.path).
+# This keeps mlx_whisper using the shared mlx==0.29.3 unchanged.
+if [[ "$mode" == build-alpha* ]]; then
+  mkdir -p "$STAGE/python-runtime/lib/python3.12/generate-site-packages"
+  "$STAGE/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
+    --only-binary=:all: \
+    --target "$STAGE/python-runtime/lib/python3.12/generate-site-packages" \
+    -r "$REPO/worker/requirements-generate.lock"
+fi
 cp "$REPO/worker/__init__.py" "$REPO/worker/main.py" \
   "$REPO/worker/adapters.py" "$REPO/worker/product_contracts.py" \
   "$REPO/worker/storage.py" "$REPO/worker/fbank.py" \
