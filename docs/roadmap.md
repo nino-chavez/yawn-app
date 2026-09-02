@@ -129,7 +129,18 @@ under the build hash. Two defects the honest surface exposed:
   adds 410 MB to a 938 MB runtime. Two defects found on the way, both fixed
   before merge: the tree was first created under the stage before
   `cp -R`, which nested the interpreter; and the version check read an
-  attribute mlx does not have. Installed verification pending.
+  attribute mlx does not have. Installed verification then found a third
+  gate: `SecurityCodeVerifier` refuses the generator in an ad-hoc bundle by
+  design, and the preview sign step used ad-hoc even with a Developer ID
+  identity on the machine. With the identity present the preview lane now
+  does the release lane's nested signing minus the Apple submission
+  (a8eed6f), and Generate note ran the child end to end on the installed
+  preview for the first time since 2026-08-16. Found by an opt-in trace
+  (`YAWN_NOTE_TRACE=1`, ee66fc2 and 41973bd) that names the stage an
+  unavailable run failed at; before it the only evidence was the generic
+  toast. The one meeting tried has a zero-turn transcript, and the child
+  honestly rejected it ("note-rejected"); a real meeting has not been
+  generated yet.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
@@ -160,6 +171,7 @@ from it, all inside the selected direction:
 | R20 | Needs attention (02, 06, review of 88da6b6): the block's only action, Move to Trash…, wears the accent primary fill, so a destructive action reads as the thing to press | A destructive action never takes the primary style, even alone (10c434a; DESIGN.md Button row) |
 | R21 | Seen while running Generate note on the installed 88da6b6 preview: the startup card and the toast were the retired design (hero headline, uppercase kicker, big-radius card, yellow card), and every sheet still carried the 38px semibold button family and an eyebrow | Every legacy `.button` takes the specimen `.btn` shape; sheet heads use the 22 title and 15 body; the startup surface is the needs-attention shape; the toast is a panel at body size; the twelve eyebrow kickers are removed (08fc1c3). Verified in the harness (new `mode=startup`); installed capture pending |
 | R22 | Model setup (first launch with no speech model; harness `mode=model-setup`): retired hero headline at 43px and two 292px option cards | Title at 22, copy at 15, options as grouped-list rows with one primary. Not yet done; needs stub options to render |
+| R23 | After a rejected generation (lifecycle summary-failed, seen on the installed preview): the caption reads "Summary Failed", the Generate note control and the audio fact vanish, and nothing on the page says what happened or offers the retry the view-model defines ("Your meeting note needs another try." with Regenerate note) | Render the summary-failed recovery presentation in the document and keep the control; the reader should never see a bare enum label as the only explanation. Not yet done |
 
 Landed 2026-09-02 evening, verified on the installed preview: R15 (92ab547,
 opaque backdrop, copy names the permission step), R16 (d04e143 and 73d68c9,
