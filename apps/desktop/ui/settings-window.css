@@ -112,8 +112,8 @@ header > p:last-child,
   padding: 0 10px;
   border-radius: var(--r-control);
   cursor: default;
-  font-size: var(--t-caption);
-  font-weight: 600;
+  font-size: var(--t-body);
+  font-weight: 500;
   color: var(--label);
   border: 1px solid var(--control-border);
   background: var(--control);
@@ -125,8 +125,8 @@ header > p:last-child,
   padding: 0 10px;
   border-radius: var(--r-control);
   cursor: default;
-  font-size: var(--t-caption);
-  font-weight: 600;
+  font-size: var(--t-body);
+  font-weight: 500;
   color: #fff;
   border: 1px solid transparent;
   background: var(--accent);
