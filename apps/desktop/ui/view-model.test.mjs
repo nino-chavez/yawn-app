@@ -1868,3 +1868,40 @@ test("Back to Meetings reaches the library from every needs-attention state (D-L
   assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "model-required" } }), "model-setup");
   assert.equal(contentView({ hasInvoke: false, snapshot: homeReady }), "browser-notice");
 });
+
+test("a recovered-interrupted meeting whose audio was released blocks the pane and keeps no readable claim", () => {
+  const note = {
+    state: "recovered-interrupted",
+    meetingId: "m-ri",
+    audioRetention: { state: "released" },
+    meetingDeletionHandle: "del-1",
+    message: "This recording was interrupted before it could be transcribed, and its audio has since been deleted.",
+  };
+  const recovery = meetingRecoveryPresentation(note, null);
+  assert.equal(recovery.state, "recovered-interrupted-nothing-kept");
+  assert.equal(recovery.tone, "attention");
+  assert.equal(recovery.action, null);
+  assert.equal(recovery.detail, note.message);
+  assert.equal(meetingBlockingRecovery(note, null).state, "recovered-interrupted-nothing-kept");
+});
+
+test("a recovered-interrupted meeting with retained partial audio renders its workspace with the fact", () => {
+  const note = {
+    state: "recovered-interrupted",
+    meetingId: "m-ri",
+    audioRetention: { state: "retained" },
+    microphonePlaybackHandle: "mic-1",
+    meetingDeletionHandle: "del-1",
+  };
+  const recovery = meetingRecoveryPresentation(note, null);
+  assert.equal(recovery.state, "recovered-interrupted");
+  assert.equal(recovery.action, null);
+  assert.equal(meetingBlockingRecovery(note, null), null);
+});
+
+test("a sidebar row for a recovered-interrupted meeting says interrupted, never note only", () => {
+  const meta = libraryRowMetaPresentation({ recovery: "recovered-interrupted", transcriptAvailable: false });
+  assert.equal(meta.label, "interrupted");
+  assert.equal(meta.needsAttention, true);
+  assert.equal(libraryRowMetaPresentation({ transcriptAvailable: false }).label, "note only");
+});

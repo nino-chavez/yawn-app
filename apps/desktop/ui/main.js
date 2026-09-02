@@ -1204,11 +1204,15 @@ function renderMeetingPane() {
   const blockingRecovery = meetingBlockingRecovery(note, transcript, state.generatingMeetingId);
   if (blockingRecovery) {
     const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
+    const trash = canDeleteMeeting ? { action: "delete-meeting", label: "Move to Trash…" } : null;
+    // DESIGN.md needs-attention: one primary and one secondary. When the
+    // presentation has no action of its own (nothing to retry or reopen),
+    // Move to Trash is the one action, not a demoted second button.
     return renderNeedsAttentionPane({
       headline: blockingRecovery.title,
       detail: blockingRecovery.detail,
-      action: blockingRecovery.action,
-      secondaryAction: canDeleteMeeting ? { action: "delete-meeting", label: "Move to Trash…" } : null,
+      action: blockingRecovery.action || trash,
+      secondaryAction: blockingRecovery.action ? trash : null,
     });
   }
 

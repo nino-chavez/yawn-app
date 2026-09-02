@@ -813,7 +813,9 @@ export function libraryRowMetaPresentation(row) {
   const durationSeconds = row?.durationSeconds;
   return {
     locked: false,
-    label: row?.transcriptAvailable ? "transcript available" : "note only",
+    label: row?.recovery === "recovered-interrupted"
+      ? "interrupted"
+      : row?.transcriptAvailable ? "transcript available" : "note only",
     preview: libraryRowPreview(row),
     duration: typeof durationSeconds === "number" && Number.isFinite(durationSeconds) ? durationLabel(durationSeconds) : null,
     needsAttention: ["recovered-interrupted", "needs-attention"].includes(row?.recovery),
@@ -1328,6 +1330,33 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
     };
   }
 
+  // D-READ, third shape. A recovered-interrupted meeting never had a
+  // transcript or a note. What it has is its partial audio, and once
+  // retention releases that there is nothing left to read: the honest
+  // surface is a needs-attention pane that says so and offers Move to Trash,
+  // not the audio-released caption below, whose "transcript and note remain
+  // available" would be false here.
+  if (noteState === "recovered-interrupted") {
+    const audioRetained = Boolean(note?.microphonePlaybackHandle || note?.systemPlaybackHandle);
+    const message = typeof note?.message === "string" && note.message.trim() ? note.message.trim() : "";
+    if (!audioRetained && !transcript?.turns?.length) {
+      return {
+        state: "recovered-interrupted-nothing-kept",
+        tone: "attention",
+        title: "This recording did not finish.",
+        detail: message || "The recording was interrupted before it could be transcribed, and its audio has since been deleted. Nothing else was kept.",
+        action: null,
+      };
+    }
+    return {
+      state: "recovered-interrupted",
+      tone: "attention",
+      title: "This recording did not finish.",
+      detail: message || "The recording was interrupted before it could be transcribed. The audio it kept can still be played.",
+      action: null,
+    };
+  }
+
   // Audio retention matters for retranscription, not for reading or
   // regenerating a note from its transcript. Keep this warning even when a
   // finished note is present; the renderer leaves its note action available.
@@ -1373,6 +1402,9 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
 export function meetingBlockingRecovery(note, transcript, generatingMeetingId = "") {
   const recovery = meetingRecoveryPresentation(note, transcript, generatingMeetingId);
   if (!recovery || recovery.state === "audio-released") return null;
+  // Nothing kept means nothing to render behind the pane; the deletion
+  // handle alone does not make a meeting readable.
+  if (recovery.state === "recovered-interrupted-nothing-kept") return recovery;
   const readable = Boolean(
     transcript?.turns?.length
     || note?.microphonePlaybackHandle
