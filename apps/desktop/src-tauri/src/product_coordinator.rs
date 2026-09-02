@@ -209,6 +209,21 @@ pub(crate) struct WorkerProcessNoteGenerationBridge {
     storage: Arc<Mutex<Option<StorageContext>>>,
 }
 
+const NOTE_UNAVAILABLE_BUILD: &str = "This build cannot generate notes.";
+const NOTE_UNAVAILABLE_NO_MODEL: &str = "Download a note model in Settings first.";
+
+/// `model_stored` is None when the build cannot even answer the question
+/// (no manifest, no catalog, unreadable store): that is a build fact, not a
+/// download prompt. A stored model that still fails admission is also a
+/// build fact. Only a readable store with no active model earns the prompt.
+fn note_generation_admission(model_stored: Option<bool>, admitted: bool) -> (bool, Option<String>) {
+    match (model_stored, admitted) {
+        (Some(true), true) => (true, None),
+        (Some(false), _) => (false, Some(NOTE_UNAVAILABLE_NO_MODEL.into())),
+        _ => (false, Some(NOTE_UNAVAILABLE_BUILD.into())),
+    }
+}
+
 impl WorkerProcessNoteGenerationBridge {
     pub(crate) fn new(
         port: Arc<dyn WorkerPort>,
@@ -217,54 +232,35 @@ impl WorkerProcessNoteGenerationBridge {
         Self { port, storage }
     }
 
-    /// Derives whether note generation is available and if not, why.
-    /// Returns (available: bool, reason: Option<String>).
-    /// - available=true: no reason is set
-    /// - available=false with reason: a user-facing message explaining why
+    /// Whether a note generator is admitted right now, and if not, the one
+    /// fact the reader can act on. Roadmap D-NOTE-STAGE: the control used
+    /// to be offered blind and the failure copy said "try again" for a
+    /// condition retrying cannot change.
     pub(crate) fn admission_check(&self) -> (bool, Option<String>) {
-        let context = match self.storage.lock().ok().and_then(|s| s.clone()) {
-            Some(ctx) => ctx,
-            None => return (false, Some("This build cannot generate notes.".into())),
+        let Some(context) = self.storage.lock().ok().and_then(|s| s.clone()) else {
+            return note_generation_admission(None, false);
         };
-
-        let manifest = match RuntimeManifest::load_and_verify(&context.manifest_path) {
-            Ok(m) => m,
-            Err(_) => return (false, Some("This build cannot generate notes.".into())),
+        let Ok(manifest) = RuntimeManifest::load_and_verify(&context.manifest_path) else {
+            return note_generation_admission(None, false);
         };
-
-        let catalog = match crate::verified_model_catalog(&context.manifest_path, &manifest) {
-            Ok(Some(c)) => c,
-            Ok(None) => {
-                return (
-                    false,
-                    Some("Download a note model in Settings first.".into()),
-                );
-            }
-            Err(_) => return (false, Some("This build cannot generate notes.".into())),
+        let Ok(Some(catalog)) = crate::verified_model_catalog(&context.manifest_path, &manifest)
+        else {
+            return note_generation_admission(None, false);
         };
-
-        let generator = admit_note_generator(
+        let model_stored = local_meeting_notes_session_core::model_store::active_note_model(
             &context.storage,
             &catalog,
-            &context.resource_root.join(GENERATE_MANIFEST_FILE),
-        );
-
-        if generator.is_some() {
-            (true, None)
-        } else {
-            // No generator admitted. Check if it's because there's no model installed,
-            // or some other build/runtime issue.
-            match local_meeting_notes_session_core::model_store::active_note_model(
+        )
+        .map(|active| active.is_some())
+        .ok();
+        let admitted = model_stored == Some(true)
+            && admit_note_generator(
                 &context.storage,
                 &catalog,
-            ) {
-                Ok(None) => (
-                    false,
-                    Some("Download a note model in Settings first.".into()),
-                ),
-                _ => (false, Some("This build cannot generate notes.".into())),
-            }
-        }
+                &context.resource_root.join(GENERATE_MANIFEST_FILE),
+            )
+            .is_some();
+        note_generation_admission(model_stored, admitted)
     }
 
     fn admitted_generator(&self) -> Option<ProcessNoteGenerator> {
@@ -1509,42 +1505,37 @@ mod tests {
     }
 
     #[test]
-    fn note_generation_admission_check_unavailable_before_runtime() {
+    fn note_generation_admission_names_the_one_actionable_fact() {
+        assert_eq!(note_generation_admission(Some(true), true), (true, None));
+        assert_eq!(
+            note_generation_admission(Some(false), false),
+            (false, Some(NOTE_UNAVAILABLE_NO_MODEL.into()))
+        );
+        // A stored model the build still cannot run is a build fact.
+        assert_eq!(
+            note_generation_admission(Some(true), false),
+            (false, Some(NOTE_UNAVAILABLE_BUILD.into()))
+        );
+        // No manifest or catalog: nothing to download would help.
+        assert_eq!(
+            note_generation_admission(None, false),
+            (false, Some(NOTE_UNAVAILABLE_BUILD.into()))
+        );
+    }
+
+    #[test]
+    fn note_generation_admission_check_is_a_build_fact_without_a_runtime() {
         let bridge = WorkerProcessNoteGenerationBridge::new(
             Arc::new(FakePort::new(FakeOutcome::Refuse)),
             Arc::new(Mutex::new(None)),
         );
-        let (available, reason) = bridge.admission_check();
-        assert!(!available);
-        assert_eq!(reason, Some("This build cannot generate notes.".into()));
-    }
-
-    #[test]
-    fn note_generation_admission_check_unavailable_with_no_model() {
+        assert_eq!(bridge.admission_check(), (false, Some(NOTE_UNAVAILABLE_BUILD.into())));
         let fixture = runtime_fixture(gated_turns());
         let bridge = WorkerProcessNoteGenerationBridge::new(
             Arc::new(FakePort::new(FakeOutcome::Refuse)),
             fixture.state.storage.clone(),
         );
-        let (available, reason) = bridge.admission_check();
-        assert!(!available);
-        assert_eq!(reason, Some("Download a note model in Settings first.".into()));
-    }
-
-    #[test]
-    fn note_generation_admission_check_reports_exact_reasons() {
-        // Test that the two exact reason strings match the contract
-        let fixture = runtime_fixture(gated_turns());
-        let bridge = WorkerProcessNoteGenerationBridge::new(
-            Arc::new(FakePort::new(FakeOutcome::Refuse)),
-            fixture.state.storage.clone(),
-        );
-        let (_available, reason) = bridge.admission_check();
-
-        // Verify it's one of the two expected messages
-        assert!(
-            reason.as_deref() == Some("Download a note model in Settings first.")
-                || reason.as_deref() == Some("This build cannot generate notes.")
-        );
+        // The fixture's manifest path does not exist: no runtime, no prompt.
+        assert_eq!(bridge.admission_check(), (false, Some(NOTE_UNAVAILABLE_BUILD.into())));
     }
 }
