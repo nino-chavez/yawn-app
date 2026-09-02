@@ -89,7 +89,9 @@ test("the evidence popover never enters the patched tree, and the inspector's vi
 // JS-driven class toggle standing in for the CSS rule.
 test("no modal backdrop or dialog carries an id, so it is reused across a patch tick instead of re-animating", async () => {
   const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  const backdropOpenTags = [...main.matchAll(/<div class="modal-backdrop"[^>]*>/g)];
+  // `[^"]*` tolerates the first-run sheet's `first-run-backdrop` modifier
+  // class (refit R12) -- still one unkeyed div, just with an extra class.
+  const backdropOpenTags = [...main.matchAll(/<div class="modal-backdrop[^"]*"[^>]*>/g)];
   // Roadmap packet W10 adds the once-only first-run sheet as an eighth
   // consumer of this same unkeyed idiom.
   assert.equal(backdropOpenTags.length, 8, "expected all eight sheets' backdrop tags");
