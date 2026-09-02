@@ -530,6 +530,27 @@ two shipping bugs:
   ambiguous copy); the preview packaging script's empty manifest_args
   broke under macOS bash 3.2 on an app-runtime/1 staging (fixed on main).
 
+**Live-run defects — 2026-09-01 evening (installed-app capture pass).**
+Two real defects found and evidenced (docs/evidence/screen-reviews/captures/
+e7e96f9-installed/MANIFEST.md):
+
+- **D-LOCK, severe: quit-during-finalize hard-locks the app.** A recording
+  stopped normally; the app was quit seconds later, mid-worker-finalize.
+  The meeting (lifecycle captured, session never finalized) is refused by
+  the transcription queue, quarantined by retention, and then blocks all
+  recording — Check again loops, and Back to Meetings routes INTO the
+  blocker, so the library is unreachable and the meeting cannot be deleted
+  in-app. Zero in-app recovery; unblocked only by moving the meeting dir
+  aside by hand (preserved at quarantine-evidence/). Crash-during-recording
+  has recovery; quit-during-finalize has none. Fix shape: scan_and_recover
+  classifies unfinalized-captured meetings (salvage or quarantine WITH a
+  rendered destination); one bad meeting must never block recording
+  globally; Back to Meetings always reaches the library. This is Order 4's
+  "warnings without a real destination" made real, at maximum severity.
+- **D-TOAST: internal-state copy leaks.** "The installation check is not
+  waiting for a retry." surfaced as an operator-facing toast during the
+  blocked state — no operator meaning, no action offered.
+
 **Refit intake — 2026-09-01 (judged-screen reviews of e7e96f9).** The cold
 and conformance reviews (docs/evidence/screen-reviews/, browser-render,
 PROVISIONAL pending installed-app captures) set design_intent: refit in
