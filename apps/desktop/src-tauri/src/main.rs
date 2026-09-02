@@ -5391,6 +5391,17 @@ fn library_open_note(
     // A fact about this Mac, not this meeting. See the field's docs for why it
     // rides the note response and what it may and may not decide.
     response.can_confirm_operator = state.confirmation.available();
+
+    // Compute note generation availability. This reflects live storage state
+    // so a model installed or removed since startup changes the answer.
+    let bridge = product_coordinator::WorkerProcessNoteGenerationBridge::new(
+        Arc::new(product_coordinator::ProcessWorkerPort::new(state.worker.clone())),
+        state.storage.clone(),
+    );
+    let (available, reason) = bridge.admission_check();
+    response.note_generation_available = available;
+    response.note_generation_unavailable_reason = reason;
+
     if response.lock.locked && response.state != "locked" {
         if let Ok(mut authority) = state.locked_actions.lock() {
             response.lock_token =

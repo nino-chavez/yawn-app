@@ -1254,6 +1254,17 @@ export function transcriptRetryQualityKindLabel(kind) {
 // copy states the honest costs: it runs locally, and it takes minutes.
 export function noteGenerationPresentation(note, generatingMeetingId) {
   if (!note?.regenerationSourceSha256 || !note?.meetingId) return null;
+
+  // Check note generation availability. If explicitly unavailable, show the reason and disable.
+  if (note?.noteGenerationAvailable === false) {
+    return {
+      action: "generate-note",
+      label: "Generate note",
+      disabled: true,
+      help: note?.noteGenerationUnavailableReason || "Note generation is not available.",
+    };
+  }
+
   const generating = generatingMeetingId === note.meetingId;
   const replacing = Array.isArray(note?.claims) && note.claims.length > 0;
   return {
