@@ -1920,3 +1920,9 @@ test("opening a meeting from the list takes a fresh library snapshot before spen
   assert.ok(load > refresh, "the refresh happens before the open");
   assert.match(body, /candidate\.meetingId === known\.meetingId/);
 });
+
+test("R20: a destructive needs-attention action never takes the primary style", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /label: "Move to Trash…", destructive: true/);
+  assert.match(source, /action\.destructive \? "btn" : "btn primary"/);
+});

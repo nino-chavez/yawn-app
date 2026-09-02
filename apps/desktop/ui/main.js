@@ -702,7 +702,7 @@ function renderNeedsAttentionPane({ headline, detail, action = null, secondaryAc
       <p class="attention-detail">${escapeHtml(detail)}</p>
       ${action || secondaryAction ? `
       <div class="attention-actions">
-        ${action ? `<button class="btn primary" type="button" data-action="${escapeHtml(action.action)}" ${action.disabled ? "disabled" : ""}>${escapeHtml(action.label)}</button>` : ""}
+        ${action ? `<button class="${action.destructive ? "btn" : "btn primary"}" type="button" data-action="${escapeHtml(action.action)}" ${action.disabled ? "disabled" : ""}>${escapeHtml(action.label)}</button>` : ""}
         ${secondaryAction ? `<button class="btn" type="button" data-action="${escapeHtml(secondaryAction.action)}">${escapeHtml(secondaryAction.label)}</button>` : ""}
       </div>` : ""}
     </div>`;
@@ -1208,10 +1208,13 @@ function renderMeetingPane() {
   const blockingRecovery = meetingBlockingRecovery(note, transcript, state.generatingMeetingId);
   if (blockingRecovery) {
     const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
-    const trash = canDeleteMeeting ? { action: "delete-meeting", label: "Move to Trash…" } : null;
+    // Destructive: never the accent fill, even when it is the only action
+    // (refit R20; a blind review read the blue Move to Trash as the thing
+    // to press).
+    const trash = canDeleteMeeting ? { action: "delete-meeting", label: "Move to Trash…", destructive: true } : null;
     // DESIGN.md needs-attention: one primary and one secondary. When the
     // presentation has no action of its own (nothing to retry or reopen),
-    // Move to Trash is the one action, not a demoted second button.
+    // Move to Trash is the one action, rendered as the standard bezel.
     return renderNeedsAttentionPane({
       headline: blockingRecovery.title,
       detail: blockingRecovery.detail,

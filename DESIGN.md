@@ -99,7 +99,7 @@ component not on it is not in the system.
 
 | Component | States | Rule |
 |---|---|---|
-| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button is the specimen's `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button |
+| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button is the specimen's `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button. A destructive action (Move to Trash, Remove download) is never the primary, even when it is the only button on the surface |
 | Record control | idle, live (elapsed + Pause + Stop), paused | The only red. Lives in the toolbar and the menu-bar pill only |
 | Icon button | default, hover | Sidebar toggle. No other icon buttons in the toolbar |
 | Search field | empty, typing, filtered-empty | Title search only; "No matching meetings" is one caption |
