@@ -217,6 +217,56 @@ impl WorkerProcessNoteGenerationBridge {
         Self { port, storage }
     }
 
+    /// Derives whether note generation is available and if not, why.
+    /// Returns (available: bool, reason: Option<String>).
+    /// - available=true: no reason is set
+    /// - available=false with reason: a user-facing message explaining why
+    pub(crate) fn admission_check(&self) -> (bool, Option<String>) {
+        let context = match self.storage.lock().ok().and_then(|s| s.clone()) {
+            Some(ctx) => ctx,
+            None => return (false, Some("This build cannot generate notes.".into())),
+        };
+
+        let manifest = match RuntimeManifest::load_and_verify(&context.manifest_path) {
+            Ok(m) => m,
+            Err(_) => return (false, Some("This build cannot generate notes.".into())),
+        };
+
+        let catalog = match crate::verified_model_catalog(&context.manifest_path, &manifest) {
+            Ok(Some(c)) => c,
+            Ok(None) => {
+                return (
+                    false,
+                    Some("Download a note model in Settings first.".into()),
+                );
+            }
+            Err(_) => return (false, Some("This build cannot generate notes.".into())),
+        };
+
+        let generator = admit_note_generator(
+            &context.storage,
+            &catalog,
+            &context.resource_root.join(GENERATE_MANIFEST_FILE),
+        );
+
+        if generator.is_some() {
+            (true, None)
+        } else {
+            // No generator admitted. Check if it's because there's no model installed,
+            // or some other build/runtime issue.
+            match local_meeting_notes_session_core::model_store::active_note_model(
+                &context.storage,
+                &catalog,
+            ) {
+                Ok(None) => (
+                    false,
+                    Some("Download a note model in Settings first.".into()),
+                ),
+                _ => (false, Some("This build cannot generate notes.".into())),
+            }
+        }
+    }
+
     fn admitted_generator(&self) -> Option<ProcessNoteGenerator> {
         let context = self.storage.lock().ok()?.clone()?;
         let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).ok()?;
@@ -1456,5 +1506,45 @@ mod tests {
             Err(CoordinatorError::Refused)
         );
         assert!(port.requests.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn note_generation_admission_check_unavailable_before_runtime() {
+        let bridge = WorkerProcessNoteGenerationBridge::new(
+            Arc::new(FakePort::new(FakeOutcome::Refuse)),
+            Arc::new(Mutex::new(None)),
+        );
+        let (available, reason) = bridge.admission_check();
+        assert!(!available);
+        assert_eq!(reason, Some("This build cannot generate notes.".into()));
+    }
+
+    #[test]
+    fn note_generation_admission_check_unavailable_with_no_model() {
+        let fixture = runtime_fixture(gated_turns());
+        let bridge = WorkerProcessNoteGenerationBridge::new(
+            Arc::new(FakePort::new(FakeOutcome::Refuse)),
+            fixture.state.storage.clone(),
+        );
+        let (available, reason) = bridge.admission_check();
+        assert!(!available);
+        assert_eq!(reason, Some("Download a note model in Settings first.".into()));
+    }
+
+    #[test]
+    fn note_generation_admission_check_reports_exact_reasons() {
+        // Test that the two exact reason strings match the contract
+        let fixture = runtime_fixture(gated_turns());
+        let bridge = WorkerProcessNoteGenerationBridge::new(
+            Arc::new(FakePort::new(FakeOutcome::Refuse)),
+            fixture.state.storage.clone(),
+        );
+        let (_available, reason) = bridge.admission_check();
+
+        // Verify it's one of the two expected messages
+        assert!(
+            reason.as_deref() == Some("Download a note model in Settings first.")
+                || reason.as_deref() == Some("This build cannot generate notes.")
+        );
     }
 }

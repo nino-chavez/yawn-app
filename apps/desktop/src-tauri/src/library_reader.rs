@@ -460,6 +460,12 @@ pub(crate) struct LibraryNoteResponse {
     /// `regenerate_note` command requires, so the browser can ask for
     /// generation without ever holding an artifact path or content.
     pub(crate) regeneration_source_sha256: Option<String>,
+    /// Whether note generation is currently available. When false, check
+    /// `noteGenerationUnavailableReason` for the user-facing explanation.
+    pub(crate) note_generation_available: bool,
+    /// The reason note generation is unavailable, if applicable.
+    /// Empty/None when `noteGenerationAvailable` is true.
+    pub(crate) note_generation_unavailable_reason: Option<String>,
     pub(crate) claims: Vec<LibraryClaim>,
     pub(crate) audio_retention: LibraryAudioRetention,
     /// Whether this recording was held open with nothing being captured.
@@ -1335,6 +1341,8 @@ impl LibraryReader {
                 meeting_deletion_handle: self.retain_meeting_deletion_handle(&meeting_id),
                 meeting_id: meeting_id.clone(),
                 regeneration_source_sha256: None,
+                note_generation_available: false,
+                note_generation_unavailable_reason: None,
                 claims: Vec::new(),
                 // Content-free by construction, exactly like the `unavailable`
                 // and `stale` shapes: retention facts, pause facts, and the
@@ -1414,6 +1422,8 @@ impl LibraryReader {
                     meeting_deletion_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
+                    note_generation_available: false,
+                    note_generation_unavailable_reason: None,
                     claims: Vec::new(),
                     audio_retention,
                     capture_pauses: capture_pauses.clone(),
@@ -1458,6 +1468,8 @@ impl LibraryReader {
                     meeting_deletion_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
+                    note_generation_available: false,
+                    note_generation_unavailable_reason: None,
                     claims: Vec::new(),
                     audio_retention,
                     capture_pauses: capture_pauses.clone(),
@@ -1484,6 +1496,8 @@ impl LibraryReader {
                     meeting_deletion_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
+                    note_generation_available: false,
+                    note_generation_unavailable_reason: None,
                     claims: Vec::new(),
                     audio_retention,
                     capture_pauses: capture_pauses.clone(),
@@ -1574,6 +1588,8 @@ impl LibraryReader {
             meeting_deletion_handle,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
+            note_generation_available: false,
+            note_generation_unavailable_reason: None,
             claims,
             audio_retention,
             capture_pauses,
@@ -1774,6 +1790,8 @@ impl LibraryReader {
             meeting_deletion_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
+            note_generation_available: false,
+            note_generation_unavailable_reason: None,
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
             capture_pauses:
@@ -2641,6 +2659,8 @@ impl LibraryReader {
             meeting_deletion_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
+            note_generation_available: false,
+            note_generation_unavailable_reason: None,
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
             capture_pauses:

@@ -1926,3 +1926,87 @@ test("R20: a destructive needs-attention action never takes the primary style", 
   assert.match(source, /label: "Move to Trash…", destructive: true/);
   assert.match(source, /action\.destructive \? "btn" : "btn primary"/);
 });
+
+test("note generation presentation: returns null when no regeneration source", () => {
+  assert.equal(noteGenerationPresentation(null, ""), null);
+  assert.equal(noteGenerationPresentation({}, ""), null);
+  assert.equal(noteGenerationPresentation({ regenerationSourceSha256: "" }, ""), null);
+  assert.equal(
+    noteGenerationPresentation({ regenerationSourceSha256: "abc" }, ""),
+    null
+  );
+  assert.equal(
+    noteGenerationPresentation({ regenerationSourceSha256: "abc", meetingId: "" }, ""),
+    null
+  );
+});
+
+test("note generation presentation: disables with reason when not available", () => {
+  const note = {
+    regenerationSourceSha256: "abc123",
+    meetingId: "meeting-1",
+    noteGenerationAvailable: false,
+    noteGenerationUnavailableReason: "Download a note model in Settings first.",
+    claims: [],
+  };
+  const result = noteGenerationPresentation(note, "");
+  assert.equal(result.action, "generate-note");
+  assert.equal(result.label, "Generate note");
+  assert.equal(result.disabled, true);
+  assert.equal(result.help, "Download a note model in Settings first.");
+});
+
+test("note generation presentation: handles build error reason", () => {
+  const note = {
+    regenerationSourceSha256: "abc123",
+    meetingId: "meeting-1",
+    noteGenerationAvailable: false,
+    noteGenerationUnavailableReason: "This build cannot generate notes.",
+    claims: [],
+  };
+  const result = noteGenerationPresentation(note, "");
+  assert.equal(result.disabled, true);
+  assert.equal(result.help, "This build cannot generate notes.");
+});
+
+test("note generation presentation: available when generation is possible and not generating", () => {
+  const note = {
+    regenerationSourceSha256: "abc123",
+    meetingId: "meeting-1",
+    noteGenerationAvailable: true,
+    noteGenerationUnavailableReason: null,
+    claims: [],
+  };
+  const result = noteGenerationPresentation(note, "other-meeting");
+  assert.equal(result.action, "generate-note");
+  assert.equal(result.label, "Generate note");
+  assert.equal(result.disabled, false);
+  assert.match(result.help, /downloaded note model/);
+});
+
+test("note generation presentation: shows regenerate label when there are claims", () => {
+  const note = {
+    regenerationSourceSha256: "abc123",
+    meetingId: "meeting-1",
+    noteGenerationAvailable: true,
+    noteGenerationUnavailableReason: null,
+    claims: [{ ordinal: 1 }],
+  };
+  const result = noteGenerationPresentation(note, "other-meeting");
+  assert.equal(result.label, "Regenerate note");
+  assert.match(result.help, /again/);
+});
+
+test("note generation presentation: shows generating state when matching meeting id", () => {
+  const note = {
+    regenerationSourceSha256: "abc123",
+    meetingId: "meeting-1",
+    noteGenerationAvailable: true,
+    noteGenerationUnavailableReason: null,
+    claims: [],
+  };
+  const result = noteGenerationPresentation(note, "meeting-1");
+  assert.equal(result.label, "Generating note…");
+  assert.equal(result.disabled, true);
+  assert.match(result.help, /several minutes/);
+});
