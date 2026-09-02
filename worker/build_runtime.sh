@@ -95,6 +95,14 @@ verify() {
     fi
     (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
       'import mlx.core, mlx_whisper, worker.transcription' 1>/dev/null)
+    # Verify the isolated generate-site-packages tree with mlx_lm accessible.
+    # Replicates the bootstrap pattern from note_bridge.py _GENERATOR_BOOTSTRAP.
+    (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
+      'import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(sys.executable)), "lib", "python%d.%d" % sys.version_info[:2], "generate-site-packages")); import mlx_lm' 1>/dev/null)
+    # Verify the shared tree still has mlx 0.29.3 and can import mlx_whisper independently.
+    # Without the isolated dir, the shared mlx is used.
+    (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
+      'import mlx; assert mlx.__version__.startswith("0.29.3"), f"Expected mlx 0.29.3, got {mlx.__version__}"; import mlx_whisper' 1>/dev/null)
     for index in "${!EMBEDDER_FILES[@]}"; do
       echo "${EMBEDDER_SHA256[$index]}  $STAGE/$EMBEDDER_STAGE_RELATIVE/${EMBEDDER_FILES[$index]}" \
         | shasum -a 256 -c - >/dev/null
@@ -183,6 +191,14 @@ if [[ "$mode" == build-alpha* ]]; then
       --only-binary=:all: --no-deps \
       -r "$REPO/worker/requirements-encoder.lock"
   fi
+  # Stage the isolated mlx-lm tree, separate from the shared site-packages so
+  # only the generate role imports it (via generate-site-packages on sys.path).
+  # This keeps mlx_whisper using the shared mlx==0.29.3 unchanged.
+  mkdir -p "$STAGE/python-runtime/lib/python3.12/generate-site-packages"
+  "$VENDOR/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
+    --only-binary=:all: \
+    --target "$STAGE/python-runtime/lib/python3.12/generate-site-packages" \
+    -r "$REPO/worker/requirements-generate.lock"
 else
   "$VENDOR/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
     --only-binary=:all: \
