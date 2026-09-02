@@ -295,7 +295,13 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
             .generate(&request)
             .map_err(|_| NoteGenerationWorkerError::Unavailable)?;
         let generation = match parse_note_generation_result(&frame, &request)
-            .map_err(|_| NoteGenerationWorkerError::Unavailable)?
+            .map_err(|_| {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    let head = String::from_utf8_lossy(&frame[..frame.len().min(512)]);
+                    eprintln!("[note-trace] child frame rejected by the envelope parse: {head}");
+                }
+                NoteGenerationWorkerError::Unavailable
+            })?
         {
             NoteGenerationChildOutcome::Generated(generation) => generation,
             NoteGenerationChildOutcome::TranscriptOnly { recoverable, .. } => {

@@ -65,6 +65,35 @@ const FIRST_STAGING_FD: RawFd = 104;
 const GENERATE_DEADLINE_SECONDS: u64 = 3600;
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 16 * 1024;
+
+/// Opt-in diagnostic (`YAWN_NOTE_TRACE=1` in the app's environment): the
+/// bridge child's failure frames are content-free by design, so when a
+/// generate run ends `Unavailable` the only evidence is the child's stderr,
+/// which the monitor otherwise counts and discards. With the variable set,
+/// the last 4 KiB is kept and printed to the app's own stderr. Off by
+/// default; nothing is written to disk.
+pub fn note_trace_enabled() -> bool {
+    std::env::var_os("YAWN_NOTE_TRACE").is_some()
+}
+
+static LAST_STDERR_TAIL: std::sync::Mutex<Vec<u8>> = std::sync::Mutex::new(Vec::new());
+
+fn record_stderr_tail(chunk: &[u8]) {
+    if let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
+        tail.extend_from_slice(chunk);
+        if tail.len() > 4096 {
+            let cut = tail.len() - 4096;
+            tail.drain(..cut);
+        }
+    }
+}
+
+pub fn last_bridge_stderr_tail() -> String {
+    LAST_STDERR_TAIL
+        .lock()
+        .map(|tail| String::from_utf8_lossy(&tail).into_owned())
+        .unwrap_or_default()
+}
 const CLEANUP_GRACE: Duration = Duration::from_millis(750);
 const PRODUCT_RUNTIME_PATH: &str = "python-runtime/bin/python3.12";
 /// The read-only claim-projection role this transport speaks.  It never runs a
@@ -559,7 +588,15 @@ impl ProcessNoteGenerator {
     ) -> Result<Vec<u8>, ProjectTransportError> {
         self.generate_inner(request, cancellation)
             .map_err(|outcome| match outcome {
-                InternalOutcome::Unavailable => ProjectTransportError::Unavailable,
+                InternalOutcome::Unavailable => {
+                    if note_trace_enabled() {
+                        eprintln!(
+                            "[note-trace] generate child unavailable; bridge stderr tail:\n{}",
+                            last_bridge_stderr_tail()
+                        );
+                    }
+                    ProjectTransportError::Unavailable
+                }
                 InternalOutcome::Cancelled => ProjectTransportError::Cancelled,
             })
     }
@@ -2270,6 +2307,12 @@ struct StderrMonitor {
 impl StderrMonitor {
     fn start(mut stderr: impl Read + Send + 'static) -> Self {
         let (sender, receiver) = mpsc::sync_channel(1);
+        let trace = note_trace_enabled();
+        if trace {
+            if let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
+                tail.clear();
+            }
+        }
         let thread = std::thread::spawn(move || {
             let mut total = 0_usize;
             let mut sent = false;
@@ -2278,6 +2321,9 @@ impl StderrMonitor {
                 match stderr.read(&mut buffer) {
                     Ok(0) => return total <= MAX_STDERR_BYTES,
                     Ok(read) => {
+                        if trace {
+                            record_stderr_tail(&buffer[..read]);
+                        }
                         total = total.saturating_add(read);
                         if total > MAX_STDERR_BYTES && !sent {
                             let _ = sender.try_send(());
