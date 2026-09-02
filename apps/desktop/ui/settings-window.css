@@ -1,101 +1,80 @@
-:root {
-  color-scheme: light;
-  --paper: #fcfcfa;
-  --canvas: #f2f4ef;
-  --ink: #1c211d;
-  --muted: #657067;
-  --line: #dfe4dc;
-  --accent: #17664f;
-  --accent-soft: #e2f0e8;
-  --attention: #93611a;
-  --attention-soft: #fff5df;
-
-  /* Packet W9-A: named type scale for this window's own literals -- a
-     separate token block from ui/styles.css because this stylesheet already
-     runs its own disjoint color system (green accent vs. the main window's
-     blue). The h1 "Settings" display size and its letter-spacing stay
-     literal, same exclusion reasoning as the main window's hero clamp()s. */
-  --text-meta: 11px;
-  --text-label: 12px;
-  --text-body: 13px;
-  --text-subtitle: 16px;
-  --weight-semibold: 680;
-  --weight-bold: 700;
-  --weight-heavy: 760;
-  --tracking-card-heading: -0.02em;
-  --tracking-eyebrow: 0.09em;
-
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
+/* Settings window skin. Layout and behavior stay this window's own — it is
+   a Preferences-style panel, not a port of the main window's chrome — but
+   every color and type size here now resolves through tokens.css (loaded
+   first in settings.html) instead of a separate bespoke green palette. See
+   DESIGN.md "What this replaces": the green Settings accent is gone. */
 
 * { box-sizing: border-box; }
 
 body {
+  /* tokens.css sets `html, body { height: 100% }` for the main window's
+     fixed-viewport layout; the four-card Settings page is taller than that
+     at the new 560x480 minimum this window now resizes down to, so this
+     overrides height back to content-driven and lets the window scroll
+     instead of clip. `overflow-y` is already the default here — stated
+     explicitly so the next edit to this file doesn't reintroduce clipping
+     by accident. */
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
   min-width: 480px;
   margin: 0;
-  color: var(--ink);
-  background: linear-gradient(145deg, #f8faf6, var(--canvas));
-  -webkit-font-smoothing: antialiased;
+  color: var(--label);
+  background: var(--window);
 }
 
 button, input { font: inherit; }
 
 button:focus-visible {
-  outline: 3px solid rgb(23 102 79 / 28%);
-  outline-offset: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-control);
 }
 
 .settings-shell {
   width: min(720px, 100%);
   margin: 0 auto;
-  padding: 38px 48px;
-}
-
-.eyebrow {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-heavy);
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
+  padding: 28px 32px 32px;
 }
 
 h1, h2, p { margin-top: 0; }
 
+/* 17pt title (DESIGN.md type scale), no eyebrow, no oversized display size —
+   the window's own native title bar already reads "Yawn Settings". */
 h1 {
-  margin-bottom: 10px;
-  font-size: 40px;
-  line-height: 1;
-  letter-spacing: -0.06em;
+  margin-bottom: 4px;
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 h2 {
-  margin-bottom: 5px;
-  font-size: var(--text-subtitle);
-  letter-spacing: var(--tracking-card-heading);
+  margin-bottom: 4px;
+  font-size: var(--t-body);
+  font-weight: 600;
 }
 
 header > p:last-child,
 .section-heading p,
 .permission-copy p {
   margin-bottom: 0;
-  color: var(--muted);
-  font-size: var(--text-body);
-  line-height: 1.5;
+  color: var(--label-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .model-copy p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: var(--text-label);
+  margin: 3px 0 0;
+  color: var(--label-2);
+  font-size: var(--t-caption);
   line-height: 1.45;
 }
 
 .settings-card {
-  margin-top: 28px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgb(255 255 254 / 80%);
+  margin-top: 20px;
+  border: 1px solid var(--separator);
+  border-radius: var(--r-card);
+  background: var(--content);
   overflow: hidden;
 }
 
@@ -104,57 +83,57 @@ header > p:last-child,
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 20px 18px;
-  border-bottom: 1px solid var(--line);
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--separator);
 }
 
 .quiet-button,
 .allow-button {
-  min-height: 32px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: white;
-  cursor: pointer;
-  font-size: var(--text-label);
-  font-weight: var(--weight-semibold);
+  min-height: 22px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
+  cursor: default;
+  font-size: var(--t-caption);
+  font-weight: 600;
 }
 
 .quiet-button {
-  padding: 0 11px;
-  color: var(--muted);
+  color: var(--label);
+  border: 1px solid var(--control-border);
+  background: var(--control);
+  box-shadow: var(--control-shadow);
 }
 
 .allow-button {
-  padding: 0 12px;
-  color: white;
-  border-color: var(--accent);
+  color: #fff;
+  border: 1px solid transparent;
   background: var(--accent);
 }
 
-.permission-list { padding: 0 20px; }
+.permission-list { padding: 0 18px; }
 
-.model-list { padding: 0 20px; }
+.model-list { padding: 0 18px; }
 
-.privacy-rows { margin: 0; padding: 0 20px 20px; }
+.privacy-rows { margin: 0; padding: 0 18px 18px; }
 
 .privacy-row {
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  border-top: 1px solid var(--separator);
 }
 
 .privacy-row:first-child { border-top: 0; }
 
 .privacy-row dt {
-  margin: 0 0 4px;
-  font-size: var(--text-body);
-  font-weight: var(--weight-bold);
+  margin: 0 0 3px;
+  font-size: var(--t-body);
+  font-weight: 600;
 }
 
 .privacy-row dd {
   margin: 0;
-  color: var(--muted);
-  font-size: var(--text-body);
-  line-height: 1.5;
+  color: var(--label-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .permission-line {
@@ -162,8 +141,8 @@ header > p:last-child,
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 17px 0;
-  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  border-top: 1px solid var(--separator);
 }
 
 .permission-line:first-child { border-top: 0; }
@@ -171,10 +150,10 @@ header > p:last-child,
 .model-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
+  gap: 16px;
   align-items: center;
-  padding: 16px 0;
-  border-top: 1px solid var(--line);
+  padding: 14px 0;
+  border-top: 1px solid var(--separator);
 }
 
 .model-line:first-child { border-top: 0; }
@@ -184,22 +163,22 @@ header > p:last-child,
 .model-title-row {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 
-.model-title-row strong { font-size: var(--text-body); }
+.model-title-row strong { font-size: var(--t-body); font-weight: 600; }
 
 .model-size {
-  color: var(--muted);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-bold);
+  color: var(--label-2);
+  font-size: var(--t-caption);
+  font-weight: 600;
 }
 
 .model-actions {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 7px;
+  gap: 6px;
 }
 
 .model-actions button { white-space: nowrap; }
@@ -207,7 +186,7 @@ header > p:last-child,
 .model-progress {
   display: grid;
   gap: 5px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .model-progress progress {
@@ -215,14 +194,14 @@ header > p:last-child,
   accent-color: var(--accent);
 }
 
-.model-progress small { color: var(--muted); }
+.model-progress small { color: var(--label-2); }
 
 .card-message {
   min-height: 18px;
   margin: 0;
-  padding: 0 20px 16px;
-  color: var(--muted);
-  font-size: var(--text-meta);
+  padding: 0 18px 14px;
+  color: var(--label-2);
+  font-size: var(--t-caption);
   line-height: 1.4;
 }
 
@@ -230,66 +209,44 @@ header > p:last-child,
 
 button:disabled {
   cursor: default;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .permission-copy { min-width: 0; }
 
 .permission-copy strong {
   display: block;
-  margin-bottom: 3px;
-  font-size: var(--text-body);
+  margin-bottom: 2px;
+  font-size: var(--t-body);
+  font-weight: 600;
 }
 
 .state {
   display: inline-flex;
   align-items: center;
-  min-height: 25px;
-  padding: 0 9px;
-  border-radius: 999px;
-  color: var(--muted);
-  background: #f1f3f0;
-  font-size: var(--text-meta);
-  font-weight: var(--weight-bold);
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-control);
+  color: var(--label-2);
+  background: var(--panel);
+  font-size: var(--t-caption);
+  font-weight: 600;
 }
 
 .state[data-tone="ready"] {
-  color: #14563f;
-  background: var(--accent-soft);
+  color: var(--accent);
+  background: var(--evidence);
 }
 
 .state[data-tone="attention"] {
-  color: #80510f;
-  background: var(--attention-soft);
+  color: var(--attention);
+  background: var(--attention-bg);
 }
 
 .message {
-  min-height: 20px;
-  margin: 16px 0 0;
-  color: var(--muted);
-  font-size: var(--text-label);
+  min-height: 18px;
+  margin: 14px 0 0;
+  color: var(--label-2);
+  font-size: var(--t-caption);
   line-height: 1.4;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --paper: #202720;
-    --canvas: #171b18;
-    --ink: #edf4ed;
-    --muted: #bdc9bd;
-    --line: #344037;
-    --accent: #7bcba2;
-    --accent-soft: #183b2b;
-    --attention: #f0bf71;
-    --attention-soft: #41341e;
-  }
-
-  body { background: linear-gradient(145deg, #202820, var(--canvas)); }
-  .settings-card { background: rgb(31 39 32 / 82%); }
-  .quiet-button { color: var(--muted); border-color: var(--line); background: #263027; }
-  .allow-button { color: #102319; background: var(--accent); border-color: var(--accent); }
-  .state { background: #2a342c; }
-  .state[data-tone="ready"] { color: #a5e5be; background: var(--accent-soft); }
-  .state[data-tone="attention"] { color: #f0c77f; background: var(--attention-soft); }
 }
