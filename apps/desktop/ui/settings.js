@@ -25,6 +25,16 @@ const message = document.querySelector("#message");
 let permissions = null;
 let models = null;
 let modelLoadError = "";
+// D-MODEL (roadmap): a runtime staged without downloadable speech models
+// rejects `transcript_model_settings` with this exact sentence -- a fact
+// about the build, not a check that failed. The bare `catch {}` this used to
+// have discarded the backend's message entirely, so that fact rendered
+// identically to "Yawn could not check the saved speech model. Retrying…"
+// forever, on a build that will never resolve it because there is nothing to
+// check. `modelBuiltIn` is true only for that one message; every other
+// rejection keeps the genuine-failure path.
+const MODEL_BUILT_IN_MARKER = "does not use downloadable speech models";
+let modelBuiltIn = false;
 let modelPoll = null;
 let noteModels = null;
 let noteModelLoadError = "";
@@ -81,6 +91,21 @@ function render() {
 }
 
 function renderModels() {
+  // D-MODEL: a build fact, not a failure -- no attention tone, no "Retrying…",
+  // and (see scheduleModelPoll) no retry poll, since there is nothing this
+  // build will ever have to check. Plain row, no state pill: this isn't one
+  // of "checking" / "unavailable" / "in use", so `row()`'s pill would only
+  // invent a status this state doesn't have.
+  if (modelBuiltIn) {
+    modelsRoot.innerHTML = `
+      <div class="permission-line">
+        <div class="permission-copy"><strong>Speech model</strong><p>This build ships its speech model. There is nothing to choose here.</p></div>
+      </div>
+    `;
+    modelMessage.textContent = "";
+    modelMessage.dataset.tone = "neutral";
+    return;
+  }
   if (!models) {
     // A failed check must not read the same as a pending one — the row title
     // said "Checking speech model" either way, which is what made a genuine
@@ -192,6 +217,10 @@ function renderNoteModels() {
 // that is the first check still pending or a check that just failed.
 function scheduleModelPoll() {
   clearTimeout(modelPoll);
+  // D-MODEL: `modelBuiltIn` is a permanent fact about this build, not a
+  // transient failure -- nothing will change on a retry, so this stops
+  // polling instead of re-asking a question this build has already answered.
+  if (modelBuiltIn) return;
   if (models?.changeActive) {
     modelPoll = setTimeout(() => void refreshModels(), 500);
   } else if (!models) {
@@ -258,9 +287,16 @@ async function refreshModels() {
   try {
     models = await invoke("transcript_model_settings");
     modelLoadError = "";
-  } catch {
+    modelBuiltIn = false;
+  } catch (error) {
     models = null;
-    modelLoadError = "Yawn could not check the saved speech model.";
+    // D-MODEL: read the rejection instead of discarding it (the bare
+    // `catch {}` this used to be), so the one message that means "this build
+    // ships a fixed speech model" can be told apart from every other
+    // rejection, which stays a genuine, retried failure.
+    const rejection = String(error || "");
+    modelBuiltIn = rejection.includes(MODEL_BUILT_IN_MARKER);
+    modelLoadError = modelBuiltIn ? "" : "Yawn could not check the saved speech model.";
   }
   renderModels();
   scheduleModelPoll();
