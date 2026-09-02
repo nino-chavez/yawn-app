@@ -1091,6 +1091,17 @@ fn clear_sitting_task(state: &ApplicationState, sitting_id: &str) {
     }
 }
 
+/// Whether a speech or note model may be swapped right now. The mic and the
+/// system tap are released once a transcript is on screen, and opening a
+/// past meeting from the library restores the reducer to `TranscriptReady`
+/// (see `apply_restored_transcript_projection`), so that state is idle for
+/// this purpose. Treating it as "a meeting in progress" disabled Settings
+/// with "Finish the current meeting" while the operator was only reading
+/// (roadmap D-GATE, found on the 88da6b6 installed captures).
+fn model_change_audio_idle(capture: CaptureState, sitting_task_active: bool) -> bool {
+    matches!(capture, CaptureState::Idle | CaptureState::TranscriptReady) && !sitting_task_active
+}
+
 fn sitting_task_active(state: &ApplicationState) -> bool {
     state
         .sitting_task
@@ -2632,7 +2643,7 @@ fn transcript_model_settings_for(
         )
     };
     let startup_ready = matches!(startup, StartupState::Ready | StartupState::ModelRequired);
-    let audio_idle = capture == CaptureState::Idle && !sitting_task_active(state);
+    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state));
     let can_change = startup_ready && audio_idle && !installing;
     let unavailable_reason = if installing {
         Some("Wait for the current model change to finish.".into())
@@ -2911,7 +2922,7 @@ fn note_model_settings_for(state: &ApplicationState) -> Result<NoteModelSettings
         (model.reducer.startup(), model.reducer.capture())
     };
     let startup_ready = matches!(startup, StartupState::Ready | StartupState::ModelRequired);
-    let audio_idle = capture == CaptureState::Idle && !sitting_task_active(state);
+    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state));
     let can_change = startup_ready && audio_idle && !installing;
     let unavailable_reason = if installing {
         Some("Wait for the current note model change to finish.".into())
@@ -10735,6 +10746,16 @@ fn io_error(error: io::Error) -> Box<dyn std::error::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_meeting_open_for_reading_does_not_block_model_changes() {
+        assert!(model_change_audio_idle(CaptureState::Idle, false));
+        assert!(model_change_audio_idle(CaptureState::TranscriptReady, false));
+        assert!(!model_change_audio_idle(CaptureState::Recording, false));
+        assert!(!model_change_audio_idle(CaptureState::Paused, false));
+        assert!(!model_change_audio_idle(CaptureState::Transcribing, false));
+        assert!(!model_change_audio_idle(CaptureState::TranscriptReady, true));
+    }
     use std::sync::Barrier;
     use tempfile::TempDir;
 
