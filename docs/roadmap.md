@@ -76,6 +76,22 @@ under the build hash. Two defects the honest surface exposed:
   Settings surface reviews the model chooser the brief lists; the runbook is
   corrected. Fix two, folded into R11: Settings renders the bundled-model
   case as a fact, not a failure.
+- **D-OPEN, fixed.** The symptom filed as D-READ ("the recovered-interrupted
+  meetings open to unavailable") had a second cause that survived both
+  reader fixes: every meeting opened by clicking a row after another meeting
+  was open came back `stale`, not only the interrupted ones. The reader
+  spends all row handles when a note is opened (`open_note_current` clears
+  them, a capability boundary from 2026-08-02), and the old list-then-detail
+  navigation refreshed the library on Back to Meetings before any second
+  open. Concept A's list beside the document removed that step, so the
+  second click reused a spent handle. Found by tracing `library_open_note`
+  in the installed preview after a probe test over a copy of the real
+  storage showed the reader itself admitting both meetings. Fix: openMeeting
+  takes a fresh snapshot before opening, the step reopenSelectedMeeting
+  already performed. Both reader fixes stand: the stranded-receipt shape
+  (89fe963) and the honest released-audio message (4180458) were each real,
+  and the second one was the only defect in the reader for the meetings on
+  this Mac.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the

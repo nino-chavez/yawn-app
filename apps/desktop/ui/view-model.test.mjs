@@ -1905,3 +1905,14 @@ test("a sidebar row for a recovered-interrupted meeting says interrupted, never 
   assert.equal(meta.needsAttention, true);
   assert.equal(libraryRowMetaPresentation({ transcriptAvailable: false }).label, "note only");
 });
+
+test("opening a meeting from the list takes a fresh library snapshot before spending a row handle", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function openMeeting(handle)");
+  const body = source.slice(start, source.indexOf("\n}\n", start));
+  const refresh = body.indexOf("await refreshLibrary();");
+  const load = body.indexOf("await loadSelectedMeeting(row,");
+  assert.ok(refresh > 0, "openMeeting refreshes the library");
+  assert.ok(load > refresh, "the refresh happens before the open");
+  assert.match(body, /candidate\.meetingId === known\.meetingId/);
+});

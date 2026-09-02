@@ -2311,14 +2311,24 @@ async function confirmLockedAction(handle, action) {
 }
 
 async function openMeeting(handle) {
-  const row = state.library?.rows?.find((candidate) => candidate.handle === handle);
-  if (!row) return;
+  const known = state.library?.rows?.find((candidate) => candidate.handle === handle);
+  if (!known) return;
   await flushSelectedNoteSave();
   state.trashOpen = false;
   await runBusy("meeting", async () => {
+    // The reader spends every row handle when a note is opened
+    // (library_reader.rs, open_note_current clears them), so a handle from
+    // the snapshot that opened the previous meeting is stale by the time the
+    // next row is clicked. The old list-then-detail navigation hid this: the
+    // only way to a second meeting was Back to Meetings, which refreshed.
+    // With the list beside the document, take the fresh snapshot here, the
+    // same step reopenSelectedMeeting already performs.
+    await refreshLibrary();
+    const row = state.library?.rows?.find((candidate) => candidate.meetingId === known.meetingId);
+    if (!row) return;
     let lockToken = null;
     if (row.locked) {
-      const confirmed = await confirmLockedAction(handle, "open");
+      const confirmed = await confirmLockedAction(row.handle, "open");
       if (!confirmed.proceed) {
         // Still show the meeting, so the reader lands on the barrier and its
         // sentence rather than on a list with a toast they may have missed.
