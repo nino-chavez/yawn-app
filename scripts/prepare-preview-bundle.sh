@@ -11,6 +11,7 @@ MAIN="$APP/Contents/MacOS/local-meeting-notes-desktop"
 CAPTURE="$RESOURCES/bin/meeting-capture"
 PROBE="$RESOURCES/bin/permission-probe"
 ENTITLEMENTS="$ROOT/apps/desktop/src-tauri/capture-entitlements.plist"
+PYTHON_ENTITLEMENTS="$ROOT/apps/desktop/src-tauri/python-entitlements.plist"
 EXPECTED_TEAM_ID="34VZ63G58M"
 REQUIRED_NOTE_RUNTIME_RESOURCES=(
   "note-bridge.py"
@@ -82,8 +83,41 @@ sign_bundle() {
   # make strict verification report an otherwise byte-identical bundle as
   # modified. Remove bundle metadata before creating the final code seals.
   xattr -cr "$APP"
-  codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$CAPTURE"
-  codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$PROBE"
+  if [[ "$identity" != "-" ]]; then
+    # A Developer ID identity is present, so give the preview the release
+    # lane's nested signing (scripts/sign-notarize.sh minus the Apple
+    # submission): every Mach-O hardened and timestamped, the interpreter
+    # under the bundle-derived identifier with the Python entitlements.
+    # SecurityCodeVerifier admits the note generator only against that
+    # shape; an ad-hoc bundle cannot generate a note by design
+    # (docs/note-runtime-decision.md, "Running a local build requires the
+    # release lane's signing stage").
+    local bundle_id python_identifier machos count
+    bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")"
+    python_identifier="${bundle_id}.python-runtime"
+    machos="$(mktemp)"
+    find "$APP" -type f -print0 \
+      | while IFS= read -r -d '' path; do
+          case "$(file -b "$path")" in Mach-O*) printf '%s\0' "$path" ;; esac
+        done > "$machos" || true
+    count=0
+    while IFS= read -r -d '' path; do
+      local sign_args=(--force --options runtime --timestamp --sign "$identity")
+      if [[ "$path" == "$RESOURCES/python-runtime/bin/python3.12" ]]; then
+        sign_args+=(--identifier "$python_identifier" --entitlements "$PYTHON_ENTITLEMENTS")
+      elif [[ "$path" == "$MAIN" || "$path" == "$CAPTURE" || "$path" == "$PROBE" ]]; then
+        sign_args+=(--entitlements "$ENTITLEMENTS")
+      fi
+      codesign "${sign_args[@]}" "$path"
+      count=$((count + 1))
+    done < "$machos"
+    rm -f "$machos"
+    [[ "$count" -gt 0 ]] || die "Preview app contains no Mach-O files"
+    echo "prepare-preview-bundle: $count Mach-O files signed with $identity"
+  else
+    codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$CAPTURE"
+    codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$PROBE"
+  fi
   manifest_args=()
   if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' \
       "$RESOURCES/app-runtime.json")" == "app-runtime/2" ]]; then
@@ -95,7 +129,11 @@ sign_bundle() {
   # Sign the enclosing app last. Signing CFBundleExecutable as a standalone
   # path first makes it seal the surrounding bundle; replacing the outer
   # signature afterward then invalidates that inner resource seal.
-  codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$APP"
+  if [[ "$identity" != "-" ]]; then
+    codesign --force --options runtime --timestamp --sign "$identity" --entitlements "$ENTITLEMENTS" "$APP"
+  else
+    codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$APP"
+  fi
   verify_bundle
 }
 
