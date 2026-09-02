@@ -9,9 +9,9 @@ use thiserror::Error;
 use crate::meeting::{
     AudioState, MAX_RECEIPT_BYTES, MICROPHONE_AUDIO_PATH, MICROPHONE_PARTIAL_AUDIO_PATH,
     MeetingError, MeetingLifecycle, MeetingRecord, SYSTEM_AUDIO_PATH, SYSTEM_PARTIAL_AUDIO_PATH,
-    artifact_ref, load_meeting, read_private_bytes, require_private_directory, resolve_artifact,
-    verify_artifact_ref, verify_record_static_artifacts, write_capture_interruption_receipt,
-    write_meeting,
+    artifact_ref, captured_capture_is_finalized, load_meeting, read_private_bytes,
+    require_private_directory, resolve_artifact, verify_artifact_ref, verify_record_artifacts,
+    verify_record_static_artifacts, write_capture_interruption_receipt, write_meeting,
 };
 use crate::retention::{
     MeetingRetentionResult, RetentionError, preflight_meeting_retention,
@@ -40,6 +40,11 @@ pub enum RecoveryDisposition {
     Valid,
     RecoveredInterrupted,
     RecoveredAudioDeletion,
+    /// A `captured` meeting whose capture genuinely finished: a legitimate
+    /// transcription source the background queue owns and retention defers to.
+    /// Startup names it here so it is never left to be silently fought over by
+    /// the queue and the retention pass; the record is not mutated.
+    CapturedAwaitingTranscription,
     Quarantined(RecoveryCode),
     OwnershipAmbiguous,
 }
@@ -177,6 +182,9 @@ fn recover_one(
     shutdown_grace: Duration,
 ) -> Result<OneMeeting, RecoveryOneError> {
     let mut meeting = load_meeting(meeting_dir).map_err(RecoveryOneError::Unclassifiable)?;
+    if meeting.lifecycle == MeetingLifecycle::Captured {
+        return recover_captured(meeting_dir, &mut meeting, now_epoch_seconds);
+    }
     if meeting.lifecycle != MeetingLifecycle::Incomplete {
         let result =
             reconcile_meeting_retention(meeting_dir, &mut meeting, now_epoch_seconds, true)?;
@@ -229,6 +237,71 @@ fn recover_one(
     Ok(OneMeeting::Disposition(
         RecoveryDisposition::RecoveredInterrupted,
     ))
+}
+
+/// Classify a `captured` meeting rather than folding it into the generic
+/// retention reconcile, which is what left a quit-mid-finalize meeting to be
+/// silently fought over by the transcription queue and the retention pass.
+///
+/// Two honest outcomes, decided by the on-disk capture receipt:
+///
+///   * A genuinely finalized capture (`capture-session/2`, status complete,
+///     audit blocks present) is a real transcription source. The background
+///     queue owns it and retention defers to it, so recovery only names it
+///     (`CapturedAwaitingTranscription`) and does not touch the record.
+///   * A capture that never finished (missing / incomplete / unreadable
+///     receipt) is salvaged into the same recovered-interrupted shape a
+///     crash-during-recording produces: the on-disk audio is bound, a fresh
+///     interruption receipt replaces the unfinished one, and the stale
+///     transcription obligation is cleared so the meeting reads honestly and
+///     carries its normal delete / trash actions instead of trapping the app.
+fn recover_captured(
+    meeting_dir: &Path,
+    meeting: &mut MeetingRecord,
+    now_epoch_seconds: u64,
+) -> Result<OneMeeting, RecoveryOneError> {
+    let finalized =
+        captured_capture_is_finalized(meeting_dir, meeting).map_err(RecoveryOneError::Meeting)?;
+    if finalized {
+        verify_record_artifacts(meeting_dir, meeting)?;
+        return Ok(OneMeeting::Disposition(
+            RecoveryDisposition::CapturedAwaitingTranscription,
+        ));
+    }
+    salvage_unfinalized_capture(meeting_dir, meeting)?;
+    let _ = reconcile_meeting_retention(meeting_dir, meeting, now_epoch_seconds, true)?;
+    Ok(OneMeeting::Disposition(
+        RecoveryDisposition::RecoveredInterrupted,
+    ))
+}
+
+/// Turn a quit-mid-finalize `captured` meeting into the recovered-interrupted
+/// shape. The capture is done (no live capture worker to signal, and startup
+/// stops every worker before this scan), so this only reconciles storage:
+/// discard the unfinished capture receipt, rebind whatever audio survived on
+/// disk, and drop the stale transcription request that would otherwise keep
+/// the audio pinned and refuse deletion.
+fn salvage_unfinalized_capture(
+    meeting_dir: &Path,
+    meeting: &mut MeetingRecord,
+) -> Result<(), RecoveryOneError> {
+    let session = meeting_dir.join("capture/session.json");
+    if fs::symlink_metadata(&session).is_ok() {
+        fs::remove_file(&session).map_err(|error| RecoveryOneError::Meeting(error.into()))?;
+    }
+    // The request references the capture-session digest we just discarded, so
+    // it can never be honored. Removing the whole per-meeting queue directory
+    // is the reclassification's own cleanup — it is not a mutation of a live,
+    // in-flight receipt, and it is what frees delete / retention from the
+    // "transcription still needs this audio" guard.
+    let queue_dir = meeting_dir.join("transcription-queue");
+    if fs::symlink_metadata(&queue_dir).is_ok() {
+        fs::remove_dir_all(&queue_dir).map_err(|error| RecoveryOneError::Meeting(error.into()))?;
+    }
+    meeting.artifacts.capture_session = None;
+    bind_interrupted_artifacts(meeting_dir, meeting)?;
+    write_meeting(meeting_dir, meeting)?;
+    Ok(())
 }
 
 fn bind_interrupted_artifacts(
@@ -926,5 +999,144 @@ mod tests {
         .unwrap();
         assert!(report.blocks_capture);
         assert_eq!(fs::read(directory.join("meeting.json")).unwrap(), before);
+    }
+
+    /// A `captured` meeting with real audio, an ownership receipt, a pending
+    /// transcription request, and the given `capture/session.json` bytes.
+    fn write_captured(storage: &StorageRoot, id: &str, session_json: &[u8]) -> PathBuf {
+        let directory = meeting_dir(storage, id).unwrap();
+        create_private_dir(&directory).unwrap();
+        create_private_dir(&directory.join("capture")).unwrap();
+        create_private_dir(&directory.join("transcription-queue")).unwrap();
+        durable_create_new(&directory.join("attempt.json"), b"attempt").unwrap();
+        durable_create_new(
+            &directory.join("ownership.json"),
+            &serde_json::to_vec_pretty(&ownership(identity(90, 10))).unwrap(),
+        )
+        .unwrap();
+        durable_create_new(&directory.join("capture/session.json"), session_json).unwrap();
+        durable_create_new(&directory.join("capture/mic.wav"), &private_wav(1)).unwrap();
+        durable_create_new(&directory.join("capture/system.wav"), &private_wav(2)).unwrap();
+        // A request receipt keeps the transcription obligation alive, exactly as
+        // the live poisoned meeting carried one.
+        durable_create_new(
+            &directory.join("transcription-queue/request.json"),
+            b"request",
+        )
+        .unwrap();
+        let rule = AudioRetentionRule::DeleteAfter { seconds: 30 };
+        let meeting = MeetingRecord {
+            schema: MeetingSchema::V2,
+            meeting_id: id.into(),
+            lifecycle: MeetingLifecycle::Captured,
+            retention: AudioRetention {
+                policy_sha256: retention_policy_sha256(&rule),
+                rule,
+                next_deletion_at_epoch_seconds: Some(1_000_000),
+                state: AudioState::Retained,
+                deletion_receipt: None,
+            },
+            artifacts: MeetingArtifacts {
+                attempt: artifact_ref(&directory, "attempt.json").unwrap(),
+                ownership: Some(artifact_ref(&directory, "ownership.json").unwrap()),
+                capture_session: Some(artifact_ref(&directory, "capture/session.json").unwrap()),
+                microphone_audio: Some(artifact_ref(&directory, "capture/mic.wav").unwrap()),
+                system_audio: Some(artifact_ref(&directory, "capture/system.wav").unwrap()),
+                current_transcript: None,
+                current_note: None,
+            },
+            pending_storage_operation: None,
+        };
+        durable_create_new(
+            &directory.join("meeting.json"),
+            &serde_json::to_vec_pretty(&meeting).unwrap(),
+        )
+        .unwrap();
+        directory
+    }
+
+    fn complete_session_receipt() -> Vec<u8> {
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "schema": "capture-session/2",
+            "status": "complete",
+            "started_at": "2026-09-01T02:58:28+0000",
+            "finalized_at": "2026-09-01T19:58:48-0700",
+            "health": {"schema": "capture-health/1", "usable": true},
+            "reconciliation": {"legs": {}},
+            "artifacts": []
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn finalized_captured_meeting_is_classified_awaiting_transcription_without_mutation() {
+        let (_temp, storage) = make_storage();
+        let directory = write_captured(&storage, "finalized", &complete_session_receipt());
+        let before = fs::read(directory.join("meeting.json")).unwrap();
+        let before_session = fs::read(directory.join("capture/session.json")).unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            1_000,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(!report.blocks_capture);
+        assert_eq!(
+            report.meetings[0].disposition,
+            RecoveryDisposition::CapturedAwaitingTranscription
+        );
+        // A legitimate transcription source is named, never rewritten: the
+        // record, its finished receipt, and its pending request all survive.
+        assert_eq!(fs::read(directory.join("meeting.json")).unwrap(), before);
+        assert_eq!(
+            fs::read(directory.join("capture/session.json")).unwrap(),
+            before_session
+        );
+        assert!(directory.join("transcription-queue/request.json").exists());
+        assert_eq!(
+            load_meeting(&directory).unwrap().lifecycle,
+            MeetingLifecycle::Captured
+        );
+    }
+
+    #[test]
+    fn unfinalized_captured_meeting_is_salvaged_to_recovered_interrupted() {
+        let (_temp, storage) = make_storage();
+        // Quit mid-finalize: the receipt on disk is not a finished
+        // capture-session/2 (here, unparseable), while the audio survived.
+        let directory = write_captured(&storage, "unfinalized", b"not-a-finished-session");
+
+        let report = scan_and_recover(
+            &storage,
+            1_000,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(!report.blocks_capture);
+        assert_eq!(
+            report.meetings[0].disposition,
+            RecoveryDisposition::RecoveredInterrupted
+        );
+        let meeting = load_meeting(&directory).unwrap();
+        assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
+        assert_eq!(meeting.retention.state, AudioState::Retained);
+        // The audio is bound and re-described by a fresh interruption receipt,
+        // and the stale transcription obligation is gone so delete / retention
+        // no longer choke on it.
+        assert!(directory.join("capture/mic.wav").exists());
+        assert!(directory.join("capture/system.wav").exists());
+        assert!(!directory.join("transcription-queue").exists());
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.join("capture/session.json")).unwrap())
+                .unwrap();
+        assert_eq!(receipt["schema"], "capture-interruption/1");
+        verify_record_artifacts(&directory, &meeting).unwrap();
     }
 }

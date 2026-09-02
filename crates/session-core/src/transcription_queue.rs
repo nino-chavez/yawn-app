@@ -281,12 +281,12 @@ impl<'a> TranscriptionQueue<'a> {
         if worker_runtime_identity.is_empty() || worker_runtime_identity.len() > 256 {
             return Err(TranscriptionQueueError::Malformed("worker identity"));
         }
-        if self
-            .discover()?
-            .items
-            .iter()
-            .any(|item| item.request.request_id != request_id && item.claim.is_some())
-        {
+        if self.discover()?.items.iter().any(|item| {
+            item.request.request_id != request_id
+                && item.claim.is_some()
+                && item.commit.is_none()
+                && item.terminal.is_none()
+        }) {
             return Err(TranscriptionQueueError::AlreadyClaimed);
         }
         let (dir, meeting_dir) = self.locate(request_id)?;
@@ -314,8 +314,17 @@ impl<'a> TranscriptionQueue<'a> {
         self.load_item(&dir, request_id)
     }
 
-    /// Recover a worker crash by appending an immutable release receipt. The
-    /// source is checked again, so stale or changed audio cannot be reclaimed.
+    /// Recover a worker crash by appending an immutable release receipt.
+    ///
+    /// For an item still in flight, the source is checked again so stale or
+    /// changed audio cannot be reclaimed. For an item whose transcription has
+    /// already settled — a committed result or a terminal — the claim is stale
+    /// by definition: the worker that held it is gone and the audio it once
+    /// pointed at may legitimately no longer be a `Captured` source (a commit
+    /// advances the meeting to `TranscriptReady`). Releasing such a claim must
+    /// not depend on that source gate, or recovery loops forever refusing to
+    /// clear a leftover claim on a finished item — the exact wedge that starved
+    /// the whole queue and left a quit-mid-finalize meeting stuck at `captured`.
     pub fn release_claim(
         &self,
         request_id: Uuid,
@@ -324,8 +333,10 @@ impl<'a> TranscriptionQueue<'a> {
     ) -> Result<TranscriptionQueueItem, TranscriptionQueueError> {
         let (dir, meeting_dir) = self.locate(request_id)?;
         let item = self.load_item(&dir, request_id)?;
-        let meeting = self.load_source(&meeting_dir, &item.request)?;
-        verify_source(&meeting_dir, &meeting, &item.request)?;
+        if item.commit.is_none() && item.terminal.is_none() {
+            let meeting = self.load_source(&meeting_dir, &item.request)?;
+            verify_source(&meeting_dir, &meeting, &item.request)?;
+        }
         let claim = item
             .claim
             .as_ref()
@@ -886,6 +897,47 @@ mod tests {
             .unwrap();
         let reclaimed = queue.claim(other.request_id, "worker/b".into(), 4).unwrap();
         assert!(reclaimed.claim.is_some());
+    }
+
+    #[test]
+    fn a_committed_item_with_a_lingering_claim_can_be_released() {
+        // Reproduces the D-LOCK wedge: a worker committed a transcript but the
+        // process died before its claim-release receipt was written, and the
+        // commit advanced the meeting from Captured to TranscriptReady. Startup
+        // recovery must be able to clear that stale claim; the old release path
+        // demanded a still-Captured source and refused it with IneligibleMeeting,
+        // which the recovery loop retried forever at 4 Hz and never got past to
+        // transcribe any other meeting.
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request.clone()).unwrap();
+        let claim = queue
+            .claim(request.request_id, "worker/a".into(), 2)
+            .unwrap();
+        let bytes = br#"{"schema":"transcript/1","turns":[]}"#;
+        let reference = ArtifactRef {
+            relative_path: format!("transcript/{}.json", digest_bytes(bytes)),
+            sha256: digest_bytes(bytes),
+        };
+        queue
+            .admit_result(request.request_id, bytes, reference, 4)
+            .unwrap();
+        queue.commit(request.request_id, 5).unwrap();
+        assert_eq!(
+            load_meeting(&storage.path().join("meetings/meeting-a"))
+                .unwrap()
+                .lifecycle,
+            MeetingLifecycle::TranscriptReady
+        );
+
+        let released = queue
+            .release_claim(request.request_id, claim.claim.as_ref().unwrap().claim_id, 6)
+            .unwrap();
+        assert!(
+            released.claim.is_none(),
+            "the stale claim on a committed item is cleared, not left to loop"
+        );
+        assert!(released.commit.is_some());
     }
 
     #[test]

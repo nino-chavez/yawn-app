@@ -67,6 +67,12 @@ struct DeletedArtifact {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RetentionOutcome {
     DeferredActive(String),
+    /// The meeting's audio is still needed by pending transcription work, so
+    /// its retention deadline is deferred rather than acted on. This is a
+    /// "not yet", not a failure: it must never be collapsed with
+    /// `Quarantined`, which is what caused one un-transcribed meeting to mark
+    /// retention app-wide unavailable and block all recording.
+    DeferredTranscription(String),
     NotDue(String),
     AudioReleased(String),
     RecoveredRemoval(String),
@@ -1056,9 +1062,26 @@ pub fn execute_due_retention_excluding(
             continue;
         }
         let meeting_dir = entry.path();
+        // The transcription-safety check is split out from the reconcile: it
+        // reports "this audio is still needed", which is a deferral, not a
+        // damaged meeting. Only its `UnexplainedAudioLoss` return means "a
+        // pending transcription request still points at this audio"; any other
+        // error from it is a genuine queue-storage failure and is quarantined
+        // like a reconcile failure.
+        let transcription_pending =
+            match ensure_transcription_safe_for_destructive_work(storage, &id) {
+                Ok(()) => None,
+                Err(RetentionError::UnexplainedAudioLoss) => {
+                    Some(RetentionOutcome::DeferredTranscription(id.clone()))
+                }
+                Err(_) => Some(RetentionOutcome::Quarantined(id.clone())),
+            };
+        if let Some(outcome) = transcription_pending {
+            outcomes.push(outcome);
+            continue;
+        }
         let result = (|| {
             let mut meeting = load_meeting(&meeting_dir)?;
-            ensure_transcription_safe_for_destructive_work(storage, &id)?;
             reconcile_meeting_retention(&meeting_dir, &mut meeting, now_epoch_seconds, true)
         })();
         outcomes.push(match result {
@@ -2221,14 +2244,20 @@ mod tests {
     }
 
     #[test]
-    fn due_retention_quarantines_the_only_captured_orphan() {
+    fn due_retention_defers_the_captured_orphan_awaiting_transcription() {
         let (_temp, storage) = storage();
         let (directory, _meeting) = fixture(&storage, "captured-orphan", Some(10));
         fs::remove_dir(directory.join("transcription-queue")).unwrap();
 
+        // A captured meeting whose audio is still needed by transcription (here
+        // an orphan surfaced by queue discovery) is deferred, not quarantined:
+        // "transcription still needs this", not "this meeting is damaged". The
+        // distinction is load bearing — collapsing the two is what let one
+        // un-transcribed meeting mark retention app-wide unavailable and block
+        // all recording (D-LOCK).
         assert_eq!(
             execute_due_retention(&storage, 10).unwrap(),
-            vec![RetentionOutcome::Quarantined("captured-orphan".into())]
+            vec![RetentionOutcome::DeferredTranscription("captured-orphan".into())]
         );
         assert!(directory.join("capture/mic.wav").exists());
         assert!(directory.join("capture/system.wav").exists());

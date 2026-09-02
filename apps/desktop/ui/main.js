@@ -1,6 +1,7 @@
 import {
   backgroundTranscriptionPresentation,
   canOpenStart,
+  contentView,
   captureActivity,
   captureActivityElapsedSeconds,
   capturePresentation,
@@ -335,16 +336,25 @@ function render() {
   // rather than re-derived, so the first-run sheet can never show over a
   // startup screen, an active capture, or a meeting/Trash view.
   let isHomeReady = false;
-  if (!invoke) content = renderBrowserNotice();
-  else if (!state.snapshot || state.snapshot.startup === "checking") content = renderStartup(true);
-  else if (state.snapshot.startup === "model-required") content = renderModelSetup();
-  else if (state.snapshot.startup !== "ready") content = renderStartup(false);
-  else if (state.snapshot.capture !== "idle") content = renderCapture();
-  else if (state.selected) content = renderMeeting();
-  else if (state.trashOpen) content = renderTrash();
-  else {
-    content = renderHome();
-    isHomeReady = true;
+  // Single router seam (see contentView): every needs-attention state that is
+  // not a genuine startup failure still resolves to a reachable library, so
+  // "Back to Meetings" never lands on a screen with no way out.
+  switch (contentView({
+    hasInvoke: Boolean(invoke),
+    snapshot: state.snapshot,
+    hasSelected: Boolean(state.selected),
+    trashOpen: Boolean(state.trashOpen),
+  })) {
+    case "browser-notice": content = renderBrowserNotice(); break;
+    case "startup-checking": content = renderStartup(true); break;
+    case "model-setup": content = renderModelSetup(); break;
+    case "startup-attention": content = renderStartup(false); break;
+    case "capture": content = renderCapture(); break;
+    case "meeting": content = renderMeeting(); break;
+    case "trash": content = renderTrash(); break;
+    default:
+      content = renderHome();
+      isHomeReady = true;
   }
   // Only when Home is what's showing, no other sheet is already open, and
   // the library has loaded with zero meetings still undismissed. See

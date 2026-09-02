@@ -6,6 +6,7 @@ import {
   backgroundTranscriptionPresentation,
   canOpenStart,
   canStartMeeting,
+  contentView,
   captureActivity,
   captureActivityElapsedSeconds,
   captureIsInProgress,
@@ -1591,4 +1592,34 @@ test("popover state lives outside the patched tree, and the split's own state su
   // do for their own concerns.
   assert.match(source, /syncEvidenceSplitScroll\(\);\s*dismissEvidencePopoverIfDetached\(\);/);
   assert.match(source, /evidenceSplit: \{ open: false, ordinal: null, turnIndex: null \}/);
+});
+
+test("Back to Meetings reaches the library from every needs-attention state (D-LOCK Order 4)", () => {
+  // A needs-attention condition that is not a genuine startup failure never
+  // hides the library: with startup ready and capture idle, the router always
+  // resolves to home — which is exactly the state dismiss_meeting ("Back to
+  // Meetings") lands in, even while retention is degraded and an error banner
+  // is showing.
+  const homeReady = { startup: "ready", capture: "idle", error: "Audio retention needs attention before another meeting can start." };
+  assert.equal(contentView({ hasInvoke: true, snapshot: homeReady }), "home");
+
+  // The capture terminal states carry a "Back to Meetings" affordance; leaving
+  // (dismiss) always returns to that same reachable home.
+  for (const capture of ["transcript-ready", "transcription-failed", "recovered-interrupted"]) {
+    assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "ready", capture } }), "capture");
+    // After dismiss: capture goes idle, startup stays ready -> home.
+    assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "ready", capture: "idle" } }), "home");
+  }
+
+  // Selecting a meeting or opening trash is still reachable and leaves cleanly.
+  assert.equal(contentView({ hasInvoke: true, snapshot: homeReady, hasSelected: true }), "meeting");
+  assert.equal(contentView({ hasInvoke: true, snapshot: homeReady, trashOpen: true }), "trash");
+
+  // Only a genuine startup failure preempts the shell — an honest "the app
+  // cannot function yet" state, not a per-meeting condition dressed up as one.
+  assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "runtime-missing", capture: "idle" } }), "startup-attention");
+  assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "diagnostic-written", capture: "idle" } }), "startup-attention");
+  assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "checking" } }), "startup-checking");
+  assert.equal(contentView({ hasInvoke: true, snapshot: { startup: "model-required" } }), "model-setup");
+  assert.equal(contentView({ hasInvoke: false, snapshot: homeReady }), "browser-notice");
 });

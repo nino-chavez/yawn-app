@@ -142,6 +142,29 @@ export function transcriptionWorkerHeartbeatAgeSeconds(snapshot, nowEpochSeconds
   return Math.max(0, Math.floor(nowEpochSeconds - observedAt));
 }
 
+// The single source of truth for which top-level surface renders, extracted
+// from render() so the router's honesty is testable without a DOM.
+//
+// Order matters and is deliberate: the startup screen preempts everything only
+// while the app genuinely cannot function yet (still checking, choosing a
+// model, or a real installation failure). A per-meeting or retention
+// needs-attention condition is NOT one of those — it never sets a non-ready
+// startup, so it can never hide the library. That is the D-LOCK Order-4 rule
+// made structural: "Back to Meetings" (dismiss → capture idle, startup ready)
+// always resolves to "home", from every needs-attention state, so the library
+// and its per-meeting delete/trash actions are always reachable.
+export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpen = false } = {}) {
+  if (!hasInvoke) return "browser-notice";
+  const startup = snapshot?.startup;
+  if (!snapshot || startup === "checking") return "startup-checking";
+  if (startup === "model-required") return "model-setup";
+  if (startup !== "ready") return "startup-attention";
+  if (snapshot.capture !== "idle") return "capture";
+  if (hasSelected) return "meeting";
+  if (trashOpen) return "trash";
+  return "home";
+}
+
 export function canStartMeeting(snapshot) {
   const backgroundJobs = Number(snapshot?.background_transcription_queued_count) || 0;
   return snapshot?.startup === "ready"
