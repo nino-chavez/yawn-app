@@ -120,6 +120,13 @@ from it, all inside the selected direction:
 | R18 | Settings (04, 07): content clipped at the 720 window with no scroll cue; bordered cards read as a web settings page; five to six type levels; "1.61 GB" and "In use" hard to read | Grouped-list rows without the card border, a scrollable window that shows its scrollbar, type held to 13 body and 11 caption, size and badge at body size |
 | R19 | Button family (08, all): "Got it" is a near-white one-off; Record is bare red text that reads as a link | "Got it" becomes the specimen `.btn.primary`; Record keeps its color but takes the `.btn` bezel |
 
+Landed 2026-09-02 evening, verified on the installed preview: R15 (92ab547,
+opaque backdrop, copy names the permission step), R16 (d04e143 and 73d68c9,
+title kept, block centered with one left edge), R17 (d04e143, notes box sized
+to a few lines, caption under it, placeholder at label-3), R19 (d04e143, Got
+it is the specimen primary; Record already carried the bezel and reads bare
+only because it is disabled in the preview). R18 in progress.
+
 ## What the live apps changed
 
 The 2026-08-16 desktop comparison checked Granola 7.478.0, Wispr Flow
