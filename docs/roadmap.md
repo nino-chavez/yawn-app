@@ -100,6 +100,24 @@ under the build hash. Two defects the honest surface exposed:
   are released in that state, and the app already treats
   `Idle | TranscriptReady` as safe for other operations. One helper now
   owns the check for both gates, with a unit test.
+- **D-NOTE-STAGE, open: no packaged build can generate a note.** Pressing
+  Generate note on the transcript-only meeting in the installed preview
+  ends in "This action is not available right now. Try again." The cause is
+  packaging, not the meeting: `worker/note_generator_mlx.py` imports
+  `mlx_lm`, and `note_bridge.py` (bf082ce, 2026-08-16) looks for it in a
+  private `python-runtime/lib/python3.12/generate-site-packages/` tree that
+  `worker/build_runtime.sh` never stages. The 2026-08-16 end-to-end run in
+  `note-runtime-decision.md` used a hand-installed tree, and the preview
+  lane's `runtime-fresh` step rebuilds the runtime without it. Neither the
+  preview bundle nor `/Applications/Yawn.app` has the directory today. Two
+  consequences: the toast says "Try again" for a condition that cannot
+  change, and the Generate note control is offered without checking that a
+  generator is admitted. The attempt also leaves a nonterminal operation
+  record that refuses every later attempt for that meeting (the known gap
+  the decision document names); the one from this session was removed by
+  hand. Fix in two slices: stage the isolated tree from a hash-pinned lock
+  in `build_runtime.sh` with a verify step, and surface generator admission
+  to the meeting snapshot so the control and its copy state the fact.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
