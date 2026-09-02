@@ -1,41 +1,47 @@
-# Installed-app captures — e7e96f9 preview, 2026-09-01 evening
+# Installed-app captures — e7e96f9 preview, 2026-09-01 evening (corrected)
 
-Device: this Mac, packaged Yawn Preview.app (ad-hoc signed), real window at
-its default 960x900 frame; captures are 1085x910pt regions at 2x
-(screencapture -R), window position default-centered. Operator authorized the
-session; storage staging below was reversible and restored after each state.
+Device: this Mac, packaged Yawn Preview.app. CORRECTION: the first commit of
+this manifest shipped three invalid captures; a blind cold reviewer caught it
+from the frames, and the read-back audit confirmed. The lesson is now a rule
+for this directory: a capture is not evidence until the FILE has been read
+back and matched against the intended state — watching the screen at capture
+time does not verify what landed on disk.
 
-| File | State | How staged |
+Valid captures:
+
+| File | State | Notes |
 |---|---|---|
-| 01-home-first-run-sheet | First-run three-moments sheet over blurred Home | first-run-seen.flag removed; meetings dir set aside (restored after) |
-| 02-home-first-run-empty-state | Teaching empty state + guided invitation | Got it clicked on the state above |
-| 03-home-with-meetings | Library with four real meetings | true storage, no staging |
-| 04-after-meeting-view | Meeting read surface with the live pause receipt ("paused 1 time, for 0:03") | opened the morning's real pause-take |
-| 07-needs-attention-retention | Retention-attention banner on the terminal capture view | occurred naturally (see defect note) |
-| 07b-needs-attention-blocking | Full blocking screen, "Yawn cannot record yet" | occurred naturally (see defect note) |
+| 02-home-first-run-empty-state | Teaching empty state + guided invitation (genuine) | Contaminated at the right edge by an overlapping unrelated window; content legible. CONFIRMED REAL FINDING: the copy says "Press Record" but on a true first run the only rendered button is "Allow system audio" — the instruction names a control that does not exist until audio setup completes. |
+| 07-needs-attention-retention | Terminal capture view with the retention banner | The same blocking sentence rendered as an unstyled footnote beside an apparently-enabled "Record another meeting" — one condition, two contradictory severities (see 07b). |
+| 07b-needs-attention-blocking | Full blocking screen, "Yawn cannot record yet" | Check again loops; no cause, no destination. |
 
-Not captured, with reasons:
-- Settings (state observed loaded and correct — privacy table + model card —
-  but the shell screen-recording grant was one-time and expired mid-run).
-- During capture / Paused (same permission expiry; both states were observed
-  live earlier today in this build).
-- Withheld transcript turn (no withheld turns exist in this Mac's real data;
-  never staged synthetically per the brief).
-- Large text / increased contrast (system-settings changes are operator-run).
+Removed as invalid (why, exactly):
+- 01 (intended: first-run sheet): full-screen capture landed on a different
+  app's fullscreen space — the frame shows an unrelated terminal. The sheet
+  itself WAS observed rendering correctly (viewfinder screenshot in the
+  session transcript), but no valid file exists; recapture owed.
+- 03 (intended: library) and 04 (intended: meeting view with the pause
+  receipt): both region captures show the blocking screen instead — during
+  the D-LOCK incident the router was REASSERTING the blocker on a cycle,
+  and it flipped the view between the staging click and the shell capture.
+  Both intended states were observed live (transcript); recapture owed.
+  The reassertion cycle itself is evidence for D-LOCK's fix scope: the
+  blocked app flaps between the terminal view and the blocker.
 
-## Two live defects found during this pass (not staged, real)
+Still owed once screen-recording is re-granted (the grant was one-time):
+first-run sheet, library, meeting view with pause receipt, Settings, During,
+Paused. Withheld-turn: no data exists; never staged. Accessibility states:
+operator-run.
 
-1. HARD LOCK, quit-during-finalize: a recording stopped normally but the app
-   was quit seconds later, mid-worker-finalize. The resulting meeting
-   (lifecycle "captured", session.json never finalized) is refused by the
-   transcription queue ("not eligible", 8 diagnostics), quarantined by the
-   retention pass ("quarantined without mutation"), and then BLOCKS ALL
-   RECORDING: the blocker screen's Check again loops, and Back to Meetings
-   routes INTO the blocker — the library is unreachable, so the stuck
-   meeting cannot even be deleted in-app. Zero in-app recovery. Unblocked
-   out-of-band by moving the meeting dir to quarantine-evidence/ (preserved
-   beside the storage root). Crash-during-recording has recovery;
-   quit-during-finalize has none.
+## Two live defects found during this pass (unchanged, real)
+
+1. HARD LOCK, quit-during-finalize: recording stopped normally, app quit
+   mid-finalize; the unfinalized meeting is refused by the transcription
+   queue, quarantined by retention, and blocks ALL recording. Check again
+   loops; Back to Meetings routes INTO the blocker; the library is
+   unreachable. Zero in-app recovery. Evidence preserved at
+   quarantine-evidence/ beside the storage root. Additional observation:
+   while blocked, the router flaps between the terminal capture view and
+   the blocker, and the same condition renders at two contradictory
+   severities (07 vs 07b).
 2. Cryptic toast: "The installation check is not waiting for a retry."
-   surfaced to the operator during the blocked state — internal-state
-   vocabulary, no operator meaning, no action.
