@@ -453,12 +453,22 @@ running the probe's request modes from an unsigned binary mutates the calling
 application's TCC state and answers about the wrong binary.
 
 ```bash
-worker/build_runtime.sh build-alpha
+worker/build_runtime.sh build-alpha-external
 cd apps/desktop && npm run preview-build     # tauri build + prepare-preview-bundle.sh sign
 npm run preview-verify
 ```
 
-**It needs `build-alpha`, not `build`, and the reason is a real boundary rather than
+**Stage `build-alpha-external`, the same runtime the release lane ships (§ "Build
+and notarize", `DEPLOYMENT.md`).** Until 2026-09-02 this section said `build-alpha`,
+which bundles Whisper and writes an `app-runtime/1` manifest with no model catalog.
+A Preview built on it answers Settings with "this build does not use downloadable
+speech models", so the model chooser the experience brief lists as a reviewed
+surface never renders, and the screen review judges a state the shipped app never
+shows (roadmap, D-MODEL). `prepare-preview-bundle.sh` already handles the
+`app-runtime/2` manifest. Any `build-alpha*` mode satisfies the boundary below;
+`build` does not.
+
+**It needs a `build-alpha*` mode, not `build`, and the reason is a real boundary rather than
 an oversight.** `prepare-preview-bundle.sh` hard-requires
 `Contents/Resources/bin/meeting-capture`, and only `build-alpha*` stages it. The
 default `build` lane is deliberately a *boundary* runtime: it stages

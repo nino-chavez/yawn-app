@@ -50,19 +50,38 @@ in Minder's schema, regenerating `ui/tokens.css`, `npm run tokens:check`).
 Installed captures and their manifest: `evidence/screen-reviews/captures/`
 under the build hash. Two defects the honest surface exposed:
 
-- **D-READ, real.** The library reader returns an unavailable note with no
-  handles for a recovered-interrupted meeting whose capture files are
-  partials (`.mic.wav.partial`), so the two such meetings on this Mac open
-  to "This meeting is unavailable." The previous UI drew the workspace
-  regardless and hid the failure. Fix belongs in `library_reader.rs`
-  (artifact verification must admit a recovered capture) with a
-  lifecycle-aware response; the UI already renders whatever the reader
-  admits.
-- **D-MODEL, open.** Settings reports "Couldn't check speech model" in the
-  preview bundle. Excluded so far: runtime manifest hashes (all 11 match)
-  and the catalog id (the stored active model is listed). Remaining
-  suspects: model-file verification in the storage models directory, or
-  the private workspace lookup.
+- **D-READ, fixed (89fe963).** The library reader returned an unavailable
+  note with no handles for a recovered-interrupted meeting whose capture
+  files were partials (`.mic.wav.partial`). Root cause, reproduced with a
+  `scan_and_recover` fixture: a quit mid-finalize can leave a genuine
+  `capture-session/2` completion receipt on disk before the partial legs are
+  renamed and before `meeting.json` learns the receipt exists. Recovery's
+  incomplete-lifecycle path reused that receipt verbatim, and the receipt
+  verifier correctly refused a complete-session receipt naming partial legs,
+  so the meeting was quarantined instead of recovered. The fix is in
+  `bind_interrupted_artifacts` (session-core): a stranded but parseable
+  completion receipt is replaced; anything else stays quarantined untouched.
+  The note response gains the state value `recovered-interrupted`, and
+  `LibrarySnapshotRow` gains `durationSeconds` (from the retained leg's own
+  header and real file size) and `recovery` for R10.
+- **D-MODEL, cause found; two fixes.** The preview bundle's runtime is
+  `app-runtime/1` with no `model_catalog`, because the preview lane in the
+  distribution runbook stages `build-alpha` (bundled Whisper), while
+  `DEPLOYMENT.md` and the model-hosting section stage
+  `build-alpha-external`. On a bundled-model runtime the backend answers
+  "this build does not use downloadable speech models", which is a fact,
+  and `settings.js` swallowed it in a bare catch and printed the failure
+  copy. The stored active model verifies cleanly (catalog, receipt, digests).
+  Fix one: the preview lane now stages `build-alpha-external` so the
+  Settings surface reviews the model chooser the brief lists; the runbook is
+  corrected. Fix two, folded into R11: Settings renders the bundled-model
+  case as a fact, not a failure.
+- **Known gate failure, unrelated.** `local-meeting-notes-session-core`
+  fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
+  since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
+  corpus-question receipt was produced. The test's own message names the
+  remedy: re-run the probe. It fails identically at 956537c, before any
+  work in this wave.
 
 Blind cold review of the rebuilt installed app
 (`evidence/screen-reviews/all-surfaces-2765401-installed-cold.md`): seven of
