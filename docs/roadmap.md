@@ -530,7 +530,26 @@ two shipping bugs:
   ambiguous copy); the preview packaging script's empty manifest_args
   broke under macOS bash 3.2 on an app-runtime/1 staging (fixed on main).
 
-**Live-run defects — 2026-09-01 evening (installed-app capture pass).**
+**Live-run defects — FIXED 2026-09-02 (chip session, reviewed and merged).**
+Root cause went one layer deeper than the original filing: a committed
+transcription-queue item held a live claim with no release receipt (the
+worker died between commit and claim-release), and scan recovery's
+release_claim refused it forever — retrying at ~4 Hz (48,650 diagnostics,
+190 MB, pruned to samples) and starving every later transcription. Retention
+then collapsed "transcription still needs this audio" with "damaged
+meeting", and any quarantine flipped a global flag that blocked all
+recording. Fixed: release_claim skips the source gate for committed/terminal
+items; retention defers instead of quarantining pending-transcription
+meetings; a per-meeting quarantine never refuses app-wide readiness;
+scan_and_recover classifies captured meetings (finalized -> awaiting
+transcription; quit-mid-finalize -> honest recovered-interrupted, stale
+queue obligation cleared); the router keeps the library reachable from
+every needs-attention state; the no-pending-retry toast is silenced.
+Verified against the preserved quarantine-evidence meeting in throwaway
+storage. Owed: the cold screen review of the changed surfaces (blocked on
+the screen-recording re-grant), and the packaged preview rebuild.
+
+**Original filing — 2026-09-01 evening (installed-app capture pass).**
 Two real defects found and evidenced (docs/evidence/screen-reviews/captures/
 e7e96f9-installed/MANIFEST.md):
 
