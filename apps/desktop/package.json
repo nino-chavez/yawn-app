@@ -4,6 +4,8 @@
   "version": "0.5.9",
   "scripts": {
     "test:ui": "node --test ui/*.test.mjs",
+    "tokens": "node ../../packages/design-tokens/generate.js",
+    "tokens:check": "node ../../packages/design-tokens/generate.js --check",
     "tauri": "tauri",
     "dev": "tauri dev",
     "runtime-fresh": "python3 ../../worker/source_digest.py check runtime",
