@@ -40,6 +40,30 @@ frames. Owed next: the implementation wave that rebuilds Home and the
 meeting view to concept A, carrying the D-LOCK, D-TOAST, and R-series
 findings unchanged, then a cold review of the rebuilt installed app.
 
+**Implementation wave landed — 2026-09-02 afternoon.** Three worktree agents
+rebuilt the surface to concept A: the main window (toolbar, day-grouped
+sidebar, document pane, inspector; 123 UI tests), the native shell (1080x900
+window, File and View menus emitting menu events, Preferences-style
+Settings, a cached runtime-manifest verification that ends the permanent
+"Checking speech model" state), and the token port (`packages/design-tokens`
+in Minder's schema, regenerating `ui/tokens.css`, `npm run tokens:check`).
+Installed captures and their manifest: `evidence/screen-reviews/captures/`
+under the build hash. Two defects the honest surface exposed:
+
+- **D-READ, real.** The library reader returns an unavailable note with no
+  handles for a recovered-interrupted meeting whose capture files are
+  partials (`.mic.wav.partial`), so the two such meetings on this Mac open
+  to "This meeting is unavailable." The previous UI drew the workspace
+  regardless and hid the failure. Fix belongs in `library_reader.rs`
+  (artifact verification must admit a recovered capture) with a
+  lifecycle-aware response; the UI already renders whatever the reader
+  admits.
+- **D-MODEL, open.** Settings reports "Couldn't check speech model" in the
+  preview bundle. Excluded so far: runtime manifest hashes (all 11 match)
+  and the catalog id (the stored active model is listed). Remaining
+  suspects: model-file verification in the storage models directory, or
+  the private workspace lookup.
+
 ## What the live apps changed
 
 The 2026-08-16 desktop comparison checked Granola 7.478.0, Wispr Flow
