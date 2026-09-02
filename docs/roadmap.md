@@ -139,8 +139,10 @@ three type sizes, one primary per group, scrollable window; 88da6b6 buttons
 at the specimen size and weight). Captures of 88da6b6 filed under
 `docs/evidence/screen-reviews/captures/88da6b6-installed/`; blind review
 filed (all-surfaces-88da6b6-installed-cold.md): six accept, two revise, both
-windows read as native. R20 fixed (10c434a), pending the next installed
-capture.
+windows read as native. R20 (10c434a) and D-GATE (9fe067d) verified on the
+installed preview; frames under
+`captures/10c434a-installed-addendum/`. Not yet captured on any installed
+build: During, Paused, and a meeting with a generated note and its inspector.
 
 ## What the live apps changed
 
