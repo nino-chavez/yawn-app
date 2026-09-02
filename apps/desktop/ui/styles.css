@@ -786,8 +786,9 @@ h3 {
    which main.js sets unconditionally at load). */
 .note-section h3 {
   margin-bottom: 12px;
-  font-size: var(--t-body);
+  font-size: var(--t-read);
   font-weight: 600;
+  line-height: var(--lh-read);
   letter-spacing: normal;
   color: var(--label-2);
 }
@@ -836,8 +837,9 @@ h3 {
 
 .meeting-note-section h3 {
   margin: 0 0 10px;
-  font-size: var(--t-body);
+  font-size: var(--t-read);
   font-weight: 600;
+  line-height: var(--lh-read);
   letter-spacing: normal;
   color: var(--label-2);
 }
@@ -887,8 +889,7 @@ h3 {
   line-height: var(--leading-reading);
 }
 
-.transcript-highlights,
-.transcript-disclosure {
+.transcript-highlights {
   margin-top: 22px;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -896,8 +897,7 @@ h3 {
   background: var(--paper-soft);
 }
 
-.transcript-highlights summary,
-.transcript-disclosure > summary {
+.transcript-highlights summary {
   display: flex;
   min-height: 52px;
   align-items: center;
@@ -916,6 +916,22 @@ h3 {
   font-weight: var(--weight-medium);
 }
 
+.transcript-disclosure {
+  margin-top: 22px;
+  max-width: var(--measure);
+}
+
+.transcript-disclosure > summary {
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  color: var(--label);
+  cursor: pointer;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Refit R13 (finding 4/11): replaces the plain-text "Open" trailing label,
    which read as a web link rather than a control. <summary> is already the
    whole row's click target (native <details> behavior); this only makes
@@ -930,8 +946,7 @@ h3 {
   transform: rotate(180deg);
 }
 
-.transcript-highlights[open] summary,
-.transcript-disclosure[open] > summary {
+.transcript-highlights[open] summary {
   border-bottom: 1px solid var(--line);
 }
 
@@ -942,28 +957,12 @@ h3 {
   scrollbar-gutter: stable;
 }
 
-.transcript-disclosure {
-  margin-top: 0;
-  background: var(--paper);
+.transcript-disclosure-content {
+  padding: 14px 0;
 }
 
-.transcript-disclosure > summary span:first-child,
-.transcript-disclosure > summary strong,
-.transcript-disclosure > summary small {
-  display: block;
-}
-
-.transcript-disclosure > summary strong {
-  color: var(--ink);
-  font-size: var(--text-body);
-}
-
-.transcript-disclosure > summary small {
-  margin-top: 3px;
-  color: var(--ink-faint);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-book);
-  line-height: 1.4;
+.transcript-disclosure > summary span {
+  display: inline;
 }
 
 .transcript-disclosure-content {
@@ -2658,7 +2657,7 @@ html, body, #app {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 30px 48px 40px;
+  padding: 24px 48px 40px;
 }
 
 .doc-transcript-disclosure-wrap {
@@ -2673,14 +2672,36 @@ html, body, #app {
 }
 
 .doc-head h1 {
-  font-size: var(--t-title);
+  font-size: var(--t-large);
   font-weight: 600;
   margin: 0;
   max-width: var(--measure);
 }
 
 .doc-caption {
+  font-size: var(--t-body);
+  color: var(--label-2);
   margin: 4px 0 18px;
+}
+
+.doc-fact {
+  font-size: var(--t-body);
+  color: var(--label-2);
+  margin: 0 0 6px;
+}
+
+.note-help {
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  color: var(--label-2);
+  margin: 0 0 6px;
+}
+
+.empty-note-state {
+  font-size: var(--t-read);
+  line-height: var(--lh-read);
+  color: var(--label);
+  margin: 0 0 12px;
 }
 
 .trash-pane h1 {

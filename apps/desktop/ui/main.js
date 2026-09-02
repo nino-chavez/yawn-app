@@ -1033,10 +1033,7 @@ function renderMeetingNote(note, claimEvidence) {
     if (note?.state !== "transcript-only") return "";
     return `
       <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
-        <header class="meeting-note-header">
-          <h2 id="meeting-note-heading">No meeting note yet.</h2>
-          <p class="caption">${escapeHtml(note?.message || "Yawn has no generated note for this meeting.")}</p>
-        </header>
+        <p id="meeting-note-heading" class="empty-note-state">No meeting note yet.</p>
       </section>
     `;
   }
@@ -1044,10 +1041,7 @@ function renderMeetingNote(note, claimEvidence) {
     const count = presentation.highlights.length;
     return `
       <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
-        <header class="meeting-note-header">
-          <h2 id="meeting-note-heading">A summary wasn’t produced.</h2>
-          <p class="caption">Yawn selected ${count} transcript ${count === 1 ? "excerpt" : "excerpts"}, but those excerpts are source material, not a meeting summary. Labeled <strong>Transcript highlights</strong> rather than a draft note.</p>
-        </header>
+        <p id="meeting-note-heading" class="empty-note-state">A summary wasn’t produced.</p>
         <details class="transcript-highlights">
           <summary><span>Transcript highlights</span><span>${count}</span></summary>
           <div class="transcript-highlights-content">${renderMeetingNoteItems(presentation.highlights, claimEvidence)}</div>
@@ -1092,7 +1086,7 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
   // changes only what marks that, to a chevron that flips on `[open]`.
   return `
     <details class="transcript-disclosure">
-      <summary><span><strong>Full transcript</strong><small>The retained record for checking a decision, owner, or follow-up.</small></span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+      <summary><span>Full transcript</span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="transcript-disclosure-content">
         ${transcript?.turns?.length ? renderTranscript(transcript.turns, "Source transcript", "Search or read the complete retained conversation.", {
           copyAction: "copy-library-transcript",
@@ -1138,7 +1132,7 @@ function renderTranscriptRetryAction(note, transcript, recovery) {
     ? "A retry is ready to review. Keep the retained transcript or explicitly use the retry."
     : "Run a local retry, then compare it with the retained transcript before deciding."}</p>
       </div>
-      <button class="button button-quiet button-small" id="transcript-retry-action" type="button" data-action="${retry.action}" ${starting ? "disabled" : ""}>${starting ? "Preparing retry…" : escapeHtml(retry.label)}</button>
+      <button class="btn" id="transcript-retry-action" type="button" data-action="${retry.action}" ${starting ? "disabled" : ""}>${starting ? "Preparing retry…" : escapeHtml(retry.label)}</button>
     </section>
   `;
 }
@@ -1281,21 +1275,20 @@ function renderMeetingPane() {
             ${manageMenu}
           </div>
         </div>
-        <p class="caption doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</p>
+        <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
-        ${recovery?.state === "audio-released" ? `<p class="caption">${escapeHtml(recovery.detail)}</p>` : ""}
-        ${note?.state !== "transcript-only" && note?.message && !claims.length ? `<p class="caption">${escapeHtml(note.message)}</p>` : ""}
+        ${recovery?.state === "audio-released" ? `<p class="doc-fact">${escapeHtml(recovery.detail)}</p>` : ""}
         ${renderMeetingNote(note, claimEvidence)}
         ${renderGenerateNote(note, recovery)}
         ${renderTranscriptRetryAction(note, transcript, recovery)}
         ${renderRetainedAudioPlayback(playback)}
         ${renderMeetingContextSection(note)}
         <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
-          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="caption" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
+          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
           ${operatorNote?.unreadable
-            ? `<p class="caption">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
+            ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
             : `<textarea class="notes-area meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
-              <p class="caption">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
+              <p class="doc-fact">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
         </section>
       </article>
       <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
@@ -1316,11 +1309,11 @@ function renderMeetingContextSection(note) {
     <section class="note-section meeting-context-section" aria-labelledby="meeting-context-heading">
       <div class="note-editor-head"><h3 id="meeting-context-heading">Meeting context</h3></div>
       ${presentation.state === "unreadable"
-        ? `<p class="caption">Yawn could not read this meeting’s pre-meeting context.</p>`
+        ? `<p class="doc-fact">Yawn could not read this meeting’s pre-meeting context.</p>`
         : presentation.state === "present"
           ? `<p class="meeting-context-text">${escapeHtml(presentation.text)}</p>
-             <p class="caption">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
-          : `<p class="caption">No pre-meeting context was written for this meeting.</p>`}
+             <p class="doc-fact">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
+          : `<p class="doc-fact">No pre-meeting context was written for this meeting.</p>`}
     </section>
   `;
 }
@@ -1339,7 +1332,7 @@ function renderMeetingCapturePauses(pauses) {
   if (!pauses) return "";
   const presentation = capturePausePresentation(pauses);
   if (presentation.state === "not-paused") return "";
-  return `<p class="caption" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
+  return `<p class="doc-fact" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
 }
 
 function renderRetainedAudioPlayback(playback) {
@@ -1354,12 +1347,12 @@ function renderRetainedAudioPlayback(playback) {
   return `
     <section class="note-section retained-audio-section" aria-labelledby="retained-audio-heading">
       <h3 id="retained-audio-heading">Listen to saved audio</h3>
-      <p class="caption">Microphone and system audio are separate recordings.</p>
+      <p class="note-help">Microphone and system audio are separate recordings.</p>
       <div class="retained-audio-controls">
         ${playback.controls.map((control) => `<button class="btn" type="button" data-action="play-retained-audio" data-source="${escapeHtml(control.source)}" ${playback.isPlaying ? "disabled" : ""}>${escapeHtml(control.label)}</button>`).join("")}
         ${playback.isPlaying ? `<button class="btn" type="button" data-action="stop-retained-audio">Stop</button>` : ""}
       </div>
-      <p class="caption" aria-live="polite">${escapeHtml(playingLabel)}</p>
+      <p class="doc-fact" aria-live="polite">${escapeHtml(playingLabel)}</p>
     </section>
   `;
 }
@@ -1371,7 +1364,7 @@ function renderGenerateNote(note, recovery = meetingRecoveryPresentation(note, s
   return `
     <section class="note-section generate-note-section" aria-label="Generate a meeting note">
       <button class="btn primary" type="button" data-action="${control.action}" ${control.disabled ? "disabled" : ""}>${escapeHtml(control.label)}</button>
-      <p class="caption">${escapeHtml(control.help)}</p>
+      <p class="note-help">${escapeHtml(control.help)}</p>
     </section>
   `;
 }
