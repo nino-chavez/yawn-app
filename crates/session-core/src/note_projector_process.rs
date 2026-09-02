@@ -591,6 +591,19 @@ impl ProcessNoteGenerator {
         }
     }
 
+    /// Whether this generator would pass the runtime and interpreter
+    /// admission `generate` performs before spawning a child. The UI's
+    /// availability answer reads this so an ad-hoc bundle, which the
+    /// `SecurityCodeVerifier` refuses by design, reports "cannot generate"
+    /// instead of offering a control that fails on press (roadmap
+    /// D-NOTE-STAGE, third gate).
+    pub fn admission_satisfiable(&self) -> bool {
+        let Ok(runtime) = verify_manifest(&self.manifest_path, GENERATE_ROLE) else {
+            return false;
+        };
+        prepare_interpreter_admission(&runtime, &self.admission).is_ok()
+    }
+
     pub fn generate(
         &self,
         request: &GenerateNoteRequest,

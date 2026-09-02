@@ -259,7 +259,7 @@ impl WorkerProcessNoteGenerationBridge {
                 &catalog,
                 &context.resource_root.join(GENERATE_MANIFEST_FILE),
             )
-            .is_some();
+            .is_some_and(|generator| generator.admission_satisfiable());
         note_generation_admission(model_stored, admitted)
     }
 
@@ -280,9 +280,12 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
         &self,
         arguments: &NoteCreateWorkerArgs,
     ) -> Result<NoteWorkerResult, NoteGenerationWorkerError> {
-        let generator = self
-            .admitted_generator()
-            .ok_or(NoteGenerationWorkerError::Unavailable)?;
+        let generator = self.admitted_generator().ok_or_else(|| {
+            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                eprintln!("[note-trace] no generator admitted (manifest, catalog, model, or admission file)");
+            }
+            NoteGenerationWorkerError::Unavailable
+        })?;
         let request = GenerateNoteRequest {
             request_id: Uuid::new_v4(),
             meeting_id: arguments.meeting_id.to_string(),
