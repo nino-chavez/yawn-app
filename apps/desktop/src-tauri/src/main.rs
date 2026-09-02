@@ -167,7 +167,7 @@ use error_codes::CommandError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow};
 use uuid::Uuid;
 
 const CAPTURE_EVENT_MAX_BYTES: usize = 64 * 1024;
@@ -208,6 +208,13 @@ fn show_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         return Ok(window);
     }
 
+    // Preferences-style window (docs/experience-brief-2026-09-02.md platform
+    // strategy, adopt table: "closable, not modal" was already true — this
+    // build is never given a parent, so it was never modal — but the fixed
+    // 720x720 size with resizing, minimizing, and maximizing all disabled
+    // read as a defect on the cold review. Resizable + minimizable now;
+    // maximizable stays off because a settings surface has no full-window
+    // use for the extra space, which the brief does not ask for either.
     tauri::WebviewWindowBuilder::new(
         app,
         SETTINGS_WINDOW_LABEL,
@@ -215,10 +222,9 @@ fn show_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     )
     .title("Yawn Settings")
     .inner_size(720.0, 720.0)
-    .min_inner_size(720.0, 720.0)
-    .max_inner_size(720.0, 720.0)
-    .resizable(false)
-    .minimizable(false)
+    .min_inner_size(560.0, 480.0)
+    .resizable(true)
+    .minimizable(true)
     .maximizable(false)
     .closable(true)
     .center()
@@ -300,6 +306,12 @@ struct ApplicationState {
     /// LocalAuthentication directly; the shipped app always installs the real
     /// one.
     confirmation: Arc<dyn operator_confirmation::ConfirmsOperator>,
+    /// Cache for `cached_verified_manifest` — see that function for why this
+    /// exists. Keyed by manifest path rather than a single slot so a
+    /// `retry_startup` that resolves a different storage root is still
+    /// verified fresh rather than reusing a stale entry from a different
+    /// path.
+    verified_manifest_cache: Mutex<HashMap<PathBuf, Arc<RuntimeManifest>>>,
 }
 
 impl Default for ApplicationState {
@@ -330,6 +342,7 @@ impl Default for ApplicationState {
             note_projector: Mutex::new(None),
             locked_actions: Mutex::new(meeting_lock::LockedActionAuthority::default()),
             confirmation: Arc::new(operator_confirmation::DeviceOwnerConfirmation),
+            verified_manifest_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -2364,6 +2377,24 @@ fn tray_shows_stop_recording(capture: CaptureState) -> bool {
     matches!(capture, CaptureState::Recording | CaptureState::Paused)
 }
 
+/// Maps a native File/View menu item id to the frontend event it emits, so
+/// the exact event names are unit-testable without a live menu bar. Kept
+/// separate from `main`'s `on_menu_event` closure, which calls this for every
+/// id besides "open-settings" (that one drives `show_settings_window`
+/// directly and never reaches the frontend as an event). The frontend is the
+/// only thing that turns "menu:new-recording"/"menu:stop" into an actual
+/// start or stop — this function only names the wire, it does not call
+/// `stop_meeting` or anything else.
+fn menu_event_name(id: &str) -> Option<&'static str> {
+    match id {
+        "new-recording" => Some("menu:new-recording"),
+        "stop-recording" => Some("menu:stop"),
+        "toggle-sidebar" => Some("menu:toggle-sidebar"),
+        "open-transcript" => Some("menu:open-transcript"),
+        _ => None,
+    }
+}
+
 /// Keeps the always-present menubar item current from the reducer. A 1 s
 /// poll over the model is deliberate: every state change already lands in
 /// the model under its lock, and the menubar only needs to follow it, not
@@ -2379,6 +2410,11 @@ fn spawn_tray_updater(
     tray: tauri::tray::TrayIcon,
     menu: tauri::menu::Menu<tauri::Wry>,
     stop_item: tauri::menu::MenuItem<tauri::Wry>,
+    // File > Stop Recording (native window menu, not the tray's own item
+    // above). Enabled/disabled from the same `tray_shows_stop_recording`
+    // read of `CaptureState` on the same tick, so the tray and the File menu
+    // never disagree about whether a capture is live to stop.
+    file_stop_item: tauri::menu::MenuItem<tauri::Wry>,
 ) {
     let _ = std::thread::Builder::new()
         .name("menubar-state".into())
@@ -2418,12 +2454,14 @@ fn spawn_tray_updater(
                     last_shows_stop = Some(shows_stop);
                     let menu = menu.clone();
                     let stop_item = stop_item.clone();
+                    let file_stop_item = file_stop_item.clone();
                     let _ = app.run_on_main_thread(move || {
                         if shows_stop {
                             let _ = menu.insert(&stop_item, 1);
                         } else {
                             let _ = menu.remove(&stop_item);
                         }
+                        let _ = file_stop_item.set_enabled(shows_stop);
                     });
                 }
             }
@@ -2493,6 +2531,52 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
     Ok(snapshot)
 }
 
+/// A verified `RuntimeManifest`, reused across calls instead of re-reading
+/// and re-hashing every declared runtime resource from disk each time.
+///
+/// Root cause of the Settings row freezing at "Checking speech model" for
+/// over a minute in the installed preview, both appearances (cold review:
+/// docs/evidence/screen-reviews/all-surfaces-bfa0a80-installed-cold.md):
+/// `transcript_model_settings` and `note_model_settings` each called
+/// `RuntimeManifest::load_and_verify` fresh on every invocation — every time
+/// the Settings window opened, and again on every 500ms poll while a change
+/// was active. `load_and_verify` SHA-256-hashes every resource the manifest
+/// declares, including any bundled model weight files it lists (see
+/// `worker/build_manifest.py`'s `resources`/`models`), with no caching
+/// anywhere in the eight call sites in this file. The frontend was never
+/// seeing an error — `renderModels` only ever shows the static "Checking…"
+/// row while `models` is null, so a slow-but-eventually-successful call and
+/// a genuinely hung one render identically — it was still waiting on this
+/// verification to finish. `settings.js`'s `scheduleModelPoll` also never
+/// retried after a failed check (a real, separate defect, fixed there too),
+/// but that path only matters once an attempt has actually failed; this is
+/// what made a single attempt itself take so long.
+///
+/// The manifest is a bundled resource nothing in this process rewrites at
+/// runtime, so verifying it once per distinct path and trusting that result
+/// for the rest of the process's life is correct, not merely fast. This
+/// cache is deliberately used only by the two read-only Settings snapshot
+/// functions below (`transcript_model_settings_for`, `note_model_settings_for`)
+/// — every call site that gates spawning a privileged process or installing
+/// a model still calls `RuntimeManifest::load_and_verify` directly, unchanged,
+/// so nothing here weakens verification immediately before a security-
+/// sensitive action.
+fn cached_verified_manifest(
+    state: &ApplicationState,
+    path: &Path,
+) -> Result<Arc<RuntimeManifest>, String> {
+    let mut cache = state
+        .verified_manifest_cache
+        .lock()
+        .map_err(|_| "the runtime manifest cache is unavailable".to_string())?;
+    if let Some(manifest) = cache.get(path) {
+        return Ok(manifest.clone());
+    }
+    let manifest = Arc::new(RuntimeManifest::load_and_verify(path).map_err(error_text)?);
+    cache.insert(path.to_path_buf(), manifest.clone());
+    Ok(manifest)
+}
+
 fn verified_model_catalog(
     manifest_path: &Path,
     manifest: &RuntimeManifest,
@@ -2517,8 +2601,7 @@ fn transcript_model_settings_for(
         .map_err(|_| "the private workspace is unavailable".to_string())?
         .clone()
         .ok_or_else(|| "the private workspace is unavailable".to_string())?;
-    let manifest =
-        RuntimeManifest::load_and_verify(&storage_context.manifest_path).map_err(error_text)?;
+    let manifest = cached_verified_manifest(state, &storage_context.manifest_path)?;
     let catalog = verified_model_catalog(&storage_context.manifest_path, &manifest)?
         .ok_or_else(|| "this build does not use downloadable speech models".to_string())?;
     let active = active_model(&storage_context.storage, &catalog).map_err(error_text)?;
@@ -2795,8 +2878,7 @@ fn note_model_settings_for(state: &ApplicationState) -> Result<NoteModelSettings
         .map_err(|_| "the private workspace is unavailable".to_string())?
         .clone()
         .ok_or_else(|| "the private workspace is unavailable".to_string())?;
-    let manifest =
-        RuntimeManifest::load_and_verify(&storage_context.manifest_path).map_err(error_text)?;
+    let manifest = cached_verified_manifest(state, &storage_context.manifest_path)?;
     let catalog = verified_model_catalog(&storage_context.manifest_path, &manifest)?
         .ok_or_else(|| "this build does not use downloadable note models".to_string())?;
     let active = active_note_model(&storage_context.storage, &catalog).map_err(error_text)?;
@@ -7536,6 +7618,35 @@ fn main() {
                 .separator()
                 .quit()
                 .build()?;
+            // Concept-A window chrome (docs/design-direction-decision.md):
+            // Record is a toolbar control with a File menu counterpart. New
+            // Recording always dispatches to the same start flow the toolbar
+            // Record control uses (the Start sheet's attestations still gate
+            // an actual start; this item only opens that path). Stop Recording
+            // starts disabled — `main`'s CaptureState is Idle at launch — and
+            // is kept in sync with the tray's own "Stop recording" item via
+            // `tray_shows_stop_recording`, the single source of truth for
+            // "is a capture live" (see `spawn_tray_updater` below). Neither
+            // item calls `stop_meeting` itself: both emit a `menu:*` event the
+            // frontend handles the same way it already handles the in-window
+            // Record/Stop controls, so there is exactly one place (the
+            // frontend's existing `stopRecording`) that ever calls the
+            // `stop_meeting` command for a window-driven stop. The tray's own
+            // "Stop recording" item is unrelated — it calls `stop_meeting`
+            // directly, unchanged.
+            let new_recording = tauri::menu::MenuItemBuilder::with_id("new-recording", "New Recording")
+                .accelerator("CmdOrCtrl+R")
+                .build(app)?;
+            let file_stop_recording =
+                tauri::menu::MenuItemBuilder::with_id("stop-recording", "Stop Recording")
+                    .accelerator("CmdOrCtrl+.")
+                    .enabled(false)
+                    .build(app)?;
+            let file_menu = tauri::menu::SubmenuBuilder::new(app, "File")
+                .item(&new_recording)
+                .separator()
+                .item(&file_stop_recording)
+                .build()?;
             // D9 native-text audit: without an Edit menu, macOS has no
             // key-equivalent route for cmd-Z/X/C/V/A into the webview, so
             // undo is unreachable from the keyboard even though the editor
@@ -7550,6 +7661,23 @@ fn main() {
                 .copy()
                 .paste()
                 .select_all()
+                .build()?;
+            // Concept-A: the sidebar toggle and the transcript inspector both
+            // get a View menu entry alongside their existing shortcuts and
+            // toolbar/inline controls. Rust owns no sidebar-visibility or
+            // open-claim state, so these are plain event emits the frontend
+            // interprets exactly as it does the matching keyboard shortcut.
+            let toggle_sidebar =
+                tauri::menu::MenuItemBuilder::with_id("toggle-sidebar", "Show/Hide Sidebar")
+                    .accelerator("CmdOrCtrl+Shift+S")
+                    .build(app)?;
+            let open_transcript =
+                tauri::menu::MenuItemBuilder::with_id("open-transcript", "Open Full Transcript")
+                    .accelerator("CmdOrCtrl+Alt+T")
+                    .build(app)?;
+            let view_menu = tauri::menu::SubmenuBuilder::new(app, "View")
+                .item(&toggle_sidebar)
+                .item(&open_transcript)
                 .build()?;
             // W6-B: a standard Window submenu. Predefined items only, same as
             // Edit above. `.maximize()` is Tauri/muda's builder name for the
@@ -7567,13 +7695,20 @@ fn main() {
                 .build()?;
             let menu = tauri::menu::MenuBuilder::new(app)
                 .item(&app_menu)
+                .item(&file_menu)
                 .item(&edit_menu)
+                .item(&view_menu)
                 .item(&window_menu)
                 .build()?;
             app.set_menu(menu)?;
             app.on_menu_event(|app, event| {
-                if event.id() == "open-settings" {
+                let id = event.id().0.as_str();
+                if id == "open-settings" {
                     let _ = show_settings_window(app);
+                    return;
+                }
+                if let Some(name) = menu_event_name(id) {
+                    let _ = app.emit(name, ());
                 }
             });
 
@@ -7643,7 +7778,13 @@ fn main() {
                     }
                 })
                 .build(app)?;
-            spawn_tray_updater(app.handle().clone(), tray, menu, stop);
+            spawn_tray_updater(
+                app.handle().clone(),
+                tray,
+                menu,
+                stop,
+                file_stop_recording,
+            );
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("meeting-runtime-startup".into())
@@ -11331,6 +11472,75 @@ mod tests {
                 "expected no Stop item for {capture:?}"
             );
         }
+    }
+
+    /// The exact event names the frontend listens for (see the brief's
+    /// window-chrome packet): a typo here would silently strand a menu
+    /// command with no listener, which the frontend side has no way to
+    /// detect on its own.
+    #[test]
+    fn menu_event_names_match_the_frontend_contract() {
+        assert_eq!(menu_event_name("new-recording"), Some("menu:new-recording"));
+        assert_eq!(menu_event_name("stop-recording"), Some("menu:stop"));
+        assert_eq!(menu_event_name("toggle-sidebar"), Some("menu:toggle-sidebar"));
+        assert_eq!(
+            menu_event_name("open-transcript"),
+            Some("menu:open-transcript")
+        );
+        // "open-settings" is handled before `menu_event_name` is ever
+        // called (it drives `show_settings_window` directly) and must not
+        // also be wired as an event — a menu item id that means neither
+        // must resolve to nothing, not a stray event the frontend never
+        // asked for.
+        assert_eq!(menu_event_name("open-settings"), None);
+        assert_eq!(menu_event_name("unknown-id"), None);
+    }
+
+    /// Root-cause regression test for the Settings "Checking speech model"
+    /// freeze: `cached_verified_manifest` must hand back the *same* verified
+    /// manifest on a second call for the same path, not re-verify from disk.
+    /// `Arc::ptr_eq` is the proof — a fresh `RuntimeManifest::load_and_verify`
+    /// would produce an equal-looking but distinct value, and this asserts
+    /// identity, not equality (the struct has no `PartialEq` to fall back on
+    /// anyway).
+    #[test]
+    fn cached_verified_manifest_reuses_the_same_verified_value() {
+        let temporary = TempDir::new().unwrap();
+        let root = temporary.path();
+        let write_resource = |name: &str, bytes: &[u8]| -> String {
+            fs::write(root.join(name), bytes).unwrap();
+            sha256_file(&root.join(name)).unwrap()
+        };
+        let runtime = write_resource("runtime", b"runtime");
+        let worker = write_resource("main.py", b"worker source");
+        let tap = write_resource("tap", b"tap");
+        let encoder = write_resource("encoder-unavailable.identity", b"no-encoder");
+        let probe = write_resource("permission-probe", b"probe");
+        let manifest_path = root.join("app-runtime.json");
+        fs::write(
+            &manifest_path,
+            serde_json::json!({
+                "schema": "app-runtime/1",
+                "admission": "internal-alpha",
+                "runtime": {"path": "runtime", "sha256": runtime},
+                "worker": {"path": "main.py", "sha256": worker},
+                "tap": {"path": "tap", "sha256": tap},
+                "encoder": {"path": "encoder-unavailable.identity", "sha256": encoder},
+                "permission_probe": {"path": "permission-probe", "sha256": probe},
+                "models": [],
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let state = ApplicationState::default();
+        let first = cached_verified_manifest(&state, &manifest_path).unwrap();
+        let second = cached_verified_manifest(&state, &manifest_path).unwrap();
+        assert!(
+            Arc::ptr_eq(&first, &second),
+            "expected the cached manifest to be reused, not re-verified"
+        );
+        assert_eq!(state.verified_manifest_cache.lock().unwrap().len(), 1);
     }
 
     /// The verified manifest carrying the admitted encoder is what opens the

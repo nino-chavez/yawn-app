@@ -1,5 +1,19 @@
 import { mergePermissions } from "./view-model.mjs";
 
+// tokens.css keys dark-appearance values off `[data-theme="dark"]` (it has
+// no `prefers-color-scheme` fallback of its own — see tokens.css's header),
+// so this window has to set that attribute itself from the system setting;
+// without it, Settings would always render the light palette regardless of
+// macOS appearance.
+if (typeof window.matchMedia === "function") {
+  const dark = window.matchMedia("(prefers-color-scheme: dark)");
+  const applyTheme = () => {
+    document.documentElement.dataset.theme = dark.matches ? "dark" : "light";
+  };
+  applyTheme();
+  dark.addEventListener?.("change", applyTheme);
+}
+
 const invoke = window.__TAURI__?.core?.invoke;
 const permissionsRoot = document.querySelector("#permissions");
 const modelsRoot = document.querySelector("#models");
@@ -68,7 +82,13 @@ function render() {
 
 function renderModels() {
   if (!models) {
-    modelsRoot.innerHTML = row("Checking speech model", "checking", "Yawn is checking what is stored on this Mac.");
+    // A failed check must not read the same as a pending one — the row title
+    // said "Checking speech model" either way, which is what made a genuine
+    // failure look identical to (and get mistaken for) a check that was
+    // simply still running. See scheduleModelPoll for the matching retry fix.
+    modelsRoot.innerHTML = modelLoadError
+      ? row("Couldn't check speech model", "unavailable", `${modelLoadError} Retrying…`)
+      : row("Checking speech model", "checking", "Yawn is checking what is stored on this Mac.");
     modelMessage.textContent = modelLoadError;
     modelMessage.dataset.tone = modelLoadError ? "attention" : "neutral";
     return;
@@ -112,7 +132,9 @@ function renderModels() {
 
 function renderNoteModels() {
   if (!noteModels) {
-    noteModelsRoot.innerHTML = row("Checking note model", "checking", "Yawn is checking what is stored on this Mac.");
+    noteModelsRoot.innerHTML = noteModelLoadError
+      ? row("Couldn't check note model", "unavailable", `${noteModelLoadError} Retrying…`)
+      : row("Checking note model", "checking", "Yawn is checking what is stored on this Mac.");
     noteModelMessage.textContent = noteModelLoadError;
     noteModelMessage.dataset.tone = noteModelLoadError ? "attention" : "neutral";
     return;
@@ -154,10 +176,20 @@ function renderNoteModels() {
   noteModelMessage.dataset.tone = noteModels.error ? "attention" : "neutral";
 }
 
+// Root cause of the row freezing at "Checking speech model" forever (cold
+// review, all-surfaces-bfa0a80-installed-cold.md): this only rescheduled
+// while a model change was actively downloading. A `transcript_model_settings`
+// call that failed even once set `models` to null and stopped here — with no
+// snapshot, `models?.changeActive` reads undefined, so the row never asked
+// again. The `!models` arm below is the fix: keep asking (slower than the
+// active-download cadence) for as long as there is no snapshot yet, whether
+// that is the first check still pending or a check that just failed.
 function scheduleModelPoll() {
   clearTimeout(modelPoll);
   if (models?.changeActive) {
     modelPoll = setTimeout(() => void refreshModels(), 500);
+  } else if (!models) {
+    modelPoll = setTimeout(() => void refreshModels(), 2000);
   }
 }
 
@@ -165,6 +197,8 @@ function scheduleNoteModelPoll() {
   clearTimeout(noteModelPoll);
   if (noteModels?.changeActive) {
     noteModelPoll = setTimeout(() => void refreshNoteModels(), 500);
+  } else if (!noteModels) {
+    noteModelPoll = setTimeout(() => void refreshNoteModels(), 2000);
   }
 }
 

@@ -14,8 +14,8 @@
         "title": "Yawn — Preview",
         "width": 1080,
         "height": 900,
-        "minWidth": 800,
-        "minHeight": 640,
+        "minWidth": 900,
+        "minHeight": 600,
         "resizable": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
