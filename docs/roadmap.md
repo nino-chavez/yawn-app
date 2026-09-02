@@ -121,9 +121,15 @@ under the build hash. Two defects the honest surface exposed:
   Second slice landed (167a9f1 + 06aed65): `library_open_note` now carries
   `noteGenerationAvailable` and one of two reasons, "Download a note model
   in Settings first." or "This build cannot generate notes."; the control
-  renders disabled with the reason as its help. First slice in progress
-  (build_runtime.sh stages `generate-site-packages` from a hash-pinned
-  `requirements-generate.lock`, verify checks both trees).
+  renders disabled with the reason as its help. First slice merged
+  (adae21a): `build_runtime.sh` installs `requirements-generate.lock`
+  (34 hash-pinned packages, mlx-lm 0.31.3 with its own mlx 0.32.2) into
+  `generate-site-packages` after the runtime copy, and verify proves the
+  isolated import and that the shared mlx stays 0.29.3. The isolated tree
+  adds 410 MB to a 938 MB runtime. Two defects found on the way, both fixed
+  before merge: the tree was first created under the stage before
+  `cp -R`, which nested the interpreter; and the version check read an
+  attribute mlx does not have. Installed verification pending.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
