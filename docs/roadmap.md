@@ -97,6 +97,7 @@ from it, all inside the selected direction:
 | R11 | Settings repeats the same model error three times (03, 06); card hairlines near-invisible in dark | One line per error; dark separators at the contrast token |
 | R12 | First-run sheet reads as a web modal (centered card, X, pill button) with the blurred library bleeding through (07) | Render as a native-shaped sheet attached to the title bar, opaque, no X |
 | R13 | Settings groups read as bordered divs, not grouped lists; "Open" beside Full transcript reads as link text | Grouped-list material for Settings; a button or chevron for Open |
+| R14 | Operator, on the refit build (dcbc1c6, 2026-09-02): "fonts sizes are inconsistent and too small to comfortably read. buttons are not consistently sized or spaced or laid out either." Counted on the frame: five text sizes in the document pane, most prose at 13; three button treatments (bordered pair by the title, filled Generate note, a bordered card for the transcript disclosure) at different heights; section headings indented differently from body; hairlines between every section; the transcript card wider than the reading measure; the same fact stated twice ("No meeting note yet." and the reader's message; audio deleted and cannot be retranscribed) | Port the document pane to concept A and the specimen, not another patch: three sizes (22 title, 15 prose, one 13 caption), one `.btn`, one left edge, hairlines only where DESIGN.md puts them, each fact once. DESIGN.md now states where each size goes |
 
 ## What the live apps changed
 

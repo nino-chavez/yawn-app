@@ -33,6 +33,20 @@ System font (`-apple-system`). Body 13, caption 11, note body 15 at 1.6,
 transcript 14 at 1.55, title 17, large 22. Nothing above 22. No display
 sizes, no uppercase eyebrows, no letter-spaced labels.
 
+Where each size goes, because the 2026-09-02 refit set most of the document
+pane at 13 and the operator found it too small to read:
+
+- 22: the meeting title, once.
+- 15 at 1.6: every sentence in the document pane, including empty states,
+  help under a control, the operator's notes and their placeholder, and
+  section headings (15 at 600).
+- 13: sidebar rows, toolbar, controls, sheets, Settings, and the one
+  metadata caption under the title (date · length · status).
+- 11: group labels and the inspector label only.
+
+A document pane, then, has three sizes on screen: 22, 15, and one line of
+13. If a fourth appears, something is misfiled.
+
 ## Color
 
 System semantic colors in both appearances; the user's accent for selection
@@ -85,7 +99,7 @@ component not on it is not in the system.
 
 | Component | States | Rule |
 |---|---|---|
-| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change |
+| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button is the specimen's `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button |
 | Record control | idle, live (elapsed + Pause + Stop), paused | The only red. Lives in the toolbar and the menu-bar pill only |
 | Icon button | default, hover | Sidebar toggle. No other icon buttons in the toolbar |
 | Search field | empty, typing, filtered-empty | Title search only; "No matching meetings" is one caption |
@@ -97,7 +111,7 @@ component not on it is not in the system.
 | Claim | closed (dashed hairline), open (evidence tint, accent underline) | Opening a claim opens the inspector; Esc closes both |
 | Inspector | closed, open | 320, panel background, never scrolls the note |
 | Transcript turn | default, highlighted, dim, withheld | Withheld renders as withheld text with Restore, never as missing |
-| Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas; caption size |
+| Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas, "Full transcript" under the note; one line at body size with a trailing chevron, inside the reading measure, no card, no border, no description line |
 | Needs attention | — | Headline, detail, one primary and one secondary action. No banner, no icon |
 | Sheet | Start sheet only | Record disabled until three attestations and a retention choice |
 | Popover | speech-model picker, row Manage menu | Never the meetings list |
