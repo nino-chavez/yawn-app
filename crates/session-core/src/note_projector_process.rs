@@ -88,6 +88,13 @@ fn record_stderr_tail(chunk: &[u8]) {
     }
 }
 
+fn trace_unavailable(stage: &str) -> InternalOutcome {
+    if note_trace_enabled() {
+        eprintln!("[note-trace] unavailable at {stage}");
+    }
+    InternalOutcome::Unavailable
+}
+
 pub fn last_bridge_stderr_tail() -> String {
     LAST_STDERR_TAIL
         .lock()
@@ -275,8 +282,8 @@ fn drive_bridge_child(
     result_deadline: Duration,
     cancellation: &ProjectionCancellation,
 ) -> Result<Vec<u8>, InternalOutcome> {
-    let prepared_admission = prepare_interpreter_admission(runtime, admission)?;
-    runtime.require_unchanged()?;
+    let prepared_admission = prepare_interpreter_admission(runtime, admission).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("interpreter admission"), o => o })?;
+    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed before spawn"), o => o })?;
 
     let mut sources = vec![
         runtime.manifest.file.as_raw_fd(),
@@ -290,12 +297,12 @@ fn drive_bridge_child(
         let generator = runtime
             .generator
             .as_ref()
-            .ok_or(InternalOutcome::Unavailable)?;
+            .ok_or_else(|| trace_unavailable("manifest has no generator descriptor"))?;
         sources.push(generator.file.as_raw_fd());
     } else if runtime.generator.is_some() {
-        return Err(InternalOutcome::Unavailable);
+        return Err(trace_unavailable("project role with a generator descriptor"));
     }
-    let staged = stage_descriptors(&sources)?;
+    let staged = stage_descriptors(&sources).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("stage descriptors"), o => o })?;
     let mut inherited = [ABSENT_DESCRIPTOR_MAPPING; 4];
     for (index, target) in [MANIFEST_FD, BRIDGE_FD, VALIDATOR_FD, GENERATOR_FD]
         .into_iter()
@@ -323,7 +330,9 @@ fn drive_bridge_child(
             install_descriptor_mappings(inherited)
         });
     }
-    let mut child = command.spawn().map_err(|_| InternalOutcome::Unavailable)?;
+    let mut child = command
+        .spawn()
+        .map_err(|error| trace_unavailable(&format!("spawn: {error}")))?;
     let stdin = child.stdin.take().ok_or(InternalOutcome::Unavailable)?;
     let stdout = child.stdout.take().ok_or(InternalOutcome::Unavailable)?;
     let stderr = child.stderr.take().ok_or(InternalOutcome::Unavailable)?;
@@ -338,7 +347,7 @@ fn drive_bridge_child(
         )?),
         None => None,
     };
-    runtime.require_unchanged()?;
+    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after spawn"), o => o })?;
 
     let ready_deadline = Instant::now() + ready_deadline;
     let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -347,35 +356,42 @@ fn drive_bridge_child(
         let frame = read_bounded_line(&mut reader);
         let _ = ready_sender.send((frame, reader));
     });
-    let (ready, reader) = wait_receiver(&ready_receiver, ready_deadline, cancellation, &mut guard)?;
+    let (ready, reader) = wait_receiver(&ready_receiver, ready_deadline, cancellation, &mut guard)
+        .map_err(|outcome| match outcome {
+            InternalOutcome::Unavailable => trace_unavailable("ready wait (deadline or child exit)"),
+            other => other,
+        })?;
     let _ = ready_thread.join();
-    parse_ready(
-        &ready.map_err(|_| InternalOutcome::Unavailable)?,
-        &runtime.manifest.digest,
-        role,
-    )?;
-    runtime.require_unchanged()?;
+    let ready = ready.map_err(|_| trace_unavailable("ready frame read"))?;
+    parse_ready(&ready, &runtime.manifest.digest, role).map_err(|outcome| {
+        if note_trace_enabled() {
+            let head = String::from_utf8_lossy(&ready[..ready.len().min(400)]);
+            eprintln!("[note-trace] ready frame rejected: {head}");
+        }
+        outcome
+    })?;
+    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after ready"), o => o })?;
     if let Some(binding) = live_code.as_ref() {
         binding.require_same_process(
             guard.pid(),
             &SystemProcessStartTimeInspector,
             &runtime.executable,
-        )?;
+        ).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("process identity after ready"), o => o })?;
     }
-    guard.require_unexited()?;
-    runtime.require_unchanged()?;
+    guard.require_unexited().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("child exited after ready"), o => o })?;
+    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed before command"), o => o })?;
     if let Some(binding) = live_code.as_ref() {
         binding.require_same_process(
             guard.pid(),
             &SystemProcessStartTimeInspector,
             &runtime.executable,
-        )?;
+        ).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("process identity before command"), o => o })?;
     }
 
     let mut stdin = stdin;
     stdin
         .write_all(&command_bytes)
-        .map_err(|_| InternalOutcome::Unavailable)?;
+        .map_err(|_| trace_unavailable("command write"))?;
     drop(stdin);
 
     let result_deadline = Instant::now() + result_deadline;
@@ -383,12 +399,13 @@ fn drive_bridge_child(
     let result_thread = std::thread::spawn(move || {
         let _ = result_sender.send(read_to_exact_eof(reader));
     });
-    let result = wait_receiver(&result_receiver, result_deadline, cancellation, &mut guard)?;
+    let result = wait_receiver(&result_receiver, result_deadline, cancellation, &mut guard)
+        .map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("result wait"), o => o })?;
     let _ = result_thread.join();
-    let result = result.map_err(|_| InternalOutcome::Unavailable)?;
-    runtime.require_unchanged()?;
+    let result = result.map_err(|_| trace_unavailable("result read"))?;
+    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after result"), o => o })?;
     if !guard.finish_success(result_deadline, cancellation)? {
-        return Err(InternalOutcome::Unavailable);
+        return Err(trace_unavailable("child did not exit cleanly (status, deadline, or stderr overflow)"));
     }
     Ok(result)
 }
@@ -609,12 +626,16 @@ impl ProcessNoteGenerator {
         if cancellation.is_cancelled() {
             return Err(InternalOutcome::Cancelled);
         }
-        validate_storage_root(&self.storage_root)?;
-        validate_generate_request(request)?;
+        validate_storage_root(&self.storage_root).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("storage root"), o => o })?;
+        validate_generate_request(request).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("request validation"), o => o })?;
         if !valid_relative_path(&self.model_directory) {
-            return Err(InternalOutcome::Unavailable);
+            return Err(trace_unavailable("model directory path"));
         }
-        let mut runtime = verify_manifest(&self.manifest_path, GENERATE_ROLE)?;
+        let mut runtime = verify_manifest(&self.manifest_path, GENERATE_ROLE)
+            .map_err(|outcome| match outcome {
+                InternalOutcome::Unavailable => trace_unavailable("manifest verification"),
+                other => other,
+            })?;
         drive_bridge_child(
             &mut runtime,
             &self.storage_root,
