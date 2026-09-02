@@ -203,7 +203,7 @@ cp -R "$VENDOR/python-runtime" "$STAGE/python-runtime"
 # This keeps mlx_whisper using the shared mlx==0.29.3 unchanged.
 if [[ "$mode" == build-alpha* ]]; then
   mkdir -p "$STAGE/python-runtime/lib/python3.12/generate-site-packages"
-  "$STAGE/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
+  "$VENDOR/python-runtime/bin/python3" -m pip install --quiet --require-hashes \
     --only-binary=:all: \
     --target "$STAGE/python-runtime/lib/python3.12/generate-site-packages" \
     -r "$REPO/worker/requirements-generate.lock"
