@@ -315,7 +315,13 @@ h3 {
 
 .section-heading h2 {
   margin: 0;
-  font-size: var(--t-large);
+  /* 15 at 600, not 22. DESIGN.md spends 22 on "the meeting title, once", and
+     names "section headings (15 at 600)" explicitly -- the same value `.read h2`
+     carries. A second 22 on the pane makes the section heading tie the title it
+     sits under, and the pane's stated budget is three sizes: 22, 15, and one
+     line of 13. A fourth, or a duplicated first, means something is misfiled. */
+  font-size: var(--t-read);
+  font-weight: 600;
 }
 
 .search-input {
