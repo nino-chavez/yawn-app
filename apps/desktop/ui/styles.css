@@ -753,19 +753,41 @@ h3 {
    context, your notes) gets the same plain top divider -- document flow,
    not a stack of tinted cards. */
 .note-section {
+  max-width: var(--measure);
   margin-top: var(--space-24);
   padding-top: 0;
   border-top: 0;
+  font-size: var(--t-body);
 }
 
 .your-notes-section {
   display: flex;
   flex-direction: column;
+  max-width: var(--measure);
+  margin-top: 30px;
   padding: 15px var(--space-16) 13px;
   border: 1px solid var(--notes-border);
   border-radius: var(--r-card);
   background: var(--notes);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 3%, transparent);
+}
+
+.your-notes-section .note-editor-head {
+  max-width: none;
+  gap: 14px;
+  margin: 0;
+}
+
+.your-notes-section .note-editor-head h3 {
+  margin: 0;
+  font-weight: 680;
+  line-height: 18px;
+}
+
+.your-notes-section .note-editor-head .doc-fact {
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .retained-audio-section .note-editor-help {
@@ -946,7 +968,7 @@ h3 {
    hairline above it is the only rule below the title block. */
 .transcript-disclosure {
   margin-top: 25px;
-  max-width: 64ch;
+  max-width: var(--measure);
   padding-top: 0;
   border-top: 1px solid var(--separator);
 }
@@ -2781,19 +2803,21 @@ html, body, #app {
 }
 
 .doc-transcript-disclosure-wrap {
-  margin-top: 25px;
-  width: min(100%, 700px);
-  max-width: 700px;
-  padding: 0 14px;
-  margin-right: auto;
-  margin-left: auto;
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0;
 }
 
 .doc-main > article.read {
+  --measure: 524px;
   width: min(100%, 700px);
+  max-width: 700px;
   margin-right: auto;
   margin-left: auto;
   padding: 25px 14px 42px;
+  border: 1px solid transparent;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .doc-head {
@@ -2802,6 +2826,10 @@ html, body, #app {
   justify-content: space-between;
   gap: 24px;
   padding-bottom: 18px;
+}
+
+.doc-heading {
+  min-width: 0;
 }
 
 .doc-head h1 {
@@ -2820,6 +2848,12 @@ html, body, #app {
   margin: 8px 0 0;
 }
 
+/* `.read p` is intentionally broad legacy typography. The selected document
+   header owns this metadata rhythm and must win that specificity contest. */
+.doc-heading .doc-caption {
+  margin: 8px 0 0;
+}
+
 /* A fact about the meeting is a sentence, so it reads at reading size; only
    the metadata line under the title and the save-state caption are 13. */
 .doc-fact {
@@ -2834,6 +2868,7 @@ html, body, #app {
   margin: 13px 0 28px;
   padding-left: 11px;
   border-left: 2px solid var(--separator-strong);
+  line-height: 20px;
 }
 
 .note-help {
@@ -2849,6 +2884,31 @@ html, body, #app {
   line-height: var(--lh-read);
   color: var(--label);
   margin: var(--space-16) 0 0;
+}
+
+/* The selected no-note frame treats the empty fact, action, and help as one
+   compact document section. The production DOM keeps the fact and action in
+   separate semantic sections, so these adjacent rules reproduce that exact
+   rhythm without changing the generation behavior. */
+.meeting-note-unavailable.no-note-state {
+  max-width: var(--measure);
+  margin: 0;
+}
+
+.no-note-state .empty-note-state {
+  margin: 0;
+  color: var(--label);
+  font-size: var(--t-body);
+  font-weight: 680;
+  line-height: 18px;
+}
+
+.no-note-state + .generate-note-section {
+  margin: 9px 0 25px;
+}
+
+.no-note-state + .generate-note-section .note-help {
+  margin: 9px 0 13px;
 }
 
 .trash-pane h1 {

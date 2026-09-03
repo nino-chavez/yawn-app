@@ -1,25 +1,35 @@
 {
   "name": "Tonal Ledger — Canvas production fidelity",
   "source": "ui-harness/visual-treatments/tonal-ledger-refined/styles.css",
+  "targetRenderer": "WKWebView on macOS",
   "viewport": { "width": 1080, "height": 900 },
   "state": "transcript-only / no meeting note",
   "tolerancePx": 0.5,
   "checks": [
     { "id": "toolbar-height", "selector": ".toolbar", "measurement": "rect.height", "expected": 58 },
-    { "id": "search-height", "selector": ".search-field input", "measurement": "rect.height", "expected": 29 },
+    { "id": "search-height", "selector": ".search-field", "measurement": "rect.height", "expected": 29 },
     { "id": "search-type", "selector": ".search-field input", "measurement": "style.fontSize", "expected": 12 },
     { "id": "secondary-button-height", "selector": ".doc-head-actions .btn", "measurement": "rect.height", "expected": 26 },
     { "id": "secondary-button-inline-padding", "selector": ".doc-head-actions .btn", "measurement": "style.paddingLeft", "expected": 9 },
     { "id": "primary-button-height", "selector": ".generate-note-section .btn", "measurement": "rect.height", "expected": 28 },
-    { "id": "document-title-top-inset", "selector": ".doc-head h1", "measurement": "distance.top", "relativeTo": ".content", "expected": 61 },
+    { "id": "document-frame-width", "selector": ".doc-main > article.read", "measurement": "style.width", "expected": 690 },
+    { "id": "document-title-top-inset", "selector": ".doc-head h1", "measurement": "distance.top", "relativeTo": ".content", "expected": 62 },
+    { "id": "document-title-left-inset", "selector": ".doc-head h1", "measurement": "distance.left", "relativeTo": ".content", "expected": 69 },
     { "id": "title-size", "selector": ".doc-head h1", "measurement": "style.fontSize", "expected": 32.4 },
+    { "id": "no-note-heading-top", "selector": ".no-note-state .empty-note-state", "measurement": "distance.top", "relativeTo": ".content", "expected": 220 },
+    { "id": "generate-action-top", "selector": ".generate-note-section .btn", "measurement": "distance.top", "relativeTo": ".content", "expected": 247 },
+    { "id": "generation-help-width", "selector": ".generate-note-section .note-help", "measurement": "style.width", "expected": 524.0625 },
+    { "id": "notes-width", "selector": ".your-notes-section", "measurement": "style.width", "expected": 524.0625 },
+    { "id": "notes-top", "selector": ".your-notes-section", "measurement": "distance.top", "relativeTo": ".content", "expected": 362 },
     { "id": "notes-editor-minimum-height", "selector": ".meeting-notes-editor", "measurement": "style.minHeight", "expected": 76 },
     { "id": "notes-editor-type", "selector": ".meeting-notes-editor", "measurement": "style.fontSize", "expected": 14 },
     { "id": "notes-editor-gutter", "selector": ".meeting-notes-editor", "measurement": "style.paddingLeft", "expected": 9 },
     { "id": "notes-editor-rule", "selector": ".meeting-notes-editor", "measurement": "style.borderLeftWidth", "expected": 1 },
     { "id": "transcript-disclosure-type", "selector": ".transcript-disclosure > summary", "measurement": "style.fontSize", "expected": 12 },
     { "id": "transcript-disclosure-top-space", "selector": ".transcript-disclosure", "measurement": "style.marginTop", "expected": 25 },
+    { "id": "transcript-disclosure-width", "selector": ".transcript-disclosure", "measurement": "style.width", "expected": 524.0625 },
+    { "id": "transcript-disclosure-top", "selector": ".transcript-disclosure", "measurement": "distance.top", "relativeTo": ".content", "expected": 546 },
     { "id": "sidebar-group-type", "selector": ".group-label", "measurement": "style.fontSize", "expected": 10 },
-    { "id": "sidebar-group-gap", "selector": ".sidebar-scroll > .group-label:nth-child(3)", "measurement": "distance.after", "relativeTo": ".sidebar-scroll > .row:nth-child(2)", "expected": 18 }
+    { "id": "sidebar-group-gap", "selector": ".meeting-group + .meeting-group", "measurement": "style.marginTop", "expected": 18 }
   ]
 }

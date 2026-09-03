@@ -1097,7 +1097,7 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
     }
     if (note?.state !== "transcript-only") return "";
     return `
-      <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
+      <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading">
         <p id="meeting-note-heading" class="empty-note-state">No meeting note yet.</p>
       </section>
     `;
@@ -1350,13 +1350,15 @@ function renderMeetingPane() {
       <div class="doc-main">
       <article class="read" aria-labelledby="meeting-title">
         <div class="doc-head">
-          <h1 id="meeting-title">${escapeHtml(title)}</h1>
+          <div class="doc-heading">
+            <h1 id="meeting-title">${escapeHtml(title)}</h1>
+            <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meetingStateCaption(note?.state))}</p>
+          </div>
           <div class="doc-head-actions">
             ${canRename ? `<button class="btn" type="button" data-action="rename-meeting">Rename</button>` : ""}
             ${manageMenu}
           </div>
         </div>
-        <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meetingStateCaption(note?.state))}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderMeetingNote(note, claimEvidence, recovery)}
@@ -1371,8 +1373,8 @@ function renderMeetingPane() {
             : `<textarea class="notes-area meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
               <p class="doc-fact">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
         </section>
+        <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
       </article>
-      <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
       </div>
       ${inspectorOpen ? renderInspector(transcript, evidenceSplit) : ""}
     </div>

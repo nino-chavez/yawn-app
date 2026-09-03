@@ -603,11 +603,9 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // meeting context are sections of the document flow, not a separate
   // right-hand pane -- the inspector occupies that space when open.
   assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
-  // The transcript disclosure sits outside `.read` (a sibling in
-  // `.doc-main`, not nested inside the 62ch reading measure) so its own
-  // search/action toolbar gets the full pane width instead of being
-  // squeezed into prose width.
-  assert.match(source, /<\/section>\s*<\/article>\s*<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>/);
+  // The selected Tonal Ledger reference keeps the disclosure inside `.read`
+  // and aligned to the same document measure as the note.
+  assert.match(source, /<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>\s*<\/article>/);
   assert.match(source, /\$\{inspectorOpen \? renderInspector\(transcript, evidenceSplit\) : ""\}/);
   assert.match(source, /function renderRetryWarnings\(warnings, label\)/);
   assert.match(source, /renderRetryRecordingDevice\(retry\.recordingDevice\)/);

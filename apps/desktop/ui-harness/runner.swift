@@ -55,15 +55,24 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 } else {
                     print("\(String(describing: value))")
                 }
-                // A scenario that supplies a top-level pass boolean is a
-                // release gate, not merely a diagnostic. Preserve the older
-                // harness scenarios' JSON-only behavior while making a
-                // failed visual-fidelity contract fail its command.
-                if let result = value as? [String: Any], let passed = result["pass"] as? Bool, !passed {
-                    exit(1)
+                // Every scenario is a gate. A JavaScript exception, explicit
+                // error, captured page error, failed named step, or failed
+                // top-level contract must make the command fail. Printing a
+                // red result while returning zero hid stale selectors before.
+                if let result = value as? [String: Any] {
+                    let explicitFailure = (result["pass"] as? Bool) == false
+                    let returnedError = result["error"] != nil
+                    let capturedErrors = (result["errors"] as? [Any])?.isEmpty == false
+                    let failedStep = (result["steps"] as? [[String: Any]])?.contains {
+                        ($0["ok"] as? Bool) == false
+                    } == true
+                    if explicitFailure || returnedError || capturedErrors || failedStep {
+                        exit(1)
+                    }
                 }
             case .failure(let error):
                 FileHandle.standardError.write(Data("JS ERROR: \(error)\n".utf8))
+                exit(1)
             }
             exit(0)
         }

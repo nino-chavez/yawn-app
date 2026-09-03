@@ -27,6 +27,10 @@ const read = (element, check) => {
     const relative = q(check.relativeTo);
     return relative ? element.getBoundingClientRect().top - relative.getBoundingClientRect().top : null;
   }
+  if (check.measurement === "distance.left") {
+    const relative = q(check.relativeTo);
+    return relative ? element.getBoundingClientRect().left - relative.getBoundingClientRect().left : null;
+  }
   if (check.measurement === "distance.after") {
     const relative = q(check.relativeTo);
     return relative ? element.getBoundingClientRect().top - relative.getBoundingClientRect().bottom : null;

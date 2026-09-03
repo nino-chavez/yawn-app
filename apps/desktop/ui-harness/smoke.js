@@ -75,10 +75,13 @@ if (vocabularyButton) {
   step("vocabulary control present", false, "open-vocabulary button missing");
 }
 
-// 4. Back to meetings, then trash link behavior.
-q('[data-action="meetings"]').click();
+// 4. The Tonal Ledger shell keeps the library beside the document instead of
+// navigating back to a separate meetings screen. Prove that persistent list,
+// then exercise the footer's Trash route.
+step("meeting list stays beside the open document", Boolean(q('[data-action="open-meeting"]')));
+q('[data-action="open-trash"]')?.click();
 await sleep(150);
-step("back on home with meeting list", Boolean(q('[data-action="open-meeting"]')));
+step("trash route opens from the persistent sidebar", q("#trash-heading")?.textContent === "Trash");
 
 result.errors = window.__errors;
 return result;

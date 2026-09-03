@@ -168,7 +168,9 @@
       operatorNote: { text: "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
       transcriptHandle: "transcript-handle-1",
-      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      audioRetention: mode === "fidelity"
+        ? { state: "released", message: "Audio released." }
+        : { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     }),
     library_open_transcript: () => ({
