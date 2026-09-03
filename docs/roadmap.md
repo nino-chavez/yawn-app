@@ -957,14 +957,31 @@ all have device frames for the first time, and **D-FREEZE is confirmed** --
 twelve accessibility polls across 28 s of an active generation, all answered,
 with two ~1 s spikes recorded rather than smoothed.
 
-**The pass's own finding, which outranks the frames: Generate note fails
-silently.** It enters its state correctly, runs for five minutes, and returns to
-a screen visually identical to the one before the click (18 of 3,888,000 pixels
-differ, none by more than 60/255). No note, no diagnostic, no attempt record, no
-log line, and nothing modified anywhere in the preview's storage tree in the
-surrounding two hours. The note model is installed and complete. The product
-brief requires that a failed run be stated plainly; this states it as nothing.
-That is a defect to diagnose, and it is not a capture problem.
+**CORRECTED. The pass reported that Generate note fails silently and records
+nothing. That was wrong, and the error was in the checking, not the app.** The
+app writes a full request/result/commit receipt under `operations/` for every
+attempt; today's two read `status: rejected`, `failure_code: note-rejected`, and
+ran 23 seconds each rather than five minutes. The claim rested on `find -newermt
+"-2 hours"`, an invalid timestamp for this machine's `find`, with stderr sent to
+`/dev/null` — an errored predicate returning no rows, read as absence. Precisely
+the fail-open shape the same session had just fixed three times in the capture
+guards.
+
+**The real finding, verified at source and larger than the original.** The
+meeting's retained transcript holds zero turns — a healthy 28-second capture of
+silence — and `worker/note_validator.py:957` refuses it by design. Everything
+downstream behaves correctly. What fails is the telling: the failure code and
+receipt are dropped outside `note_trace_enabled()`, and `library_reader.rs`
+renders summary-failed as a pure function of the meeting record, so the operator
+is returned to a screen identical to the one before the click. And
+`library_reader.rs:1376-1382` offers Generate note on a zero-turn meeting with no
+turn-count check — the app offers an action it already knows must fail. Trace:
+`docs/evidence/note-generation-silent-failure.md`.
+
+Adjacent hazard from the same read, source-only: `operations.rs:467-473` rejects
+any failure with `recoverable == false`, leaving that operation nonterminal, so
+the next Generate note is refused by the "another nonterminal operation already
+exists" guard. A second route into the same gap.
 
 Two more from the same set: the Source transcript header renders its sentence as
 two one-word-per-line columns with the action buttons painted over it, and on the

@@ -6,38 +6,43 @@ index and is safe to read.
 
 ## Findings, most severe first
 
-**F1 — Generate note runs for minutes, then fails silently and writes nothing.**
-The headline. `08-dark-generating` shows the state entered correctly: "Preparing
-your meeting note.", the button disabled as "Generating note…", and "The note
-model is reading this transcript on your Mac." Five minutes later the document
-had reverted to **the pre-generation screen**. Compared pixelwise against
-`01-dark-open`, `09-dark-after-generate` is visually identical: 18 of 3,888,000
-pixels differ by more than 8/255, and none by more than 60 — antialiasing, not
-content.
+**F1 — CORRECTED 2026-09-03. Generate note is offered on a meeting that cannot
+produce a note, and the refusal is never shown to the operator.**
 
-Nothing recorded the attempt. No note, no diagnostic file, no change to
-`attempt.json`, no entry in the unified log: `find` over the whole preview
-application-support tree reports zero files modified in the surrounding two
-hours. The note model is installed and complete (gemma-3-12b-it-qat-4bit, 7.5 GB,
-both safetensors shards, matching `active-note-model.json`), and the worker
-processes were alive at 0.0% CPU afterwards.
+The original F1 claimed generation failed silently and recorded nothing. **That
+was wrong, and the error was mine.** The app recorded every attempt properly.
+`operations/` holds a complete request/result/commit receipt for each of the
+three clicks; today's reads `"status": "rejected"`, `"failure_code":
+"note-rejected"`, `"lifecycle": "summary-failed"`. Request to commit was **23
+seconds**, not five minutes — the five minutes was the gap between my click and
+my screenshot.
 
-So the operator's second attempt is indistinguishable from never having tried:
-same heading, same body, same button, no error, no timestamp, no attempt count.
-The product brief requires that "an interrupted or failed run is stated plainly."
-This is a failed run stated as nothing at all.
+The claim rested on a `find` that could never have matched. `find -newermt
+"-2 hours"` is an invalid timestamp for this machine's `find`, which errors on
+it; stderr was redirected to `/dev/null`, so an errored predicate returned no
+rows and I read the empty output as evidence of absence. It is the same
+fail-open shape as the three capture-guard defects fixed earlier the same day,
+committed by the person who had just fixed them.
 
-**Reproduced** in `12-dark-second-generate-attempt`, with the app relaunched
-directly from its binary so its stderr was captured. Four minutes; the app wrote
-**zero bytes** to stderr, spawned no note-projector child (only the two standing
-python workers, both at 0.0% CPU), and the document reverted exactly as before.
+**The real cause, verified at source.** The meeting's retained transcript holds
+**zero turns** — a healthy 28-second capture that recorded silence.
+`worker/note_validator.py:957` refuses that by design:
+`if not transcript.turns: raise GenerationRefused("no-generatable-transcript", True)`.
+The mlx child is never spawned because the generator session is built lazily,
+which is why no projector process appeared. All correct behaviour.
 
-What that rules out: the bundle is not missing the projector -- `note-bridge.py`,
-`note-generator-mlx.py`, `note-runtime-project.json`,
-`note-runtime-generate.json` and `note-validator.zip` are all present in
-`Contents/Resources`. The failure is upstream of anything that writes, logs, or
-forks. (The installed `/Applications/Yawn.app` has none of those files, which is
-**not** a finding: it is 0.5.7 from Aug 12 and predates that packaging.)
+**What is still a defect, and it is the one that matters.** Nothing reaches the
+operator. `crates/session-core/src/product_coordinator.rs` drops the failure
+code and receipt outside `note_trace_enabled()`, and `library_reader.rs` renders
+the summary-failed surface as a pure function of the meeting record — no attempt
+count, no timestamp, no reason. So the operator clicks Generate note, waits, and
+is returned to a screen identical to the one before the click. The product brief
+requires that "an interrupted or failed run is stated plainly."
+
+Sharper still: `library_reader.rs:1376-1382` sets `regeneration_source_sha256`
+for a summary-failed meeting **with no turn-count check**, so the app offers an
+action it already knows cannot succeed. Full trace with citations:
+`docs/evidence/note-generation-silent-failure.md`.
 
 **F2 — On the delete sheet, the irreversible action and the escape hatch are the
 same colour.** Measured from the full-resolution frames, not eyeballed:
