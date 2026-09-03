@@ -5,9 +5,12 @@
  * No dependencies. Reads the JSON, pulls the values the shipped CSS actually
  * consumes, and writes them into a hand-formatted template that matches
  * apps/desktop/ui/tokens.css line for line. tokens.json holds a few values
- * (motion.duration, layout.inspector, layout.control, fontSize.transcript)
- * that document DESIGN.md's full system but aren't wired into a CSS custom
- * property yet — this generator does not emit those; see README.md.
+ * (motion.duration, layout.inspector, layout.control) that document
+ * DESIGN.md's full system but aren't wired into a CSS custom property yet —
+ * this generator does not emit those; see README.md. fontSize.transcript
+ * left that list in the 2026-09-03 visual refit (emitted below as
+ * --t-transcript/--lh-transcript) once styles.css needed a real token for
+ * transcript turn text instead of a duplicate --text-transcript-body.
  *
  * Usage: node generate.js [--check]
  *   --check   don't write; exit 1 if the generated output would differ from
@@ -48,6 +51,9 @@ const fs_ = t.fontSize;
 const rad = t.radius;
 const layout = t.layout;
 const motion = t.motion;
+const space = Object.entries(t.spacing)
+  .map(([k, v]) => `--space-${k}: ${v};`)
+  .join(" ");
 
 function render() {
   return `/* Yawn desktop design tokens. Source of record: DESIGN.md.
@@ -61,10 +67,22 @@ function render() {
   --font-mono: ${t.font.mono};
   --t-caption: ${fs_.caption.size}; --t-body: ${fs_.body.size}; --t-read: ${fs_.read.size}; --t-title: ${fs_.title.size}; --t-large: ${fs_.large.size};
   --lh-body: ${fs_.body.lineHeight}; --lh-read: ${fs_.read.lineHeight};
+  /* Transcript turn text is its own documented size (DESIGN.md "transcript 14
+     at 1.55"), distinct from body -- the visual refit (2026-09-03) wires it
+     in so styles.css's transcript rendering stops leaning on a duplicate
+     --text-transcript-body custom property for a value tokens.json already
+     held. */
+  --t-transcript: ${fs_.transcript.size}; --lh-transcript: ${fs_.transcript.lineHeight};
   --measure: ${t.measure};
   --r-control: ${rad.control}; --r-card: ${rad.card};
   --toolbar-h: ${layout.toolbar}; --sidebar-w: ${layout.sidebar};
   --motion: ${motion.default};
+  /* Spacing scale (visual refit 2026-09-03): the rhythm styles.css's 31
+     ad hoc margin/padding/gap values collapsed onto. 32 is the one addition
+     to DESIGN.md's original 4/6/8/12/16/18/24/48 -- three legacy sheet
+     values (28, 32, 38px) clustered there and would otherwise lose 14-37%
+     snapping straight to 24 or 48. */
+  ${space}
 
   --window: ${light.window}; --sidebar: ${light.sidebar}; --content: ${light.content}; --panel: ${light.panel};
   --separator: ${light.separator}; --separator-strong: ${light.separatorStrong};
@@ -104,7 +122,15 @@ button, input { font: inherit; color: inherit; }
   background-image: none; position: relative; }
 .search::before { content: "⌕"; position: absolute; left: 7px; top: 1px; color: var(--label-3); }
 .read { font-size: var(--t-read); line-height: var(--lh-read); max-width: var(--measure); }
-.read h2 { font-size: var(--t-body); font-weight: 600; color: var(--label-2); text-transform: none; letter-spacing: 0; margin: 20px 0 6px; }
+/* Refit 2026-09-03 (finding 3): this was var(--t-body) = 13px, smaller than
+   the 15px prose it heads ("Overview" read smaller than its own sentences).
+   DESIGN.md's Type section already specs "section headings (15 at 600)" --
+   the same size as body, weight-only -- so 15/600 is the documented value,
+   not a new decision. It stays on tokens.css's three-size document-pane rule
+   ("22, 15, and one line of 13 -- if a fourth appears, something is
+   misfiled"); a strict outranking would need a fourth size and is reported
+   as blocked by that rule rather than added silently. */
+.read h2 { font-size: var(--t-read); font-weight: 600; color: var(--label-2); text-transform: none; letter-spacing: 0; margin: 20px 0 6px; }
 .read p, .read li { margin: 0 0 6px; }
 .claim { border-bottom: 1px dashed var(--separator-strong); cursor: default; }
 .claim.open { background: var(--evidence); border-bottom-color: var(--accent); }
