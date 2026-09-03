@@ -103,7 +103,15 @@ cap_session_usable() {
   # A real window count is the probe because it is the thing that has to work.
   # It returns "0" rather than erroring when the frontmost app genuinely has no
   # window, so this separates "not allowed to ask" from "nothing to see".
-  if ! osascript -e 'tell application "System Events" to return (count of windows of first process whose frontmost is true) as text' >/dev/null 2>&1; then
+  # The process reference needs its own parentheses. Without them AppleScript
+  # reads `windows of first process whose frontmost is true` as a filter over
+  # windows, fails, and -- this is the part that matters -- reports it as
+  # "Access not allowed. (-1723)". So the broken form errors on a machine with
+  # full access while claiming a permission problem, which is precisely the
+  # false reading this whole function exists to prevent. Caught by running it
+  # once access was actually granted; it had only ever been exercised while
+  # denied, where it returned the right answer for the wrong reason.
+  if ! osascript -e 'tell application "System Events" to return (count of windows of (first process whose frontmost is true)) as text' >/dev/null 2>&1; then
     cap_log "SESSION: no assistive access -- window geometry, frontmost checks and clicks all fail"
     cap_log "SESSION: grant Accessibility to the host app in System Settings > Privacy & Security > Accessibility"
     return 1

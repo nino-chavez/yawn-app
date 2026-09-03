@@ -1,0 +1,29 @@
+09:23:37 pid 65222, 1 window(s) after 0s
+09:23:48 captured 01-dark-open  2160 1800 (bounds 360 80 1080 900)
+09:24:28 clicked sidebar row 4 (meeting with an existing note) -> screen 500,366
+09:24:34 captured 02-dark-note  2160 1800 (bounds 360 80 1080 900)
+09:24:50 clicked Manage -> screen 1220,168
+09:24:53 captured 03-dark-manage-menu  2160 1800 (bounds 360 80 1080 900)
+09:25:26 clicked Move to Trash... -> screen 1119,321
+09:25:29 captured 04-dark-trash-confirm  2160 1800 (bounds 360 80 1080 900)
+09:25:47 clicked Cancel -> screen 987,625
+09:25:50 captured 05-dark-after-cancel  2160 1800 (bounds 360 80 1080 900)
+09:26:08 clicked Manage -> screen 1220,168
+09:26:10 clicked Lock meeting... -> screen 1119,262
+09:26:13 captured 06-dark-lock-sheet  2160 1800 (bounds 360 80 1080 900)
+09:26:33 clicked Cancel -> screen 998,625
+09:27:03 appearance light
+09:27:04 pid 71589, 1 window(s) after 0s
+09:27:11 BOUNDS: unreadable for pid 71589 -- refusing to guess a rectangle
+09:27:11 FAILED 07-light-note (bounds)
+09:27:59 captured 07-light-open  2160 1800 (bounds 360 80 1080 900)
+09:28:50 appearance reset
+09:28:52 clicked Generate note -> screen 746,405
+09:28:55 captured 08-dark-generating  2160 1800 (bounds 360 80 1080 900)
+09:35:25 ABORT: frontmost bundle is "/Applications/Claude.app", not "/Users/nino/Workspace/dev/apps/yawn-app/target/release/bundle/macos/Yawn Preview.app" -- refusing to click
+09:35:25 FAILED 09-dark-after-generate (guard)
+09:35:44 captured 09-dark-after-generate  2160 1800 (bounds 360 80 1080 900)
+09:37:02 clicked note meeting -> screen 500,366
+09:37:08 clicked Full transcript disclosure -> screen 735,590
+09:37:12 captured 10-dark-transcript  2160 1800 (bounds 360 80 1080 900)
+09:38:19 captured 11-dark-settings  1440 1440 (bounds 540 211 720 720)
