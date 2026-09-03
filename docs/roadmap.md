@@ -160,11 +160,18 @@ under the build hash. Two defects the honest surface exposed:
   meeting produced a committed operation and a note pair (two cited claims,
   about 60 s end to end), the first generated note any packaged build has
   produced; captures at `captures/630d08a-installed`. Two observations
-  from the run, filed not fixed: (1) System Events could not read the
-  window for the ~60 s the generation ran, on three separate runs, so no
-  generating frame exists; whether the window is also unresponsive to a
-  person during generation (a main-thread block) is unverified and needs a
-  check with the app in front of someone. (2) In light appearance, two
+  from the run: (1) System Events could not read the window for the ~60 s
+  the generation ran, on three separate runs, so no generating frame
+  exists. Root cause found and fixed (D-FREEZE, 800620f): it was a
+  main-thread block. Tauri v2 runs a command without `async` on the main
+  thread — "Commands without the async keyword are executed on the main
+  thread unless defined with `#[tauri::command(async)]`" (v2.tauri.app,
+  against the resolved tauri 2.11.5) — and `regenerate_note` runs the
+  generate child and `note.create` to a terminal receipt inside the call.
+  Two comments asserted the opposite, which is why the annotation looked
+  correct; both are corrected. Written in the attribute, not as an
+  `async fn`, because the signature borrows `State<'_, _>`. Still to
+  verify on the installed build. (2) In light appearance, two
   relaunches opened the first row instead of the clicked row, the click
   resolving several seconds late once; dark runs opened on the second
   click every time. Possibly the same handle-refresh shape as D-OPEN; also
@@ -201,6 +208,7 @@ from it, all inside the selected direction:
 | R22 | Model setup (first launch with no speech model; harness `mode=model-setup`): retired hero headline at 43px and two 292px option cards | Landed. Type half 69dec1f; cards half e4a1122 — the options are the grouped-list material Settings already uses (R13), the recommendation is derived from the smallest download instead of an `id.includes("q4")` sniff, and the uppercase DOWNLOAD / ON DISK list is gone (the pair now appears only when download and install actually differ, which no catalog entry does today). Harness `mode=model-setup` carries the catalog's real two options |
 | R26 | Found while reading the R22 frame back: `.button-primary` kept a dark-mode override from the retired palette (near-white pill, dark text), which R21 missed when it made the class the accent fill. In dark, every sheet primary and the model-setup recommendation rendered the same as its neighbour, so no surface had a visible primary; light was correct, which is why no review caught it | Fixed with R22 (e4a1122): the override is gone, dark matches light and `.btn.primary`, verified on the rename sheet and the model-setup surface |
 | R27 | Same dark block, not fixed: `.button-danger` is overridden to a salmon fill (#ef8879). DESIGN.md's color rule gives hue to three roles only — record red, attention yellow, evidence accent — and a filled destructive button also reads as a primary, which the same document forbids | Give `.button-danger` the standard bezel in dark, as `.button-secondary` and `.button-quiet` already have. Deferred: it changes the retry sheet's "Use retry", which no review has judged. Not yet done |
+| R28 | Every one of the desktop's 73 Tauri commands is synchronous, so by the same vendor rule each runs on the main thread. Any command that reaches the worker can therefore hold the UI for up to `WORKER_REQUEST_TIMEOUT` (30 s), and the snapshot poll the UI depends on is itself such a command | Audit the commands that can block — worker calls, transcription retry, model install, meeting finalize — and give each `#[tauri::command(async, ...)]`, keeping AppKit-touching work on the main thread. Needs a per-command read, not a sweep. Not yet done |
 | R23 | After a rejected generation (lifecycle summary-failed, seen on the installed preview): the caption reads "Summary Failed", the Generate note control and the audio fact vanish, and nothing on the page says what happened or offers the retry the view-model defines ("Your meeting note needs another try." with Regenerate note) | Render the summary-failed recovery presentation in the document and keep the control; the reader should never see a bare enum label as the only explanation. Landed (b70c0a1): the note area renders the recovery title and detail for generating and summary-failed, the control stays as the retry (or disabled while generating), and the released-audio caption reads from the note itself. Harness-verified (mode=summary-failed); installed capture pending. The same gap hid the generating state, which is why no run ever showed one |
 | R24 | Transcript-only document (01, review of 630d08a): the subtitle's lifecycle field reads "Transcript Only", which a cold reader took as a constraint rather than the meeting's state | Landed (ac6652a). The caption was `humanize(note.state)` — the storage enum, title-cased — while the sidebar row for the same meeting already said "transcript available", so one screen had two vocabularies for one fact. `meetingStateCaption` maps each document state and falls back to the humanizer. Strings await an operator read (DIRECTION.md content reads); tests assert the mapping, not the wording |
 | R24b | Read-back of the R24 harness frames: two sentences promise a note that was never created — the released-audio fact ("The transcript and note remain available") and the summary-failed detail ("Your transcript and current note remain unchanged"). Both were invisible until R23 stopped hiding this document's captions | Landed (ac6652a). Each varies on whether a note exists, the same split the generating branch already made; the recovery action's label follows the control's rule. Two tests assert neither sentence names a note when none exists |
