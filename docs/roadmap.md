@@ -909,6 +909,27 @@ What the pass has to settle, in one sitting:
 | retry decision sheet | R27 and R32 on a device, on a surface no review has ever judged |
 | delete confirmation sheet | R27 and R34 on a device, same |
 
+**Attempted 2026-09-02 night on build 21 and stopped one frame in.** What it
+proved is filed at `docs/evidence/screen-reviews/captures/d0c5d86-installed-partial/`:
+R23, R24 and R24b confirmed on a device from the summary-failed frame, and
+D-OPENFREEZE confirmed by eight consecutive accessibility reads across the 5.0 s
+after a sidebar click, where that open used to leave the window unreadable.
+
+It stopped because every remaining frame needs a click into the web view, and
+there is no safe named target: the window exposes only an `AXGroup` and the
+three traffic lights to accessibility, and the app's menus reach recording,
+sidebar, transcript and Settings but not meeting selection, Generate note, or
+either sheet. `System Events`' `click at {x, y}` silently does nothing at an
+arbitrary point; a CGEvent click tool was built to replace it and its execution
+was refused by the session's permission boundary. The run was stopped there
+rather than routed around, and the operator has to decide whether to grant that
+or drive the remaining frames by hand.
+
+Two rows come off the plan as unreachable on this machine rather than pending:
+**transcript-only**, because no meeting is in that state any more (the nine-turn
+meeting has carried a note since build 20), and **model setup**, which needs a
+Mac with no speech model installed.
+
 Two behaviours to observe rather than photograph: the window stays responsive
 during a generation (D-FREEZE), and a meeting row opens without the ~5 s pause
 (D-OPENFREEZE). Both were introduced and fixed on 2026-09-02 and neither has
