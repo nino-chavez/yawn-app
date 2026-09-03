@@ -30,8 +30,6 @@ CAP_SELF="${BASH_SOURCE[0]:-$0}"
 CAP_APP="${CAP_APP:-$(cd "$(dirname "$CAP_SELF")/.." && pwd)/target/release/bundle/macos/Yawn Preview.app}"
 CAP_OUT="${CAP_OUT:-$PWD/captures}"
 CAP_LOG="${CAP_LOG:-$CAP_OUT/capture.log}"
-# The window's default size, used only when accessibility cannot report bounds.
-CAP_FALLBACK_BOUNDS="${CAP_FALLBACK_BOUNDS:-0 0 1080 900}"
 
 cap_log() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" | tee -a "$CAP_LOG" >&2; }
 
@@ -92,6 +90,22 @@ cap_session_usable() {
   fi
   if ! osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' >/dev/null 2>&1; then
     cap_log "SESSION: no frontmost process -- the login session is not interactive"
+    return 1
+  fi
+  # Assistive access is a SEPARATE permission from everything above, and until
+  # 2026-09-03 nothing here noticed it was missing. Both probes above are
+  # answered without it: a process NAME and a bundle path are ordinary
+  # attributes, while `count of windows` is accessibility. So the guard passed
+  # while every window query in this file failed with -25211, and `cap_bounds`
+  # quietly served its fallback rectangle -- the same fail-open shape as the
+  # locked-screen bug, one permission over.
+  #
+  # A real window count is the probe because it is the thing that has to work.
+  # It returns "0" rather than erroring when the frontmost app genuinely has no
+  # window, so this separates "not allowed to ask" from "nothing to see".
+  if ! osascript -e 'tell application "System Events" to return (count of windows of first process whose frontmost is true) as text' >/dev/null 2>&1; then
+    cap_log "SESSION: no assistive access -- window geometry, frontmost checks and clicks all fail"
+    cap_log "SESSION: grant Accessibility to the host app in System Settings > Privacy & Security > Accessibility"
     return 1
   fi
   return 0
@@ -155,10 +169,20 @@ cap_appearance() {
   cap_log "appearance $1"
 }
 
+# Returns real window bounds or fails. It used to serve `CAP_FALLBACK_BOUNDS`
+# whenever the query came back empty, which reads as defensive and is not: the
+# window is not at the fallback origin (it sits at 360,80 on this Mac), so a
+# frame taken on those numbers photographs a rectangle of desktop and whatever
+# else is under it. `cap_frame` reads every frame back from disk, and a valid
+# PNG of the wrong rectangle passes that check -- so the fallback converted a
+# hard failure into a plausible, wrong, permanently-filed piece of evidence.
+#
+# Same lesson as the two guards above: when a check cannot get a true answer it
+# must say so, not substitute a default and continue.
 cap_bounds() {
   local pid bounds
   pid=$(cap_pid)
-  [ -n "$pid" ] || { cap_log "no process for $CAP_APP, using fallback bounds"; printf '%s' "$CAP_FALLBACK_BOUNDS"; return 0; }
+  [ -n "$pid" ] || { cap_log "BOUNDS: no process for $CAP_APP"; return 1; }
   bounds=$(osascript <<EOF 2>/dev/null
 tell application "System Events" to tell (first process whose unix id is $pid)
   if (count of windows) is 0 then error "no window"
@@ -169,11 +193,10 @@ end tell
 EOF
 )
   if [ -z "$bounds" ]; then
-    cap_log "bounds unreadable, using fallback"
-    printf '%s' "$CAP_FALLBACK_BOUNDS"
-  else
-    printf '%s' "$bounds"
+    cap_log "BOUNDS: unreadable for pid $pid -- refusing to guess a rectangle"
+    return 1
   fi
+  printf '%s' "$bounds"
 }
 
 # Every frame is read back before it counts. A screencapture that wrote nothing,
@@ -185,25 +208,33 @@ cap_frame() {
   # simple command before running it, so the second assignment would read
   # `label` while it is still unset and abort under `set -u`.
   local label="$1"
-  local path="$CAP_OUT/$label.png"
+  # `frame_path`, never `path`. In zsh -- which the header says this file is
+  # sourced from -- `path` is the array tied to `PATH`, so `local path=...`
+  # empties PATH for the rest of the function and `screencapture`, `file` and
+  # `sips` all stop resolving by name. Harmless in bash, which is why it
+  # survived: the same line is correct in one shell and destroys the function
+  # in the other.
+  local frame_path="$CAP_OUT/$label.png"
   # `screencapture -R` takes a screen RECTANGLE, so it photographs whatever is
   # on top of that rectangle -- not the app. Without this the read-back below
   # passes happily on a valid PNG of the wrong window, which is the one failure
   # it cannot see. Same reason `cap_click` guards.
   cap_guard || { cap_log "FAILED $label (guard)"; return 1; }
-  read -r x y w h <<<"$(cap_bounds)"
-  screencapture -x -R"$x,$y,$w,$h" "$path" 2>/dev/null
-  if [ ! -s "$path" ]; then
+  local rect
+  rect=$(cap_bounds) || { cap_log "FAILED $label (bounds)"; return 1; }
+  read -r x y w h <<<"$rect"
+  screencapture -x -R"$x,$y,$w,$h" "$frame_path" 2>/dev/null
+  if [ ! -s "$frame_path" ]; then
     cap_log "FAILED $label (no file)"
     return 1
   fi
   local kind dims
-  kind=$(file -b "$path")
+  kind=$(file -b "$frame_path")
   case "$kind" in
     *PNG*) ;;
-    *) cap_log "FAILED $label (not a PNG: $kind)"; rm -f "$path"; return 1 ;;
+    *) cap_log "FAILED $label (not a PNG: $kind)"; rm -f "$frame_path"; return 1 ;;
   esac
-  dims=$(sips -g pixelWidth -g pixelHeight "$path" 2>/dev/null | awk '/pixel/{printf "%s ", $2}')
+  dims=$(sips -g pixelWidth -g pixelHeight "$frame_path" 2>/dev/null | awk '/pixel/{printf "%s ", $2}')
   cap_log "captured $label  ${dims}(bounds $x $y $w $h)"
 }
 
@@ -246,7 +277,9 @@ cap_click() {
       cap_log "FATAL could not build $CAP_CLICK_BIN"; return 1; }
     cap_log "built $CAP_CLICK_BIN"
   fi
-  read -r wx wy _ _ <<<"$(cap_bounds)"
+  local rect
+  rect=$(cap_bounds) || { cap_log "FAILED click ${label:-($sx,$sy)} (bounds)"; return 1; }
+  read -r wx wy _ _ <<<"$rect"
   local x
   local y
   x=$(python3 -c "print(int($wx + $sx * ${CAP_SCALE:-1.08}))")

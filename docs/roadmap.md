@@ -936,6 +936,36 @@ was refused by the session's permission boundary. The run was stopped there
 rather than routed around, and the operator has to decide whether to grant that
 or drive the remaining frames by hand.
 
+**Attempted again 2026-09-03 morning, with the operator away and the screen
+unlocked, and it got no further -- for a different reason than the one recorded
+above.** The click permission was never the only gate, and naming it as the
+unblock was wrong. `osascript` on this host has no **assistive access**: every
+accessibility call returns -25211, so the window count, the window geometry and
+the synthetic click all fail together. One System Settings grant covers all
+three. The host app is `/Applications/Claude.app` (Privacy & Security >
+Accessibility); the CGEvent helper itself runs fine and is not what refuses.
+
+Three defects in the capture primitives were found by that attempt and fixed in
+the same pass. All three are the shape the previous night's fixes were about --
+a check that cannot get a true answer substituting a plausible one:
+
+- `cap_session_usable` passed while assistive access was denied, because both
+  of its probes (a process name, a bundle path) are answered without it. It now
+  probes a real window count, which is the thing that has to work, and names the
+  exact remedy.
+- `cap_bounds` served `CAP_FALLBACK_BOUNDS` whenever the geometry query came
+  back empty. The window is not at that fallback origin, so a frame taken on
+  those numbers is a valid PNG of the wrong rectangle -- which `cap_frame`'s
+  read-back cannot detect, and which would have been filed as evidence. The
+  fallback is gone; unreadable bounds now fail.
+- `cap_frame` declared `local path=...`, and in zsh -- which the file's own
+  header says it is sourced from -- `path` is tied to `PATH`, so the function
+  emptied PATH and `screencapture`, `file` and `sips` stopped resolving. Correct
+  in bash, fatal in zsh. Renamed to `frame_path`.
+
+No frame was taken and no capture set was filed, because a set with no verified
+frame in it is not evidence.
+
 Two rows come off the plan as unreachable on this machine rather than pending:
 **transcript-only**, because no meeting is in that state any more (the nine-turn
 meeting has carried a note since build 20), and **model setup**, which needs a
