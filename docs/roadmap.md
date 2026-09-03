@@ -886,6 +886,39 @@ tabs, so it gates release for D5 and D6.
 - “Implemented,” “packaged,” “installed,” and “shipped” remain separate states
 - No worker signs, installs, uploads, deploys, or changes `/Applications/Yawn.app`
 
+### Next installed capture pass — build 21, decided and waiting on the operator
+
+Build 21 is built and signed (binary 21:03, 199 Mach-Os, Developer ID,
+`codesign --verify --deep --strict` exit 0). It is the first packaged build to
+carry D-FREEZE, D-OPENFREEZE, D-QUEUE, R22, R23, R24, R26, R27, R29, R31 and
+R34. The run is gated on the operator saying he is away from the Mac, not on an
+unlocked screen — `scripts/capture-installed-screens.sh` refuses without
+`CAPTURE_OPERATOR_AWAY=1` for that reason.
+
+What the pass has to settle, in one sitting:
+
+| Frame | What it proves |
+|---|---|
+| dark transcript-only | Baseline, and R24's caption vocabulary on a real meeting |
+| dark generating | Newly reachable at all. Before D-FREEZE the window was unreadable for the whole run, which is what earlier passes recorded as "not captured" |
+| dark note | R23's document, and that generation still works on a rebuilt bundle |
+| dark summary-failed | R23's recovery copy in place, and R24b's two corrected sentences |
+| light note | Blocked twice before by D-OPENFREEZE's stale row handle; the direct light note frame has never been taken |
+| light needs-attention / retry warnings | **R35** — the only way to confirm or drop the computed light contrast figures (`--record` 4.14:1, `--attention` 4.48:1). Cannot be checked in the harness: this Mac is in Dark and appearance emulation does not take |
+| model setup | R22's grouped list and R26's dark primary on the packaged build |
+| retry decision sheet | R27 and R32 on a device, on a surface no review has ever judged |
+| delete confirmation sheet | R27 and R34 on a device, same |
+
+Two behaviours to observe rather than photograph: the window stays responsive
+during a generation (D-FREEZE), and a meeting row opens without the ~5 s pause
+(D-OPENFREEZE). Both were introduced and fixed on 2026-09-02 and neither has
+been seen on a packaged build.
+
+Then: read every frame back from disk, file the set under
+`docs/evidence/screen-reviews/captures/<sha>-installed/` with a MANIFEST that
+says what was *not* captured and why, and dispatch a blind cold review. R32,
+R33 and R35 go to that reviewer with their measurements attached.
+
 ## Current build receipt
 
 **Directly observed on 2026-08-16.** The separately identified Yawn Preview
