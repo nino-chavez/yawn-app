@@ -85,10 +85,16 @@ meetings" link, and the green Settings accent. Diagnosis:
 
 ## Spacing
 
-4, 6, 8, 12, 16, 18, 24, 48. Row padding 6/8; toolbar padding 12; sidebar
+4, 6, 8, 12, 16, 18, 24, 32, 48. Row padding 6/8; toolbar padding 12; sidebar
 inset 16; inspector padding 18; document 24 top, 48 sides. Toolbar 52,
 sidebar 280, inspector 320, controls 22 (26 on a needs-attention surface).
 Radii 6 for controls, 10 for cards and sheets.
+
+32 was added in the 2026-09-03 visual refit, migrating `apps/desktop/ui/
+styles.css`'s 31 ad hoc margin/padding/gap values onto this scale. Three
+legacy sheet values (28, 32, 38px, eight declarations) clustered there;
+snapping them straight to 24 or 48 instead would have cost 14-37% off each.
+No other step changed.
 
 ## Components and states
 

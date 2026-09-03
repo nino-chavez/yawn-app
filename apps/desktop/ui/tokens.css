@@ -9,10 +9,22 @@
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --t-caption: 11px; --t-body: 13px; --t-read: 15px; --t-title: 17px; --t-large: 22px;
   --lh-body: 1.4; --lh-read: 1.6;
+  /* Transcript turn text is its own documented size (DESIGN.md "transcript 14
+     at 1.55"), distinct from body -- the visual refit (2026-09-03) wires it
+     in so styles.css's transcript rendering stops leaning on a duplicate
+     --text-transcript-body custom property for a value tokens.json already
+     held. */
+  --t-transcript: 14px; --lh-transcript: 1.55;
   --measure: 62ch;
   --r-control: 6px; --r-card: 10px;
   --toolbar-h: 52px; --sidebar-w: 280px;
   --motion: 160ms ease-out;
+  /* Spacing scale (visual refit 2026-09-03): the rhythm styles.css's 31
+     ad hoc margin/padding/gap values collapsed onto. 32 is the one addition
+     to DESIGN.md's original 4/6/8/12/16/18/24/48 -- three legacy sheet
+     values (28, 32, 38px) clustered there and would otherwise lose 14-37%
+     snapping straight to 24 or 48. */
+  --space-4: 4px; --space-6: 6px; --space-8: 8px; --space-12: 12px; --space-16: 16px; --space-18: 18px; --space-24: 24px; --space-32: 32px; --space-48: 48px;
 
   --window: #ececec; --sidebar: #e8e8e8; --content: #ffffff; --panel: #f5f5f5;
   --separator: rgba(0,0,0,0.12); --separator-strong: rgba(0,0,0,0.2);
@@ -52,7 +64,15 @@ button, input { font: inherit; color: inherit; }
   background-image: none; position: relative; }
 .search::before { content: "⌕"; position: absolute; left: 7px; top: 1px; color: var(--label-3); }
 .read { font-size: var(--t-read); line-height: var(--lh-read); max-width: var(--measure); }
-.read h2 { font-size: var(--t-body); font-weight: 600; color: var(--label-2); text-transform: none; letter-spacing: 0; margin: 20px 0 6px; }
+/* Refit 2026-09-03 (finding 3): this was var(--t-body) = 13px, smaller than
+   the 15px prose it heads ("Overview" read smaller than its own sentences).
+   DESIGN.md's Type section already specs "section headings (15 at 600)" --
+   the same size as body, weight-only -- so 15/600 is the documented value,
+   not a new decision. It stays on tokens.css's three-size document-pane rule
+   ("22, 15, and one line of 13 -- if a fourth appears, something is
+   misfiled"); a strict outranking would need a fourth size and is reported
+   as blocked by that rule rather than added silently. */
+.read h2 { font-size: var(--t-read); font-weight: 600; color: var(--label-2); text-transform: none; letter-spacing: 0; margin: 20px 0 6px; }
 .read p, .read li { margin: 0 0 6px; }
 .claim { border-bottom: 1px dashed var(--separator-strong); cursor: default; }
 .claim.open { background: var(--evidence); border-bottom-color: var(--accent); }

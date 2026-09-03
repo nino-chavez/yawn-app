@@ -36,11 +36,12 @@ No dependencies — plain Node, `fs`/`path` only.
 
 `tokens.json` is a superset of what `tokens.css` currently exposes as CSS
 custom properties. Minder's own `tokens.json` works the same way: it carries
-values its generated CSS doesn't yet consume. Three gaps worth knowing about:
+values its generated CSS doesn't yet consume. Two gaps worth knowing about
+(a third, `fontSize.transcript`, was wired in during the 2026-09-03 visual
+refit — `tokens.css` now emits `--t-transcript`/`--lh-transcript`, and
+`apps/desktop/ui/styles.css`'s transcript turn text reads them instead of a
+duplicate `--text-transcript-body`):
 
-- `fontSize.transcript` (14px / 1.55 leading) is in `tokens.json` per
-  DESIGN.md's type scale. It has no `--t-transcript` / `--lh-transcript`
-  custom property yet — the shipped CSS doesn't use it today.
 - `layout.inspector` (320px) and `layout.control` (22px / 26px) are
   documented per DESIGN.md. Neither has an `--inspector-w` or control-height
   custom property yet; inspector width and control heights are still
