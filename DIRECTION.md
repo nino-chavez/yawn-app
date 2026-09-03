@@ -90,6 +90,7 @@ did not produce (brief amendment, 2026-09-01).
 | Date | Surface | Strings | Verdict |
 |---|---|---|---|
 | 2026-09-01 | W10 first-run sheet, teaching empty state, guided hint | All W10 user-facing strings, verbatim in the packet report | Approved as-is by the operator; x-close retained |
+| 2026-09-02 | Meeting document state caption (R24) and the two note-state sentences (R23, R24b) | Caption: "Meeting note" / "Transcript" / "Note not created" / "Interrupted" / "Locked" / "Details only". Released audio, no note: "The audio was already deleted. The transcript remains available, but this meeting cannot be retranscribed." First failed generation: "Yawn could not create a note. Your transcript is unchanged and you can try again." | Proposed; not yet read by the operator. Tests assert the mapping and the no-note invariant, not this wording |
 
 ## Job questions (the cold review's only context)
 
