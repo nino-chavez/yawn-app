@@ -7788,11 +7788,15 @@ fn main() {
                         // stop_meeting takes command_lock/model locks and
                         // calls capture_shortcut::deactivate, which reaches
                         // into the global-shortcut plugin's own OS-level
-                        // unregister. The frontend only ever reaches this
-                        // command off-main (Tauri's invoke handler runs
-                        // commands on its async task pool), so dispatch the
-                        // tray's call the same way instead of assuming the
-                        // plugin's internals tolerate a main-thread caller.
+                        // unregister, so dispatch it off the main thread
+                        // rather than assuming the plugin's internals
+                        // tolerate a main-thread caller. (The parenthetical
+                        // here used to say the frontend reaches this command
+                        // off-main because Tauri runs commands on an async
+                        // task pool. It does not: a command without `async`
+                        // in its attribute runs on the main thread, which is
+                        // what froze the window during note generation. The
+                        // spawn below is still right; only the reason was.)
                         let app = app.clone();
                         std::thread::spawn(move || {
                             let _ = stop_meeting(app);

@@ -374,13 +374,24 @@ pub(crate) fn restore_withheld_turn(
 /// Registered generation command. Like restoration, the storage-backed
 /// coordinator runs to a terminal receipt before returning — but the middle
 /// of this one is the sandboxed generate child, so the call legitimately
-/// lasts minutes. Tauri runs sync commands off the main thread, the UI's
-/// snapshot polling continues meanwhile, and the facade's single-operation
-/// slot keeps a second product operation from starting underneath it. A
-/// rejected note is still a terminal receipt: the command returns the
-/// accepted operation and the meeting's summary-failed state carries the
-/// product answer.
-#[tauri::command(rename_all = "camelCase")]
+/// lasts minutes.
+///
+/// `async` in the attribute is load-bearing, and its absence was a real
+/// freeze. Tauri v2 runs a command without it **on the main thread**
+/// ("Commands without the async keyword are executed on the main thread
+/// unless defined with `#[tauri::command(async)]`", v2.tauri.app/develop/
+/// calling-rust, tauri 2.11.5), so this call held the UI for the whole
+/// generation: no repaint, no snapshot poll, and the help text under the
+/// button promising "you can keep using Yawn" was false. Written in the
+/// attribute rather than as an `async fn` because the signature takes
+/// `State<'_, _>`, which an async command cannot borrow.
+///
+/// The rest of the design already assumed this: the UI's snapshot polling
+/// continues meanwhile, and the facade's single-operation slot keeps a
+/// second product operation from starting underneath it. A rejected note is
+/// still a terminal receipt: the command returns the accepted operation and
+/// the meeting's summary-failed state carries the product answer.
+#[tauri::command(async, rename_all = "camelCase")]
 pub(crate) fn regenerate_note(
     meeting_id: Uuid,
     source_transcript_sha256: String,
