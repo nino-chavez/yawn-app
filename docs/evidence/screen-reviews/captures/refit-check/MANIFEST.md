@@ -22,23 +22,37 @@ in `summary-failed`, and that state disables Record.
 **Manage now outweighs Rename.** A changed band at y 84-97pt over the button
 row, which is the `font-weight: 600` the refit scoped to the manage control.
 
-## The open question this pass did not settle
+## The open question, now settled — and the answer is uncomfortable
 
-Diffed against the build 21 baseline, only three narrow bands moved: the
-toolbar (y 20-33), the button row (y 84-97), and the bottom edge (y 878-882).
-**The whole document pane is pixel-identical** — 0.44% of the frame differs in
-total.
+The note frame was taken (`01-refit-note`). It shows the **same three bands**
+changed and the document pane again pixel-identical: 0.54% of the frame differs
+in total, all of it toolbar, button row and bottom edge.
 
-That is unexpected and is not yet explained. The spacing migration is real in
-source (10→12, 13→12, 38→32, 17→18, 11→12 among others) and CSS demonstrably
-ships, since the Manage weight change rendered. So either the pane's own rules
-were already on the scale and the migration was value-preserving there, or part
-of the refit is not reaching this surface.
+The cause is not a build problem. The pane's rules were migrated — they read
+`var(--space-*)` and `var(--t-*)` now — but **the migration was value-preserving
+there**. `.doc-caption` went from `margin: 4px 0 18px` to
+`margin: var(--space-4) 0 var(--space-18)`: the same numbers, spelled
+differently. Its `font-size: var(--t-body)` was already correct and untouched.
+`.doc-fact`, `.meeting-note-section` and their neighbours are the same story.
+The pane's spacing was already on the scale; the 31 ad-hoc values were
+concentrated in sheets, sidebar, transcript panel and Settings.
 
-**Do not record the refit as verified until this is settled.** The decisive
-frame is the note document, where `.read h2` was 13px under 15px prose and is
-now 15 at 600 — a change that cannot be invisible. That frame is the first thing
-to take when the screen is unlocked.
+**So the refit did real internal work and changed the reading surface not at
+all** — and the reading surface is what the operator was looking at when he said
+it does not feel like a high-grade desktop app.
+
+This also corrects a diagnosis made earlier in the day. The measured rhythm in
+this pane — gaps of 1, 4, 10, 15, 16, 20, 20, 30, 33, 56, 56pt — was attributed
+to the ad-hoc spacing values. It cannot have been: the pane's own declarations
+were already 4, 12, 18 and 24. Those measured gaps are emergent, composed of
+margins **plus** line-heights **plus** element heights, and they do not map one
+to one onto declarations. The number was real; the cause assigned to it was not.
+
+The consequence is worth stating plainly rather than filing as a nuance. The
+document pane conforms to DESIGN.md's own budget — 22, 15, and one line of 13 —
+and it still reads the way the operator described. That points at the
+specification rather than at drift from it, and changing the specification is an
+operator decision, not one to make from a stylesheet.
 
 ## Also visible, not yet judged
 

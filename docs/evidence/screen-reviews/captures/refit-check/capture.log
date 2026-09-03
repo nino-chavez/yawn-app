@@ -4,3 +4,6 @@
 12:11:44 SESSION: screen is locked -- no capture is possible, and a 0-window reading means nothing
 12:11:44 SESSION: screen is locked -- no capture is possible, and a 0-window reading means nothing
 12:11:44 FAILED 01-refit-note (guard)
+12:24:27 pid 48027, 1 window(s) after 0s (confirmed)
+12:24:28 clicked note meeting -> screen 500,366
+12:24:34 captured 01-refit-note  2160 1800 (bounds 360 80 1080 900)
