@@ -1263,6 +1263,16 @@ function renderMeetingPane() {
   const canDeleteRecording = Boolean(note?.audioDeletionHandle);
   const canDeleteTranscript = Boolean(note?.transcriptDeletionHandle);
   const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
+  // R34: Move to Trash renders a plain `.btn`, like the four destructive
+  // actions beside it. It used to carry `class="btn danger"`, and
+  // `.btn.danger` is defined in neither stylesheet -- so the word did nothing
+  // and the control was correct by accident. That is a trap rather than a
+  // harmless leftover: the day someone adds a `.btn.danger` rule it lands on
+  // the one control DESIGN.md says must never be styled up. The specimen
+  // carries btn, primary, record, record.live and pressed, and "a component
+  // not on it is not in the system". R20 removed this control's accent fill
+  // and left the word behind.
+  //
   // Roadmap intake I5. Locking is offered on any readable meeting; removing a
   // lock is offered wherever one exists.
   const canLock = lock?.state === "unlocked";
@@ -1285,7 +1295,7 @@ function renderMeetingPane() {
         ${canUnlock ? `<button class="btn" type="button" data-action="unlock-meeting">Remove lock…</button>` : ""}
         ${canDeleteRecording ? `<button class="btn" type="button" data-action="delete-recording">Delete recording</button>` : ""}
         ${canDeleteTranscript ? `<button class="btn" type="button" data-action="delete-transcript">Delete transcript</button>` : ""}
-        ${canDeleteMeeting ? `<button class="btn danger" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
+        ${canDeleteMeeting ? `<button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
       </div>` : ""}
     </div>` : "";
 
