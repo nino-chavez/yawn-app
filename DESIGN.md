@@ -1,48 +1,48 @@
 # DESIGN.md — Yawn desktop visual system
 
-Status: **visual authority reopened 2026-09-03**.
+Status: **Tonal Ledger — Canvas selected and ported 2026-09-03**. The signed
+Preview bundle is verified; installed cold-review acceptance remains separate.
 
 Concept A remains the decided window structure: source list beside document,
-one Record control, and transcript evidence in an inspector. The installed
-frame at `docs/evidence/screen-reviews/captures/refit-check/01-refit-note.png`
-showed that the type, spacing, toolbar, control, and pane-layer rules below can
-all conform and still produce an unfinished screen. Those rules now describe
-the last implementation; they are not an acceptance target.
+one Record control, and transcript evidence in an inspector. The operator
+selected **Tonal Ledger — Canvas** for its visual system: a low-chroma
+violet-neutral Mac window whose center pane is the document surface. There is
+no floating document card. The operator's notes are the one quiet bounded
+writing object.
 
-The replacement comparison is governed by
+The completed comparison is governed by
 `docs/design/visual-system-rethink-brief-2026-09-03.md` and rendered from
-`apps/desktop/ui-harness/visual-treatments/`. Until the operator selects a
-treatment, use this file only for the locked rules named below. Do not cite the
-old specimen or its numbers as proof that a changed screen is visually done.
+`apps/desktop/ui-harness/visual-treatments/`. The selected static reference is
+`tonal-ledger-refined/`. The product implementation lives in
+`packages/design-tokens/tokens.json` and `apps/desktop/ui/styles.css`. Static
+frames remain comparison evidence, not installed acceptance.
 
-Current comparison result, not a selection: the blind cross-review ranks
-**Precision utility** first. After one bounded refinement it clears the static
-harness bar across sparse, dense, and needs-attention states in both
-appearances. That does not make it the selected system, port it into the app,
-or prove the installed window. Evidence and limits:
+The operator rejected Native Editorial, Private Notebook, Precision Utility,
+Quiet Folio, and Marquee Document — Quiet. Their files remain for archaeology;
+they are not alternate product themes. Evidence and limits:
 `docs/evidence/screen-reviews/visual-treatment-comparison-2026-09-03.md`.
 
-### Locked while the visual system is compared
+### Product rules retained through the selection
 
 - Concept A's persistent meeting list, document pane, and conditional source
   inspector.
 - The note-before-transcript reading order and the separation between operator
   notes and generated claims.
-- The semantic jobs of record, attention, and evidence color. Neutral surface
-  values and layering are open.
+- The semantic jobs of record, attention, and evidence color.
 - Copy truth, keyboard paths, focus order, ARIA, and reduced-motion behavior.
 
-### Reopened by the failed refit
+### Visual decisions made by Tonal Ledger — Canvas
 
-- The type family, sizes, weights, line heights, and reading measure.
-- Toolbar contents and the placement of unavailable-state feedback.
-- Neutral palette, surface layering, separators, selection treatment, radii,
-  and depth.
-- Document rhythm, the empty operator-notes editor, and the hierarchy of
-  Rename, Manage, transcript, and note actions.
-- Exact control heights, spacing steps, pane insets, and component styling.
+- System sans throughout; the meeting title, not a display typeface, carries
+  hierarchy.
+- Violet-neutral chrome and canvas in both appearances. Selection is a quiet
+  surface plus an inset locator, never a bright filled row.
+- The pane supplies document containment. Only personal notes, evidence, and
+  actionable recovery receive bounded or tinted material.
+- Rename and Manage remain secondary. Generated-note prose and operator notes
+  remain readable at 16px.
 
-## Composition — structure retained, measurements provisional
+## Composition
 
 - One main window, default 1080x900, minimum 900x600. Unified toolbar (52pt)
   with, left to right: traffic lights, sidebar toggle, window title, search
@@ -51,7 +51,7 @@ or prove the installed window. Evidence and limits:
   Previous 30 days, then month), each row title · caption (time · length ·
   status) · one excerpt line; a needs-attention row carries a dot. Trash is
   the last item. During capture, "Recording now" is the first row.
-- Document pane: the note at the reading measure (62ch), title, caption,
+- Document pane: the note at the reading measure (64ch), title, caption,
   Overview, Decisions, Follow-ups, Open questions. The empty selection is one
   centered caption. During capture the pane is the note canvas with the pause
   fact as a caption and a collapsed live-transcript disclosure.
@@ -62,44 +62,41 @@ or prove the installed window. Evidence and limits:
 - Settings is a standard Preferences-style window: closable, minimizable,
   not modal.
 
-## Type — historical baseline, not current authority
+## Type
 
-The following scale is the failed installed baseline. It remains here for
-archaeology until the selected treatment replaces it; do not carry it into new
-work as a constraint.
+System font (`-apple-system`) throughout. The meeting title is 28–36px at
+1.08, weight 650, with a maximum width of 21ch. Generated-note prose and the
+operator's note are 16px at 1.56. Transcript turns are 14px at 1.55. Toolbar,
+sidebar, controls, metadata, and section headings are 13px. Group labels and
+inspector labels are 11px. The needs-attention headline is 24px. No separate
+editorial or display family is introduced.
 
-System font (`-apple-system`). Body 13, caption 11, note body 15 at 1.6,
-transcript 14 at 1.55, title 17, large 22. Nothing above 22. No display
-sizes, no uppercase eyebrows, no letter-spaced labels.
+## Color
 
-Where each size goes, because the 2026-09-02 refit set most of the document
-pane at 13 and the operator found it too small to read:
+Tonal Ledger uses direct light/dark values rather than a branded gradient.
+The generated token file is the value authority. Core roles are:
 
-- 22: the meeting title, once.
-- 15 at 1.6: every sentence in the document pane, including empty states,
-  help under a control, the operator's notes and their placeholder, and
-  section headings (15 at 600).
-- 13: sidebar rows, toolbar, controls, sheets, Settings, and the one
-  metadata caption under the title (date · length · status).
-- 11: group labels and the inspector label only.
+| Role | Light | Dark |
+|---|---:|---:|
+| Window chrome | `#e4e0e7` | `#17161d` |
+| Sidebar | `#dfdbe3` | `#14131a` |
+| Document canvas | `#faf8fb` | `#1b1921` |
+| Primary label | `#211f25` | `#f4f2f7` |
+| Accent | `#6855a9` | `#a99be4` |
+| Selection locator | `#8c7ca8` | `#8073a3` |
 
-A document pane, then, has three sizes on screen: 22, 15, and one line of
-13. If a fourth appears, something is misfiled.
-
-## Color — semantic jobs retained, neutral treatment provisional
-
-System semantic colors in both appearances; the user's accent for selection
-and primary buttons. Three reserved colors and nothing else carries hue:
+Record, attention, and evidence keep distinct semantic jobs:
 
 | Role | Where it may appear |
 |---|---|
-| Record (system red) | The Record control idle and live; the "Recording now" row |
-| Attention (system yellow) | The dot on a needs-attention row; the needs-attention surface's one headline |
+| Record (muted red) | The Record control idle and live; the "Recording now" row |
+| Attention (amber) | The dot on a needs-attention row; the bordered recovery surface |
 | Evidence (accent at 10-16% tint) | The open claim and its cited turn |
 
-Content areas are never tinted. Banners are never used for facts; a fact is
-a caption. A full-width surface is used only for a condition that blocks or
-endangers the record, and it carries a next action.
+The document canvas is the reading surface; it does not sit inside another
+card. Banners are never used for facts; a fact is a caption. A bounded amber
+surface is used only for a condition that blocks or endangers the record, and
+it carries a next action.
 
 ## Copy
 
@@ -122,12 +119,14 @@ topbar with hidden title, page-per-route navigation with a "Back to
 meetings" link, and the green Settings accent. Diagnosis:
 `docs/design-rethink-2026-09-02.md`.
 
-## Spacing — historical baseline, not current authority
+## Spacing
 
 4, 6, 8, 12, 16, 18, 24, 32, 48. Row padding 6/8; toolbar padding 12; sidebar
-inset 16; inspector padding 18; document 24 top, 48 sides. Toolbar 52,
-sidebar 280, inspector 320, controls 22 (26 on a needs-attention surface).
-Radii 6 for controls, 10 for cards and sheets.
+inset 16; inspector padding 18; document 36 top, 26–68 responsive sides, and
+54 bottom. Toolbar 52, sidebar 280, inspector 320, controls 22 (26 on a
+needs-attention surface). Radii 6 for controls and 10 for notes, recovery, and
+sheets. Personal notes use 15/16/13 internal padding and an 88px minimum editor
+height.
 
 32 was added in the 2026-09-03 visual refit, migrating `apps/desktop/ui/
 styles.css`'s 31 ad hoc margin/padding/gap values onto this scale. Three
@@ -135,31 +134,29 @@ legacy sheet values (28, 32, 38px, eight declarations) clustered there;
 snapping them straight to 24 or 48 instead would have cost 14-37% off each.
 No other step changed.
 
-## Components and states — inventory retained, styling provisional
+## Components and states
 
 The prior rendered specimen, both appearances, increased contrast, and large text:
 `apps/desktop/ui-harness/concepts/shared/specimen.html`
-(`?theme=dark|light&contrast=more`). It is historical evidence, not the current
-visual reference. The component inventory and required states remain useful;
-the styling rules in the table are provisional unless they restate a locked
-behavior above.
+(`?theme=dark|light&contrast=more`) is historical evidence, not the current
+visual reference. The selected treatment frames and the rules below now govern.
 
 | Component | States | Rule |
 |---|---|---|
-| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button is the specimen's `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button. A destructive action (Move to Trash, Remove download) is never the primary, even when it is the only button on the surface |
+| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button uses the shared `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button. A destructive action (Move to Trash, Remove download) is never the primary, even when it is the only button on the surface |
 | Record control | idle, live (elapsed + Pause + Stop), paused | The only red. Lives in the toolbar and the menu-bar pill only |
 | Icon button | default, hover | Sidebar toggle. No other icon buttons in the toolbar |
 | Search field | empty, typing, filtered-empty | Title search only; "No matching meetings" is one caption |
 | Toolbar | nothing selected ("Yawn"), meeting selected (title), recording ("New Recording") | Nothing else enters the toolbar |
-| Sidebar row | default, hover, selected, needs-attention (dot), recording-now, large text | Title one line, caption, excerpt. Untitled is "Meeting · date"; transcript text is never a title |
+| Sidebar row | default, hover, selected, needs-attention (dot), recording-now, large text | Title one line, caption, excerpt. Selected uses the quiet selection surface, one-pixel border, and inset violet locator; text does not invert. Untitled is "Meeting · date"; transcript text is never a title |
 | Group label | — | The only uppercase in the system |
 | Trash row | — | Last item, hairline above |
-| Document | empty selection, note, canvas (during) | Empty selection is one centered caption |
+| Document | empty selection, note, canvas (during) | The center pane is the document canvas, with no enclosing document card. Empty selection is one centered caption |
 | Claim | closed (dashed hairline), open (evidence tint, accent underline) | Opening a claim opens the inspector; Esc closes both |
 | Inspector | closed, open | 320, panel background, never scrolls the note |
 | Transcript turn | default, highlighted, dim, withheld | Withheld renders as withheld text with Restore, never as missing |
 | Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas, "Full transcript" under the note; one line at body size with a trailing chevron, inside the reading measure, no card, no border, no description line |
-| Needs attention | — | Headline, detail, one primary and one secondary action. No banner, no icon |
+| Needs attention | — | Bounded amber surface with a left locator, headline, detail, one primary and one secondary action. No banner |
 | Sheet | Start sheet only | Record disabled until three attestations and a retention choice |
 | Popover | speech-model picker, row Manage menu | Never the meetings list |
 | Toast | one line, optional action | Bottom center, 4 s, never for a fact a row already shows |

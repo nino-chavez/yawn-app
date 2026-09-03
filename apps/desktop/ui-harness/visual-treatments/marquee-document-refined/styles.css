@@ -1,0 +1,49 @@
+@import url("../shared/hybrid-base.css");
+
+/* Marquee Document — Quiet. The note remains full-bleed and dominant, while
+   title scale and section typography stop reading like an editorial system. */
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+  --reading: var(--ui); --prose: var(--ui);
+  --window: #0c0c10; --chrome: #111116; --sidebar: #0e0e13; --canvas: #0c0c10;
+  --document: transparent; --inspector: #14141a; --raised: #191920; --raised-hover: #22222b;
+  --line: #292832; --line-strong: #403e4a; --text: #f5f3f7; --text-2: #bdb7c3; --text-3: #8d8794; --faint: #817b87;
+  --selected: #201d29; --selected-line: #776c9b; --hover: #18171e;
+  --accent: #9e8ed7; --on-accent: #16121d; --focus: #ad9edf;
+  --record: #ef7168; --record-muted: #835451; --attention: #dca65a; --attention-bg: #30271c;
+  --evidence-text: #a89bde; --evidence: #272236; --destructive: #ed8079;
+  --notes-bg: transparent; --notes-border: #302e39; --notes-radius: 0;
+  --document-border: transparent; --document-shadow: none; --document-radius: 0;
+  --document-width: 700px; --document-padding: 21px 12px 40px;
+  --title-size: clamp(29px, 3.1vw, 37px); --title-weight: 680; --title-width: 21ch;
+  --title-leading: 1.06; --title-tracking: -.042em; --prose-size: 16px; --prose-leading: 1.55;
+}
+
+html[data-theme="light"] {
+  --window: #f2f0ee; --chrome: #efedeb; --sidebar: #ebe8e5; --canvas: #f8f6f4;
+  --document: transparent; --inspector: #efecf0; --raised: #fff; --raised-hover: #ebe7ed;
+  --line: #d8d3da; --line-strong: #b5adb9; --text: #19171c; --text-2: #5a545f; --text-3: #605a65; --faint: #68616d;
+  --selected: #ddd5e8; --selected-line: #8b7bab; --hover: #dedadf;
+  --accent: #6553a5; --on-accent: #fff; --focus: #6553a5;
+  --record: #b94640; --record-muted: #926c69; --attention: #98621a; --attention-bg: #fff0d9;
+  --evidence-text: #6553a5; --evidence: #e9e2f3; --destructive: #a93d37;
+  --notes-bg: transparent; --notes-border: #d9d2dc;
+}
+
+.toolbar, .sidebar { border-color: transparent; }
+.document-scroll { padding-top: 40px; }
+.document-header { padding-bottom: 24px; border-bottom-color: transparent; }
+.document-meta { margin-top: 10px; }
+.state-fact { max-width: 58ch; margin: 8px 0 31px; padding-left: 11px; border-left: 2px solid var(--accent); }
+.note-section { margin-bottom: 28px; }
+.note-section h2, .notes-heading h2 {
+  color: var(--text-2);
+  font-size: 13px;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+.operator-notes { margin-top: 34px; padding: 15px 0 13px; border-width: 1px 0; }
+.operator-notes textarea { padding-left: 10px; }
+.transcript-disclosure { margin-top: 28px; }
+.attention-state { margin-top: 22px; }

@@ -1,0 +1,39 @@
+@import url("../shared/hybrid-base.css");
+
+/* Tonal Ledger — Canvas. The reading pane itself provides containment, so the
+   note no longer needs to sit inside a tall rounded card. */
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --reading: var(--ui);
+  --prose: var(--ui);
+  --window: #111017; --chrome: #17161d; --sidebar: #14131a; --canvas: #1b1921;
+  --document: transparent; --inspector: #17161d; --raised: #23212b; --raised-hover: #2b2934;
+  --line: #302e39; --line-strong: #484451; --text: #f4f2f7; --text-2: #c8c3cf; --text-3: #9993a1; --faint: #8b8592;
+  --selected: #292532; --selected-line: #8073a3; --hover: #201e27;
+  --accent: #a99be4; --on-accent: #17131f; --focus: #bcaeea;
+  --record: #ef7168; --record-muted: #875754; --attention: #dfa85c; --attention-bg: #33291d;
+  --evidence-text: #aa9de0; --evidence: #2b263c; --destructive: #ee827b;
+  --notes-bg: #211f29; --notes-border: #3c3846;
+  --document-border: transparent; --document-shadow: none; --document-radius: 0;
+  --document-width: 700px; --document-padding: 25px 14px 42px;
+  --title-size: clamp(28px, 3vw, 36px); --title-width: 21ch; --prose-size: 16px;
+}
+
+html[data-theme="light"] {
+  --window: #e9e6ec; --chrome: #e4e0e7; --sidebar: #dfdbe3; --canvas: #faf8fb;
+  --document: transparent; --inspector: #e9e5ec; --raised: #f8f6f9; --raised-hover: #efebf2;
+  --line: #d4ced8; --line-strong: #afa7b6; --text: #211f25; --text-2: #59535f; --text-3: #5e5863; --faint: #655f6a;
+  --selected: #d8d0e3; --selected-line: #8c7ca8; --hover: #d9d4dc;
+  --accent: #6855a9; --on-accent: #fff; --focus: #6855a9;
+  --record: #b74640; --record-muted: #936f6c; --attention: #9a641c; --attention-bg: #fff1dc;
+  --evidence-text: #6754a8; --evidence: #e7e0f2; --destructive: #ad403a;
+  --notes-bg: #f3f0f5; --notes-border: #d8d1dc;
+}
+
+.toolbar { border-bottom-color: color-mix(in srgb, var(--line) 72%, transparent); }
+.document-scroll { padding-top: 36px; background: var(--canvas); }
+.document-header { padding-bottom: 18px; border-bottom-color: transparent; }
+.state-fact { margin-top: 13px; padding-left: 11px; border-left: 2px solid var(--line-strong); }
+.operator-notes { box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%); }
+.attention-state { margin-top: 22px; }

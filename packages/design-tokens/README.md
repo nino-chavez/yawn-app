@@ -4,9 +4,9 @@ Yawn's design tokens, in the same schema shape as Minder's
 (`packages/design-tokens/tokens.json` in the Minder repo): `meta`, `color`,
 `font`, `fontSize`, `spacing`, `radius`, `motion`, `layout`. **Yawn and Minder
 share the schema, not the values.** Minder derives OKLCH roles from a brand
-triplet, for a one-handed phone screen. Yawn authors direct light/dark hex
-and rgba constants, approximating macOS system colors for a Mac document
-window (DESIGN.md §Color). Don't copy a value across. Do keep the shape
+triplet, for a one-handed phone screen. Yawn authors direct light/dark values
+for its selected Tonal Ledger — Canvas Mac window (DESIGN.md §Color). Don't
+copy a value across. Do keep the shape
 aligned, so both apps are edited the same way.
 
 ## Source of truth

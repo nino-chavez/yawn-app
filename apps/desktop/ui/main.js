@@ -739,13 +739,16 @@ function renderSidebar() {
 function renderNeedsAttentionPane({ headline, detail, action = null, secondaryAction = null }) {
   return `
     <div class="attention-pane">
-      <h1 class="attention-headline">${escapeHtml(headline)}</h1>
-      <p class="attention-detail">${escapeHtml(detail)}</p>
-      ${action || secondaryAction ? `
-      <div class="attention-actions">
-        ${action ? `<button class="${action.destructive ? "btn" : "btn primary"}" type="button" data-action="${escapeHtml(action.action)}" ${action.disabled ? "disabled" : ""}>${escapeHtml(action.label)}</button>` : ""}
-        ${secondaryAction ? `<button class="btn" type="button" data-action="${escapeHtml(secondaryAction.action)}">${escapeHtml(secondaryAction.label)}</button>` : ""}
-      </div>` : ""}
+      <section class="attention-state" aria-labelledby="attention-state-heading">
+        <p class="attention-label">Needs attention</p>
+        <h1 class="attention-headline" id="attention-state-heading">${escapeHtml(headline)}</h1>
+        <p class="attention-detail">${escapeHtml(detail)}</p>
+        ${action || secondaryAction ? `
+        <div class="attention-actions">
+          ${action ? `<button class="${action.destructive ? "btn" : "btn primary"}" type="button" data-action="${escapeHtml(action.action)}" ${action.disabled ? "disabled" : ""}>${escapeHtml(action.label)}</button>` : ""}
+          ${secondaryAction ? `<button class="btn" type="button" data-action="${escapeHtml(secondaryAction.action)}">${escapeHtml(secondaryAction.label)}</button>` : ""}
+        </div>` : ""}
+      </section>
     </div>`;
 }
 

@@ -6,7 +6,11 @@
   <title>Yawn visual treatment</title>
   <script>
     const params = new URLSearchParams(location.search);
-    const allowed = new Set(["native-editorial", "private-notebook", "precision-utility"]);
+    const allowed = new Set([
+      "native-editorial", "private-notebook", "precision-utility",
+      "tonal-ledger", "quiet-folio", "marquee-document",
+      "tonal-ledger-refined", "marquee-document-refined",
+    ]);
     const treatment = allowed.has(params.get("treatment")) ? params.get("treatment") : "native-editorial";
     document.documentElement.dataset.treatment = treatment;
     document.write(`<link rel="stylesheet" href="../${treatment}/styles.css">`);

@@ -1,0 +1,41 @@
+@import url("../shared/hybrid-base.css");
+
+/* Quiet Folio: keeps the reading character of Private Notebook, but confines
+   serif to the document and replaces the brown theme with neutral paper. */
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --reading: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+  --prose: var(--reading);
+  --window: #171716; --chrome: #1c1c1b; --sidebar: #1b1b19; --canvas: #151514;
+  --document: #20201d; --inspector: #1b1b1a; --raised: #272724; --raised-hover: #30302c;
+  --line: #34342f; --line-strong: #4b4a43; --text: #f1efe9; --text-2: #c2beb4; --text-3: #979289; --faint: #77736b;
+  --selected: #302e29; --selected-line: #827965; --hover: #252421;
+  --accent: #b7a77e; --on-accent: #1f1b12; --focus: #cbbf9f;
+  --record: #ed7469; --record-muted: #835652; --attention: #d5a456; --attention-bg: #30281d;
+  --evidence-text: #86b6c8; --evidence: #233037; --destructive: #ed8179;
+  --notes-bg: transparent; --notes-border: #45443d; --notes-radius: 2px;
+  --document-border: #34342f; --document-shadow: 0 12px 36px rgb(0 0 0 / 18%);
+  --document-radius: 4px; --document-width: 724px; --document-padding: 38px 42px 42px;
+  --title-size: clamp(27px, 3vw, 36px); --title-weight: 600; --title-width: 22ch;
+  --prose-size: 16px; --prose-leading: 1.6; --prose-tracking: -.006em;
+}
+
+html[data-theme="light"] {
+  --window: #ebeae6; --chrome: #e6e5e1; --sidebar: #e2e0da; --canvas: #efeee9;
+  --document: #fbfaf6; --inspector: #e9e7e1; --raised: #f8f7f2; --raised-hover: #efeee8;
+  --line: #d7d4cc; --line-strong: #b8b2a7; --text: #282723; --text-2: #5f5c55; --text-3: #7c776e; --faint: #99938a;
+  --selected: #d9d5ca; --selected-line: #958a73; --hover: #d9d7d1;
+  --accent: #756849; --on-accent: #fff; --focus: #756849;
+  --record: #b94a43; --record-muted: #94716e; --attention: #9d671d; --attention-bg: #fff1dc;
+  --evidence-text: #3f778d; --evidence: #e3eef1; --destructive: #ad403a;
+  --notes-bg: transparent; --notes-border: #cac5ba; --document-border: #d8d4ca;
+  --document-shadow: 0 1px 1px rgb(44 40 30 / 5%), 0 12px 36px rgb(44 40 30 / 8%);
+}
+
+.document-heading h1 { font-feature-settings: "kern" 1, "liga" 1; }
+.note-section h2, .notes-heading h2 { font-family: var(--ui); letter-spacing: .01em; text-transform: none; }
+.operator-notes { padding: 14px 0 12px; border-width: 1px 0; }
+.operator-notes textarea { border-left: 0; background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 24px; line-height: 24px; }
+.operator-notes textarea:focus { box-shadow: inset 2px 0 0 var(--focus); }
+.attention-state h2 { font-weight: 600; }

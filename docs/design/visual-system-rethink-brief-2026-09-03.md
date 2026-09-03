@@ -1,6 +1,6 @@
 # Yawn visual-system rethink — Concept A stays, the finish changes
 
-Status: dispatched 2026-09-03. This brief replaces the premise in
+Status: active comparison, second wave added 2026-09-03. This brief replaces the premise in
 `refit-brief-2026-09-03.md` that the design system was sound and only its
 application had drifted.
 
@@ -70,7 +70,12 @@ The treatments may change visual placement inside those regions. They may not
 replace the sidebar with a popover, merge the document into a stream, add a
 dashboard, or invent new product actions.
 
-## The three treatments
+## The six treatments
+
+The first wave established three distinct starting points. Its blind review
+ranked Precision Utility first, but the operator did not select it and later
+leaned toward Private Notebook without considering it resolved. The second wave
+therefore tests which part of Private Notebook is carrying that preference.
 
 ### Native editorial
 
@@ -93,9 +98,58 @@ toolbar geometry is stable, and every control has an obvious rank. Depth comes
 from pane relationships and separators rather than decoration. The risk is
 recreating the cold, generic utility the current screen already approaches.
 
+### Tonal Ledger
+
+Private Notebook's contained reading object moves into a low-chroma violet
+field with system sans typography. The treatment tests whether the useful
+signal was privacy and containment rather than serif or paper styling. Its risk
+is becoming a large card inside a desktop window.
+
+### Quiet Folio
+
+Serif remains inside the note, while the window chrome moves to neutral paper
+and graphite. The operator-notes field becomes a ruled writing area rather than
+a nested card. The treatment tests whether Yawn needs an editorial reading
+voice without a themed notebook palette. Its risk is still feeling like a
+document editor rather than a meeting utility.
+
+### Marquee Document
+
+The meeting becomes a full-bleed dominant object. Supporting chrome recedes,
+and low-chroma violet establishes section and evidence hierarchy. The treatment
+translates Minder Marquee's strongest principle without copying its phone
+layout, components, or identity. Its risk is making long generated titles too
+loud and the note less personal.
+
 These are priors, not specifications. Each artist must make a coherent visual
 argument and may deviate when the rendered state supports it. The structure
 lock and product contract do not move.
+
+## Convergence and finalist iteration
+
+The operator retained Tonal Ledger and Marquee Document and rejected Native
+Editorial, Private Notebook, Precision Utility, and Quiet Folio. Rejected
+treatments remain in the harness for archaeology but are removed from the
+active comparison.
+
+The finalist pass makes one bounded correction to each surviving direction:
+
+- **Tonal Ledger — Canvas** tests whether the center pane can provide privacy
+  and focus without a tall floating document card.
+- **Marquee Document — Quiet** tests whether the full-bleed hierarchy survives
+  with a smaller title and sentence-case section headings.
+
+The previous-round Tonal Ledger and Marquee Document remain visible directly
+below the refinements so the comparison can show whether each change improves
+its parent rather than merely looking different.
+
+## Selection
+
+The operator selected **Tonal Ledger — Canvas** on 2026-09-03. Marquee Document
+— Quiet is rejected with the other treatments and retained only for design
+archaeology. The selected treatment keeps Concept A, makes the center pane the
+document surface, uses a low-chroma violet-neutral system, and reserves bounded
+material for the operator's notes and actionable recovery.
 
 ## Representative states
 
@@ -139,8 +193,7 @@ Each treatment owns one directory under
 `apps/desktop/ui-harness/visual-treatments/` containing:
 
 - `styles.css` — the complete visual layer for the shared frame.
-- `RATIONALE.md` — the treatment's type, neutral palette, depth, control,
-  selection, sparse-state, light/dark, and accessibility decisions.
+- `RATIONALE.md` — the treatment's visual argument and the question it tests.
 
 The orchestrator owns the shared semantic frame, fixtures, capture script,
 comparison page, cross-review, and the final replacement of provisional rules
@@ -155,3 +208,7 @@ in `DESIGN.md` after operator selection.
 - `docs/evidence/screen-reviews/captures/refit-check/MANIFEST.md` — proof that
   the refit left the reading pane unchanged and invalidated its own premise.
 - Operator screenshot, 2026-09-03 12:27 MST — current sparse installed state.
+- Minder `DIRECTION.md`, `docs/design/experience-brief.md`,
+  `docs/design/recommendation-2026-09-01.md`, design tokens, physical build 13
+  captures, and Marquee dark/light concept frames — inspected directly for the
+  second wave. The current physical build was not treated as a visual model.

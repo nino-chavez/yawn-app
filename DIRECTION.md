@@ -28,19 +28,22 @@ dashboard, task manager, CRM, team wiki, or calendar.
 
 ## Character
 
-Short, quiet, Mac-native, in the shape of Apple Notes and Bear: a unified
-toolbar carrying sidebar toggle, title, search, and the one Record control;
-a persistent meetings list on the left grouped by day, never the subject; the
-note in a document pane at the reading measure; the transcript disclosed as
-an inspector at the point of doubt. System font, system semantic colors, the
-user's accent. Color only for recording (Record and the live state) or
-attention (one dot, one needs-attention surface with a next action), plus
-one evidence tint. No hero, no pitch line, no eyebrow labels, no tinted
-content panels. The on-device promise is said once, in Settings. Status is
-small and near its object. Settings behaves like Preferences. Motion exists
-to make state changes legible, never to perform. The Concept A render remains
-the structure reference. The visual treatment is under comparison at
-`apps/desktop/ui-harness/visual-treatments/`.
+Short, quiet, and Mac-native. A unified toolbar carries the sidebar toggle,
+title, search, and one Record control. A persistent meeting list stays on the
+left without becoming the subject. The note is the dominant reading object,
+and transcript evidence opens beside it at the point of doubt. The on-device
+promise is said once, in Settings. Status stays small and near its object.
+Settings behaves like Preferences. Motion makes state changes legible; it does
+not perform.
+
+Concept A remains the structure reference. **Tonal Ledger — Canvas** is the
+selected surface treatment. Its low-chroma violet-neutral window makes the
+center pane the document surface, uses a quiet locator instead of a bright
+selected row, and gives the operator's notes the only bounded writing surface.
+Marquee Document — Quiet and every earlier treatment are rejected options kept
+for archaeology, not alternate themes. The comparison lives at
+`apps/desktop/ui-harness/visual-treatments/`; `DESIGN.md` owns the selected
+rules.
 
 ## Anti-goals
 

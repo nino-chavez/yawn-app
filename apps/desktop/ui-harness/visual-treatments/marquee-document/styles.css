@@ -1,0 +1,44 @@
+@import url("../shared/hybrid-base.css");
+
+/* Marquee Document: the direct Minder lesson. The title and current note are
+   decisive; chrome and secondary surfaces recede almost completely. */
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+  --reading: var(--ui); --prose: var(--ui);
+  --window: #09090c; --chrome: #0e0e13; --sidebar: #0b0b10; --canvas: #09090c;
+  --document: transparent; --inspector: #111117; --raised: #17171f; --raised-hover: #20202a;
+  --line: #24242d; --line-strong: #3a3946; --text: #f6f4f8; --text-2: #b6b0bd; --text-3: #85808d; --faint: #65616c;
+  --selected: #1d1a27; --selected-line: #746a9c; --hover: #15151b;
+  --accent: #9d8cdb; --on-accent: #15111d; --focus: #ac9de0;
+  --record: #ef7168; --record-muted: #7f524f; --attention: #dca65a; --attention-bg: #2c241a;
+  --evidence-text: #a99be0; --evidence: #242033; --destructive: #ed8079;
+  --notes-bg: #121218; --notes-border: #292832;
+  --document-border: transparent; --document-shadow: none; --document-radius: 0;
+  --document-width: 700px; --document-padding: 18px 12px 36px;
+  --title-size: clamp(31px, 3.5vw, 42px); --title-weight: 690; --title-width: 18ch;
+  --title-leading: 1.02; --title-tracking: -.048em; --prose-size: 17px; --prose-leading: 1.5;
+}
+
+html[data-theme="light"] {
+  --window: #f3f1ef; --chrome: #efedeb; --sidebar: #ebe8e5; --canvas: #f6f4f2;
+  --document: transparent; --inspector: #efecf0; --raised: #fff; --raised-hover: #ebe7ed;
+  --line: #d7d2d9; --line-strong: #b4abb8; --text: #17151a; --text-2: #57515d; --text-3: #79727e; --faint: #97909b;
+  --selected: #ddd5e8; --selected-line: #8b7bab; --hover: #ddd9df;
+  --accent: #6452a5; --on-accent: #fff; --focus: #6452a5;
+  --record: #b94640; --record-muted: #926c69; --attention: #98621a; --attention-bg: #fff0d9;
+  --evidence-text: #6452a5; --evidence: #e9e2f3; --destructive: #a93d37;
+  --notes-bg: #f0edef; --notes-border: #d7d0da;
+}
+
+.toolbar { border-bottom-color: transparent; }
+.sidebar { border-right-color: transparent; }
+.document-scroll { padding-top: 44px; }
+.document-header { padding-bottom: 28px; border-bottom-color: transparent; }
+.document-meta { margin-top: 12px; }
+.state-fact { max-width: 58ch; margin-bottom: 34px; padding-left: 12px; border-left: 2px solid var(--accent); }
+.note-section { margin-bottom: 30px; }
+.note-section h2, .notes-heading h2 { color: var(--accent); font-size: 11px; letter-spacing: .075em; text-transform: uppercase; }
+.operator-notes { margin-top: 36px; border-color: var(--notes-border); }
+.transcript-disclosure { margin-top: 30px; }
+.attention-state { margin-top: 24px; }

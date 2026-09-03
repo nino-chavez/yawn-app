@@ -1,0 +1,37 @@
+@import url("../shared/hybrid-base.css");
+
+/* Tonal Ledger: Private Notebook's contained reading object with Minder
+   Marquee's low-chroma violet, system type, and one dominant surface. */
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --reading: var(--ui);
+  --prose: var(--ui);
+  --window: #0f0f13; --chrome: #15151a; --sidebar: #121217; --canvas: #0c0c10;
+  --document: #18171f; --inspector: #15151b; --raised: #201f28; --raised-hover: #292833;
+  --line: #2c2b35; --line-strong: #44414f; --text: #f3f1f7; --text-2: #c6c1ce; --text-3: #97919f; --faint: #77717e;
+  --selected: #282431; --selected-line: #786d99; --hover: #1d1c23;
+  --accent: #aa9ae8; --on-accent: #17131f; --focus: #bdafea;
+  --record: #ef7168; --record-muted: #865653; --attention: #dfa85c; --attention-bg: #30271d;
+  --evidence-text: #a99ce0; --evidence: #28243a; --destructive: #ee827b;
+  --notes-bg: #1d1b24; --notes-border: #393541; --document-border: #302e39;
+  --document-shadow: 0 1px 0 rgb(255 255 255 / 2%), 0 18px 44px rgb(0 0 0 / 24%);
+  --document-radius: 18px; --document-width: 720px; --document-min-height: 720px;
+  --title-size: clamp(28px, 2.9vw, 36px); --title-width: 20ch; --prose-size: 16px;
+}
+
+html[data-theme="light"] {
+  --window: #ebe8ed; --chrome: #e4e0e7; --sidebar: #e0dce4; --canvas: #efecf0;
+  --document: #fbfafc; --inspector: #e8e4eb; --raised: #f7f5f8; --raised-hover: #efebf2;
+  --line: #d2cdd7; --line-strong: #aea6b5; --text: #201e24; --text-2: #57515e; --text-3: #78717f; --faint: #938c99;
+  --selected: #d8d0e3; --selected-line: #8c7ca8; --hover: #d9d4dc;
+  --accent: #6754a8; --on-accent: #fff; --focus: #6754a8;
+  --record: #b74640; --record-muted: #936f6c; --attention: #9a641c; --attention-bg: #fff1dc;
+  --evidence-text: #6754a8; --evidence: #e7e0f2; --destructive: #ad403a;
+  --notes-bg: #f7f4f8; --notes-border: #d8d1dc; --document-border: #d8d3db;
+  --document-shadow: 0 1px 1px rgb(28 22 34 / 6%), 0 18px 44px rgb(28 22 34 / 9%);
+}
+
+.document-header { border-bottom-color: transparent; }
+.state-fact { padding-left: 11px; border-left: 2px solid var(--line-strong); }
+.operator-notes { box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%); }

@@ -20,7 +20,7 @@ if ! start_output="$(browse-start 2>&1)"; then
   export BROWSE_PORT="$existing_port"
 fi
 
-for treatment in native-editorial private-notebook precision-utility; do
+for treatment in tonal-ledger-refined marquee-document-refined tonal-ledger marquee-document; do
   for theme in dark light; do
     for state in sparse dense attention; do
       output="$OUT_DIR/${treatment}--${theme}--${state}.png"

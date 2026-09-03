@@ -241,18 +241,25 @@ installed preview; frames under
 `captures/10c434a-installed-addendum/`. Not yet captured on any installed
 build: During, Paused, and a meeting with a generated note and its inspector.
 
-**Visual-system correction dispatched — 2026-09-03.** The installed sparse
+**Visual-system correction active — 2026-09-03.** The installed sparse
 screen and a pixel-identical refit proved that conformance to the old type and
 spacing numbers did not produce a polished window. Concept A's structure stays;
 type, neutral surfaces, toolbar feedback, selection, control rank, document
-rhythm, and the operator-notes editor were reopened in `DESIGN.md`. Three
-treatments rendered the same sparse, dense, and needs-attention fixtures in
-both appearances. A blind review ranked Precision utility first. Its follow-up
-pass replaced the clipped toolbar sentence with a compact status, attached the
-recovery panel to the meeting header, raised dark secondary contrast, and
-reduced the empty notes field. It now clears the static harness comparison bar.
-It is not selected, ported, or accepted on an installed build. Comparison and
-boundary: `evidence/screen-reviews/visual-treatment-comparison-2026-09-03.md`.
+rhythm, and the operator-notes editor were reopened in `DESIGN.md`. The first
+three treatments rendered the same sparse, dense, and needs-attention fixtures
+in both appearances. A blind review ranked Precision Utility first, but the
+operator did not select it and later leaned toward Private Notebook without
+considering it finished. A second wave now separates that direction's possible
+strengths: Tonal Ledger tests containment plus Minder Marquee tonality, Quiet
+Folio tests a neutral paper voice, and Marquee Document tests dominant-object
+hierarchy without a notebook metaphor. The six treatments produce 36 static
+frames. The operator then rejected Native Editorial, Private Notebook,
+Precision Utility, and Quiet Folio, retaining Tonal Ledger and Marquee Document
+as finalists. The final iteration removed Tonal Ledger's oversized document
+card and quieted Marquee's title and section styling. The operator selected
+**Tonal Ledger — Canvas**; its source port now owns the product visual system.
+Installed-build acceptance remains a separate gate. Comparison and boundary:
+`evidence/screen-reviews/visual-treatment-comparison-2026-09-03.md`.
 
 ## What the live apps changed
 
