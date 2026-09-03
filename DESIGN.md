@@ -1,13 +1,41 @@
 # DESIGN.md — Yawn desktop visual system
 
-Source of record for the visual system, written 2026-09-02 from the selected
-concept (A, source list beside document; `docs/design-direction-decision.md`).
-Tokens live in `apps/desktop/ui-harness/concepts/shared/tokens.css` until the
-implementation wave ports them into `apps/desktop/ui/styles.css`; when that
-port lands, `ui/styles.css` becomes the token source and this file points
-there. Rendered reference: `apps/desktop/ui-harness/concepts/a/`.
+Status: **visual authority reopened 2026-09-03**.
 
-## Composition
+Concept A remains the decided window structure: source list beside document,
+one Record control, and transcript evidence in an inspector. The installed
+frame at `docs/evidence/screen-reviews/captures/refit-check/01-refit-note.png`
+showed that the type, spacing, toolbar, control, and pane-layer rules below can
+all conform and still produce an unfinished screen. Those rules now describe
+the last implementation; they are not an acceptance target.
+
+The replacement comparison is governed by
+`docs/design/visual-system-rethink-brief-2026-09-03.md` and rendered from
+`apps/desktop/ui-harness/visual-treatments/`. Until the operator selects a
+treatment, use this file only for the locked rules named below. Do not cite the
+old specimen or its numbers as proof that a changed screen is visually done.
+
+### Locked while the visual system is compared
+
+- Concept A's persistent meeting list, document pane, and conditional source
+  inspector.
+- The note-before-transcript reading order and the separation between operator
+  notes and generated claims.
+- The semantic jobs of record, attention, and evidence color. Neutral surface
+  values and layering are open.
+- Copy truth, keyboard paths, focus order, ARIA, and reduced-motion behavior.
+
+### Reopened by the failed refit
+
+- The type family, sizes, weights, line heights, and reading measure.
+- Toolbar contents and the placement of unavailable-state feedback.
+- Neutral palette, surface layering, separators, selection treatment, radii,
+  and depth.
+- Document rhythm, the empty operator-notes editor, and the hierarchy of
+  Rename, Manage, transcript, and note actions.
+- Exact control heights, spacing steps, pane insets, and component styling.
+
+## Composition — structure retained, measurements provisional
 
 - One main window, default 1080x900, minimum 900x600. Unified toolbar (52pt)
   with, left to right: traffic lights, sidebar toggle, window title, search
@@ -27,7 +55,11 @@ there. Rendered reference: `apps/desktop/ui-harness/concepts/a/`.
 - Settings is a standard Preferences-style window: closable, minimizable,
   not modal.
 
-## Type
+## Type — historical baseline, not current authority
+
+The following scale is the failed installed baseline. It remains here for
+archaeology until the selected treatment replaces it; do not carry it into new
+work as a constraint.
 
 System font (`-apple-system`). Body 13, caption 11, note body 15 at 1.6,
 transcript 14 at 1.55, title 17, large 22. Nothing above 22. No display
@@ -47,7 +79,7 @@ pane at 13 and the operator found it too small to read:
 A document pane, then, has three sizes on screen: 22, 15, and one line of
 13. If a fourth appears, something is misfiled.
 
-## Color
+## Color — semantic jobs retained, neutral treatment provisional
 
 System semantic colors in both appearances; the user's accent for selection
 and primary buttons. Three reserved colors and nothing else carries hue:
@@ -83,7 +115,7 @@ topbar with hidden title, page-per-route navigation with a "Back to
 meetings" link, and the green Settings accent. Diagnosis:
 `docs/design-rethink-2026-09-02.md`.
 
-## Spacing
+## Spacing — historical baseline, not current authority
 
 4, 6, 8, 12, 16, 18, 24, 32, 48. Row padding 6/8; toolbar padding 12; sidebar
 inset 16; inspector padding 18; document 24 top, 48 sides. Toolbar 52,
@@ -96,12 +128,14 @@ legacy sheet values (28, 32, 38px, eight declarations) clustered there;
 snapping them straight to 24 or 48 instead would have cost 14-37% off each.
 No other step changed.
 
-## Components and states
+## Components and states — inventory retained, styling provisional
 
-Rendered specimen, both appearances, increased contrast, and large text:
+The prior rendered specimen, both appearances, increased contrast, and large text:
 `apps/desktop/ui-harness/concepts/shared/specimen.html`
-(`?theme=dark|light&contrast=more`). The specimen is the reference; a
-component not on it is not in the system.
+(`?theme=dark|light&contrast=more`). It is historical evidence, not the current
+visual reference. The component inventory and required states remain useful;
+the styling rules in the table are provisional unless they restate a locked
+behavior above.
 
 | Component | States | Rule |
 |---|---|---|

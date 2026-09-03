@@ -4,8 +4,9 @@ design_intent: refit
 design_direction: docs/design-direction-decision.md
 <!-- 2026-09-02: the rethink concluded. The operator selected Concept A
      (source list beside document) from three rendered concepts; the
-     selection ADR above is the direction record and DESIGN.md carries the
-     visual system. Everything below the Thesis was the prior direction's
+     selection ADR above is the structure record. DESIGN.md's visual authority
+     was reopened on 2026-09-03 after the installed refit left the reading pane
+     pixel-identical. Everything below the Thesis was the prior direction's
      matrix and ledger and still applies; the Character section is
      rewritten to the selected concept. History of the rethink:
      docs/design-rethink-2026-09-02.md (diagnosis), docs/experience-brief-
@@ -37,8 +38,9 @@ attention (one dot, one needs-attention surface with a next action), plus
 one evidence tint. No hero, no pitch line, no eyebrow labels, no tinted
 content panels. The on-device promise is said once, in Settings. Status is
 small and near its object. Settings behaves like Preferences. Motion exists
-to make state changes legible, never to perform. Rendered reference:
-`apps/desktop/ui-harness/concepts/a/`.
+to make state changes legible, never to perform. The Concept A render remains
+the structure reference. The visual treatment is under comparison at
+`apps/desktop/ui-harness/visual-treatments/`.
 
 ## Anti-goals
 

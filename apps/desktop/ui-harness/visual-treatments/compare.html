@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yawn visual treatment comparison</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      background: #111214;
+      color: #f3f3f4;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 22px 28px 18px;
+      border-bottom: 1px solid #303238;
+      background: rgb(17 18 20 / 94%);
+      backdrop-filter: blur(18px);
+    }
+    h1 { margin: 0 0 5px; font-size: 20px; letter-spacing: -0.025em; }
+    header p { margin: 0; color: #9a9da5; font-size: 13px; }
+    nav { display: flex; gap: 6px; }
+    nav a {
+      color: #d9dae0;
+      font-size: 12px;
+      text-decoration: none;
+      padding: 6px 9px;
+      border: 1px solid #363941;
+      border-radius: 7px;
+    }
+    main { padding: 28px; }
+    section { scroll-margin-top: 100px; margin-bottom: 42px; }
+    h2 { margin: 0 0 14px; font-size: 15px; color: #d6d7db; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    figure {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid #303238;
+      border-radius: 12px;
+      background: #1b1c1f;
+    }
+    img { display: block; width: 100%; aspect-ratio: 6 / 5; object-fit: contain; background: #e9e9e7; }
+    figcaption {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      color: #a9abb2;
+      font-size: 12px;
+    }
+    figcaption a { color: #e9e9ec; }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Yawn visual treatment comparison</h1>
+      <p>Same structure, copy, states, and 1080 × 900 frame. Only the visual system changes.</p>
+    </div>
+    <nav aria-label="Treatment links"></nav>
+  </header>
+  <main id="comparison"></main>
+  <script>
+    const treatments = [
+      ["native-editorial", "Native editorial"],
+      ["private-notebook", "Private notebook"],
+      ["precision-utility", "Precision utility"],
+    ];
+    const themes = ["dark", "light"];
+    const states = ["sparse", "dense", "attention"];
+    const comparison = document.getElementById("comparison");
+    const nav = document.querySelector("nav");
+
+    nav.innerHTML = treatments.map(([id, label]) => `<a href="#${id}">${label}</a>`).join("");
+    comparison.innerHTML = treatments.map(([id, label]) => `
+      <section id="${id}">
+        <h2>${label}</h2>
+        ${themes.map((theme) => `
+          <div class="grid">
+            ${states.map((state) => {
+              const image = `out/${id}--${theme}--${state}.png`;
+              const live = `shared/frame.html?treatment=${id}&theme=${theme}&state=${state}`;
+              return `<figure>
+                <a href="${live}" target="_blank"><img src="${image}" alt="${label}, ${theme} theme, ${state} state"></a>
+                <figcaption><span>${theme} · ${state}</span><a href="${live}" target="_blank">Open live</a></figcaption>
+              </figure>`;
+            }).join("")}
+          </div>
+        `).join("")}
+      </section>
+    `).join("");
+  </script>
+</body>
+</html>

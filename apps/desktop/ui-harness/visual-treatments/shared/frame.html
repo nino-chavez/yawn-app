@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yawn visual treatment</title>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const allowed = new Set(["native-editorial", "private-notebook", "precision-utility"]);
+    const treatment = allowed.has(params.get("treatment")) ? params.get("treatment") : "native-editorial";
+    document.documentElement.dataset.treatment = treatment;
+    document.write(`<link rel="stylesheet" href="../${treatment}/styles.css">`);
+  </script>
+</head>
+<body>
+  <div class="app-window" id="app-window">
+    <header class="toolbar" aria-label="Window toolbar">
+      <div class="toolbar-leading">
+        <span class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <button class="icon-button sidebar-toggle" type="button" aria-label="Toggle sidebar">
+          <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+            <rect x="0.5" y="0.5" width="15" height="13" rx="2.5" stroke="currentColor" />
+            <line x1="5.5" y1="1" x2="5.5" y2="13" stroke="currentColor" />
+          </svg>
+        </button>
+      </div>
+      <div class="toolbar-title" id="toolbar-title"></div>
+      <div class="toolbar-actions">
+        <label class="search-field">
+          <span class="visually-hidden">Search meetings</span>
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.5" stroke="currentColor" />
+            <path d="m10.5 10.5 3 3" stroke="currentColor" stroke-linecap="round" />
+          </svg>
+          <input type="search" placeholder="Search meetings" />
+        </label>
+        <div class="record-cluster">
+          <button class="button record-button" type="button" disabled aria-describedby="record-reason">Record</button>
+          <span class="record-reason" id="record-reason"></span>
+        </div>
+      </div>
+    </header>
+
+    <div class="window-body">
+      <nav class="sidebar" aria-label="Meetings">
+        <div class="sidebar-scroll" id="meeting-list"></div>
+        <button class="trash-row" type="button">
+          <svg width="13" height="14" viewBox="0 0 13 14" fill="none" aria-hidden="true">
+            <path d="M1 3.5h11M4.5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 3.5l.6 9a1 1 0 0 0 1 .95h4.8a1 1 0 0 0 1-.95l.6-9" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Trash</span>
+        </button>
+      </nav>
+
+      <main class="meeting-surface" id="meeting-surface"></main>
+    </div>
+  </div>
+  <script type="module" src="render.js"></script>
+</body>
+</html>
