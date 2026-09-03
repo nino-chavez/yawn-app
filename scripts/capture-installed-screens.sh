@@ -137,6 +137,46 @@ cap_frame() {
   cap_log "captured $label  ${dims}(bounds $x $y $w $h)"
 }
 
+# Yawn is frontmost, or nothing is clicked. This is the control for the accident
+# that shaped this file: on 2026-09-02 two runs sent clicks while the app was
+# NOT frontmost and they landed in the operator's browser. A click into a
+# frontmost Yawn window can only reach Yawn.
+cap_guard() {
+  local front
+  front=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
+  case "$front" in
+    "Yawn Preview"|"local-meeting-notes-desktop") return 0 ;;
+    *) cap_log "ABORT: frontmost is \"$front\", not Yawn -- refusing to click"; return 1 ;;
+  esac
+}
+
+# Click at a point given in the coordinates of the 1000px-wide downscaled frame,
+# which is how a point gets read off a screenshot. Converted to screen
+# coordinates here so call sites use the numbers they can see.
+#
+# `osascript ... to click at {x, y}` is deliberately not used: at a bare
+# coordinate it does nothing and reports success. See capture-click.swift.
+CAP_CLICK_BIN="${CAP_CLICK_BIN:-$(dirname "$CAP_SELF")/.bin/capture-click}"
+cap_click() {
+  local sx="$1"
+  local sy="$2"
+  local label="${3:-}"
+  cap_guard || return 1
+  if [ ! -x "$CAP_CLICK_BIN" ]; then
+    mkdir -p "$(dirname "$CAP_CLICK_BIN")"
+    swiftc -O "$(dirname "$CAP_SELF")/capture-click.swift" -o "$CAP_CLICK_BIN" || {
+      cap_log "FATAL could not build $CAP_CLICK_BIN"; return 1; }
+    cap_log "built $CAP_CLICK_BIN"
+  fi
+  read -r wx wy _ _ <<<"$(cap_bounds)"
+  local x
+  local y
+  x=$(python3 -c "print(int($wx + $sx * ${CAP_SCALE:-1.08}))")
+  y=$(python3 -c "print(int($wy + $sy * ${CAP_SCALE:-1.08}))")
+  "$CAP_CLICK_BIN" "$x" "$y" || { cap_log "FAILED click ${label:-($sx,$sy)}"; return 1; }
+  cap_log "clicked ${label:-($sx,$sy)} -> screen $x,$y"
+}
+
 # A downscaled sibling for reading in a transcript. The full frame stays as the
 # evidence; the -s copy is what gets opened, because a full-resolution capture
 # costs several times the image tokens of a 1000px one and a capture pass reads

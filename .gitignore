@@ -48,3 +48,4 @@ spike/**/scores.json
 
 # Local Cloudflare CLI cache
 .wrangler/
+scripts/.bin/
