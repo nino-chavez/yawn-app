@@ -1,7 +1,7 @@
 {
   "name": "local-meeting-notes-desktop",
   "private": true,
-  "version": "0.5.9",
+  "version": "0.6.0",
   "scripts": {
     "test:ui": "node --test ui/*.test.mjs",
     "tokens": "node ../../packages/design-tokens/generate.js",
