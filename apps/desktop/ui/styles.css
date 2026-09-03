@@ -1124,7 +1124,20 @@ h3 {
   padding: 3px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  color: var(--accent);
+  /* R31: normal text on the evidence tint, not accent text on it. The
+     specimen's `.claim.open` is the reference for this role -- tint behind
+     ordinary text, accent as the hairline -- and DESIGN.md's evidence row
+     licenses "accent at 10-16% tint", a background, not a foreground.
+     `color: var(--accent)` here measured 3.82:1 against `--accent-soft` in
+     dark, below AA for text at `--text-meta`. Light was unaffected and still
+     is: `--accent` resolves to this file's #2859c5 there (5.64:1) because
+     tokens.css declares its light accent on a bare `:root` that this file
+     loads after, while its dark accent sits on `:root[data-theme="dark"]`
+     and outranks the `@media` block below -- so the same declaration was
+     legible in one appearance and not the other, which is why no review
+     caught it. Now 12.20:1 dark, 15.41:1 light. The accent still marks the
+     control, as the border on hover. See R29. */
+  color: var(--ink);
   background: var(--accent-soft);
   font-size: var(--text-meta);
   font-weight: var(--weight-medium);
