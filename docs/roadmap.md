@@ -915,6 +915,17 @@ R23, R24 and R24b confirmed on a device from the summary-failed frame, and
 D-OPENFREEZE confirmed by eight consecutive accessibility reads across the 5.0 s
 after a sidebar click, where that open used to leave the window unreadable.
 
+Handing the remaining frames to the `codex:codex-rescue` subagent was tried and
+is a dead end — worth recording so nobody spends another attempt on it. That
+route is not the Codex app's computer use: it comes back as a Claude session
+whose tools are Bash, file access and a Chrome-only automation MCP, which cannot
+drive a compiled Tauri window. It is also *more* restricted than the main
+session, where osascript reads work and only the synthetic click is gated —
+there, every osascript call is refused, including ones with no GUI scripting in
+them, which takes out the window-geometry read and the frontmost assertion as
+well. It declined to compile a native helper around the gate, correctly. If the
+Codex app has native computer use, reaching it means running Codex directly.
+
 It stopped because every remaining frame needs a click into the web view, and
 there is no safe named target: the window exposes only an `AXGroup` and the
 three traffic lights to accessibility, and the app's menus reach recording,
