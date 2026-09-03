@@ -1,0 +1,305 @@
+/* Precision utility — a crisp private document utility, not a dashboard. */
+
+:root {
+  color-scheme: dark light;
+  --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --reading: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+}
+
+html[data-theme="dark"] {
+  --window: #1d1e20;
+  --chrome: #252629;
+  --sidebar: #202124;
+  --surface: #1b1c1e;
+  --raised: #292b2e;
+  --raised-hover: #323438;
+  --line: #383a3e;
+  --line-strong: #4a4c51;
+  --text: #f2f2f3;
+  --text-2: #c3c5c8;
+  --text-3: #92969b;
+  --text-faint: #6e7278;
+  --selected: #343b44;
+  --selected-line: #5c6b7d;
+  --focus: #8fb4e4;
+  --evidence: #9ebbe1;
+  --evidence-bg: #273342;
+  --record: #f06c63;
+  --record-disabled: #74514f;
+  --attention: #e6a24c;
+  --attention-bg: #362c20;
+  --destructive: #ef837c;
+  --shadow: rgb(0 0 0 / 0.22);
+}
+
+html[data-theme="light"] {
+  --window: #f5f5f4;
+  --chrome: #f0f0ef;
+  --sidebar: #ebebea;
+  --surface: #fafaf9;
+  --raised: #ffffff;
+  --raised-hover: #f3f4f5;
+  --line: #d7d7d5;
+  --line-strong: #bbbcb9;
+  --text: #202123;
+  --text-2: #55585c;
+  --text-3: #73777b;
+  --text-faint: #94979a;
+  --selected: #dce6f1;
+  --selected-line: #8ba8c5;
+  --focus: #276db4;
+  --evidence: #276db4;
+  --evidence-bg: #e7f0fa;
+  --record: #ba423b;
+  --record-disabled: #9e7471;
+  --attention: #a86512;
+  --attention-bg: #fff1dc;
+  --destructive: #af3e37;
+  --shadow: rgb(19 22 25 / 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body { width: 100%; min-width: 0; height: 100%; margin: 0; }
+
+body {
+  overflow: hidden;
+  background: var(--window);
+  color: var(--text);
+  font-family: var(--ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button, input, textarea { font: inherit; }
+button { color: inherit; }
+
+.app-window {
+  display: flex;
+  flex-direction: column;
+  min-width: 760px;
+  height: 100%;
+  overflow: hidden;
+  background: var(--window);
+}
+
+/* Toolbar: a fixed geometry prevents the unavailable-record message becoming a banner. */
+.toolbar {
+  display: grid;
+  grid-template-columns: 104px minmax(180px, 1fr) minmax(360px, 458px);
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 57px;
+  min-width: 0;
+  padding: 0 16px 0 14px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+}
+
+.toolbar-leading, .toolbar-actions, .record-cluster, .management-actions, .attention-actions {
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-leading { gap: 13px; min-width: 0; }
+.traffic-lights { display: inline-flex; gap: 7px; padding-left: 1px; }
+.traffic-lights i { display: block; width: 12px; height: 12px; border-radius: 50%; background: #9c9fa2; }
+.traffic-lights i:first-child { background: #ef6a60; }
+.traffic-lights i:nth-child(2) { background: #eab94d; }
+.traffic-lights i:nth-child(3) { background: #62c656; }
+
+.icon-button {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.icon-button:hover { border-color: var(--line); background: var(--raised); color: var(--text); }
+
+.toolbar-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 18px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-actions { justify-content: flex-end; gap: 10px; min-width: 0; }
+.search-field {
+  display: flex;
+  align-items: center;
+  width: 182px;
+  height: 28px;
+  min-width: 118px;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--text-3);
+}
+.search-field:focus-within { border-color: var(--focus); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 22%, transparent); }
+.search-field input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
+.search-field input::placeholder { color: var(--text-faint); }
+
+.record-cluster { min-width: 0; gap: 7px; }
+.record-reason {
+  display: block;
+  max-width: 172px;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.button {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 17px;
+  white-space: nowrap;
+}
+.button:hover:not(:disabled) { background: var(--raised-hover); color: var(--text); }
+.record-button { border-color: color-mix(in srgb, var(--record) 55%, var(--line)); color: var(--record); }
+.record-button:disabled { border-color: color-mix(in srgb, var(--record-disabled) 55%, var(--line)); background: color-mix(in srgb, var(--record-disabled) 12%, var(--raised)); color: var(--record-disabled); opacity: 1; }
+.secondary-button { min-height: 26px; padding: 3px 9px; border-color: var(--line); background: transparent; color: var(--text-3); font-weight: 500; }
+.manage-button { color: var(--text-2); }
+.primary-button { border-color: var(--attention); background: var(--attention); color: #21170a; }
+.primary-button:hover:not(:disabled) { background: color-mix(in srgb, var(--attention) 88%, white); color: #21170a; }
+.destructive-button { border-color: transparent; background: transparent; color: var(--destructive); font-weight: 500; }
+.destructive-button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--destructive) 38%, var(--line)); background: color-mix(in srgb, var(--destructive) 9%, transparent); }
+
+.window-body { display: flex; min-height: 0; flex: 1; }
+
+/* The sidebar is compact enough to navigate, but not a louder canvas than the note. */
+.sidebar {
+  display: flex;
+  width: 286px;
+  min-width: 238px;
+  flex: 0 0 286px;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+}
+.sidebar-scroll { min-height: 0; flex: 1; overflow: auto; padding: 12px 7px 16px; }
+.meeting-group + .meeting-group { margin-top: 18px; }
+.group-label { margin: 0 0 5px; padding: 0 8px; color: var(--text-faint); font-size: 10px; font-weight: 600; letter-spacing: 0.055em; line-height: 15px; text-transform: uppercase; }
+.meeting-row {
+  display: block;
+  width: 100%;
+  margin: 1px 0;
+  padding: 7px 9px 8px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-2);
+  text-align: left;
+}
+.meeting-row:hover { background: color-mix(in srgb, var(--raised) 67%, transparent); }
+.meeting-row.selected { border-color: var(--selected-line); background: var(--selected); box-shadow: inset 2px 0 0 var(--selected-line); }
+.row-title, .row-meta, .row-excerpt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-title { color: var(--text); font-size: 13px; font-weight: 550; line-height: 18px; }
+.row-meta { margin-top: 1px; color: var(--text-3); font-size: 11px; line-height: 16px; }
+.row-excerpt { margin-top: 2px; color: var(--text-3); font-size: 11px; line-height: 15px; }
+.meeting-row.selected .row-meta { color: color-mix(in srgb, var(--text-2) 88%, var(--selected-line)); }
+.meeting-row.selected .row-excerpt { color: var(--text-2); }
+.attention-dot { display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--attention); vertical-align: middle; }
+.trash-row { display: flex; min-height: 48px; align-items: center; gap: 8px; padding: 0 15px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--text-3); font-size: 12px; text-align: left; }
+.trash-row:hover { background: color-mix(in srgb, var(--raised) 58%, transparent); color: var(--text-2); }
+
+/* Document pane: restrained material depth creates a stable reading object. */
+.meeting-surface { display: flex; min-width: 0; flex: 1; overflow: hidden; background: var(--surface); }
+.document-scroll { min-width: 0; flex: 1; overflow: auto; padding: 34px clamp(28px, 6.2vw, 82px) 54px; }
+.meeting-document { width: min(100%, 680px); margin: 0 auto; }
+.document-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 21px; border-bottom: 1px solid var(--line); }
+.document-heading { min-width: 0; }
+.document-heading h1 { max-width: 590px; margin: 0; color: var(--text); font-family: var(--reading); font-size: clamp(22px, 2.15vw, 29px); font-weight: 650; letter-spacing: -0.04em; line-height: 1.12; overflow-wrap: anywhere; }
+.document-meta { margin: 8px 0 0; color: var(--text-3); font-size: 12px; line-height: 17px; }
+.management-actions { flex: 0 0 auto; gap: 6px; padding-top: 2px; }
+.state-fact { max-width: 625px; margin: 17px 0 28px; color: var(--text-2); font-size: 13px; line-height: 20px; }
+.note-section { max-width: 635px; margin: 0 0 25px; }
+.note-section h2, .notes-heading h2, .source-inspector h2 { margin: 0 0 9px; color: var(--text); font-size: 13px; font-weight: 650; letter-spacing: -0.01em; line-height: 18px; }
+.note-section p { margin: 0 0 13px; color: var(--text); font-size: 15px; letter-spacing: -0.012em; line-height: 1.58; }
+.overview-section { margin-bottom: 27px; }
+
+/* An empty notes area has a named boundary and a natural size, never an unmarked void. */
+.operator-notes { max-width: 635px; margin-top: 4px; padding: 16px 17px 14px; border: 1px solid var(--line); border-radius: 7px; background: color-mix(in srgb, var(--raised) 62%, transparent); box-shadow: 0 1px 0 var(--shadow); }
+.notes-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.notes-heading h2 { margin-bottom: 0; }
+.save-fact { color: var(--text-faint); font-size: 11px; line-height: 16px; white-space: nowrap; }
+.operator-notes textarea { display: block; width: 100%; min-height: 112px; margin-top: 10px; padding: 9px 0; resize: vertical; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); outline: 0; background: transparent; color: var(--text); font-family: var(--reading); font-size: 14px; line-height: 1.55; }
+.operator-notes textarea::placeholder { color: var(--text-faint); opacity: 1; }
+.operator-notes textarea:focus { border-color: var(--focus); box-shadow: 0 1px 0 var(--focus); }
+.notes-help { margin: 10px 0 0; color: var(--text-3); font-size: 11px; line-height: 16px; }
+.transcript-disclosure { max-width: 635px; margin-top: 24px; border-top: 1px solid var(--line); }
+.transcript-disclosure summary { padding: 14px 0; color: var(--text-2); font-size: 13px; font-weight: 550; cursor: default; list-style: none; }
+.transcript-disclosure summary::-webkit-details-marker { display: none; }
+.transcript-disclosure summary span { display: inline-block; margin-left: 5px; color: var(--text-3); font-size: 14px; }
+
+/* Dense note plus the source relationship: source is available, never co-equal with the note. */
+.dense-document { max-width: 590px; }
+.dense-document .document-header { margin-bottom: 27px; }
+.note-section ul { margin: 0; padding: 0; list-style: none; }
+.note-section li { position: relative; margin: 0 0 8px; padding-left: 15px; color: var(--text); font-size: 14px; line-height: 21px; }
+.note-section li::before { position: absolute; top: 9px; left: 2px; width: 4px; height: 4px; border-radius: 50%; background: var(--text-faint); content: ""; }
+.claim { padding: 0; border: 0; border-bottom: 1px dashed var(--line-strong); background: transparent; color: inherit; font-size: inherit; line-height: inherit; text-align: left; }
+.claim.open { border-bottom-color: var(--evidence); background: var(--evidence-bg); color: var(--text); box-shadow: 2px 0 0 var(--evidence-bg), -2px 0 0 var(--evidence-bg); }
+.source-inspector { width: 268px; flex: 0 0 268px; overflow: auto; padding: 25px 17px 18px; background: var(--chrome); border-left: 1px solid var(--line); }
+.source-inspector h2 { margin-bottom: 18px; color: var(--text-2); font-size: 11px; letter-spacing: 0.055em; text-transform: uppercase; }
+.transcript-turn { margin: 0 0 14px; padding: 0 0 14px; border-bottom: 1px solid var(--line); }
+.transcript-turn.selected { margin-right: -6px; margin-left: -6px; padding: 10px 10px 12px; border: 1px solid color-mix(in srgb, var(--evidence) 58%, var(--line)); border-radius: 5px; background: var(--evidence-bg); }
+.turn-meta { display: flex; justify-content: space-between; gap: 8px; margin: 0 0 6px; color: var(--text-3); font-family: var(--mono); font-size: 10px; line-height: 14px; }
+.turn-meta strong { color: var(--text-2); font-family: var(--ui); font-size: 11px; font-weight: 650; }
+.transcript-turn > p:last-child { margin: 0; color: var(--text-2); font-size: 12px; line-height: 18px; }
+.source-inspector .secondary-button { margin-top: 4px; }
+
+/* Attention gets one decisive action, with destructive cleanup deliberately quiet. */
+.attention-document { display: flex; min-height: calc(100% - 68px); flex-direction: column; justify-content: center; }
+.attention-state { max-width: 565px; padding: 22px 23px 24px; border: 1px solid color-mix(in srgb, var(--attention) 55%, var(--line)); border-left: 3px solid var(--attention); border-radius: 6px; background: var(--attention-bg); }
+.state-label { margin: 0 0 9px; color: var(--attention); font-size: 11px; font-weight: 700; letter-spacing: 0.055em; line-height: 15px; text-transform: uppercase; }
+.attention-state h2 { margin: 0 0 8px; color: var(--text); font-size: 21px; font-weight: 650; letter-spacing: -0.028em; line-height: 27px; }
+.attention-state > p:not(.state-label) { margin: 0; color: var(--text-2); font-size: 14px; line-height: 21px; }
+.attention-actions { flex-wrap: wrap; gap: 8px; margin-top: 19px; }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media (max-width: 960px) {
+  .toolbar { grid-template-columns: 90px minmax(130px, 1fr) 360px; gap: 8px; padding-inline: 11px; }
+  .traffic-lights { gap: 5px; }
+  .traffic-lights i { width: 10px; height: 10px; }
+  .sidebar { width: 248px; min-width: 220px; flex-basis: 248px; }
+  .record-reason { max-width: 130px; }
+  .search-field { width: 154px; }
+  .document-scroll { padding-inline: 32px; }
+  .source-inspector { width: 242px; flex-basis: 242px; }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }
