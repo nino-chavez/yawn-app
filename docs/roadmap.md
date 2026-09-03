@@ -33,12 +33,13 @@ judged-screen pattern's own path: a blind cold review of the installed build
 an experience brief with the platform strategy written for the first time,
 three divergent whole-screen concepts rendered on the same four states in
 both appearances, and a selection ADR. **Concept A, source list beside
-document, was selected** (`design-direction-decision.md`); `DESIGN.md` now
-carries the visual system and `DIRECTION.md` points at the ADR. The rendered
+document, was selected** (`design-direction-decision.md`); `DESIGN.md` carried
+the selected visual system at that point and `DIRECTION.md` points at the ADR.
+Its visual authority was reopened on 2026-09-03 after the installed refit
+remained visibly unfinished. The rendered
 alternatives B and C stay in `apps/desktop/ui-harness/concepts` with their
-frames. Owed next: the implementation wave that rebuilds Home and the
-meeting view to concept A, carrying the D-LOCK, D-TOAST, and R-series
-findings unchanged, then a cold review of the rebuilt installed app.
+frames. The implementation wave below rebuilt Home and the meeting view to
+Concept A while carrying the D-LOCK, D-TOAST, and R-series findings unchanged.
 
 **Implementation wave landed — 2026-09-02 afternoon.** Three worktree agents
 rebuilt the surface to concept A: the main window (toolbar, day-grouped
@@ -239,6 +240,19 @@ windows read as native. R20 (10c434a) and D-GATE (9fe067d) verified on the
 installed preview; frames under
 `captures/10c434a-installed-addendum/`. Not yet captured on any installed
 build: During, Paused, and a meeting with a generated note and its inspector.
+
+**Visual-system correction dispatched — 2026-09-03.** The installed sparse
+screen and a pixel-identical refit proved that conformance to the old type and
+spacing numbers did not produce a polished window. Concept A's structure stays;
+type, neutral surfaces, toolbar feedback, selection, control rank, document
+rhythm, and the operator-notes editor were reopened in `DESIGN.md`. Three
+treatments rendered the same sparse, dense, and needs-attention fixtures in
+both appearances. A blind review ranked Precision utility first. Its follow-up
+pass replaced the clipped toolbar sentence with a compact status, attached the
+recovery panel to the meeting header, raised dark secondary contrast, and
+reduced the empty notes field. It now clears the static harness comparison bar.
+It is not selected, ported, or accepted on an installed build. Comparison and
+boundary: `evidence/screen-reviews/visual-treatment-comparison-2026-09-03.md`.
 
 ## What the live apps changed
 

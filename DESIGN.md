@@ -15,6 +15,13 @@ The replacement comparison is governed by
 treatment, use this file only for the locked rules named below. Do not cite the
 old specimen or its numbers as proof that a changed screen is visually done.
 
+Current comparison result, not a selection: the blind cross-review ranks
+**Precision utility** first. After one bounded refinement it clears the static
+harness bar across sparse, dense, and needs-attention states in both
+appearances. That does not make it the selected system, port it into the app,
+or prove the installed window. Evidence and limits:
+`docs/evidence/screen-reviews/visual-treatment-comparison-2026-09-03.md`.
+
 ### Locked while the visual system is compared
 
 - Concept A's persistent meeting list, document pane, and conditional source
