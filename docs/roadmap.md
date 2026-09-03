@@ -1020,6 +1020,41 @@ Then: read every frame back from disk, file the set under
 says what was *not* captured and why, and dispatch a blind cold review. R32,
 R33 and R35 go to that reviewer with their measurements attached.
 
+### Visual refit wave — dispatched 2026-09-03, in flight
+
+The operator's verdict on packaged build 21 was that it does not read as a
+high-grade desktop app, naming font size and placement, button spacing, and the
+text inside buttons. Diagnosis and preserve list:
+`docs/design/refit-brief-2026-09-03.md`. The short version is that the design
+system is sound and its application drifted -- no spacing scale exists at all
+and 31 ad-hoc pixel values stand in for one, two type scales compete giving
+fourteen sizes where five were designed, and `.read h2` is smaller than the body
+it heads.
+
+Three packets are out, in worktrees, with disjoint file ownership. The cut is
+along CSS / JS / backend rather than along the refit's own slices, because the
+slices all shared two files and a wave over overlapping scopes is the thing the
+dispatch rule exists to refuse.
+
+| Packet | Owns | Job |
+|---|---|---|
+| CSS refit | `packages/design-tokens/`, `styles.css`, `settings-window.css`, `DESIGN.md` | Spacing scale, type-scale collapse, heading inversion, Manage vs Rename weight |
+| Record reason | `main.js`, `DIRECTION.md` | The toolbar Record button renders disabled with nothing on screen saying why |
+| Silent generation | `worker/`, `crates/` | Root-cause the failure that writes and logs nothing |
+
+Two pre-flight catches worth keeping. **`apps/desktop/ui/tokens.css` is
+generated** from `packages/design-tokens/tokens.json` and gated by
+`npm run tokens:check`; hand-editing it gets silently reverted on the next
+regeneration. And the Record button is **genuinely disabled**, not mis-styled:
+`opacity: 0.45` over the toolbar reproduces the measured fill and border to
+within rounding, and `main.js:602` disables it whenever `canOpenStart` is false.
+
+On return: cross-review against the remote rather than against the completion
+reports, paying particular attention to the Record seam, which two packets touch
+from different sides. Then re-capture with
+`scripts/capture-pass-note-surfaces.sh` and commission a cold review that is
+actually blind this time.
+
 ## Current build receipt
 
 **Directly observed on 2026-08-16.** The separately identified Yawn Preview
