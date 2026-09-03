@@ -576,12 +576,49 @@ function renderModelSetup() {
 
 // -- Toolbar -------------------------------------------------------------
 
+// Toolbar Record's own explanation for its disabled state. `canOpenStart`
+// (view-model.mjs) is the single source of truth for whether Record can
+// open the start sheet; this walks the same gates in the same order --
+// capture-not-idle, the background-transcription queue, then audio
+// permission -- so the button and its explanation can never disagree.
+// The capture-not-idle copy below is written fresh for this purpose:
+// CAPTURE_COPY's per-state detail (view-model.mjs) describes the *meeting's*
+// own status for the capture canvas, and "transcript-ready"'s detail
+// actively invites recording another meeting -- reusing it here would
+// contradict a disabled button standing right next to it. "recovered
+// -interrupted" already reads correctly for this purpose ("Review what
+// survived before you start another recording"), so it falls through to
+// `capturePresentation`'s own detail instead of duplicating it.
+const RECORD_BLOCKED_CAPTURE_REASON = {
+  "transcript-ready": "Yawn is finishing your last meeting. Recording will be available again shortly.",
+  "transcription-failed": "Your last meeting's transcript needs attention before Yawn can record again.",
+  "summary-failed": "Your last meeting's note needs attention before Yawn can record again.",
+};
+
+function recordUnavailableReason(snapshot, permission) {
+  if (captureIsInProgress(snapshot) || canOpenStart(snapshot, permission)) return "";
+  const capture = snapshot?.capture || "idle";
+  if (capture !== "idle") return RECORD_BLOCKED_CAPTURE_REASON[capture] || capturePresentation(snapshot).detail;
+  const processing = backgroundTranscriptionPresentation(snapshot);
+  if (processing && !processing.canStart) return processing.detail;
+  return permissionSummary(permission).detail;
+}
+
 // DESIGN.md's Record control: idle ("Record"), live (elapsed + Pause/Resume
 // + Stop). Every non-idle capture state shows the live badge -- only
 // recording/paused get Pause or Resume (`capturePauseControlPresentation`
 // returns null for arming/stopping/captured/transcribing/summarizing, which
 // still show elapsed time and Stop, matching the toolbar title's "New
 // Recording" for the same states).
+//
+// A disabled Record used to carry no explanation at all -- greyed out, same
+// static "Record (⌘R)" title whether or not the shortcut actually worked.
+// `recordUnavailableReason` names the real blocker (audio permission, the
+// background-transcription queue, or the previous meeting still finishing);
+// when it is disabled, that text replaces the title tooltip *and* renders as
+// a visible caption next to the button, associated with it via
+// `aria-describedby` so assistive technology gets it too -- a tooltip alone
+// is not discoverable to keyboard or screen-reader users.
 function renderToolbarRecordControl() {
   const snapshot = state.snapshot;
   if (captureIsInProgress(snapshot)) {
@@ -599,7 +636,11 @@ function renderToolbarRecordControl() {
     `;
   }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
-  return `<button class="btn record record-idle" type="button" data-action="open-start" title="Record (⌘R)" ${startAvailable ? "" : "disabled"}>Record</button>`;
+  const reason = startAvailable ? "" : recordUnavailableReason(state.snapshot, state.permissions);
+  return `
+    <button class="btn record record-idle" type="button" data-action="open-start" title="${escapeHtml(reason || "Record (⌘R)")}" ${startAvailable ? "" : `disabled aria-describedby="record-unavailable-reason"`}>Record</button>
+    ${reason ? `<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">${escapeHtml(reason)}</span>` : ""}
+  `;
 }
 
 // -- Sidebar ---------------------------------------------------------------

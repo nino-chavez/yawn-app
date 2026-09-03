@@ -156,3 +156,54 @@ test("the motion vocabulary only ever animates transform and opacity, never a la
     assert.doesNotMatch(body, /\b(width|height|top|left|right|bottom|margin|padding)\b\s*:/);
   }
 });
+
+// A disabled Record used to render with no explanation anywhere: the toolbar
+// button just greyed out, carrying the same static "Record (⌘R)" title it
+// shows when enabled. There is no jsdom in this suite to render the toolbar
+// and inspect the live DOM (main.js is not a testable module the way
+// view-model.mjs functions are -- see view-model.test.mjs's own note on this),
+// so these pin the source shape instead: `recordUnavailableReason` walks the
+// same gates as `canOpenStart` in the same order, and the disabled button is
+// both titled with the reason and programmatically associated with a visible
+// caption carrying it, via `aria-describedby` -- not merely placed near it.
+test("a disabled Record explains itself, associated with the control via aria-describedby", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const fn = main.slice(
+    main.indexOf("function recordUnavailableReason"),
+    main.indexOf("function renderToolbarRecordControl"),
+  );
+  // Gate order mirrors canStartMeeting/canOpenStart (view-model.mjs): capture
+  // -not-idle first, then the background-transcription queue, then audio
+  // permission -- so the button and its explanation can never disagree about
+  // which condition is actually blocking Record.
+  const captureGateAt = fn.indexOf('capture !== "idle"');
+  const queueGateAt = fn.indexOf("backgroundTranscriptionPresentation(snapshot)");
+  const permissionGateAt = fn.indexOf("permissionSummary(permission).detail");
+  assert.ok(captureGateAt > -1 && queueGateAt > -1 && permissionGateAt > -1, "expected all three gates present");
+  assert.ok(captureGateAt < queueGateAt && queueGateAt < permissionGateAt, "expected capture, then queue, then permission");
+  // The permission and queue-full reasons read the shared presentation
+  // functions' own `.detail` at render time rather than duplicating their
+  // copy as a literal in main.js -- one owner for that text.
+  assert.match(fn, /processing\.detail/);
+  assert.match(fn, /permissionSummary\(permission\)\.detail/);
+  // The three explicit capture-state reasons exist for exactly the states
+  // whose own CAPTURE_COPY detail (view-model.mjs) would contradict a
+  // disabled Record if reused verbatim here (transcript-ready's literally
+  // invites recording another meeting). "recovered-interrupted" already
+  // reads correctly for this purpose, so it is deliberately absent from this
+  // map and falls through to `capturePresentation(snapshot).detail`.
+  assert.match(main, /const RECORD_BLOCKED_CAPTURE_REASON = \{\s*"transcript-ready":/);
+  for (const capture of ["transcript-ready", "transcription-failed", "summary-failed"]) {
+    assert.match(main, new RegExp(`"${capture}":\\s*"[^"]+"`));
+  }
+  assert.doesNotMatch(main, /RECORD_BLOCKED_CAPTURE_REASON\s*=\s*\{[^}]*"recovered-interrupted"/s);
+  assert.match(fn, /capturePresentation\(snapshot\)\.detail/);
+
+  // The rendered button: disabled carries both a real title (not the static
+  // "Record (⌘R)") and the aria-describedby association; the caption element
+  // it points to shares the exact same id and is announced on change.
+  const button = main.match(/<button class="btn record record-idle"[^>]*>Record<\/button>/)?.[0] ?? "";
+  assert.match(button, /title="\$\{escapeHtml\(reason \|\| "Record \(⌘R\)"\)\}"/);
+  assert.match(button, /disabled aria-describedby="record-unavailable-reason"/);
+  assert.match(main, /<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">/);
+});
