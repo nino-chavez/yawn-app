@@ -141,12 +141,19 @@ cap_frame() {
 # that shaped this file: on 2026-09-02 two runs sent clicks while the app was
 # NOT frontmost and they landed in the operator's browser. A click into a
 # frontmost Yawn window can only reach Yawn.
+# Checks the frontmost app's BUNDLE, not its process name. The name is not
+# unique and cannot be: the shipped `/Applications/Yawn.app` and this preview
+# bundle both run an executable called `local-meeting-notes-desktop`, and the
+# shipped one holds the operator's real meetings. A name check passes on either,
+# so a capture run could have clicked -- including into a delete confirmation --
+# inside the wrong app against real data. Only the bundle path separates them.
 cap_guard() {
   local front
-  front=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null)
-  case "$front" in
-    "Yawn Preview"|"local-meeting-notes-desktop") return 0 ;;
-    *) cap_log "ABORT: frontmost is \"$front\", not Yawn -- refusing to click"; return 1 ;;
+  front=$(osascript -e 'tell application "System Events" to get POSIX path of (file of first process whose frontmost is true)' 2>/dev/null)
+  local want="${CAP_APP%/}"
+  case "${front%/}" in
+    "$want") return 0 ;;
+    *) cap_log "ABORT: frontmost bundle is \"$front\", not \"$want\" -- refusing to click"; return 1 ;;
   esac
 }
 
