@@ -48,27 +48,32 @@ MSG
   mkdir -p "$CAP_OUT"
 }
 
-# System Events names this process "Yawn Preview" right after launch and
-# "local-meeting-notes-desktop" once it has settled, and which one answers is
-# a race. Ask for both rather than picking one and calling a miss "no window".
-cap_process_name() {
-  local name
-  for name in "Yawn Preview" "local-meeting-notes-desktop"; do
-    if osascript -e "tell application \"System Events\" to exists process \"$name\"" 2>/dev/null | grep -q true; then
-      printf '%s' "$name"
-      return 0
-    fi
-  done
-  return 1
+# Identify the app by pid resolved from its bundle path, never by process name.
+#
+# The name is ambiguous twice over. System Events calls it "Yawn Preview" right
+# after launch and "local-meeting-notes-desktop" once settled, which an earlier
+# version handled by trying both -- and that fixed the symptom while leaving the
+# real problem: `local-meeting-notes-desktop` is ALSO the executable name of the
+# shipped `/Applications/Yawn.app`, which holds the operator's real meetings.
+# Measured on this Mac with both running: the name lookup answered with the
+# shipped app and reported 0 windows while the preview had one. A capture would
+# have read the wrong window's geometry, or fallen back to fixed bounds and
+# photographed whatever sat there.
+#
+# The executable *path* is unique where the name is not, so the pid is the
+# unambiguous handle and every accessibility call addresses it by unix id.
+cap_pid() {
+  pgrep -f "${CAP_APP%/}/Contents/MacOS/" 2>/dev/null | head -1
 }
 
 cap_launch() {
   [ -d "$CAP_APP" ] || { cap_log "FATAL no bundle at $CAP_APP"; return 1; }
   open -a "$CAP_APP"
-  local waited=0 name
+  local waited=0 pid
   while [ "$waited" -lt 40 ]; do
-    if name=$(cap_process_name); then
-      cap_log "process is \"$name\" after ${waited}s"
+    pid=$(cap_pid)
+    if [ -n "$pid" ]; then
+      cap_log "pid $pid after ${waited}s"
       return 0
     fi
     sleep 1
@@ -92,10 +97,11 @@ cap_appearance() {
 }
 
 cap_bounds() {
-  local name bounds
-  name=$(cap_process_name) || { printf '%s' "$CAP_FALLBACK_BOUNDS"; return 0; }
+  local pid bounds
+  pid=$(cap_pid)
+  [ -n "$pid" ] || { cap_log "no process for $CAP_APP, using fallback bounds"; printf '%s' "$CAP_FALLBACK_BOUNDS"; return 0; }
   bounds=$(osascript <<EOF 2>/dev/null
-tell application "System Events" to tell process "$name"
+tell application "System Events" to tell (first process whose unix id is $pid)
   if (count of windows) is 0 then error "no window"
   set p to position of window 1
   set s to size of window 1
