@@ -323,6 +323,53 @@ export function humanize(value) {
   return String(value || "").replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+// Refit R22. The two setup options were 292px cards in a two-column grid,
+// each with its own accent-filled button (two primaries on one surface) and
+// a definition list whose DOWNLOAD / ON DISK labels were uppercase -- the
+// system reserves uppercase for group labels. This returns the same options
+// as grouped-list rows, deciding two things from the data rather than from
+// markup:
+//
+//   - Which row is the primary. The old renderer sniffed `id.includes("q4")`,
+//     so renaming a model silently moved the recommendation. The surface asks
+//     "Choose how much space Yawn uses", so the smallest download is the one
+//     it recommends.
+//   - Whether the size pair is worth a line. Every catalog entry today
+//     downloads and installs the same number of bytes, so printing both is
+//     one fact twice on top of a detail sentence that already states it. The
+//     line appears only when the two actually differ.
+export function modelSetupOptionsPresentation(setup, formatBytes) {
+  const options = Array.isArray(setup?.options) ? setup.options : [];
+  if (!options.length) return [];
+  let recommendedId = "";
+  let smallest = Infinity;
+  for (const option of options) {
+    const bytes = Number(option?.downloadBytes);
+    if (Number.isFinite(bytes) && bytes < smallest) {
+      smallest = bytes;
+      recommendedId = String(option?.id || "");
+    }
+  }
+  // No usable size anywhere: recommend the first row rather than none, so the
+  // surface still has exactly one primary.
+  if (!recommendedId) recommendedId = String(options[0]?.id || "");
+  return options.map((option) => {
+    const id = String(option?.id || "");
+    const download = Number(option?.downloadBytes);
+    const installed = Number(option?.installedBytes);
+    const sizesDiffer = Number.isFinite(download) && Number.isFinite(installed) && download !== installed;
+    return {
+      id,
+      title: String(option?.title || ""),
+      detail: String(option?.detail || ""),
+      sizeNote: sizesDiffer && typeof formatBytes === "function"
+        ? `${formatBytes(download)} to download · ${formatBytes(installed)} on disk`
+        : "",
+      primary: id === recommendedId,
+    };
+  });
+}
+
 // Refit R24. The document's metadata caption used to render
 // `humanize(note.state)` -- the storage lifecycle enum, title-cased. A cold
 // reviewer read "Transcript Only" as a restriction on the meeting rather

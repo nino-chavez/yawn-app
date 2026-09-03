@@ -23,6 +23,7 @@ import {
   meetingRecoveryPresentation,
   audioReleasedFact,
   meetingStateCaption,
+  modelSetupOptionsPresentation,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -556,18 +557,15 @@ function renderModelSetup() {
       ` : `
         ${setup.error ? `<p class="model-setup-error" role="alert">${escapeHtml(setup.error)}</p>` : ""}
         <div class="model-options">
-          ${(setup.options || []).map((option) => `
-            <article class="model-option">
-              <div>
+          ${modelSetupOptionsPresentation(setup, byteSizeLabel).map((option) => `
+            <div class="model-option">
+              <div class="model-option-copy">
                 <h2>${escapeHtml(option.title)}</h2>
                 <p>${escapeHtml(option.detail)}</p>
+                ${option.sizeNote ? `<p class="model-option-size">${escapeHtml(option.sizeNote)}</p>` : ""}
               </div>
-              <dl>
-                <div><dt>Download</dt><dd>${byteSizeLabel(option.downloadBytes)}</dd></div>
-                <div><dt>On disk</dt><dd>${byteSizeLabel(option.installedBytes)}</dd></div>
-              </dl>
-              <button class="button ${option.id.includes("q4") ? "button-primary" : "button-secondary"}" type="button" data-action="install-model" data-model-id="${escapeHtml(option.id)}">Use this model</button>
-            </article>
+              <button class="button ${option.primary ? "button-primary" : "button-secondary"}" type="button" data-action="install-model" data-model-id="${escapeHtml(option.id)}">Use this model</button>
+            </div>
           `).join("")}
         </div>
         <p class="model-privacy">The model is downloaded directly to Yawn’s private folder. Meeting audio is not uploaded.</p>

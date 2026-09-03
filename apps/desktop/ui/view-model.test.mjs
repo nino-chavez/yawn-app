@@ -39,6 +39,7 @@ import {
   meetingRecoveryPresentation,
   audioReleasedFact,
   meetingStateCaption,
+  modelSetupOptionsPresentation,
   AUDIO_RELEASED_DETAIL,
   AUDIO_RELEASED_DETAIL_NO_NOTE,
   meetingNotePresentation,
@@ -2067,4 +2068,27 @@ test("a first failed generation does not promise a note that was never created (
   assert.match(replacing.detail, /current note remain unchanged/);
   assert.equal(replacing.action.action, "generate-note");
   assert.equal(replacing.action.label, "Regenerate note");
+});
+
+test("model setup recommends the smallest download and shows one primary (R22)", () => {
+  const bytes = (n) => `${n} B`;
+  const rows = modelSetupOptionsPresentation({ options: [
+    { id: "full", title: "Full model", detail: "d", downloadBytes: 1613977880, installedBytes: 1613977880 },
+    { id: "q4", title: "Smaller download", detail: "d", downloadBytes: 463665005, installedBytes: 463665005 },
+  ] }, bytes);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.filter((row) => row.primary).length, 1, "exactly one primary");
+  assert.equal(rows.find((row) => row.primary).id, "q4", "the smallest download is recommended");
+  // Both catalog entries download and install the same bytes, so the pair
+  // would be one fact printed twice next to a detail that already states it.
+  assert.equal(rows[0].sizeNote, "");
+  // A model whose install differs from its download earns the line.
+  const [uneven] = modelSetupOptionsPresentation({ options: [
+    { id: "a", title: "A", detail: "d", downloadBytes: 100, installedBytes: 250 },
+  ] }, bytes);
+  assert.equal(uneven.sizeNote, "100 B to download · 250 B on disk");
+  // No options, and options with no usable size, still behave.
+  assert.deepEqual(modelSetupOptionsPresentation({ options: [] }, bytes), []);
+  const [sizeless] = modelSetupOptionsPresentation({ options: [{ id: "z", title: "Z", detail: "d" }] }, bytes);
+  assert.equal(sizeless.primary, true, "a sizeless surface still has one primary");
 });

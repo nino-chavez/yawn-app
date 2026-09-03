@@ -32,7 +32,12 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" ? { ...captureSnapshot }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
-      : mode === "model-setup" ? { ...idleSnapshot, startup: "model-required", model_setup: { state: "idle", options: [], selectedModelId: "" } }
+      : mode === "model-setup" ? { ...idleSnapshot, startup: "model-required", model_setup: { state: "idle", selectedModelId: "", options: [
+          // The catalog's real two speech models, so the surface renders the
+          // row count, titles, and sizes it renders in a packaged build.
+          { id: "whisper-large-v3-turbo-q4", title: "Smaller download", detail: "A 4-bit local transcription model that uses about 464 MB.", downloadBytes: 463665005, installedBytes: 463665005 },
+          { id: "whisper-large-v3-turbo", title: "Full model", detail: "The full local Turbo transcription model, using about 1.61 GB.", downloadBytes: 1613977880, installedBytes: 1613977880 },
+        ] } }
       : { ...idleSnapshot }),
     first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
     library_snapshot: () => (mode === "library" || mode === "summary-failed"

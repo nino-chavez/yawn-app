@@ -1296,13 +1296,57 @@ h3 {
   line-height: var(--lh-body);
 }
 
+/* R22 (cards half): the two options were 292px cards side by side, each with
+   its own accent button and an uppercase DOWNLOAD / ON DISK definition list.
+   They are now the grouped-list material Settings already uses (R13) -- a box
+   with hairlines between rows, no border in light where --content reads
+   against --window, a subtle one in dark where they are the same value. */
 .model-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  border-radius: var(--r-card);
+  background: var(--content);
+  overflow: hidden;
 }
 
-.model-option,
+:root[data-theme="dark"] .model-options {
+  border: 1px solid var(--separator-strong);
+}
+
+.model-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border-top: 1px solid var(--separator);
+}
+
+.model-option:first-child {
+  border-top: 0;
+}
+
+:root[data-theme="dark"] .model-option {
+  border-top-color: var(--separator-strong);
+}
+
+:root[data-theme="dark"] .model-option:first-child {
+  border-top: 0;
+}
+
+.model-option-copy {
+  min-width: 0;
+}
+
+.model-option h2 {
+  margin: 0;
+  font-size: var(--t-body);
+  font-weight: 600;
+}
+
+.model-option-size {
+  color: var(--label-2);
+  font-size: var(--t-caption);
+}
+
 .model-download {
   padding: 24px;
   border: 1px solid var(--line);
@@ -1310,44 +1354,16 @@ h3 {
   background: var(--paper);
 }
 
-.model-option {
-  display: flex;
-  min-height: 292px;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.model-option > div:first-child {
-  flex: 1;
-}
-
 .model-option p,
 .model-download p,
 .model-privacy {
-  color: var(--ink-soft);
-  line-height: 1.55;
+  color: var(--label-2);
+  line-height: 1.45;
 }
 
-.model-option dl {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  margin: 0;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-
-.model-option dt {
-  margin-bottom: 3px;
-  color: var(--ink-faint);
-  font-size: var(--text-meta);
-  font-weight: var(--weight-bold);
-  text-transform: uppercase;
-}
-
-.model-option dd {
-  margin: 0;
-  font-size: var(--text-body-lg);
-  font-weight: var(--weight-bold);
+.model-option p {
+  margin: 3px 0 0;
+  font-size: var(--t-caption);
 }
 
 .model-download {
@@ -1378,16 +1394,6 @@ h3 {
 
 .model-privacy {
   margin: 18px 2px 0;
-}
-
-@media (max-width: 680px) {
-  .model-options {
-    grid-template-columns: 1fr;
-  }
-
-  .model-option {
-    min-height: 0;
-  }
 }
 
 .modal-backdrop {
@@ -2285,14 +2291,12 @@ h3 {
     background: rgb(25 26 24 / 92%);
   }
 
-  .button-primary {
-    color: #1b1b18;
-    background: #f0f0eb;
-  }
-
-  .button-primary:hover:not(:disabled) {
-    background: #fff;
-  }
+  /* R22: the retired inverted primary. R21 made `.button-primary` the accent
+     fill, but this dark override survived, so every sheet primary and the
+     model-setup recommendation rendered as a near-white pill in dark while
+     light showed the accent -- one component with two appearances, and no
+     way to tell the primary from its neighbour. `.btn.primary` in tokens.css
+     carries no such override; the accent token already varies by theme. */
 
   .button-danger {
     color: #241916;
