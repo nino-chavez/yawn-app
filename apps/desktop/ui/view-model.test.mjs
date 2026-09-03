@@ -38,7 +38,9 @@ import {
   meetingLockSheetCopy,
   meetingRecoveryPresentation,
   audioReleasedFact,
+  meetingStateCaption,
   AUDIO_RELEASED_DETAIL,
+  AUDIO_RELEASED_DETAIL_NO_NOTE,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -1078,9 +1080,13 @@ test("summary failure keeps the transcript and offers regeneration when its sour
   }, { state: "transcript", turns: [{ text: "kept" }] });
   assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action.action, "generate-note");
-  assert.equal(recovery.action.label, "Regenerate note");
   assert.match(recovery.detail, /transcript/);
-  assert.match(recovery.detail, /remain unchanged/);
+  // This meeting has no note (claims: []), so the detail says the
+  // transcript is unchanged rather than promising a surviving note, and
+  // the action reads as a first attempt. The note-bearing case is covered
+  // by its own test below.
+  assert.equal(recovery.action.label, "Generate note");
+  assert.doesNotMatch(recovery.detail, /current note/);
 });
 
 test("summary failure without a source explains that retry is unavailable", () => {
@@ -1137,7 +1143,11 @@ test("released audio says retranscription is unavailable while preserving the no
   assert.equal(recovery.state, "audio-released");
   assert.equal(recovery.action, null);
   assert.match(recovery.detail, /cannot be retranscribed/);
-  assert.match(recovery.detail, /remain available/);
+  assert.match(recovery.detail, /transcript remains available/);
+  // This meeting has no note. The fact must not say one survived (R24
+  // read-back: the note-bearing sentence was showing on a document whose
+  // generation had failed).
+  assert.doesNotMatch(recovery.detail, /note remain/);
 });
 
 test("released audio remains visible even when a usable note is present", () => {
@@ -2015,11 +2025,46 @@ test("note generation presentation: shows generating state when matching meeting
 
 test("the released-audio fact is a caption independent of the recovery state (R23)", () => {
   const released = { state: "summary-failed", meetingId: "m1", regenerationSourceSha256: "a".repeat(64), audioRetention: { state: "released" } };
-  assert.equal(audioReleasedFact(released), AUDIO_RELEASED_DETAIL);
+  // No note exists in this state, so the fact must not claim one.
+  assert.equal(audioReleasedFact(released), AUDIO_RELEASED_DETAIL_NO_NOTE);
+  assert.equal(audioReleasedFact({ ...released, claims: [{ claim: "a", claimType: "summary" }] }), AUDIO_RELEASED_DETAIL);
   assert.equal(audioReleasedFact({ ...released, audioRetention: { state: "retained" } }), "");
   // summary-failed displaces the audio-released recovery slot; the fact must survive that.
   const recovery = meetingRecoveryPresentation(released, { state: "available", turns: [{}] });
   assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action.action, "generate-note");
-  assert.equal(meetingRecoveryPresentation({ ...released, state: "note" }, { state: "available", turns: [{}] }).detail, AUDIO_RELEASED_DETAIL);
+  assert.equal(meetingRecoveryPresentation({ ...released, state: "note", claims: [{ claim: "a", claimType: "summary" }] }, { state: "available", turns: [{}] }).detail, AUDIO_RELEASED_DETAIL);
+});
+
+test("the document caption never shows a raw lifecycle enum (R24)", () => {
+  // Role, not copy: every state a document can reach must be mapped to
+  // reader words. The strings themselves are the operator's call (content
+  // reads), so this asserts the shape, not the wording.
+  for (const state of ["note", "transcript-only", "summary-failed", "recovered-interrupted", "locked", "metadata-only"]) {
+    const caption = meetingStateCaption(state);
+    assert.ok(caption && caption.length, `${state} has a caption`);
+    assert.doesNotMatch(caption, /-/, `${state} caption carries no enum punctuation`);
+  }
+  // The multi-token lifecycles are the ones that read as machine states, so
+  // each must be mapped rather than title-cased. "locked" is excluded on
+  // purpose: its humanized form is already the word the sidebar row uses.
+  for (const state of ["transcript-only", "summary-failed", "recovered-interrupted", "metadata-only"]) {
+    assert.notEqual(meetingStateCaption(state), humanize(state), `${state} is mapped, not humanized`);
+  }
+  // An unmapped state degrades to the humanizer rather than rendering blank.
+  assert.equal(meetingStateCaption("some-future-state"), "Some Future State");
+  assert.equal(meetingStateCaption(""), "Loading note");
+});
+
+test("a first failed generation does not promise a note that was never created (R24)", () => {
+  const base = { state: "summary-failed", meetingId: "m1", regenerationSourceSha256: "a".repeat(64) };
+  const transcript = { state: "available", turns: [{}] };
+  const first = meetingRecoveryPresentation(base, transcript);
+  assert.equal(first.state, "summary-failed");
+  assert.doesNotMatch(first.detail, /current note/);
+  assert.equal(first.action.action, "generate-note");
+  const replacing = meetingRecoveryPresentation({ ...base, claims: [{ claimType: "summary", claim: "kept" }] }, transcript);
+  assert.match(replacing.detail, /current note remain unchanged/);
+  assert.equal(replacing.action.action, "generate-note");
+  assert.equal(replacing.action.label, "Regenerate note");
 });

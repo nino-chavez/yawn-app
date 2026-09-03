@@ -22,6 +22,7 @@ import {
   meetingLockSheetCopy,
   meetingRecoveryPresentation,
   audioReleasedFact,
+  meetingStateCaption,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -1301,7 +1302,7 @@ function renderMeetingPane() {
             ${manageMenu}
           </div>
         </div>
-        <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</p>
+        <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meetingStateCaption(note?.state))}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderMeetingNote(note, claimEvidence, recovery)}

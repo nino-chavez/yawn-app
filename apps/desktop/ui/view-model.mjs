@@ -323,6 +323,33 @@ export function humanize(value) {
   return String(value || "").replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+// Refit R24. The document's metadata caption used to render
+// `humanize(note.state)` -- the storage lifecycle enum, title-cased. A cold
+// reviewer read "Transcript Only" as a restriction on the meeting rather
+// than its state, and the same line was the sole explanation of a failed
+// generation ("Summary Failed") before R23 put that state in the note area.
+// The sidebar row for the very same meeting already spoke reader words
+// ("transcript available", "interrupted", "Locked"), so one screen carried
+// two vocabularies for one fact. This is the only place the document names
+// a lifecycle, and it maps rather than transforms: an unmapped state falls
+// back to `humanize` so a new state reads awkwardly instead of vanishing.
+const MEETING_STATE_CAPTIONS = Object.freeze({
+  "note": "Meeting note",
+  // Just "Transcript": the note area says "No meeting note yet." one line
+  // below, and a caption that repeats it is two lines of one fact.
+  "transcript-only": "Transcript",
+  "summary-failed": "Note not created",
+  "recovered-interrupted": "Interrupted",
+  "locked": "Locked",
+  "metadata-only": "Details only",
+});
+
+export function meetingStateCaption(noteState) {
+  const key = String(noteState || "");
+  if (!key) return "Loading note";
+  return MEETING_STATE_CAPTIONS[key] || humanize(key);
+}
+
 // Design intake D1: a row's preview of the note's outcome. `notePreview` is
 // already the finished, capped sentence the backend read from a
 // digest-verified note -- this seam only decides whether the row has one to
@@ -1285,8 +1312,14 @@ export function noteGenerationPresentation(note, generatingMeetingId) {
 // (refit R23, where the fact vanished under summary-failed). One owner for
 // the sentence; the recovery branch below reads it from here.
 export const AUDIO_RELEASED_DETAIL = "The audio was already deleted. The transcript and note remain available, but this meeting cannot be retranscribed.";
+// Same fact, for a meeting that has no note to keep. Visible on the
+// summary-failed document once R23 stopped hiding this caption there: the
+// sentence above names a note that was never created.
+export const AUDIO_RELEASED_DETAIL_NO_NOTE = "The audio was already deleted. The transcript remains available, but this meeting cannot be retranscribed.";
 export function audioReleasedFact(note) {
-  return note?.audioRetention?.state === "released" ? AUDIO_RELEASED_DETAIL : "";
+  if (note?.audioRetention?.state !== "released") return "";
+  const hasNote = Array.isArray(note?.claims) && note.claims.length > 0;
+  return hasNote ? AUDIO_RELEASED_DETAIL : AUDIO_RELEASED_DETAIL_NO_NOTE;
 }
 
 // Keep recovery copy at the same evidence boundary as the library response.
@@ -1338,8 +1371,14 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
         state: "summary-failed",
         tone: "attention",
         title: "Your meeting note needs another try.",
-        detail: "Yawn could not create a note. Your transcript and current note remain unchanged.",
-        action: { action: "generate-note", label: "Regenerate note" },
+        // Same split the generating branch above already makes: a failed
+        // first attempt has no note to leave unchanged, and saying it does
+        // promises the reader something that is not on the page (R24
+        // read-back of the summary-failed document).
+        detail: hasUsableNote
+          ? "Yawn could not create a note. Your transcript and current note remain unchanged."
+          : "Yawn could not create a note. Your transcript is unchanged and you can try again.",
+        action: { action: "generate-note", label: hasUsableNote ? "Regenerate note" : "Generate note" },
       };
     }
     return {
