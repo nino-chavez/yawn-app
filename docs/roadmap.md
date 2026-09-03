@@ -936,35 +936,63 @@ was refused by the session's permission boundary. The run was stopped there
 rather than routed around, and the operator has to decide whether to grant that
 or drive the remaining frames by hand.
 
-**Attempted again 2026-09-03 morning, with the operator away and the screen
-unlocked, and it got no further -- for a different reason than the one recorded
-above.** The click permission was never the only gate, and naming it as the
-unblock was wrong. `osascript` on this host has no **assistive access**: every
-accessibility call returns -25211, so the window count, the window geometry and
-the synthetic click all fail together. One System Settings grant covers all
-three. The host app is `/Applications/Claude.app` (Privacy & Security >
-Accessibility); the CGEvent helper itself runs fine and is not what refuses.
+**Ran 2026-09-03 morning and produced the set at
+`docs/evidence/screen-reviews/captures/d0c5d86-installed/`, which supersedes the
+one-frame partial.** Eleven frames on the same build 21 bundle; storage
+untouched, four meetings before and after, both destructive sheets opened and
+cancelled.
 
-Three defects in the capture primitives were found by that attempt and fixed in
-the same pass. All three are the shape the previous night's fixes were about --
-a check that cannot get a true answer substituting a plausible one:
+The gate was never the click permission, and recording it as such was wrong.
+`osascript` on this host had no **assistive access**, so window geometry, the
+frontmost check and the synthetic click all failed together with -25211. One
+System Settings grant covers all three -- and the grant has to go to the bundle
+that is actually responsible, which is the nested `com.anthropic.claude-code`
+app, not `com.anthropic.claudefordesktop`. Granting the visible "Claude" entry
+changes nothing; `AXIsProcessTrustedWithOptions` with the prompt option
+registers the correct entry.
 
-- `cap_session_usable` passed while assistive access was denied, because both
-  of its probes (a process name, a bundle path) are answered without it. It now
-  probes a real window count, which is the thing that has to work, and names the
-  exact remedy.
-- `cap_bounds` served `CAP_FALLBACK_BOUNDS` whenever the geometry query came
-  back empty. The window is not at that fallback origin, so a frame taken on
-  those numbers is a valid PNG of the wrong rectangle -- which `cap_frame`'s
-  read-back cannot detect, and which would have been filed as evidence. The
-  fallback is gone; unreadable bounds now fail.
-- `cap_frame` declared `local path=...`, and in zsh -- which the file's own
-  header says it is sourced from -- `path` is tied to `PATH`, so the function
-  emptied PATH and `screencapture`, `file` and `sips` stopped resolving. Correct
-  in bash, fatal in zsh. Renamed to `frame_path`.
+What the pass settles, beyond re-confirming R23, R24 and R24b: the delete
+confirmation sheet, the lock sheet, the Manage popover and the generating state
+all have device frames for the first time, and **D-FREEZE is confirmed** --
+twelve accessibility polls across 28 s of an active generation, all answered,
+with two ~1 s spikes recorded rather than smoothed.
 
-No frame was taken and no capture set was filed, because a set with no verified
-frame in it is not evidence.
+**The pass's own finding, which outranks the frames: Generate note fails
+silently.** It enters its state correctly, runs for five minutes, and returns to
+a screen visually identical to the one before the click (18 of 3,888,000 pixels
+differ, none by more than 60/255). No note, no diagnostic, no attempt record, no
+log line, and nothing modified anywhere in the preview's storage tree in the
+surrounding two hours. The note model is installed and complete. The product
+brief requires that a failed run be stated plainly; this states it as nothing.
+That is a defect to diagnose, and it is not a capture problem.
+
+Two more from the same set: the Source transcript header renders its sentence as
+two one-word-per-line columns with the action buttons painted over it, and on the
+delete sheet the confirm button and Cancel share a measured fill of rgb(58,58,58)
+while the reversible lock sheet's confirm is a blue primary. The second is not
+R34 regressing -- R34 deliberately made that control a plain `.btn` -- it is the
+asymmetry R34 declined to settle, now measurable, and it goes to the sheets
+review with R32 and R33.
+
+Four defects in the capture primitives were found by running them and are fixed:
+`cap_session_usable` passed while assistive access was denied (both its probes
+are answered without it); `cap_bounds` served a fallback rectangle on an
+unreadable read, which would have filed a valid PNG of the wrong region as
+evidence; `cap_frame` declared `local path=`, which in zsh empties `PATH`; and
+`cap_launch` returned on the first non-zero window count, while accessibility
+briefly disagrees with itself after relaunch. The first replacement probe shipped
+with the same class of bug -- a syntax error whose message reads "Access not
+allowed" -- caught only by running it once access was real.
+
+**Still not settled, and why.** R35 and every light frame: the app ignores a
+per-app `AppleInterfaceStyle` override written to the correct domain and
+verified by read-back. The only remaining route is switching the system
+appearance, which `cap_appearance` refuses by design so the operator's desktop is
+never changed under him. That is an operator decision. R32's retry decision sheet
+was not reachable: the failed meeting goes straight from Generate note into
+generating with no intervening choice, and the meeting that already has a note
+offers no regenerate control at all -- its Manage popover is only Lock meeting,
+Delete transcript and Move to Trash.
 
 Two rows come off the plan as unreachable on this machine rather than pending:
 **transcript-only**, because no meeting is in that state any more (the nine-turn

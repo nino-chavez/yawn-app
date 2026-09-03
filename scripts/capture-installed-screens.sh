@@ -153,7 +153,22 @@ cap_launch() {
     if [ -n "$pid" ]; then
       count=$(cap_window_count)
       if [ -n "$count" ] && [ "$count" != "0" ]; then
-        cap_log "pid $pid, $count window(s) after ${waited}s"
+        # Two consecutive good reads, not one. Measured 2026-09-03: right after
+        # relaunch the count read 1, then 0 a moment later while `window 1` was
+        # still addressable and returning correct geometry -- accessibility
+        # disagreeing with itself for about two seconds. Returning on the first
+        # non-zero read handed that window straight to `cap_frame`, which then
+        # failed on unreadable bounds and lost the frame. It settles within ~2s
+        # and is stable afterwards, so a second confirming read is enough.
+        sleep 2
+        local confirm
+        confirm=$(cap_window_count)
+        if [ -z "$confirm" ] || [ "$confirm" = "0" ]; then
+          cap_log "pid $pid reported $count window(s) then $confirm; still settling"
+          waited=$((waited + 2))
+          continue
+        fi
+        cap_log "pid $pid, $count window(s) after ${waited}s (confirmed)"
         return 0
       fi
     fi

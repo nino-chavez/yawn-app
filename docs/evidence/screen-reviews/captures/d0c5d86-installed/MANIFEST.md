@@ -68,8 +68,16 @@ same colour.** Measured from the full-resolution frames, not eyeballed:
 | Lock meeting (06) | `rgb(59,130,247)` | `rgb(58,58,58)` |
 
 The reversible action gets a full blue primary. The irreversible one is pixel-
-identical to Cancel. R34's fix (`0388837`) does not produce a styled destructive
-button on this build.
+identical to Cancel.
+
+This is not R34 failing. R34 deliberately removed an inert `danger` class so the
+control would render as a plain `.btn`, which is what DESIGN.md wants, and that
+is exactly what the frame shows. The finding is the asymmetry the fix leaves
+behind, which R34 explicitly declined to settle and handed to this review:
+whether a destructive action deserves any distinct treatment. The frames now
+answer the half that was unmeasurable before — on this build the destructive
+confirm carries *less* visual weight than the reversible one, because Lock
+claims `.primary` and Trash claims nothing.
 
 **F3 — The Source transcript header is broken.** `10a` at full resolution: the
 descriptive sentence is collapsed into two ~40px columns, one word per line
