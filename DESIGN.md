@@ -1,7 +1,8 @@
 # DESIGN.md — Yawn desktop visual system
 
-Status: **Tonal Ledger — Canvas selected and ported 2026-09-03**. The signed
-Preview bundle is verified; installed cold-review acceptance remains separate.
+Status: **Tonal Ledger — Canvas selected 2026-09-03**. Its static reference is
+the visual authority. The signed Preview bundle is verified; installed
+cold-review acceptance and visual-fidelity acceptance remain separate.
 
 Concept A remains the decided window structure: source list beside document,
 one Record control, and transcript evidence in an inspector. The operator
@@ -13,9 +14,11 @@ writing object.
 The completed comparison is governed by
 `docs/design/visual-system-rethink-brief-2026-09-03.md` and rendered from
 `apps/desktop/ui-harness/visual-treatments/`. The selected static reference is
-`tonal-ledger-refined/`. The product implementation lives in
-`packages/design-tokens/tokens.json` and `apps/desktop/ui/styles.css`. Static
-frames remain comparison evidence, not installed acceptance.
+`tonal-ledger-refined/`. Its CSS and shared frame are the exact geometry
+authority for this visual system. The product implementation lives in
+`packages/design-tokens/tokens.json` and `apps/desktop/ui/styles.css`; it must
+match the reference rather than reinterpret it. Static frames remain comparison
+evidence, not installed acceptance.
 
 The operator rejected Native Editorial, Private Notebook, Precision Utility,
 Quiet Folio, and Marquee Document — Quiet. Their files remain for archaeology;
@@ -39,37 +42,43 @@ they are not alternate product themes. Evidence and limits:
   surface plus an inset locator, never a bright filled row.
 - The pane supplies document containment. Only personal notes, evidence, and
   actionable recovery receive bounded or tinted material.
-- Rename and Manage remain secondary. Generated-note prose and operator notes
-  remain readable at 16px.
+- Rename and Manage remain secondary. Generated-note prose remains readable at
+  16px; the operator's editable note uses 14px.
 
 ## Composition
 
-- One main window, default 1080x900, minimum 900x600. Unified toolbar (52pt)
+- One main window, default 1080x900, minimum 900x600. Unified toolbar (58pt)
   with, left to right: traffic lights, sidebar toggle, window title, search
   field, Record control.
-- Sidebar 280pt: meetings grouped by day (Today, Yesterday, Previous 7 days,
+- Sidebar 282pt: meetings grouped by day (Today, Yesterday, Previous 7 days,
   Previous 30 days, then month), each row title · caption (time · length ·
   status) · one excerpt line; a needs-attention row carries a dot. Trash is
   the last item. During capture, "Recording now" is the first row.
-- Document pane: the note at the reading measure (64ch), title, caption,
-  Overview, Decisions, Follow-ups, Open questions. The empty selection is one
-  centered caption. During capture the pane is the note canvas with the pause
-  fact as a caption and a collapsed live-transcript disclosure.
-- Inspector 320pt, slides in from the right when a claim is opened: the cited
+- Document pane: the canvas contains a centered 700px reading column (64ch for
+  text). It has 36px top canvas inset, 26–68px responsive side inset, and 54px
+  bottom inset; the reading column has 25px/14px/42px internal padding. The
+  title, caption, and generated-note sections share that left edge. The empty
+  selection is one centered caption. The transcript-only capture has the
+  released-audio fact, “No meeting note yet.”, Generate note and its local-only
+  explanation, personal notes, then a collapsed Full transcript disclosure.
+- Inspector 264pt, slides in from the right when a claim is opened: the cited
   turn highlighted, neighbours dimmed, "Open full transcript" at its foot.
-- Below about 900pt wide the sidebar collapses behind its toggle; nothing
-  else reflows.
+- The selected static reference is fixed to a 900px minimum width. Its capture
+  breakpoint tightens chrome below 960px; a product sidebar-collapse behavior
+  needs its own reviewed reference before it becomes a visual-system rule.
 - Settings is a standard Preferences-style window: closable, minimizable,
   not modal.
 
 ## Type
 
-System font (`-apple-system`) throughout. The meeting title is 28–36px at
-1.08, weight 650, with a maximum width of 21ch. Generated-note prose and the
-operator's note are 16px at 1.56. Transcript turns are 14px at 1.55. Toolbar,
-sidebar, controls, metadata, and section headings are 13px. Group labels and
-inspector labels are 11px. The needs-attention headline is 24px. No separate
-editorial or display family is introduced.
+System font (`-apple-system`) throughout. Base UI is 13px/1.4. The meeting
+title is 28–36px at 1.08, weight 650, with a maximum width of 21ch.
+Generated-note prose is 16px/1.56. The editable operator note is 14px/1.55.
+Toolbar title and search are 12px; row titles are 13px/18px; metadata,
+excerpts, save facts, and group labels are 11px; section headings are
+13px/18px; inspector labels are 10px and inspector turn text is 12px/18px.
+The needs-attention headline is 22px/28px. No separate editorial or display
+family is introduced.
 
 ## Color
 
@@ -121,12 +130,15 @@ meetings" link, and the green Settings accent. Diagnosis:
 
 ## Spacing
 
-4, 6, 8, 12, 16, 18, 24, 32, 48. Row padding 6/8; toolbar padding 12; sidebar
-inset 16; inspector padding 18; document 36 top, 26–68 responsive sides, and
-54 bottom. Toolbar 52, sidebar 280, inspector 320, controls 22 (26 on a
-needs-attention surface). Radii 6 for controls and 10 for notes, recovery, and
-sheets. Personal notes use 15/16/13 internal padding and an 88px minimum editor
-height.
+4, 6, 8, 12, 16, 18, 24, 32, 48. Toolbar is 58px with 16px side padding;
+sidebar scroll inset is 13px top, 7px sides, 16px bottom; group separation is
+18px. Rows use 7px/9px/8px padding. The inspector is 264px with 25px/17px/18px
+padding. Standard buttons are 28px minimum height with 4px/10px padding;
+secondary buttons are 26px minimum height with 3px/9px padding; paired actions
+have a 6px gap. Search is 29px high with 9px side padding. Controls have a 6px
+radius and notes a 10px radius. Personal notes use 15px/16px/13px internal
+padding; their editor has a 76px minimum, 6px vertical padding, and a 9px left
+gutter.
 
 32 was added in the 2026-09-03 visual refit, migrating `apps/desktop/ui/
 styles.css`'s 31 ad hoc margin/padding/gap values onto this scale. Three
@@ -143,19 +155,19 @@ visual reference. The selected treatment frames and the rules below now govern.
 
 | Component | States | Rule |
 |---|---|---|
-| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled is opacity, never a color change. Every button uses the shared `.btn`: 22 high (26 on a needs-attention surface), 10 side padding, radius 6, one border; buttons beside each other share a baseline and a gap of 8. No card, pill, link, or bordered row stands in for a button. A destructive action (Move to Trash, Remove download) is never the primary, even when it is the only button on the surface |
+| Button | default, primary, pressed, disabled, focused | One primary per surface. Disabled uses the muted record treatment, not generic opacity. Every standard button is the shared `.button`: 28px minimum height, 4px/10px padding, 12px/17px type, 6px radius, and one border. Secondary buttons are 26px minimum height with 3px/9px padding; paired actions share a baseline and a 6px gap. No card, pill, link, or bordered row stands in for a button. A destructive action (Move to Trash, Remove download) is never the primary, even when it is the only button on the surface |
 | Record control | idle, live (elapsed + Pause + Stop), paused | The only red. Lives in the toolbar and the menu-bar pill only |
 | Icon button | default, hover | Sidebar toggle. No other icon buttons in the toolbar |
-| Search field | empty, typing, filtered-empty | Title search only; "No matching meetings" is one caption |
+| Search field | empty, typing, filtered-empty | Title search only; 29px high, 9px side padding, 12px type. "No matching meetings" is one caption |
 | Toolbar | nothing selected ("Yawn"), meeting selected (title), recording ("New Recording") | Nothing else enters the toolbar |
 | Sidebar row | default, hover, selected, needs-attention (dot), recording-now, large text | Title one line, caption, excerpt. Selected uses the quiet selection surface, one-pixel border, and inset violet locator; text does not invert. Untitled is "Meeting · date"; transcript text is never a title |
-| Group label | — | The only uppercase in the system |
+| Group label | — | 10px/15px, 0.065em tracking; the only uppercase in the system |
 | Trash row | — | Last item, hairline above |
-| Document | empty selection, note, canvas (during) | The center pane is the document canvas, with no enclosing document card. Empty selection is one centered caption |
+| Document | empty selection, note, transcript-only, canvas (during) | The center pane is the document canvas, with no enclosing document card. Transcript-only contains the released-audio fact, a body-rank “No meeting note yet.”, Generate note, its help text, personal notes, then Full transcript. Empty selection is one centered caption |
 | Claim | closed (dashed hairline), open (evidence tint, accent underline) | Opening a claim opens the inspector; Esc closes both |
-| Inspector | closed, open | 320, panel background, never scrolls the note |
+| Inspector | closed, open | 264px, panel background, never scrolls the note |
 | Transcript turn | default, highlighted, dim, withheld | Withheld renders as withheld text with Restore, never as missing |
-| Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas, "Full transcript" under the note; one line at body size with a trailing chevron, inside the reading measure, no card, no border, no description line |
+| Disclosure | collapsed, expanded | "Live transcript (n turns)" under the canvas, "Full transcript" under the note; 12px, a trailing chevron, inside the reading measure, one top hairline and no card or description line |
 | Needs attention | — | Bounded amber surface with a left locator, headline, detail, one primary and one secondary action. No banner |
 | Sheet | Start sheet only | Record disabled until three attestations and a retention choice |
 | Popover | speech-model picker, row Manage menu | Never the meetings list |

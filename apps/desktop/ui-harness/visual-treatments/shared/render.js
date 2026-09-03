@@ -1,7 +1,7 @@
-import { attentionMeeting, denseMeeting, observedMeetings, sparseMeeting } from "./fixtures.js";
+import { attentionMeeting, denseMeeting, noNoteMeeting, observedMeetings, sparseMeeting } from "./fixtures.js";
 
 const params = new URLSearchParams(location.search);
-const state = ["sparse", "dense", "attention"].includes(params.get("state")) ? params.get("state") : "sparse";
+const state = ["sparse", "no-note", "dense", "attention"].includes(params.get("state")) ? params.get("state") : "sparse";
 const theme = ["dark", "light"].includes(params.get("theme")) ? params.get("theme") : "dark";
 document.documentElement.dataset.state = state;
 document.documentElement.dataset.theme = theme;
@@ -11,9 +11,11 @@ const surface = document.getElementById("meeting-surface");
 const toolbarTitle = document.getElementById("toolbar-title");
 const recordReason = document.getElementById("record-reason");
 
-const selectedId = state === "dense" ? denseMeeting.id : state === "attention" ? attentionMeeting.id : sparseMeeting.id;
+const selectedId = state === "dense" ? denseMeeting.id : state === "attention" ? attentionMeeting.id : state === "no-note" ? noNoteMeeting.id : sparseMeeting.id;
 const meetings = state === "dense"
   ? [{ id: denseMeeting.id, group: "Today", title: denseMeeting.title, meta: "10:05 AM · 24:18 · note ready", excerpt: "Reviewed the launch checklist and confirmed next steps." }, ...observedMeetings]
+  : state === "no-note"
+    ? [{ id: noNoteMeeting.id, group: "Previous 30 days", title: noNoteMeeting.title, meta: "5:29 PM · transcript available", excerpt: "" }, ...observedMeetings]
   : observedMeetings;
 
 function esc(value) {
@@ -75,6 +77,40 @@ function sparseView() {
         <section class="note-section overview-section">
           <h2>Overview</h2>
           ${sparseMeeting.overview.map((paragraph) => `<p>${esc(paragraph)}</p>`).join("")}
+        </section>
+        <section class="operator-notes" aria-labelledby="operator-notes-heading">
+          <header class="notes-heading">
+            <h2 id="operator-notes-heading">Your notes</h2>
+            <span class="save-fact">Stored on this Mac</span>
+          </header>
+          <textarea aria-label="Your notes" placeholder="Write down the detail you will want to verify later."></textarea>
+          <p class="notes-help">Saved separately from the transcript. These are your notes, not generated claims.</p>
+        </section>
+        <details class="transcript-disclosure">
+          <summary>Full transcript <span aria-hidden="true">⌄</span></summary>
+        </details>
+      </article>
+    </div>`;
+}
+
+function noNoteView() {
+  toolbarTitle.textContent = noNoteMeeting.title;
+  recordReason.textContent = noNoteMeeting.recordReason;
+  surface.innerHTML = `
+    <div class="document-scroll">
+      <article class="meeting-document no-note-document">
+        <header class="document-header">
+          <div class="document-heading">
+            <h1>${esc(noNoteMeeting.title)}</h1>
+            <p class="document-meta">${esc(noNoteMeeting.metadata)}</p>
+          </div>
+          ${managementActions()}
+        </header>
+        <p class="state-fact">${esc(noNoteMeeting.stateFact)}</p>
+        <section class="note-section no-note-state" aria-labelledby="no-note-heading">
+          <h2 id="no-note-heading">No meeting note yet.</h2>
+          <button class="button primary-button" type="button">Generate note</button>
+          <p class="generation-help">${esc(noNoteMeeting.generationHelp)}</p>
         </section>
         <section class="operator-notes" aria-labelledby="operator-notes-heading">
           <header class="notes-heading">
@@ -159,6 +195,7 @@ function attentionView() {
 renderList();
 if (state === "dense") denseView();
 else if (state === "attention") attentionView();
+else if (state === "no-note") noNoteView();
 else sparseView();
 
 document.title = `Yawn — ${document.documentElement.dataset.treatment} — ${state} — ${theme}`;

@@ -11,7 +11,7 @@ Usage:
   open http://127.0.0.1:8792/compare.html
 ```
 
-Every treatment uses the same Concept A structure and the same three
+Every treatment uses the same Concept A structure and the same four
 representative states. On 2026-09-03 the operator selected **Tonal Ledger —
 Canvas**. Marquee Document — Quiet and the other directions are rejected but
 retained for archaeology. The comparison keeps both refinements and their
@@ -51,7 +51,9 @@ Every treatment supplies only `styles.css` and `RATIONALE.md`. The shared frame
 owns semantics, copy, and fixtures so the comparison cannot improve one concept
 by quietly changing its content.
 
-Run `./capture.sh` after changing an active treatment. It captures
-dark and light versions of the sparse, dense, and attention states at 1080 ×
-900. Open `compare.html` through the preview URL printed by the script to review
-the 24 active and baseline frames on one surface.
+Run `./capture.sh` after changing an active treatment. It captures dark and
+light versions of the sparse, transcript-only/no-note, dense, and attention
+states at 1080 × 900. The transcript-only frame includes the real “No meeting
+note yet.” / Generate note hierarchy rather than treating it as a variation of
+the generated-note sparse frame. Open `compare.html` through the preview URL
+printed by the script to review the 32 active and baseline frames on one surface.

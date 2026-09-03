@@ -23,6 +23,18 @@ export const sparseMeeting = {
   recordReason: "Yawn is finishing your last meeting. Recording will be available again shortly.",
 };
 
+// A real transcript-only meeting. This is deliberately separate from sparse:
+// sparse proves the generated-note reading surface, while this state proves
+// the first local generation action and its surrounding hierarchy.
+export const noNoteMeeting = {
+  id: "no-note",
+  title: "I want it to be what time I work",
+  metadata: "Aug 19, 2026 · Transcript",
+  stateFact: "The audio was already deleted. The transcript remains available, but this meeting cannot be retranscribed.",
+  generationHelp: "Runs the downloaded note model on this Mac. It usually takes several minutes, longer for long meetings. Nothing leaves your computer.",
+  recordReason: "Yawn is finishing your last meeting. Recording will be available again shortly.",
+};
+
 export const denseMeeting = {
   id: "dense",
   title: "Launch checklist review",

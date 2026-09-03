@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="${0:A:h}"
 OUT_DIR="$SCRIPT_DIR/out"
-PORT=8792
+PORT="${PORT:-8792}"
 BASE_URL="http://127.0.0.1:$PORT"
 
 mkdir -p "$OUT_DIR"
@@ -22,7 +22,7 @@ fi
 
 for treatment in tonal-ledger-refined marquee-document-refined tonal-ledger marquee-document; do
   for theme in dark light; do
-    for state in sparse dense attention; do
+  for state in sparse no-note dense attention; do
       output="$OUT_DIR/${treatment}--${theme}--${state}.png"
       url="$BASE_URL/shared/frame.html?treatment=${treatment}&theme=${theme}&state=${state}"
       browse-nav "$url" --wait >/dev/null
