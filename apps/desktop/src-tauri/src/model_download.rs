@@ -54,7 +54,7 @@ pub(crate) fn install(
         .resolve(&relative)
         .map_err(|_| ModelDownloadError::Storage)?;
     if target.exists() {
-        if model.verify_directory(&target).is_ok() {
+        if model.verify_directory(&target, local_meeting_notes_session_core::model_store::ModelVerification::Contents).is_ok() {
             model.activate(storage)?;
             progress(model.download_bytes());
             return Ok(());
@@ -124,7 +124,7 @@ pub(crate) fn install(
             }
         }
         durable_create_new(&staging.join(INSTALL_RECEIPT_NAME), &model.receipt_bytes())?;
-        model.verify_directory(&staging)?;
+        model.verify_directory(&staging, local_meeting_notes_session_core::model_store::ModelVerification::Contents)?;
         fs::rename(&staging, &target)?;
         sync_directory(&model_parent)?;
         sync_directory(&models)?;

@@ -253,11 +253,17 @@ impl WorkerProcessNoteGenerationBridge {
         )
         .map(|active| active.is_some())
         .ok();
+        // Metadata, not Contents: this answers whether the control is
+        // offered, and it runs inside `library_open_note` -- every meeting
+        // open. Proving the weights here read the whole 8 GB note model on
+        // the main thread, about 5 s of frozen window per click (D-OPENFREEZE).
+        // The generate path below still passes Contents before it spawns.
         let admitted = model_stored == Some(true)
             && admit_note_generator(
                 &context.storage,
                 &catalog,
                 &context.resource_root.join(GENERATE_MANIFEST_FILE),
+                local_meeting_notes_session_core::model_store::ModelVerification::Metadata,
             )
             .is_some_and(|generator| generator.admission_satisfiable());
         note_generation_admission(model_stored, admitted)
@@ -267,10 +273,13 @@ impl WorkerProcessNoteGenerationBridge {
         let context = self.storage.lock().ok()?.clone()?;
         let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).ok()?;
         let catalog = crate::verified_model_catalog(&context.manifest_path, &manifest).ok()??;
+        // Contents: this generator is about to run, so every weight is
+        // proved against its receipt before the child is spawned.
         admit_note_generator(
             &context.storage,
             &catalog,
             &context.resource_root.join(GENERATE_MANIFEST_FILE),
+            local_meeting_notes_session_core::model_store::ModelVerification::Contents,
         )
     }
 }

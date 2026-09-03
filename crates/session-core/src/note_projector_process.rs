@@ -38,6 +38,7 @@ use crate::local_vocabulary::{
 };
 use crate::meeting::valid_opaque_id;
 use crate::model_store::{
+    ModelVerification,
     DownloadableModel, ModelCatalog, NoteModel, NoteModelFile, NoteModelFileRole,
 };
 use crate::note_projection::{
@@ -526,7 +527,9 @@ fn admitted_process_projector(
         return None;
     }
     let directory = storage.resolve(&entry.relative_path()).ok()?;
-    entry.verify_directory(&directory).ok()?;
+    entry
+        .verify_directory(&directory, ModelVerification::Contents)
+        .ok()?;
     verify_manifest(project_manifest_path, PROJECT_ROLE).ok()?;
     Some(ProcessNoteProjector::product(
         storage.path().to_path_buf(),
@@ -780,10 +783,19 @@ pub fn parse_note_generation_result(
 /// model directory, rather than a project-role projector.  `None` is refusal,
 /// with the same caching contract: success may be held, refusal must be
 /// re-derived.
+/// `verification` is the caller's answer to "am I about to run this model?".
+/// The generate path passes `Contents` and proves every weight against the
+/// receipt before spawning. A caller that only needs the UI's availability
+/// answer passes `Metadata`: hashing 8 GB to decide whether a button is
+/// enabled froze the window for about 5 s on every meeting open, and a
+/// corrupt model is neither "no model installed" nor "this build cannot
+/// generate" -- it is a run that fails, which the summary-failed state
+/// already explains honestly.
 pub fn admit_note_generator(
     storage: &StorageRoot,
     catalog: &ModelCatalog,
     generate_manifest_path: &Path,
+    verification: ModelVerification,
 ) -> Option<ProcessNoteGenerator> {
     let generate = verify_manifest(generate_manifest_path, GENERATE_ROLE).ok()?;
     generate.generator.as_ref()?;
@@ -802,7 +814,7 @@ pub fn admit_note_generator(
     }
     let relative = entry.relative_path();
     let directory = storage.resolve(&relative).ok()?;
-    entry.verify_directory(&directory).ok()?;
+    entry.verify_directory(&directory, verification).ok()?;
     let model_directory = relative.to_str()?.to_owned();
     if !valid_relative_path(&model_directory) {
         return None;

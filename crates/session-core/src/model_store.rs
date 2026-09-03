@@ -210,6 +210,25 @@ pub struct DownloadableFile<'a> {
 ///
 /// With those five substitutions, `install()`'s body is unchanged line for
 /// line; only its parameter type moves from `&TranscriptModel` to
+/// How much of an installed model directory a caller needs proved.
+///
+/// `Contents` is the original behaviour and the only one that may gate a run:
+/// every file is re-hashed against the receipt. It costs a full read of the
+/// model, which for the 8 GB note model measured about 5 s on this machine.
+///
+/// `Metadata` answers the cheaper question a UI asks -- is a usable model
+/// installed here -- from the receipt, the exact file set, and each file's
+/// size. It catches the failures that actually happen to an install (a
+/// missing shard, a half-written directory, the wrong revision) without
+/// reading a byte of weights. It is not a substitute for `Contents`: a
+/// caller about to *run* the model must still prove the bytes, and
+/// `admit_note_generator` does exactly that on the generate path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelVerification {
+    Metadata,
+    Contents,
+}
+
 /// `&impl DownloadableModel`.
 pub trait DownloadableModel {
     fn id(&self) -> &str;
@@ -221,7 +240,11 @@ pub trait DownloadableModel {
     /// The install-receipt bytes to write once every file's digest is confirmed.
     fn receipt_bytes(&self) -> Vec<u8>;
     /// Verifies an installed (or freshly staged) directory against this entry.
-    fn verify_directory(&self, directory: &Path) -> Result<(), ModelStoreError>;
+    fn verify_directory(
+        &self,
+        directory: &Path,
+        verification: ModelVerification,
+    ) -> Result<(), ModelStoreError>;
     /// Marks this model the active one of its own kind.
     fn activate(&self, storage: &StorageRoot) -> Result<(), ModelStoreError>;
 }
@@ -253,8 +276,12 @@ impl DownloadableModel for TranscriptModel {
     fn receipt_bytes(&self) -> Vec<u8> {
         install_receipt_bytes(self)
     }
-    fn verify_directory(&self, directory: &Path) -> Result<(), ModelStoreError> {
-        verify_model_directory(directory, self)
+    fn verify_directory(
+        &self,
+        directory: &Path,
+        verification: ModelVerification,
+    ) -> Result<(), ModelStoreError> {
+        verify_model_directory(directory, self, verification)
     }
     fn activate(&self, storage: &StorageRoot) -> Result<(), ModelStoreError> {
         activate_model(storage, self)
@@ -288,8 +315,12 @@ impl DownloadableModel for NoteModel {
     fn receipt_bytes(&self) -> Vec<u8> {
         note_install_receipt_bytes(self)
     }
-    fn verify_directory(&self, directory: &Path) -> Result<(), ModelStoreError> {
-        verify_note_model_directory(directory, self)
+    fn verify_directory(
+        &self,
+        directory: &Path,
+        verification: ModelVerification,
+    ) -> Result<(), ModelStoreError> {
+        verify_note_model_directory(directory, self, verification)
     }
     fn activate(&self, storage: &StorageRoot) -> Result<(), ModelStoreError> {
         activate_note_model(storage, self)
@@ -564,7 +595,7 @@ pub fn installed_model(
     };
     let relative = Path::new("models").join(&entry.id).join(&entry.revision);
     let directory = storage.resolve(&relative).map_err(io::Error::other)?;
-    verify_model_directory(&directory, &entry)?;
+    verify_model_directory(&directory, &entry, ModelVerification::Contents)?;
     Ok(Some(InstalledTranscriptModel {
         receipt_path: directory.join(INSTALL_RECEIPT_NAME),
         entry,
@@ -642,6 +673,7 @@ pub fn remove_inactive_model(
 pub fn verify_model_directory(
     directory: &Path,
     entry: &TranscriptModel,
+    verification: ModelVerification,
 ) -> Result<(), ModelStoreError> {
     if directory.is_symlink() || !directory.is_dir() {
         return Err(ModelStoreError::InvalidModel);
@@ -679,8 +711,10 @@ pub fn verify_model_directory(
         if path.is_symlink()
             || !path.is_file()
             || path.metadata()?.len() != expected.bytes
-            || file_sha256(&path)? != expected.sha256
         {
+            return Err(ModelStoreError::InvalidModel);
+        }
+        if verification == ModelVerification::Contents && file_sha256(&path)? != expected.sha256 {
             return Err(ModelStoreError::InvalidModel);
         }
     }
@@ -715,7 +749,7 @@ pub fn activate_model(
     let directory = storage
         .resolve(&Path::new("models").join(&entry.id).join(&entry.revision))
         .map_err(io::Error::other)?;
-    verify_model_directory(&directory, entry)?;
+    verify_model_directory(&directory, entry, ModelVerification::Contents)?;
     let active = ActiveModelReceipt {
         schema: ActiveModelSchema::V1,
         id: entry.id.clone(),
@@ -754,7 +788,7 @@ pub fn installed_note_model(
     let directory = storage
         .resolve(&note_model_relative_path(&entry.id, &entry.revision))
         .map_err(io::Error::other)?;
-    verify_note_model_directory(&directory, &entry)?;
+    verify_note_model_directory(&directory, &entry, ModelVerification::Contents)?;
     Ok(Some(InstalledNoteModel {
         receipt_path: directory.join(INSTALL_RECEIPT_NAME),
         entry,
@@ -842,6 +876,7 @@ pub fn remove_inactive_note_model(
 pub fn verify_note_model_directory(
     directory: &Path,
     entry: &NoteModel,
+    verification: ModelVerification,
 ) -> Result<(), ModelStoreError> {
     if directory.is_symlink() || !directory.is_dir() {
         return Err(ModelStoreError::InvalidModel);
@@ -879,8 +914,10 @@ pub fn verify_note_model_directory(
         if path.is_symlink()
             || !path.is_file()
             || path.metadata()?.len() != expected.bytes
-            || file_sha256(&path)? != expected.sha256
         {
+            return Err(ModelStoreError::InvalidModel);
+        }
+        if verification == ModelVerification::Contents && file_sha256(&path)? != expected.sha256 {
             return Err(ModelStoreError::InvalidModel);
         }
     }
@@ -919,7 +956,7 @@ pub fn activate_note_model(
     let directory = storage
         .resolve(&note_model_relative_path(&entry.id, &entry.revision))
         .map_err(io::Error::other)?;
-    verify_note_model_directory(&directory, entry)?;
+    verify_note_model_directory(&directory, entry, ModelVerification::Contents)?;
     let active = ActiveNoteModelReceipt {
         schema: ActiveNoteModelSchema::V1,
         id: entry.id.clone(),
@@ -1116,13 +1153,55 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            verify_model_directory(&directory, entry),
+            verify_model_directory(&directory, entry, ModelVerification::Contents),
             Err(ModelStoreError::InvalidModel)
         ));
         fs::write(directory.join("weights.npz"), b"weights").unwrap();
         durable_create_new(&directory.join("extra"), b"unexpected").unwrap();
         assert!(matches!(
-            verify_model_directory(&directory, entry),
+            verify_model_directory(&directory, entry, ModelVerification::Contents),
+            Err(ModelStoreError::InvalidModel)
+        ));
+    }
+
+    #[test]
+    fn metadata_verification_skips_content_hashes_but_still_catches_a_broken_install() {
+        // D-OPENFREEZE: the UI's availability check runs on every meeting
+        // open, so it asks the cheap question. Wrong bytes at the right size
+        // are admitted here on purpose -- only a run may claim the weights
+        // are intact, and the generate path still passes Contents.
+        let (_temp, storage, catalog) = fixture();
+        let entry = &catalog.models[0];
+        let directory = storage
+            .resolve(&Path::new("models").join(&entry.id).join(&entry.revision))
+            .unwrap();
+        create_private_dir(&directory).unwrap();
+        durable_create_new(&directory.join("config.json"), b"config").unwrap();
+        durable_create_new(&directory.join("weights.npz"), b"changed").unwrap();
+        durable_create_new(
+            &directory.join(INSTALL_RECEIPT_NAME),
+            &install_receipt_bytes(entry),
+        )
+        .unwrap();
+        assert!(
+            verify_model_directory(&directory, entry, ModelVerification::Metadata).is_ok(),
+            "same-size wrong bytes pass the metadata check"
+        );
+        assert!(matches!(
+            verify_model_directory(&directory, entry, ModelVerification::Contents),
+            Err(ModelStoreError::InvalidModel)
+        ));
+
+        // The failures an install actually produces are still refused at
+        // metadata depth: a missing file, and a truncated one.
+        fs::remove_file(directory.join("weights.npz")).unwrap();
+        assert!(matches!(
+            verify_model_directory(&directory, entry, ModelVerification::Metadata),
+            Err(ModelStoreError::InvalidModel)
+        ));
+        fs::write(directory.join("weights.npz"), b"short").unwrap();
+        assert!(matches!(
+            verify_model_directory(&directory, entry, ModelVerification::Metadata),
             Err(ModelStoreError::InvalidModel)
         ));
     }
@@ -1274,7 +1353,7 @@ mod tests {
         let (_temp, storage, mut catalog) = fixture();
         let note = push_note_fixture(&mut catalog);
         let directory = write_installed_note_model(&storage, &note);
-        assert!(verify_note_model_directory(&directory, &note).is_ok());
+        assert!(verify_note_model_directory(&directory, &note, ModelVerification::Contents).is_ok());
 
         // Tampering with one shard of a multi-shard weight set is caught,
         // exactly as a single-file whisper weight tamper is above.
@@ -1284,13 +1363,13 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(
-            verify_note_model_directory(&directory, &note),
+            verify_note_model_directory(&directory, &note, ModelVerification::Contents),
             Err(ModelStoreError::InvalidModel)
         ));
         fs::write(directory.join("model-00002-of-00002.safetensors"), b"shard-1").unwrap();
         durable_create_new(&directory.join("extra"), b"unexpected").unwrap();
         assert!(matches!(
-            verify_note_model_directory(&directory, &note),
+            verify_note_model_directory(&directory, &note, ModelVerification::Contents),
             Err(ModelStoreError::InvalidModel)
         ));
     }
@@ -1430,7 +1509,8 @@ mod tests {
             }
             durable_create_new(&directory.join(INSTALL_RECEIPT_NAME), &model.receipt_bytes())
                 .unwrap();
-            model.verify_directory(&directory).unwrap();
+            model.verify_directory(&directory, ModelVerification::Contents)
+                .unwrap();
             model.activate(storage).unwrap();
         }
 

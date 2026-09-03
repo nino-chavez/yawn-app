@@ -19,6 +19,7 @@ use local_meeting_notes_session_core::meeting::{
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::model_store::{
+    ModelVerification,
     ModelCatalog, ModelStoreError, TranscriptModelFileRole, activate_model, install_receipt_bytes,
     verify_model_directory,
 };
@@ -942,7 +943,7 @@ fn install_model(
     {
         return Err(FixtureError::ExistingModel);
     }
-    verify_model_directory(&canonical_source_model_dir, &entry)
+    verify_model_directory(&canonical_source_model_dir, &entry, ModelVerification::Contents)
         .map_err(|_| FixtureError::SourceChanged)?;
     create_private_dir(&target)?;
     for file in &entry.files {
@@ -965,8 +966,8 @@ fn install_model(
         &install_receipt_bytes(&entry),
     )?;
     sync_directory(&target)?;
-    verify_model_directory(&target, &entry)?;
-    verify_model_directory(&canonical_source_model_dir, &entry)
+    verify_model_directory(&target, &entry, ModelVerification::Contents)?;
+    verify_model_directory(&canonical_source_model_dir, &entry, ModelVerification::Contents)
         .map_err(|_| FixtureError::SourceChanged)?;
     activate_model(&storage, &entry)?;
 
@@ -2240,7 +2241,7 @@ mod tests {
             fs::read(target.join("weights.safetensors")).unwrap(),
             weights
         );
-        verify_model_directory(&target, &entry).unwrap();
+        verify_model_directory(&target, &entry, ModelVerification::Contents).unwrap();
         let model_marker = fs::read_to_string(storage.path().join("MODEL_FIXTURE.json")).unwrap();
         assert!(model_marker.contains(&entry.id));
         assert!(!model_marker.contains(source.to_string_lossy().as_ref()));
