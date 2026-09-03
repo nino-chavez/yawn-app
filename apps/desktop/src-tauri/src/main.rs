@@ -7409,7 +7409,10 @@ fn retry_command_is_available(state: &ApplicationState) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command(rename_all = "camelCase")]
+// R28: this waits for a whole retranscription inside the call, so it does
+// not belong on the thread that draws the window. Attribute rather than
+// `async fn`, because the signature borrows `State<'_, _>`.
+#[tauri::command(async, rename_all = "camelCase")]
 fn transcript_retry_start(
     meeting_id: Uuid,
     source_transcript_sha256: String,

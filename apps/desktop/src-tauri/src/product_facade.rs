@@ -110,9 +110,57 @@ impl ProductOperationFacadeError {
     }
 }
 
+/// The one product-operation slot.
+///
+/// `Starting` is the reservation a caller holds while its coordinator call
+/// runs. Before it existed, the slot's mutex guard was held across that call
+/// -- which for a note generation is minutes -- and that only became
+/// observable when D-FREEZE moved the generation off the main thread: a
+/// second operation stopped being *refused* and started *queueing* behind
+/// the mutex, on the main thread, for as long as the first one took. The
+/// facade's contract is one at a time and a prompt refusal, so the slot is
+/// claimed under the lock and the lock is then released.
+enum ActiveOperation {
+    Starting,
+    Running(UiOperationAccepted),
+}
+
+/// A held claim on the slot. Dropping it without `settle` releases the slot,
+/// so an early return, an error, or a panic cannot strand it as `Starting`.
+struct OperationClaim<'a> {
+    slot: &'a Mutex<Option<ActiveOperation>>,
+    settled: bool,
+}
+
+impl OperationClaim<'_> {
+    fn settle(
+        mut self,
+        accepted: UiOperationAccepted,
+    ) -> Result<(), ProductOperationFacadeError> {
+        let mut slot = self
+            .slot
+            .lock()
+            .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
+        *slot = Some(ActiveOperation::Running(accepted));
+        self.settled = true;
+        Ok(())
+    }
+}
+
+impl Drop for OperationClaim<'_> {
+    fn drop(&mut self) {
+        if self.settled {
+            return;
+        }
+        if let Ok(mut slot) = self.slot.lock() {
+            *slot = None;
+        }
+    }
+}
+
 pub(crate) struct ProductOperationFacade {
     coordinator: Arc<dyn ProductOperationCoordinator>,
-    active: Mutex<Option<UiOperationAccepted>>,
+    active: Mutex<Option<ActiveOperation>>,
 }
 
 impl ProductOperationFacade {
@@ -121,6 +169,22 @@ impl ProductOperationFacade {
             coordinator,
             active: Mutex::new(None),
         }
+    }
+
+    /// Reserves the slot or refuses. Held only for the check and the write.
+    fn claim(&self) -> Result<OperationClaim<'_>, ProductOperationFacadeError> {
+        let mut slot = self
+            .active
+            .lock()
+            .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
+        if slot.is_some() {
+            return Err(ProductOperationFacadeError::OperationAlreadyActive);
+        }
+        *slot = Some(ActiveOperation::Starting);
+        Ok(OperationClaim {
+            slot: &self.active,
+            settled: false,
+        })
     }
 
     pub(crate) fn restore_withheld_turn(
@@ -176,13 +240,7 @@ impl ProductOperationFacade {
     ) -> Result<TranscriptRetryOperation, ProductOperationFacadeError> {
         args.validate()
             .map_err(|_| ProductOperationFacadeError::SourceChanged)?;
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
-        if active.is_some() {
-            return Err(ProductOperationFacadeError::OperationAlreadyActive);
-        }
+        let claim = self.claim()?;
         let source = self
             .coordinator
             .source_for(args.meeting_id)
@@ -217,7 +275,7 @@ impl ProductOperationFacade {
         accepted
             .validate()
             .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
-        *active = Some(accepted);
+        claim.settle(accepted)?;
         Ok(operation)
     }
 
@@ -269,13 +327,7 @@ impl ProductOperationFacade {
         source_is_eligible: impl FnOnce(&MeetingOperationSource) -> bool,
         accept: impl FnOnce() -> Result<Uuid, CoordinatorError>,
     ) -> Result<UiOperationAccepted, ProductOperationFacadeError> {
-        let mut active = self
-            .active
-            .lock()
-            .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
-        if active.is_some() {
-            return Err(ProductOperationFacadeError::OperationAlreadyActive);
-        }
+        let claim = self.claim()?;
 
         let source = self
             .coordinator
@@ -313,7 +365,7 @@ impl ProductOperationFacade {
         accepted
             .validate()
             .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
-        *active = Some(accepted.clone());
+        claim.settle(accepted.clone())?;
         Ok(accepted)
     }
 
@@ -322,10 +374,12 @@ impl ProductOperationFacade {
         let Ok(mut active) = self.active.lock() else {
             return;
         };
-        if active
-            .as_ref()
-            .is_some_and(|operation| operation.operation_id == operation_id)
-        {
+        let settled_match = match active.as_ref() {
+            Some(ActiveOperation::Running(operation)) => operation.operation_id == operation_id,
+            // `Starting` carries no id yet; its own claim releases the slot.
+            _ => false,
+        };
+        if settled_match {
             *active = None;
         }
     }
@@ -336,7 +390,11 @@ impl ProductOperationFacade {
 /// publication — before returning, so a successful operation is already
 /// terminal and releases the single-operation slot here rather than waiting
 /// on a coordinator callback that will never come.
-#[tauri::command(rename_all = "camelCase")]
+// R28: the coordinator runs to a terminal receipt here, through a worker
+// request bounded by WORKER_REQUEST_TIMEOUT, so this waits seconds on the
+// thread that draws the window unless it is moved off it. Attribute rather
+// than `async fn`, because the signature borrows `State<'_, _>`.
+#[tauri::command(async, rename_all = "camelCase")]
 pub(crate) fn restore_withheld_turn(
     meeting_id: Uuid,
     source_transcript_sha256: String,
@@ -435,6 +493,7 @@ pub(crate) fn regenerate_note(
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
+    use std::time::Duration;
 
     use serde::de::DeserializeOwned;
     use serde_json::Value;
@@ -670,6 +729,130 @@ mod tests {
         facade.finish(accepted.operation_id);
         assert_eq!(facade.regenerate_note(args).unwrap(), expected);
         assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 2);
+    }
+
+    /// A coordinator that parks inside `accept_regeneration`, so a test can
+    /// ask the facade a question while an operation is genuinely in flight.
+    struct ParkingCoordinator {
+        source: MeetingOperationSource,
+        operation_id: Uuid,
+        entered: std::sync::mpsc::SyncSender<()>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    impl ProductOperationCoordinator for ParkingCoordinator {
+        fn source_for(&self, _: Uuid) -> Result<MeetingOperationSource, CoordinatorError> {
+            Ok(self.source.clone())
+        }
+        fn accept_restore(&self, _: &RestoreWithheldTurnUiArgs) -> Result<Uuid, CoordinatorError> {
+            Err(CoordinatorError::Unavailable)
+        }
+        fn accept_regeneration(
+            &self,
+            _: &RegenerateNoteUiArgs,
+        ) -> Result<Uuid, CoordinatorError> {
+            self.entered.send(()).expect("the test is listening");
+            self.release
+                .lock()
+                .expect("release receiver")
+                .recv()
+                .expect("the test releases this operation");
+            Ok(self.operation_id)
+        }
+    }
+
+    #[test]
+    fn a_second_operation_is_refused_while_the_first_is_still_running_not_queued_behind_it() {
+        // D-FREEZE made operations able to overlap for the first time, which
+        // exposed that the slot's mutex was held across the coordinator call:
+        // a second attempt blocked for the length of the first instead of
+        // being refused. Without a released lock this test does not fail, it
+        // hangs, so the refusal is asserted from a thread with a deadline.
+        let fixture = fixture();
+        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
+        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let facade = Arc::new(ProductOperationFacade::new(Arc::new(ParkingCoordinator {
+            source: source_for(
+                args.meeting_id,
+                args.source_transcript_sha256.clone(),
+                MeetingLifecycle::TranscriptReady,
+                false,
+            ),
+            operation_id: expected.operation_id,
+            entered: entered_tx,
+            release: Mutex::new(release_rx),
+        })));
+
+        let running = std::thread::spawn({
+            let facade = facade.clone();
+            let args = args.clone();
+            move || facade.regenerate_note(args)
+        });
+        entered_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the first operation reached the coordinator");
+
+        // The first operation is parked inside the coordinator right now.
+        let (refused_tx, refused_rx) = std::sync::mpsc::channel();
+        std::thread::spawn({
+            let facade = facade.clone();
+            let args = args.clone();
+            move || {
+                let _ = refused_tx.send(facade.regenerate_note(args));
+            }
+        });
+        let refused = refused_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the second attempt answered instead of queueing behind the first");
+        assert_eq!(refused, Err(ProductOperationFacadeError::OperationAlreadyActive));
+
+        release_tx.send(()).expect("the parked operation is waiting");
+        assert_eq!(running.join().expect("the first operation finished"), Ok(expected.clone()));
+
+        // The slot is settled, so it still takes a terminal receipt to clear.
+        assert_eq!(
+            facade.regenerate_note(args.clone()),
+            Err(ProductOperationFacadeError::OperationAlreadyActive)
+        );
+        facade.finish(expected.operation_id);
+    }
+
+    #[test]
+    fn a_refused_start_releases_the_slot_it_reserved() {
+        // The claim is RAII: an early return between reserving the slot and
+        // settling it must not strand the facade as permanently busy.
+        let fixture = fixture();
+        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
+        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
+        let coordinator = Arc::new(FakeCoordinator::accepting(
+            source_for(
+                args.meeting_id,
+                args.source_transcript_sha256.clone(),
+                // Wrong lifecycle: `accept` returns SourceChanged after the
+                // claim is taken and before it is settled.
+                MeetingLifecycle::Captured,
+                false,
+            ),
+            Uuid::nil(),
+            expected.operation_id,
+        ));
+        let facade = ProductOperationFacade::new(coordinator.clone());
+        assert_eq!(
+            facade.regenerate_note(args.clone()),
+            Err(ProductOperationFacadeError::SourceChanged)
+        );
+        assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 0);
+
+        // The slot is free again, so an eligible source is accepted.
+        *coordinator.source.lock().unwrap() = Ok(source_for(
+            args.meeting_id,
+            args.source_transcript_sha256.clone(),
+            MeetingLifecycle::TranscriptReady,
+            false,
+        ));
+        assert_eq!(facade.regenerate_note(args).unwrap(), expected);
     }
 
     #[test]
