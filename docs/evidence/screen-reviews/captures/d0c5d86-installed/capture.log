@@ -27,3 +27,6 @@
 09:37:08 clicked Full transcript disclosure -> screen 735,590
 09:37:12 captured 10-dark-transcript  2160 1800 (bounds 360 80 1080 900)
 09:38:19 captured 11-dark-settings  1440 1440 (bounds 540 211 720 720)
+09:43:46 clicked row 1 (summary-failed meeting) -> screen 500,188
+09:43:52 clicked Generate note -> screen 746,405
+09:48:14 captured 12-dark-second-generate-attempt  2160 1800 (bounds 360 80 1080 900)

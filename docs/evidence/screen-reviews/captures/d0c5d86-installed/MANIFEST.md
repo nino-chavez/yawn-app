@@ -35,6 +35,7 @@ destructive action was confirmed.
 | 10-dark-transcript | Full transcript expanded | Source-transcript header, find field, turns with speaker and timestamp |
 | 10a-dark-transcript-header-detail | Full-res crop of 10 | The layout break in F3 |
 | 11-dark-settings | Settings window | R22 grouped list, R26 dark primary, the three privacy facts |
+| 12-dark-second-generate-attempt | Four minutes after a second Generate note | The reproduction in F1 |
 
 ## Findings
 
@@ -58,6 +59,18 @@ So the operator's second attempt is indistinguishable from never having tried:
 same heading, same body, same button, no error, no timestamp, no attempt count.
 The product brief requires that "an interrupted or failed run is stated plainly."
 This is a failed run stated as nothing at all.
+
+**Reproduced** in `12-dark-second-generate-attempt`, with the app relaunched
+directly from its binary so its stderr was captured. Four minutes; the app wrote
+**zero bytes** to stderr, spawned no note-projector child (only the two standing
+python workers, both at 0.0% CPU), and the document reverted exactly as before.
+
+What that rules out: the bundle is not missing the projector -- `note-bridge.py`,
+`note-generator-mlx.py`, `note-runtime-project.json`,
+`note-runtime-generate.json` and `note-validator.zip` are all present in
+`Contents/Resources`. The failure is upstream of anything that writes, logs, or
+forks. (The installed `/Applications/Yawn.app` has none of those files, which is
+**not** a finding: it is 0.5.7 from Aug 12 and predates that packaging.)
 
 **F2 — On the delete sheet, the irreversible action and the escape hatch are the
 same colour.** Measured from the full-resolution frames, not eyeballed:
