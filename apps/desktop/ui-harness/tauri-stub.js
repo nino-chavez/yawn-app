@@ -5,11 +5,14 @@
 // mode=library: idle capture with one finished meeting, so the transcript
 // search input is live and every keystroke re-renders synchronously.
 // mode=startup / mode=model-setup: the startup-check and no-model surfaces.
-// mode=retry-sheet / mode=delete-sheet (R30): the two sheets no earlier mode
-// could reach, so both are now capturable. Each is library state plus the one
-// backend answer its sheet needs -- a retry comparison, or a deletion handle --
-// and the sheet is opened by clicking the same control a person clicks, not by
-// setting `state.modal` from outside.
+// mode=retry-sheet / mode=retry-sheet-no-note / mode=delete-sheet (R30): the
+// two sheets no earlier mode could reach, so both are now capturable. Each is
+// library state plus the one backend answer its sheet needs -- a retry
+// comparison, or a deletion handle -- and the sheet is opened by clicking the
+// same control a person clicks, not by setting `state.modal` from outside.
+// The retry sheet gets three modes: it forks on whether a note exists (the
+// warning) and on whether the diff was computed or skipped (the sentence
+// above the columns), and each fork has a reading only a fixture can show.
 (() => {
   const mode = new URLSearchParams(location.search).get("mode") || "capture";
   const captureSnapshot = {
@@ -31,7 +34,23 @@
     createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 3600,
     transcriptAvailable: true,
   };
-  const sheetMode = mode === "retry-sheet" || mode === "delete-sheet";
+  const sheetMode = mode === "retry-sheet" || mode === "retry-sheet-no-note"
+    || mode === "retry-sheet-diff-skipped" || mode === "delete-sheet";
+  // The retry sheet forks on whether a generated note exists, and picking one
+  // side of a fork as "the" fixture is how a branch stays unreachable after
+  // the surface is supposedly covered (R23/R24b: making a hidden state visible
+  // exposed copy written for the other side). `retry-sheet` has a note, so the
+  // "using this retry clears it" warning renders; `retry-sheet-no-note` is the
+  // same meeting transcript-only, where that warning is suppressed -- and the
+  // warning is the element carrying the 16px above the button row, so R32's
+  // measured gap is a different number on each side.
+  const hasNote = mode !== "retry-sheet-no-note";
+  // `RetryDiffProjection`'s own comment: "skipped" (a bound was hit, nothing
+  // was compared) is deliberately a different wire shape from "computed with
+  // zero spans" (compared, identical), so the sentence above the columns can
+  // tell the reader "not checked" from "checked, same". Both readings need a
+  // fixture or the distinction is untestable.
+  const diffSkipped = mode === "retry-sheet-diff-skipped";
   // Two turns whose wording differs, so the diff columns render marked words
   // rather than two identical transcripts. Word counts are stated exactly as
   // the Rust projection states them, because the browser tokenizes each turn
@@ -49,15 +68,15 @@
   // transcript column renders the cited-turn control.
   const sheetNote = {
     meetingId: "harness-meeting-1",
-    state: "note",
-    claims: [
+    state: hasNote ? "note" : "transcript-only",
+    claims: hasNote ? [
       { ordinal: 1, claimType: "decision", claim: "Launch on Friday.", handle: "claim-handle-1" },
       { ordinal: 2, claimType: "action", claim: "Send the pricing note to finance.", handle: "claim-handle-2" },
-    ],
-    turnsCited: [
+    ] : [],
+    turnsCited: hasNote ? [
       { turn: 0, claimOrdinals: [1] },
       { turn: 1, claimOrdinals: [2] },
-    ],
+    ] : [],
     noteGenerationAvailable: true,
     operatorNote: { text: "", unreadable: false },
     operatorNoteHandle: "note-handle-1",
@@ -88,14 +107,16 @@
     },
     recordingDevice: { state: "identified", message: "MacBook Pro Microphone" },
     pauses: { state: "not-paused", count: 0, totalPausedSeconds: 0, message: "Nothing was paused." },
-    diff: {
-      state: "computed",
-      current: [{ turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] }],
-      candidate: [
-        { turnIndex: 0, wordCount: 6, spans: [{ startWord: 5, endWord: 6 }] },
-        { turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] },
-      ],
-    },
+    diff: diffSkipped
+      ? { state: "skipped", current: [], candidate: [] }
+      : {
+          state: "computed",
+          current: [{ turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] }],
+          candidate: [
+            { turnIndex: 0, wordCount: 6, spans: [{ startWord: 5, endWord: 6 }] },
+            { turnIndex: 1, wordCount: 5, spans: [{ startWord: 4, endWord: 5 }] },
+          ],
+        },
   };
   const responses = {
     // mode=startup: the local startup check still running; mode=model-setup:
