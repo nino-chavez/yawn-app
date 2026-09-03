@@ -1,0 +1,6 @@
+12:09:59 pid 48027 reported 1 window(s) then 0; still settling
+12:10:26 pid 48027, 1 window(s) after 10s (confirmed)
+12:10:31 captured 00-refit-check  2160 1800 (bounds 360 80 1080 900)
+12:11:44 SESSION: screen is locked -- no capture is possible, and a 0-window reading means nothing
+12:11:44 SESSION: screen is locked -- no capture is possible, and a 0-window reading means nothing
+12:11:44 FAILED 01-refit-note (guard)
