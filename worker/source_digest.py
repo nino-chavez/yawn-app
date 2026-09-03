@@ -52,6 +52,7 @@ COPIED_SOURCES = (
     "notes/transcript.py",
     "notes/summarize.py",
     "notes/mlx_minilm.py",
+    "notes/candidate_first.py",
 )
 
 # The staging tooling itself: a changed copy step or manifest writer means the

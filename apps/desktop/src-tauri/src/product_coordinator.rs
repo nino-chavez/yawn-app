@@ -297,6 +297,9 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
         let frame = generator
             .generate(&request)
             .map_err(|_| NoteGenerationWorkerError::Unavailable)?;
+        if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+            eprintln!("[note-trace] generate child returned a {} byte frame", frame.len());
+        }
         let generation = match parse_note_generation_result(&frame, &request)
             .map_err(|_| {
                 if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
@@ -306,8 +309,16 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
                 NoteGenerationWorkerError::Unavailable
             })?
         {
-            NoteGenerationChildOutcome::Generated(generation) => generation,
-            NoteGenerationChildOutcome::TranscriptOnly { recoverable, .. } => {
+            NoteGenerationChildOutcome::Generated(generation) => {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    eprintln!("[note-trace] child outcome: generated; handing to note.create");
+                }
+                generation
+            }
+            NoteGenerationChildOutcome::TranscriptOnly { code, recoverable } => {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    eprintln!("[note-trace] child outcome: transcript-only code={code} recoverable={recoverable}");
+                }
                 // The child's failure codes are content-free by design; the
                 // durable receipt records the one product fact -- no note,
                 // transcript stands -- plus whether a retry could differ.
@@ -331,10 +342,21 @@ impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
                 create_arguments,
                 WORKER_REQUEST_TIMEOUT,
             )
-            .map_err(|_| NoteGenerationWorkerError::Unavailable)?;
+            .map_err(|error| {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    eprintln!("[note-trace] note.create transport failure: {error:?}");
+                }
+                NoteGenerationWorkerError::Unavailable
+            })?;
         if result.ok {
             Ok(NoteWorkerResult::Accepted(result.artifact_digests))
         } else {
+            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                eprintln!(
+                    "[note-trace] note.create refused: code={:?} recoverable={:?}",
+                    result.code, result.recoverable
+                );
+            }
             // The generate child already validated these points against the
             // same retained transcript, so an assembler refusal is a local
             // contract break, not a model outcome.
@@ -682,12 +704,17 @@ impl ProductOperationCoordinator for DesktopProductCoordinator {
                 }
                 Ok(())
             })
-            .map_err(|error| match error {
+            .map_err(|error| {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    eprintln!("[note-trace] regeneration coordinator error: {error:?}");
+                }
+                match error {
                 NoteGenerationCoordinatorError::Worker(NoteGenerationWorkerError::Unavailable)
                 | NoteGenerationCoordinatorError::StorageUnavailable => {
                     CoordinatorError::Unavailable
                 }
                 _ => CoordinatorError::Refused,
+                }
             })
     }
 

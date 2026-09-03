@@ -140,7 +140,22 @@ under the build hash. Two defects the honest surface exposed:
   unavailable run failed at; before it the only evidence was the generic
   toast. The one meeting tried has a zero-turn transcript, and the child
   honestly rejected it ("note-rejected"); a real meeting has not been
-  generated yet.
+  generated yet. The nine-turn meeting then exposed a fourth gate, silent
+  to that trace because it sits after the child: the model returned a
+  generated frame (two claims, 25 s) and the worker's `note.create`
+  assembler refused it as `protocol_failure`, a code that discards the
+  reason. Extending the trace across the coordinator boundary and running
+  the packaged child and the assembler by hand against a copy of the
+  storage found it: `build_runtime.sh` staged `notes/transcript.py`,
+  `summarize.py`, and `mlx_minilm.py` but not `notes/candidate_first.py`,
+  which `worker/adapters.py` imports under note.create, so every generated
+  note ended in "injected note generator did not produce a candidate". Now
+  staged, digest-tracked, and proven by a verify step that resolves the
+  assembler's import closure the way the worker does. Two lessons: a code
+  that erases its reason ("protocol failure") is a trace gap, and each gate
+  was invisible to the previous gate's tool, so the trace has to cover the
+  whole chain before the first installed attempt, not be extended one
+  failure at a time.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the

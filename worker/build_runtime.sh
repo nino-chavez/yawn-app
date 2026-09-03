@@ -77,6 +77,11 @@ verify() {
   (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
     'import json, numpy; import worker.main; doc=json.load(open("app-runtime.json")); print(doc["admission"], numpy.__version__)' \
     1>/dev/null)
+  # The note.create assembler's import closure, resolved the way the worker
+  # resolves it (worker.adapters puts the staged notes/ and spike/ on the path).
+  # A module missing here is refused at the user's Generate press otherwise.
+  (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
+    'import worker.adapters; import candidate_first, summarize, transcript, capture_health' 1>/dev/null)
   local admission
   admission="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["admission"])' "$STAGE/app-runtime.json")"
   if [[ "$admission" == "internal-alpha" ]]; then
@@ -220,8 +225,12 @@ cp "$REPO/spike/verify_capture.py" "$REPO/spike/capture_health.py" \
 # mlx_minilm.py holds the forward pass every measured vector came from.
 # `worker/embedding.py` imports it rather than restating it, so it is staged
 # beside the other notes modules and not copied into the worker package.
+# candidate_first.py is the assembler's registered product contract:
+# `worker/adapters.py` imports it under note.create to turn the generate
+# child's kept claims into a note document. Without it every generated note
+# is refused as a protocol failure after the model has already run.
 cp "$REPO/notes/transcript.py" "$REPO/notes/summarize.py" \
-  "$REPO/notes/mlx_minilm.py" "$STAGE/notes/"
+  "$REPO/notes/mlx_minilm.py" "$REPO/notes/candidate_first.py" "$STAGE/notes/"
 
 swift build -c release --product audiotee --package-path "$REPO/capture/audiotee"
 cp "$REPO/capture/audiotee/.build/arm64-apple-macosx/release/audiotee" \

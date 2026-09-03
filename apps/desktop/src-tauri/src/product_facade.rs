@@ -280,11 +280,25 @@ impl ProductOperationFacade {
         let source = self
             .coordinator
             .source_for(meeting_id)
-            .map_err(|_| ProductOperationFacadeError::OperationUnavailable)?;
+            .map_err(|error| {
+                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                    eprintln!("[note-trace] facade source_for failed: {error:?}");
+                }
+                ProductOperationFacadeError::OperationUnavailable
+            })?;
         if source.meeting_id != meeting_id
             || source.current_transcript_sha256 != source_transcript_sha256
             || !source_is_eligible(&source)
         {
+            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                eprintln!(
+                    "[note-trace] facade source changed: id_match={} sha_match={} lifecycle={:?} has_note={}",
+                    source.meeting_id == meeting_id,
+                    source.current_transcript_sha256 == source_transcript_sha256,
+                    source.lifecycle,
+                    source.has_current_note
+                );
+            }
             return Err(ProductOperationFacadeError::SourceChanged);
         }
 
@@ -394,6 +408,12 @@ pub(crate) fn regenerate_note(
             )?,
             pre_meeting_context: crate::pre_meeting_context_for(meeting_id, &app)?,
             source_transcript_sha256,
+        })
+        .map_err(|error| {
+            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                eprintln!("[note-trace] regenerate_note command refused: {error:?}");
+            }
+            error
         })
         .map_err(ProductOperationFacadeError::safe_copy)
         .map_err(str::to_owned)?;
