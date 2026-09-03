@@ -66,20 +66,79 @@ cap_pid() {
   pgrep -f "${CAP_APP%/}/Contents/MacOS/" 2>/dev/null | head -1
 }
 
+# A locked screen looks exactly like a missing window, and the difference
+# decides whether the right move is to wait or to kill something.
+#
+# Measured 2026-09-02: with the screen locked, accessibility reports 0 windows
+# for every app, `first process whose frontmost is true` errors with "Invalid
+# index", and `screencapture` writes no file. On that reading `cap_launch`
+# concluded the app was running window-less and quit it -- twice -- when
+# nothing was wrong with the app at all. Had a note generation been in flight
+# it would have been killed mid-run.
+#
+# So: prove the session is usable before believing anything accessibility says,
+# and never take a destructive step on a reading this check has not cleared.
+cap_session_usable() {
+  # `grep -c`, not `grep -q`. With `set -o pipefail` (top of this file) `-q`
+  # exits on the first match, SIGPIPEs `ioreg`, and the non-zero pipeline makes
+  # this read as "not locked" -- a guard that fails open, silently, in exactly
+  # the state it exists to catch. `-c` consumes all input, so the pipeline ends
+  # cleanly. Verified: this branch now fires on a locked screen.
+  local locked
+  locked=$(ioreg -n Root -d1 -a 2>/dev/null | grep -c CGSSessionScreenIsLocked || true)
+  if [ "${locked:-0}" -gt 0 ]; then
+    cap_log "SESSION: screen is locked -- no capture is possible, and a 0-window reading means nothing"
+    return 1
+  fi
+  if ! osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' >/dev/null 2>&1; then
+    cap_log "SESSION: no frontmost process -- the login session is not interactive"
+    return 1
+  fi
+  return 0
+}
+
+cap_window_count() {
+  local pid
+  pid=$(cap_pid)
+  [ -n "$pid" ] || { printf '0'; return 1; }
+  osascript -e "tell application \"System Events\" to tell (first process whose unix id is $pid) to return (count of windows) as text" 2>/dev/null | head -1
+}
+
+# Waits for a WINDOW, not just a process. A running app with no window is the
+# state that makes every later capture silently wrong: `cap_bounds` finds no
+# window, falls back to the default rectangle, and `screencapture -R`
+# photographs whatever occupies that part of the screen. Measured tonight --
+# the preview sat frontmost with zero windows and reported itself launched.
+#
+# `open -a` on an already-running instance does not always restore a closed
+# window (this app has no Window-menu entry to reopen one either), so a
+# window-less instance is quit and relaunched rather than nudged.
 cap_launch() {
   [ -d "$CAP_APP" ] || { cap_log "FATAL no bundle at $CAP_APP"; return 1; }
+  cap_session_usable || return 1
+  local pid
+  pid=$(cap_pid)
+  if [ -n "$pid" ] && [ "$(cap_window_count)" = "0" ]; then
+    cap_log "pid $pid is running with no window; quitting it to get a fresh one"
+    kill "$pid" 2>/dev/null
+    local gone=0
+    while [ "$gone" -lt 15 ] && [ -n "$(cap_pid)" ]; do sleep 1; gone=$((gone + 1)); done
+  fi
   open -a "$CAP_APP"
-  local waited=0 pid
+  local waited=0 count
   while [ "$waited" -lt 40 ]; do
     pid=$(cap_pid)
     if [ -n "$pid" ]; then
-      cap_log "pid $pid after ${waited}s"
-      return 0
+      count=$(cap_window_count)
+      if [ -n "$count" ] && [ "$count" != "0" ]; then
+        cap_log "pid $pid, $count window(s) after ${waited}s"
+        return 0
+      fi
     fi
     sleep 1
     waited=$((waited + 1))
   done
-  cap_log "FATAL no process after ${waited}s"
+  cap_log "FATAL no window after ${waited}s (pid ${pid:-none})"
   return 1
 }
 
@@ -127,6 +186,11 @@ cap_frame() {
   # `label` while it is still unset and abort under `set -u`.
   local label="$1"
   local path="$CAP_OUT/$label.png"
+  # `screencapture -R` takes a screen RECTANGLE, so it photographs whatever is
+  # on top of that rectangle -- not the app. Without this the read-back below
+  # passes happily on a valid PNG of the wrong window, which is the one failure
+  # it cannot see. Same reason `cap_click` guards.
+  cap_guard || { cap_log "FAILED $label (guard)"; return 1; }
   read -r x y w h <<<"$(cap_bounds)"
   screencapture -x -R"$x,$y,$w,$h" "$path" 2>/dev/null
   if [ ! -s "$path" ]; then
@@ -154,6 +218,7 @@ cap_frame() {
 # so a capture run could have clicked -- including into a delete confirmation --
 # inside the wrong app against real data. Only the bundle path separates them.
 cap_guard() {
+  cap_session_usable || return 1
   local front
   front=$(osascript -e 'tell application "System Events" to get POSIX path of (file of first process whose frontmost is true)' 2>/dev/null)
   local want="${CAP_APP%/}"
