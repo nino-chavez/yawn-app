@@ -19,7 +19,10 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let configuration = WKWebViewConfiguration()
-        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 960, height: 760), configuration: configuration)
+        let components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
+        let width = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "width" })?.value ?? "960") ?? 960)
+        let height = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "height" })?.value ?? "760") ?? 760)
+        webView = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: height), configuration: configuration)
         webView.navigationDelegate = self
         window = NSWindow(
             contentRect: webView.frame,
@@ -52,6 +55,13 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                 } else {
                     print("\(String(describing: value))")
                 }
+                // A scenario that supplies a top-level pass boolean is a
+                // release gate, not merely a diagnostic. Preserve the older
+                // harness scenarios' JSON-only behavior while making a
+                // failed visual-fidelity contract fail its command.
+                if let result = value as? [String: Any], let passed = result["pass"] as? Bool, !passed {
+                    exit(1)
+                }
             case .failure(let error):
                 FileHandle.standardError.write(Data("JS ERROR: \(error)\n".utf8))
             }
@@ -70,7 +80,8 @@ guard arguments.count >= 3, let pageURL = URL(string: arguments[1]) else {
     FileHandle.standardError.write(Data("usage: runner <url> <scenario.js path>\n".utf8))
     exit(2)
 }
-let mode = pageURL.query?.contains("mode=library") == true ? "library" : "capture"
+let components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
+let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value ?? "capture"
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = Delegate(pageURL: pageURL, scenarioPath: arguments[2], mode: mode)

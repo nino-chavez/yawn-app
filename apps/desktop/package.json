@@ -4,6 +4,7 @@
   "version": "0.6.0",
   "scripts": {
     "test:ui": "node --test ui/*.test.mjs",
+    "test:visual-fidelity": "ui-harness/run.sh fidelity",
     "tokens": "node ../../packages/design-tokens/generate.js",
     "tokens:check": "node ../../packages/design-tokens/generate.js --check",
     "tauri": "tauri",

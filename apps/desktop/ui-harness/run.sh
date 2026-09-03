@@ -21,7 +21,7 @@ trap cleanup EXIT
 serve="$build_dir/serve"
 mkdir "$serve"
 ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$serve/"
-ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$serve/"
+ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/tonal-ledger-canvas.contract.json" "$serve/"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!
 
@@ -31,12 +31,13 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-run() { "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1" "$PWD/$2"; }
+run() { "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1${3:-}" "$PWD/$2"; }
 case "$mode" in
   capture) run capture scenario.js ;;
   library) run library scenario.js ;;
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
+  fidelity) run fidelity fidelity.js "&width=1080&height=900" ;;
   all)
     echo "== capture: operator-note undo across poll ticks =="
     run capture scenario.js
@@ -47,5 +48,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|library|smoke|sheets|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|library|smoke|sheets|fidelity|all]" >&2; exit 2 ;;
 esac

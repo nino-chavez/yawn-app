@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|library|smoke|sheets|all]
+    ./run.sh [capture|library|smoke|sheets|fidelity|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON
@@ -42,6 +42,16 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   sheet stays open. Healthy: `backdropAnimationStarts`/`dialogAnimationStarts`
   both stay at 1 through `animationStartsAfterTicks`, both node identities
   survive every tick, and the sheet closes with `.modal-backdrop` gone.
+- `fidelity` — the Tonal Ledger — Canvas release gate. It opens the real
+  production frontend in a 1080 × 900 WKWebView, selects a transcript-only
+  meeting with no generated note, and compares browser-computed geometry to
+  `tonal-ledger-canvas.contract.json`. The fixture intentionally includes the
+  Generate note control, personal-note editor, disclosure, and two sidebar
+  groups so a release cannot approve only the already-generated-note frame.
+  Run it with `npm run test:visual-fidelity` from `apps/desktop/`. Healthy:
+  every check passes. Do not copy values into the scenario; the contract is
+  the sole expected-value source and is derived from the selected
+  `visual-treatments/tonal-ledger-refined/` reference.
 - `all` — the four in sequence.
 
 ## Files
@@ -56,6 +66,8 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   finished meeting and a two-turn transcript. Also collects page errors on
   `window.__errors`.
 - `scenario.js`, `smoke.js`, `sheets.js` — scenario bodies for the runner.
+- `fidelity.js`, `tonal-ledger-canvas.contract.json` — computed-geometry
+  comparison and its selected-reference contract.
 
 ## Limits
 

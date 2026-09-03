@@ -132,8 +132,14 @@
         ] } }
       : { ...idleSnapshot }),
     first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
-    library_snapshot: () => (mode === "library" || mode === "summary-failed" || sheetMode
-      ? { rows: [{ ...libraryRow }], total: 1, metadataRevision: 1 }
+    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "summary-failed" || sheetMode
+      ? { rows: [{ ...libraryRow }, {
+          ...libraryRow,
+          handle: "row-handle-2",
+          meetingId: "harness-meeting-2",
+          label: "Earlier harness meeting",
+          createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60),
+        }], total: 2, metadataRevision: 1 }
       : { rows: [], total: 0, metadataRevision: 1 }),
     preview_list_trash: () => ({ entries: [] }),
     operator_note: () => ({ text: "", unreadable: false }),
@@ -157,6 +163,8 @@
       meetingId: "harness-meeting-1",
       state: "transcript-only",
       claims: [],
+      noteGenerationAvailable: true,
+      regenerationSourceSha256: "0000000000000000000000000000000000000000000000000000000000000000",
       operatorNote: { text: "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
       transcriptHandle: "transcript-handle-1",
