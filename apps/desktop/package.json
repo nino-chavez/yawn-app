@@ -1,7 +1,7 @@
 {
   "name": "local-meeting-notes-desktop",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "scripts": {
     "test:ui": "node --test ui/*.test.mjs",
     "test:visual-fidelity": "ui-harness/run.sh fidelity",
