@@ -674,8 +674,10 @@ function renderSidebarRow(row, { selected = false } = {}) {
 
 function renderSidebarGroups(rows, selectedHandle) {
   return sidebarGroups(rows).map((group) => `
-    <div class="group-label">${escapeHtml(group.label)}</div>
-    ${group.rows.map((row) => renderSidebarRow(row, { selected: row.handle === selectedHandle })).join("")}
+    <section class="meeting-group" aria-label="${escapeHtml(group.label)}">
+      <div class="group-label">${escapeHtml(group.label)}</div>
+      ${group.rows.map((row) => renderSidebarRow(row, { selected: row.handle === selectedHandle })).join("")}
+    </section>
   `).join("");
 }
 

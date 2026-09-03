@@ -168,21 +168,23 @@ textarea:focus-visible {
 }
 
 .button {
-  /* R21: the legacy button family is the specimen .btn shape. One shape,
-     22 high, 10 side padding, radius 6, 13/500; primary is the accent fill,
-     record keeps its color on the bezel, destructive is never the accent. */
+  /* The production button and the Canvas specimen share the same control
+     geometry. Text has a real 17px line box inside a 28px control rather
+     than being squeezed into the old 22px legacy bezel. */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
-  padding: 0 var(--space-12);
+  min-height: var(--control-h);
+  padding: 4px 10px;
   border: 1px solid var(--control-border);
   border-radius: var(--r-control);
   color: var(--label);
   background: var(--control);
-  box-shadow: var(--control-shadow);
-  font-size: var(--t-body);
-  font-weight: 500;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 620;
+  line-height: 17px;
+  white-space: nowrap;
   cursor: default;
 }
 
@@ -191,8 +193,8 @@ textarea:focus-visible {
 }
 
 .button-primary {
-  color: #fff;
-  border-color: transparent;
+  color: var(--on-accent);
+  border-color: var(--accent);
   background: var(--accent);
 }
 
@@ -209,9 +211,9 @@ textarea:focus-visible {
 }
 
 .button.small {
-  min-height: 22px;
-  padding: 0 var(--space-12);
-  font-size: var(--t-body);
+  min-height: var(--control-h-secondary);
+  padding: 3px 9px;
+  font-size: 12px;
 }
 
 .icon-button {
@@ -598,9 +600,9 @@ h3 {
 }
 
 .button-small {
-  min-height: 22px;
-  padding: 0 var(--space-12);
-  font-size: var(--t-body);
+  min-height: var(--control-h-secondary);
+  padding: 3px 9px;
+  font-size: 12px;
 }
 
 .transcript-action-status {
@@ -687,7 +689,7 @@ h3 {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: var(--space-8);
+  gap: 6px;
 }
 
 .meeting-manage-control {
@@ -704,7 +706,20 @@ h3 {
    (`.btn.record { font-weight: 600; }`). Selects the existing data-action
    attribute; nothing about the markup changes. */
 .meeting-manage-control > .btn {
-  font-weight: 600;
+  font-weight: 520;
+}
+
+/* Header actions are the reference treatment's secondary controls. They are
+   deliberately smaller than the primary Generate note action but retain a
+   full 17px line box and 3px vertical inset. */
+.doc-head-actions > .btn,
+.doc-head-actions > .meeting-manage-control > .btn {
+  min-height: var(--control-h-secondary);
+  padding: 3px 9px;
+  border-color: var(--separator);
+  background: transparent;
+  color: var(--label-3);
+  font-weight: 520;
 }
 
 .meeting-manage-menu {
@@ -766,16 +781,23 @@ h3 {
 
 /* R17: the box is sized for a few lines and grows by hand; the caption sits
    directly under it instead of at the foot of a fixed 160px field. */
-.meeting-notes-editor {
+.notes-area.meeting-notes-editor {
   width: 100%;
-  min-height: 88px;
-  padding: var(--space-8) 0 var(--space-8) var(--space-12);
-  border-left: 2px solid var(--notes-border);
+  min-height: 76px;
+  margin-top: 10px;
+  padding: 6px 0 6px 9px;
+  border-left: 1px solid var(--separator-strong);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.55;
   resize: vertical;
 }
 
 .your-notes-section > .doc-fact:last-child {
-  margin: var(--space-8) 0 0;
+  margin: 9px 0 0;
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .notes-area::placeholder {
@@ -923,18 +945,20 @@ h3 {
 /* DESIGN.md Disclosure: one line at reading size inside the measure, the
    hairline above it is the only rule below the title block. */
 .transcript-disclosure {
-  margin-top: var(--space-24);
-  max-width: var(--measure);
-  padding-top: var(--space-12);
+  margin-top: 25px;
+  max-width: 64ch;
+  padding-top: 0;
   border-top: 1px solid var(--separator);
 }
 
 .transcript-disclosure > summary {
-  font-size: var(--t-read);
-  line-height: var(--lh-read);
-  color: var(--label);
+  padding: 14px 0;
+  font-size: 12px;
+  font-weight: 580;
+  line-height: normal;
+  color: var(--label-2);
   cursor: pointer;
-  padding: var(--space-4) 0;
+  padding: 14px 0;
   display: flex;
   align-items: center;
   gap: var(--space-8);
@@ -2452,7 +2476,7 @@ html, body, #app {
      hiddenTitle: true): the traffic lights are native, drawn in the
      top-left ~70px. This reserves that space instead of drawing our own. */
   padding: 0 var(--space-12) 0 78px;
-  gap: var(--space-12);
+  gap: 13px;
   border-bottom: 1px solid var(--separator);
   background: var(--window);
 }
@@ -2468,8 +2492,9 @@ html, body, #app {
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: var(--t-body);
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
   color: var(--label-2);
   white-space: nowrap;
   overflow: hidden;
@@ -2479,23 +2504,30 @@ html, body, #app {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: var(--space-12);
+  gap: 10px;
   flex: 0 0 auto;
 }
 
 .search-field {
   display: inline-flex;
+  width: 182px;
+  height: 29px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--separator);
+  border-radius: 7px;
+  background: var(--control);
+  color: var(--label-3);
 }
 
 .search-field input {
-  height: 22px;
-  width: 180px;
-  border-radius: var(--r-control);
-  border: 1px solid var(--control-border);
-  background: var(--control);
-  padding: 0 var(--space-8);
-  color: var(--label-2);
-  font: inherit;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--label);
+  font-size: 12px;
 }
 
 .search-field input::placeholder {
@@ -2558,7 +2590,7 @@ html, body, #app {
 .sidebar-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6) 0;
+  padding: 13px 7px 16px;
 }
 
 .sidebar-message {
@@ -2567,23 +2599,27 @@ html, body, #app {
 }
 
 .group-label {
-  padding: var(--space-12) var(--space-16) var(--space-4);
-  font-size: var(--t-caption);
+  margin: 0 0 5px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 650;
   color: var(--label-3);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.065em;
+  line-height: 15px;
 }
 
-.group-label:first-child {
-  padding-top: var(--space-8);
+.meeting-group + .meeting-group {
+  margin-top: 18px;
 }
 
 .row {
   display: block;
-  width: calc(100% - 12px);
-  margin: 1px var(--space-6);
-  padding: var(--space-6) var(--space-8);
-  border-radius: var(--r-control);
+  width: 100%;
+  margin: 1px 0;
+  padding: 7px 9px 8px;
+  overflow: hidden;
+  border-radius: 7px;
   border: 1px solid transparent;
   background: transparent;
   text-align: left;
@@ -2613,7 +2649,10 @@ html, body, #app {
   align-items: center;
   gap: var(--space-6);
   font-size: var(--t-body);
-  font-weight: 500;
+  color: var(--label);
+  font-weight: 580;
+  letter-spacing: -0.008em;
+  line-height: 18px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2622,6 +2661,9 @@ html, body, #app {
 .row-caption {
   display: block;
   margin-top: 2px;
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2632,6 +2674,7 @@ html, body, #app {
   margin-top: 2px;
   font-size: var(--t-caption);
   color: var(--label-3);
+  line-height: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2673,13 +2716,14 @@ html, body, #app {
   display: flex;
   align-items: center;
   gap: var(--space-8);
-  padding: var(--space-8) var(--space-16);
+  min-height: 48px;
+  padding: 0 15px;
   border: none;
   border-top: 1px solid var(--separator);
   background: transparent;
   color: var(--label-2);
   font: inherit;
-  font-size: var(--t-body);
+  font-size: 12px;
   text-align: left;
   cursor: default;
 }
@@ -2737,29 +2781,32 @@ html, body, #app {
 }
 
 .doc-transcript-disclosure-wrap {
-  margin-top: var(--space-24);
-  width: 100%;
-  max-width: var(--measure);
+  margin-top: 25px;
+  width: min(100%, 700px);
+  max-width: 700px;
+  padding: 0 14px;
   margin-right: auto;
   margin-left: auto;
 }
 
 .doc-main > article.read {
-  width: 100%;
+  width: min(100%, 700px);
   margin-right: auto;
   margin-left: auto;
+  padding: 25px 14px 42px;
 }
 
 .doc-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: var(--space-12);
+  gap: 24px;
+  padding-bottom: 18px;
 }
 
 .doc-head h1 {
   max-width: 21ch;
-  font-size: clamp(28px, 4vw, var(--t-large));
+  font-size: clamp(28px, 3vw, var(--t-large));
   font-weight: 650;
   line-height: 1.08;
   letter-spacing: -0.038em;
@@ -2767,9 +2814,10 @@ html, body, #app {
 }
 
 .doc-caption {
-  font-size: var(--t-body);
+  font-size: 12px;
+  line-height: 17px;
   color: var(--label-2);
-  margin: var(--space-6) 0 var(--space-18);
+  margin: 8px 0 0;
 }
 
 /* A fact about the meeting is a sentence, so it reads at reading size; only
@@ -2783,8 +2831,8 @@ html, body, #app {
 }
 
 .doc-main > article.read > .doc-fact {
-  margin-top: var(--space-12);
-  padding-left: var(--space-12);
+  margin: 13px 0 28px;
+  padding-left: 11px;
   border-left: 2px solid var(--separator-strong);
 }
 
@@ -2793,7 +2841,7 @@ html, body, #app {
   font-size: var(--t-read);
   line-height: var(--lh-read);
   color: var(--label-2);
-  margin: var(--space-8) 0 0;
+  margin: 8px 0 0;
 }
 
 .empty-note-state {

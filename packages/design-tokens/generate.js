@@ -30,6 +30,7 @@ const t = JSON.parse(fs.readFileSync(TOKENS_PATH, "utf8"));
 const c = t.color;
 const light = {
   accent: c.accent.light,
+  onAccent: c.onAccent.light,
   record: c.record.light,
   attention: c.attention.light,
   attentionBg: c.attentionBackground.light,
@@ -38,6 +39,7 @@ const light = {
 };
 const dark = {
   accent: c.accent.dark,
+  onAccent: c.onAccent.dark,
   record: c.record.dark,
   attention: c.attention.dark,
   attentionBg: c.attentionBackground.dark,
@@ -74,7 +76,7 @@ function render() {
   --t-transcript: ${fs_.transcript.size}; --lh-transcript: ${fs_.transcript.lineHeight};
   --measure: ${t.measure};
   --r-control: ${rad.control}; --r-card: ${rad.card};
-  --toolbar-h: ${layout.toolbar}; --sidebar-w: ${layout.sidebar};
+  --toolbar-h: ${layout.toolbar}; --sidebar-w: ${layout.sidebar}; --control-h: ${layout.control.default}; --control-h-secondary: ${layout.control.secondary};
   --motion: ${motion.default};
   /* Spacing scale (visual refit 2026-09-03): the rhythm styles.css's 31
      ad hoc margin/padding/gap values collapsed onto. 32 is the one addition
@@ -89,7 +91,7 @@ function render() {
   --label: ${light.label}; --label-2: ${light.label2}; --label-3: ${light.label3};
   --control: ${light.control}; --control-border: ${light.controlBorder}; --control-shadow: ${light.controlShadow};
   --selection: ${light.selection}; --selection-active: ${light.selectionActive}; --selection-line: ${light.selectionLine}; --on-selection: ${light.onSelection};
-  --accent: ${light.accent};                 /* system blue; the user's accent in the real app */
+  --accent: ${light.accent}; --on-accent: ${light.onAccent};
   --record: ${light.record};                 /* the only red on screen; spent by Record and the live state */
   --attention: ${light.attention}; --attention-bg: ${light.attentionBg};
   --evidence: ${light.evidence};  /* one evidence accent, tint only */
@@ -101,7 +103,7 @@ function render() {
   --label: ${dark.label}; --label-2: ${dark.label2}; --label-3: ${dark.label3};
   --control: ${dark.control}; --control-border: ${dark.controlBorder}; --control-shadow: ${dark.controlShadow};
   --selection: ${dark.selection}; --selection-active: ${dark.selectionActive}; --selection-line: ${dark.selectionLine}; --on-selection: ${dark.onSelection};
-  --accent: ${dark.accent}; --record: ${dark.record};
+  --accent: ${dark.accent}; --on-accent: ${dark.onAccent}; --record: ${dark.record};
   --attention: ${dark.attention}; --attention-bg: ${dark.attentionBg};
   --evidence: ${dark.evidence};
 }
@@ -110,9 +112,9 @@ body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); back
   -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 button, input { font: inherit; color: inherit; }
-.btn { height: 22px; padding: 0 10px; border-radius: var(--r-control); background: var(--control);
-  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; }
-.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn { display: inline-flex; min-height: var(--control-h); align-items: center; justify-content: center; padding: 4px 10px; border-radius: var(--r-control); background: var(--control);
+  border: 1px solid var(--control-border); box-shadow: none; cursor: default; font-size: 12px; font-weight: 620; line-height: 17px; white-space: nowrap; }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
 .btn.record.live { background: var(--record); color: #fff; border-color: transparent; }
 .caption { font-size: var(--t-caption); color: var(--label-2); }

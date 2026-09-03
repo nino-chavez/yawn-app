@@ -16,7 +16,7 @@
   --t-transcript: 14px; --lh-transcript: 1.55;
   --measure: 64ch;
   --r-control: 6px; --r-card: 10px;
-  --toolbar-h: 52px; --sidebar-w: 280px;
+  --toolbar-h: 58px; --sidebar-w: 282px; --control-h: 28px; --control-h-secondary: 26px;
   --motion: 160ms ease-out;
   /* Spacing scale (visual refit 2026-09-03): the rhythm styles.css's 31
      ad hoc margin/padding/gap values collapsed onto. 32 is the one addition
@@ -31,7 +31,7 @@
   --label: #211f25; --label-2: #59535f; --label-3: #655f6a;
   --control: #f8f6f9; --control-border: #d4ced8; --control-shadow: 0 0.5px 1px rgba(33,31,37,0.12);
   --selection: #d8d0e3; --selection-active: #d8d0e3; --selection-line: #8c7ca8; --on-selection: #211f25;
-  --accent: #6855a9;                 /* system blue; the user's accent in the real app */
+  --accent: #6855a9; --on-accent: #ffffff;
   --record: #b74640;                 /* the only red on screen; spent by Record and the live state */
   --attention: #9a641c; --attention-bg: #fff1dc;
   --evidence: #e7e0f2;  /* one evidence accent, tint only */
@@ -43,7 +43,7 @@
   --label: #f4f2f7; --label-2: #c8c3cf; --label-3: #9993a1;
   --control: #23212b; --control-border: #484451; --control-shadow: 0 0.5px 1px rgba(0,0,0,0.38);
   --selection: #292532; --selection-active: #292532; --selection-line: #8073a3; --on-selection: #f4f2f7;
-  --accent: #a99be4; --record: #ef7168;
+  --accent: #a99be4; --on-accent: #17131f; --record: #ef7168;
   --attention: #dfa85c; --attention-bg: #33291d;
   --evidence: #2b263c;
 }
@@ -52,9 +52,9 @@ body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); back
   -webkit-font-smoothing: antialiased; }
 * { box-sizing: border-box; }
 button, input { font: inherit; color: inherit; }
-.btn { height: 22px; padding: 0 10px; border-radius: var(--r-control); background: var(--control);
-  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; }
-.btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
+.btn { display: inline-flex; min-height: var(--control-h); align-items: center; justify-content: center; padding: 4px 10px; border-radius: var(--r-control); background: var(--control);
+  border: 1px solid var(--control-border); box-shadow: none; cursor: default; font-size: 12px; font-weight: 620; line-height: 17px; white-space: nowrap; }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
 .btn.record.live { background: var(--record); color: #fff; border-color: transparent; }
 .caption { font-size: var(--t-caption); color: var(--label-2); }
