@@ -2298,16 +2298,29 @@ h3 {
      way to tell the primary from its neighbour. `.btn.primary` in tokens.css
      carries no such override; the accent token already varies by theme. */
 
-  .button-danger {
-    color: #241916;
-    background: #ef8879;
-  }
+  /* R27: no dark override at all, which is the point. The specimen's `.btn`
+     is `background: var(--control)` in both appearances and carries no dark
+     rule, because `--control` already varies by theme (#ffffff / #3a3a3a).
+     What stood here was a hardcoded `#ef8879` fill, so a delete button
+     carried red -- the one hue DESIGN.md gives the Record control alone
+     ("The only red. Lives in the toolbar and the menu-bar pill only") -- and
+     a filled button beside a bezelled Cancel made the destructive action the
+     loudest thing on the sheet, which the Button row forbids outright. Light
+     was already correct; only dark disagreed. Same shape as R26.
 
-  .button-danger:hover:not(:disabled) {
-    background: #ff9e8f;
-  }
+     The literal is the retired palette's red. It equals the `--record` this
+     file declares below, but that declaration is itself dead: tokens.css sets
+     `--record: #ff453a` under `:root[data-theme="dark"]`, which outranks this
+     file's `@media` + `:root`, and `main.js` sets that attribute from the
+     system appearance. Filed as R29. */
 
-  .button-secondary,
+  /* R27: `.button-secondary` used to sit in this group. The group is the
+     recessed inset surfaces, and at the time `--paper` and `--control` were
+     the same value, so including a button cost nothing. They diverged; a
+     button then rendered a full step darker than `.button-quiet` beside it
+     while light showed the two identical. DESIGN.md's button vocabulary is
+     default and primary -- there is no secondary variant to style -- so it
+     takes `--control` with every other default button. */
   .search-input,
   .fact-pill,
   .status-pill,
