@@ -677,15 +677,21 @@ mod tests {
         );
     }
 
-    /// Frozen artifact. `notes/packaged_question_receipt.json` records one run
-    /// on 2026-08-09 through the staged runtime, and the numbers here are the
-    /// literals it was produced with — deliberately not `PAIRS.len()` or a
-    /// threshold constant. A test that followed a live value would keep passing
-    /// while the receipt described a measurement nobody had re-run.
+    /// Frozen artifact. `notes/packaged_question_receipt.json` records a run
+    /// through the staged runtime, and the numbers here are the literals it was
+    /// produced with — deliberately not `PAIRS.len()` or a threshold constant. A
+    /// test that followed a live value would keep passing while the receipt
+    /// described a measurement nobody had re-run.
     ///
     /// It also asserts the receipt still describes the files on disk. Change
     /// `worker/embedding.py` or `notes/mlx_minilm.py` and this fails, which is
     /// the point: the measurement is of those bytes.
+    ///
+    /// It has fired once, on the 2026-09-01 import move in `embed_windows`, and
+    /// the re-run that cleared it reproduced every cosine and every margin to
+    /// the last digit against the 2026-08-09 original. That is the outcome this
+    /// assertion is built to be unable to assume: the hash says the measured
+    /// bytes moved, and only a re-run can say whether the measurement did.
     #[test]
     fn the_packaged_question_receipt_describes_the_files_it_measured() {
         use sha2::{Digest, Sha256};

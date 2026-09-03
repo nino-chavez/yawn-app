@@ -712,6 +712,15 @@ in disagreement.
 Run on the staged runtime's own interpreter — mlx 0.29.3, numpy 2.4.6,
 tokenizers 0.22.2, CPython 3.12.
 
+**Re-run 2026-09-02, and the receipt on disk is now that run.** `4205c32` moved
+the `mlx_minilm` import in `embed_windows` below the argument validation, which
+changed `worker/embedding.py`'s bytes and so invalidated the receipt by design.
+Every measured value below reproduced identically — all fifteen cosines, all five
+margins, to the final digit — on the same wheels and a macOS point upgrade
+(26.5.2 to 26.6.2). Two fields differ from the original receipt and nothing else:
+`embedding_sha256` and `environment.platform`. The analysis in this section is of
+the 2026-08-09 registration and stands unchanged.
+
 ### Why it was run
 
 Every measurement before it fed `worker/embedding.py` 128-word windows. The search

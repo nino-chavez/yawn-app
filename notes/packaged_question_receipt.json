@@ -2,11 +2,11 @@
   "schema": "packaged-question-parity/1",
   "model_directory_name": "all-MiniLM-L6-v2",
   "harness_sha256": "fe1f5fee17e19b800a3627452c44e5b98dfdbb930870fb571d089d37c8443759",
-  "embedding_sha256": "8737a4beb9507e7009bcd8117da37d09a3c8c822c516443cc6a4b8eb0708194c",
+  "embedding_sha256": "746e0cca43d1dc9d0e595ed595705bb7e214001c5d1090abab4082cebe14da3b",
   "mlx_minilm_sha256": "2b71614b0e72ccdbb4d060e5c215eeeb66d13c5daab80414e426c1a81d28dfc4",
   "environment": {
     "python": "3.12.13",
-    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
     "mlx": "0.29.3",
     "numpy": "2.4.6",
     "tokenizers": "0.22.2"
