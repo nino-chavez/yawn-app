@@ -984,6 +984,17 @@ briefly disagrees with itself after relaunch. The first replacement probe shippe
 with the same class of bug -- a syntax error whose message reads "Access not
 allowed" -- caught only by running it once access was real.
 
+**One flaw in how the review was dispatched, worth not repeating.** The cold
+reviewer was pointed at the captures directory, and `MANIFEST.md` lives there
+carrying the capture author's own findings -- so a review commissioned as blind
+read them. The reviewer disclosed it, recorded that the pixel diff and the dialog
+crops preceded that read, and its six new findings (the Overview-only note, the
+duplicate sidebar titles, the retention caveat above the note, the unlabelled
+source affordance, Record being the least prominent control, the clipped
+Settings) are plainly its own. But the overlapping findings are no longer
+independent confirmation. Next pass: put the manifest one level up, or hold it
+back until the review is filed.
+
 **Still not settled, and why.** R35 and every light frame: the app ignores a
 per-app `AppleInterfaceStyle` override written to the correct domain and
 verified by read-back. The only remaining route is switching the system
