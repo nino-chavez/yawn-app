@@ -156,6 +156,19 @@ under the build hash. Two defects the honest surface exposed:
   was invisible to the previous gate's tool, so the trace has to cover the
   whole chain before the first installed attempt, not be extended one
   failure at a time.
+  Installed verification on build 630d08a: Generate note on the nine-turn
+  meeting produced a committed operation and a note pair (two cited claims,
+  about 60 s end to end), the first generated note any packaged build has
+  produced; captures at `captures/630d08a-installed`. Two observations
+  from the run, filed not fixed: (1) System Events could not read the
+  window for the ~60 s the generation ran, on three separate runs, so no
+  generating frame exists; whether the window is also unresponsive to a
+  person during generation (a main-thread block) is unverified and needs a
+  check with the app in front of someone. (2) In light appearance, two
+  relaunches opened the first row instead of the clicked row, the click
+  resolving several seconds late once; dark runs opened on the second
+  click every time. Possibly the same handle-refresh shape as D-OPEN; also
+  unverified.
 - **Known gate failure, unrelated.** `local-meeting-notes-session-core`
   fails one test, `the_packaged_question_receipt_describes_the_files_it_measured`,
   since `worker/embedding.py` changed in 4205c32 (2026-09-01) after the
