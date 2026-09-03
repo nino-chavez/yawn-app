@@ -1279,6 +1279,16 @@ export function noteGenerationPresentation(note, generatingMeetingId) {
   };
 }
 
+// The released-audio fact is a caption on every readable document, not a
+// recovery state: a summary-failed or generating meeting still has released
+// audio, and meetingRecoveryPresentation can carry only one state at a time
+// (refit R23, where the fact vanished under summary-failed). One owner for
+// the sentence; the recovery branch below reads it from here.
+export const AUDIO_RELEASED_DETAIL = "The audio was already deleted. The transcript and note remain available, but this meeting cannot be retranscribed.";
+export function audioReleasedFact(note) {
+  return note?.audioRetention?.state === "released" ? AUDIO_RELEASED_DETAIL : "";
+}
+
 // Keep recovery copy at the same evidence boundary as the library response.
 // A source pin is the only browser-visible proof that note regeneration can
 // run. Transcript and audio states are read-only facts: do not invent a retry
@@ -1371,12 +1381,12 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
   // Audio retention matters for retranscription, not for reading or
   // regenerating a note from its transcript. Keep this warning even when a
   // finished note is present; the renderer leaves its note action available.
-  if (note?.audioRetention?.state === "released") {
+  if (audioReleasedFact(note)) {
     return {
       state: "audio-released",
       tone: "attention",
       title: "The recording is no longer available.",
-      detail: "The audio was already deleted. The transcript and note remain available, but this meeting cannot be retranscribed.",
+      detail: audioReleasedFact(note),
       action: null,
     };
   }

@@ -35,7 +35,7 @@
       : mode === "model-setup" ? { ...idleSnapshot, startup: "model-required", model_setup: { state: "idle", options: [], selectedModelId: "" } }
       : { ...idleSnapshot }),
     first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
-    library_snapshot: () => (mode === "library"
+    library_snapshot: () => (mode === "library" || mode === "summary-failed"
       ? { rows: [{ ...libraryRow }], total: 1, metadataRevision: 1 }
       : { rows: [], total: 0, metadataRevision: 1 }),
     preview_list_trash: () => ({ entries: [] }),
@@ -43,7 +43,20 @@
     meeting_context: () => ({ text: "", unreadable: false }),
     save_operator_note: () => ({ unreadable: false }),
     save_meeting_context: () => ({ unreadable: false }),
-    library_open_note: () => ({
+    // mode=summary-failed: the same meeting after a rejected generation,
+    // audio released, with a source pin so the retry control renders (R23).
+    library_open_note: () => (mode === "summary-failed" ? {
+      meetingId: "harness-meeting-1",
+      state: "summary-failed",
+      claims: [],
+      regenerationSourceSha256: "0000000000000000000000000000000000000000000000000000000000000000",
+      noteGenerationAvailable: true,
+      operatorNote: { text: "", unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: "transcript-handle-1",
+      audioRetention: { state: "released", message: "Audio released." },
+      capturePauses: null,
+    } : {
       meetingId: "harness-meeting-1",
       state: "transcript-only",
       claims: [],

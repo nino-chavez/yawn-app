@@ -37,6 +37,8 @@ import {
   meetingLockPresentation,
   meetingLockSheetCopy,
   meetingRecoveryPresentation,
+  audioReleasedFact,
+  AUDIO_RELEASED_DETAIL,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -597,7 +599,7 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // neighbour, not the full workspace transcript). Operator notes and
   // meeting context are sections of the document flow, not a separate
   // right-hand pane -- the inspector occupies that space when open.
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
   // The transcript disclosure sits outside `.read` (a sibling in
   // `.doc-main`, not nested inside the 62ch reading measure) so its own
   // search/action toolbar gets the full pane width instead of being
@@ -1122,7 +1124,7 @@ test("an empty transcript-only note remains explicit and only receives a generat
   assert.match(source, /<p id="meeting-note-heading" class="empty-note-state">/);
   assert.match(source, /if \(note\?\.state !== "transcript-only"\) return "";/);
   assert.doesNotMatch(source, /note\?\.message && !claims\.length/);
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}/);
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}/);
   assert.match(source, /function renderGenerateNote[\s\S]*noteGenerationPresentation\(note, state\.generatingMeetingId\)/);
 });
 
@@ -2009,4 +2011,15 @@ test("note generation presentation: shows generating state when matching meeting
   assert.equal(result.label, "Generating note…");
   assert.equal(result.disabled, true);
   assert.match(result.help, /several minutes/);
+});
+
+test("the released-audio fact is a caption independent of the recovery state (R23)", () => {
+  const released = { state: "summary-failed", meetingId: "m1", regenerationSourceSha256: "a".repeat(64), audioRetention: { state: "released" } };
+  assert.equal(audioReleasedFact(released), AUDIO_RELEASED_DETAIL);
+  assert.equal(audioReleasedFact({ ...released, audioRetention: { state: "retained" } }), "");
+  // summary-failed displaces the audio-released recovery slot; the fact must survive that.
+  const recovery = meetingRecoveryPresentation(released, { state: "available", turns: [{}] });
+  assert.equal(recovery.state, "summary-failed");
+  assert.equal(recovery.action.action, "generate-note");
+  assert.equal(meetingRecoveryPresentation({ ...released, state: "note" }, { state: "available", turns: [{}] }).detail, AUDIO_RELEASED_DETAIL);
 });

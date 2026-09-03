@@ -21,6 +21,7 @@ import {
   meetingLockPresentation,
   meetingLockSheetCopy,
   meetingRecoveryPresentation,
+  audioReleasedFact,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -1031,9 +1032,24 @@ function renderMeetingNoteItems(claims, claimEvidence) {
   `;
 }
 
-function renderMeetingNote(note, claimEvidence) {
+// Refit R23: a note that was not created, or is being created, is a state
+// of the note area, not a reason to render nothing there. The recovery
+// presentation (view-model.mjs) already names both states; before this the
+// document dropped them because they are non-blocking (the transcript is
+// still readable) and the note area only knew "transcript-only".
+const INLINE_NOTE_RECOVERY_STATES = ["generating", "summary-failed", "summary-failed-no-source"];
+
+function renderMeetingNote(note, claimEvidence, recovery = null) {
   const presentation = meetingNotePresentation(note);
   if (presentation.state === "empty") {
+    if (recovery && INLINE_NOTE_RECOVERY_STATES.includes(recovery.state)) {
+      return `
+        <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
+          <p id="meeting-note-heading" class="empty-note-state">${escapeHtml(recovery.title)}</p>
+          <p class="doc-fact">${escapeHtml(recovery.detail)}</p>
+        </section>
+      `;
+    }
     if (note?.state !== "transcript-only") return "";
     return `
       <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading">
@@ -1287,8 +1303,8 @@ function renderMeetingPane() {
         </div>
         <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(note?.state ? humanize(note.state) : "Loading note")}</p>
         ${renderMeetingCapturePauses(note?.capturePauses)}
-        ${recovery?.state === "audio-released" ? `<p class="doc-fact">${escapeHtml(recovery.detail)}</p>` : ""}
-        ${renderMeetingNote(note, claimEvidence)}
+        ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
+        ${renderMeetingNote(note, claimEvidence, recovery)}
         ${renderGenerateNote(note, recovery)}
         ${renderTranscriptRetryAction(note, transcript, recovery)}
         ${renderRetainedAudioPlayback(playback)}
@@ -1370,8 +1386,13 @@ function renderRetainedAudioPlayback(playback) {
   `;
 }
 
+// The control stays on screen through a failed attempt (it is the retry) and
+// through a running one (disabled, "Generating note…"); it leaves only when
+// the document itself is replaced by a needs-attention pane (refit R23).
+const GENERATE_CONTROL_RECOVERY_STATES = ["audio-released", "summary-failed", "generating"];
+
 function renderGenerateNote(note, recovery = meetingRecoveryPresentation(note, state.selected?.transcript, state.generatingMeetingId)) {
-  if (recovery && recovery.state !== "audio-released") return "";
+  if (recovery && !GENERATE_CONTROL_RECOVERY_STATES.includes(recovery.state)) return "";
   const control = noteGenerationPresentation(note, state.generatingMeetingId);
   if (!control) return "";
   return `
