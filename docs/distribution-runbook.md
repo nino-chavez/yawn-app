@@ -1,5 +1,51 @@
 # Yawn distribution runbook
 
+## 0.6.1 release receipt
+
+**0.6.1 was released on 2026-09-03 as a visual-fidelity patch for the Tonal
+Ledger meeting window.** The artifact was built from `main` commit `3e2be45`.
+The production UI passed the 25-check WKWebView geometry contract, the full UI
+harness, and a cold screenshot review against the selected reference before
+the release version was cut.
+
+The signed artifact is `Yawn-0.6.1-macos-arm64.dmg`, 550,743,801 bytes, with
+SHA-256 `68548aaca254d39798b032d960c447a7deb6886fa4bc33b6979ea71dba93cb90`.
+Apple accepted app submission `5c64ff27-8d91-4064-b558-4c4d404ac4f0` and DMG
+submission `c4a841ba-1612-4767-9695-39750db83a4a`. Both artifacts were stapled,
+Gatekeeper accepted them with `source=Notarized Developer ID`, and the signed
+release verifier passed with 199 arm64-compatible Mach-O files under the
+`internal-alpha` admission.
+
+The public installer URL returned 200 with the recorded byte count, disk-image
+content type, and immutable cache control. Landing-site commit `7f446a6` was
+manually deployed to Cloudflare Pages as production deployment
+`f8045d3e-288a-4ac0-a4ed-e2fd50f3488a`. Both that deployment and
+`yawn-site.pages.dev` showed version 0.6.1, the exact installer URL, the recorded
+checksum, and the `Internal alpha` label.
+
+`/Applications/Yawn.app` reports version 0.6.1, passes strict code-signature,
+staple, and Gatekeeper verification, and its main executable matches the frozen
+release hash. The installed sparse-meeting state is recorded in
+`docs/evidence/screen-reviews/captures/tonal-ledger-fidelity-2026-09-03/installed-0.6.1-dark.png`.
+The replaced 0.6.0 app remains recoverable at
+`/Users/nino/.Trash/Yawn-0.6.0-replaced-2026-09-03.app`; no public installer was
+deleted.
+
+## 0.6.0 superseded release receipt
+
+**0.6.0 was released on 2026-09-03 with the first Tonal Ledger shell, then
+superseded by 0.6.1 after installed-window review found that its text-button
+padding and document spacing did not match the approved design.** It was built
+from `main` commit `f4a11ff`.
+
+The signed artifact is `Yawn-0.6.0-macos-arm64.dmg`, 550,312,865 bytes, with
+SHA-256 `8fca220963ce80da05f9aa50dba283b7582cc2da0ddddcdf65d4f0de38cb59ee`.
+Apple accepted app submission `fab52b73-872c-4759-ae1b-957ca8c98dfc` and DMG
+submission `0dd23d64-5df7-4c7a-b97c-5c16da37b088`. Landing-site commit
+`b4be6ed` was deployed to Cloudflare Pages as production deployment
+`4840ba9a-a7d4-4676-8901-4627c983dbc2`. The immutable 0.6.0 installer remains
+public for release archaeology, but the landing page no longer offers it.
+
 ## 0.5.9 release receipt
 
 **0.5.9 was released on 2026-08-19 with queued local transcription between
