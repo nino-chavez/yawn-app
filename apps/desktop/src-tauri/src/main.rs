@@ -296,6 +296,11 @@ struct ApplicationState {
     // no catalog entry, weights not yet downloaded) is cheap to re-derive and
     // must retry so a model installed mid-session activates without restart.
     note_projector: Mutex<Option<Arc<dyn NoteProjector>>>,
+    /// Presentation-only note-generation availability. Code-sign validation
+    /// of the bundled runtime is expensive enough to freeze meeting
+    /// navigation when repeated, while the generate path independently
+    /// re-verifies the runtime and model immediately before spawning.
+    note_generation_admission: Arc<Mutex<Option<NoteGenerationAdmission>>>,
     /// Roadmap intake I5. At most one outstanding single-use confirmation for
     /// one action on one locked meeting. Held beside the library rather than
     /// inside it because minting one runs a human-scale prompt, which must
@@ -340,6 +345,7 @@ impl Default for ApplicationState {
             preview_profile: Mutex::new(PreviewProfileSnapshot::unavailable()),
             preview_enrollment: Mutex::new(PreviewEnrollmentSurface::unavailable()),
             note_projector: Mutex::new(None),
+            note_generation_admission: Arc::new(Mutex::new(None)),
             locked_actions: Mutex::new(meeting_lock::LockedActionAuthority::default()),
             confirmation: Arc::new(operator_confirmation::DeviceOwnerConfirmation),
             verified_manifest_cache: Mutex::new(HashMap::new()),
@@ -2588,6 +2594,45 @@ fn cached_verified_manifest(
     Ok(manifest)
 }
 
+type NoteGenerationAdmission = (bool, Option<String>);
+
+/// Reuses the note-generation availability answer within one app session.
+/// The generate path performs its own full model and runtime admission before
+/// spawning, so this cache only keeps an expensive presentation fact off the
+/// meeting-navigation path; it cannot authorize a generation run.
+fn cached_note_generation_admission(
+    cache: &Mutex<Option<NoteGenerationAdmission>>,
+    derive: impl FnOnce() -> NoteGenerationAdmission,
+) -> NoteGenerationAdmission {
+    let Ok(mut cached) = cache.lock() else {
+        return derive();
+    };
+    if let Some(admission) = cached.as_ref() {
+        return admission.clone();
+    }
+    let admission = derive();
+    *cached = Some(admission.clone());
+    admission
+}
+
+fn invalidate_note_generation_admission(cache: &Mutex<Option<NoteGenerationAdmission>>) {
+    if let Ok(mut cached) = cache.lock() {
+        *cached = None;
+    }
+}
+
+fn note_generation_admission_for(state: &ApplicationState) -> NoteGenerationAdmission {
+    cached_note_generation_admission(&state.note_generation_admission, || {
+        let bridge = product_coordinator::WorkerProcessNoteGenerationBridge::new(
+            Arc::new(product_coordinator::ProcessWorkerPort::new(
+                state.worker.clone(),
+            )),
+            state.storage.clone(),
+        );
+        bridge.admission_check()
+    })
+}
+
 fn verified_model_catalog(
     manifest_path: &Path,
     manifest: &RuntimeManifest,
@@ -3049,6 +3094,7 @@ fn install_note_model(
                     if let Ok(mut library) = state.preview_library.lock() {
                         *library = None;
                     }
+                    invalidate_note_generation_admission(&state.note_generation_admission);
                     state.note_model_install_active.store(false, Ordering::SeqCst);
                 }
                 Err(error) => {
@@ -3131,6 +3177,7 @@ fn remove_note_model(
     if let Ok(mut cached) = state.note_projector.lock() {
         *cached = None;
     }
+    invalidate_note_generation_admission(&state.note_generation_admission);
     if let Ok(mut library) = state.preview_library.lock() {
         *library = None;
     }
@@ -5375,22 +5422,32 @@ fn preview_library_open_search_result_for(
 /// action. It is absent for every unlocked meeting, which is the ordinary
 /// case, and a locked meeting without it comes back as `state: "locked"`
 /// holding no content and no capability.
-#[tauri::command]
+/// `(async)` keeps the first, uncached admission check off the macOS event
+/// loop. Later opens reuse the presentation-only result below.
+#[tauri::command(async)]
 fn library_open_note(
     handle: String,
     lock_token: Option<String>,
     state: State<'_, ApplicationState>,
+) -> library_reader::LibraryNoteResponse {
+    library_open_note_for(handle, lock_token, &state)
+}
+
+fn library_open_note_for(
+    handle: String,
+    lock_token: Option<String>,
+    state: &ApplicationState,
 ) -> library_reader::LibraryNoteResponse {
     let Ok(_command) = state.command_lock.lock() else {
         return library_reader::LibraryReader::unavailable_note("");
     };
     // A detail view is a playback boundary: reopening it must never leave an
     // earlier recording playing behind a different meeting.
-    stop_owned_audio_playback(&state);
+    stop_owned_audio_playback(state);
     // Spent before the library is touched, so a token is consumed exactly once
     // whether or not the open then succeeds.
     let unlocked = consume_locked_action(
-        &state,
+        state,
         lock_token.as_deref(),
         meeting_lock::LockedAction::Open,
     );
@@ -5410,13 +5467,10 @@ fn library_open_note(
     // rides the note response and what it may and may not decide.
     response.can_confirm_operator = state.confirmation.available();
 
-    // Compute note generation availability. This reflects live storage state
-    // so a model installed or removed since startup changes the answer.
-    let bridge = product_coordinator::WorkerProcessNoteGenerationBridge::new(
-        Arc::new(product_coordinator::ProcessWorkerPort::new(state.worker.clone())),
-        state.storage.clone(),
-    );
-    let (available, reason) = bridge.admission_check();
+    // This presentation fact is cached for navigation. Model changes and a
+    // replaced storage context invalidate it; the actual generate path still
+    // performs full runtime and model admission immediately before spawning.
+    let (available, reason) = note_generation_admission_for(state);
     response.note_generation_available = available;
     response.note_generation_unavailable_reason = reason;
 
@@ -6596,7 +6650,7 @@ fn authorize_locked_action(
 /// authorizes. `None` covers every failure the gate treats identically: no
 /// token, an unknown one, one already spent, one minted for another action.
 fn consume_locked_action(
-    state: &State<'_, ApplicationState>,
+    state: &ApplicationState,
     token: Option<&str>,
     action: meeting_lock::LockedAction,
 ) -> Option<String> {
@@ -6757,7 +6811,9 @@ fn library_export_meeting(
     )
 }
 
-#[tauri::command]
+/// Transcript reads are normally small, but snapshot revalidation scales with
+/// the retained library; keep that work off the macOS event loop as well.
+#[tauri::command(async)]
 fn library_open_transcript(
     handle: String,
     state: State<'_, ApplicationState>,
@@ -7937,6 +7993,7 @@ fn initialize_application(app: AppHandle, retry: bool) {
         finish_startup_failure(&state, retry, StartupFailure::Diagnostic, &error);
         return;
     }
+    invalidate_note_generation_admission(&state.note_generation_admission);
     *state.storage.lock().expect("storage context lock") = Some(storage_context.clone());
     set_startup_message(&state, "Checking saved meetings on this Mac.");
 
@@ -10782,6 +10839,72 @@ fn io_error(error: io::Error) -> Box<dyn std::error::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repeated_meeting_opens_reuse_note_generation_admission() {
+        let cache = Mutex::new(None);
+        let checks = Mutex::new(0_u32);
+
+        let first = cached_note_generation_admission(&cache, || {
+            *checks.lock().unwrap() += 1;
+            (true, None)
+        });
+        let second = cached_note_generation_admission(&cache, || {
+            *checks.lock().unwrap() += 1;
+            (true, None)
+        });
+
+        assert_eq!(first, (true, None));
+        assert_eq!(second, first);
+        assert_eq!(*checks.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn note_model_change_invalidates_cached_generation_admission() {
+        let cache = Mutex::new(None);
+        let checks = Mutex::new(0_u32);
+
+        let unavailable = cached_note_generation_admission(&cache, || {
+            *checks.lock().unwrap() += 1;
+            (false, Some("Download a note model in Settings first.".into()))
+        });
+        invalidate_note_generation_admission(&cache);
+        let available = cached_note_generation_admission(&cache, || {
+            *checks.lock().unwrap() += 1;
+            (true, None)
+        });
+
+        assert!(!unavailable.0);
+        assert_eq!(available, (true, None));
+        assert_eq!(*checks.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn meeting_open_uses_cached_generation_admission() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(
+            &storage,
+            "cached-admission-meeting",
+            10,
+            AudioState::Released,
+            "synthetic transcript",
+        );
+        let state = ApplicationState::default();
+        *state.storage.lock().unwrap() = Some(StorageContext {
+            storage: storage.clone(),
+            resource_root: PathBuf::new(),
+            manifest_path: PathBuf::new(),
+            diagnostics: PathBuf::new(),
+        });
+        ensure_app_data_writer_lock(&state, &storage).unwrap();
+        let snapshot = library_snapshot_for(&state);
+        *state.note_generation_admission.lock().unwrap() = Some((true, None));
+
+        let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
+
+        assert!(opened.note_generation_available);
+        assert_eq!(opened.note_generation_unavailable_reason, None);
+    }
 
     #[test]
     fn a_meeting_open_for_reading_does_not_block_model_changes() {
