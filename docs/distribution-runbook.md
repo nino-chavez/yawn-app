@@ -1,5 +1,44 @@
 # Yawn distribution runbook
 
+## 0.6.2 release receipt
+
+**0.6.2 was released on 2026-09-03 as a performance patch for meeting-library
+startup and refresh.** The artifact was built from `main` commit `e0a4ac9`. The
+change reuses an accepted in-memory library projection when its source files are
+unchanged, avoids hashing the 8.06 GB note model for read-only projection, and
+runs snapshot work off the macOS event loop. The full Rust workspace and UI
+harness passed before the release was cut.
+
+With the same eight-meeting library and installed note model, the previous
+0.6.1 app remained busy for about 39 seconds after a cold launch. Two
+release-shaped 0.6.2 launches settled near idle in about five seconds. The
+installed notarized build repeated that result: its main process used 5.6% CPU
+at four seconds, 1.1% at five seconds, and 0.4–1.1% from six through nine
+seconds. These are same-machine CPU timings, not a direct user-task latency or
+acceptance measurement.
+
+The signed artifact is `Yawn-0.6.2-macos-arm64.dmg`, 555,660,774 bytes, with
+SHA-256 `49cf46d440a5e2a8cc34562877ea00500fa395e8d00db8f7abb6623736d06ac7`.
+Apple accepted app submission `c6ee6c2d-9c53-4202-aa88-d34a2f8f2a15` and DMG
+submission `f57b7bc1-4feb-45e0-9bd2-4a89b7d265cf`. Both artifacts were stapled,
+Gatekeeper accepted them with `source=Notarized Developer ID`, and the signed
+release verifier passed with 199 arm64-compatible Mach-O files under the
+`internal-alpha` admission.
+
+The public installer URL returned 200 with the recorded byte count,
+disk-image content type, byte-range support, and immutable cache control.
+Landing-site commit `df769f1` was manually deployed to Cloudflare Pages as
+production deployment `94e86015-262e-4a4a-854c-53753540518d`. Both that
+deployment and `yawn-site.pages.dev` showed version 0.6.2, the exact installer
+URL, the recorded checksum, and the performance release note; the public app
+card matched.
+
+`/Applications/Yawn.app` reports version 0.6.2, passes strict code-signature,
+staple, and Gatekeeper verification, and its main executable matches the frozen
+release hash. The replaced 0.6.1 app remains recoverable at
+`/Users/nino/.Trash/Yawn-0.6.1-replaced-2026-09-03.app`. No public installer was
+deleted.
+
 ## 0.6.1 release receipt
 
 **0.6.1 was released on 2026-09-03 as a visual-fidelity patch for the Tonal
