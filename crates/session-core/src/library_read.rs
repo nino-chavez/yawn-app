@@ -141,7 +141,6 @@ pub struct LibraryProjection {
     excluded_meeting_ids: HashSet<String>,
     limits: ReadLimits,
     metadata: MetadataState,
-    projector: Arc<dyn NoteProjector>,
     hits: RefCell<BTreeMap<String, SealedHit>>,
 }
 
@@ -211,7 +210,9 @@ impl LibraryRow {
     /// not first validate against canonical files, which is what keeps
     /// `corpus_index` a rebuildable cache rather than a second authority. Claims
     /// are deliberately absent: they come from an out-of-process projector, not
-    /// from a file, so they are recomputed rather than cached.
+    /// from a file. Accepted claims may be replayed inside this in-memory
+    /// projection to validate their digest-bound source without relaunching the
+    /// projector, but they are never persisted into the derived cache.
     pub fn derived(&self) -> DerivedRow<'_> {
         DerivedRow {
             meeting_id: &self.meeting_id,
@@ -285,6 +286,12 @@ struct StoredClaim {
 struct StoredLocator {
     projected: crate::note_projection::Locator,
     source_turn_index: u32,
+}
+
+#[derive(Clone, Copy)]
+enum ClaimSource<'a> {
+    Projector(&'a dyn NoteProjector),
+    Accepted(&'a [LibraryRow]),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -434,6 +441,34 @@ impl LibraryProjection {
         projector: Arc<dyn NoteProjector>,
         excluded_meeting_ids: &HashSet<String>,
     ) -> Result<Self, LibraryReadError> {
+        Self::rebuild_with_claim_source_excluding(
+            storage,
+            limits,
+            ClaimSource::Projector(projector.as_ref()),
+            excluded_meeting_ids,
+        )
+    }
+
+    fn rebuild_with_accepted_claims_excluding(
+        storage: &StorageRoot,
+        limits: ReadLimits,
+        accepted: &[LibraryRow],
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> Result<Self, LibraryReadError> {
+        Self::rebuild_with_claim_source_excluding(
+            storage,
+            limits,
+            ClaimSource::Accepted(accepted),
+            excluded_meeting_ids,
+        )
+    }
+
+    fn rebuild_with_claim_source_excluding(
+        storage: &StorageRoot,
+        limits: ReadLimits,
+        claim_source: ClaimSource<'_>,
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> Result<Self, LibraryReadError> {
         if limits.max_meetings == 0
             || limits.max_total_bytes == 0
             || limits.max_transcript_bytes == 0
@@ -475,7 +510,7 @@ impl LibraryProjection {
         let mut rows = Vec::new();
         let mut quarantined = 0;
         for (_, directory) in &directories {
-            match inspect_meeting(directory, limits, &mut total, projector.as_ref()) {
+            match inspect_meeting(directory, limits, &mut total, claim_source) {
                 Ok(Some(row)) => rows.push(row),
                 Ok(None) => continue,
                 Err(MeetingInspectionError::CapacityExceeded) => {
@@ -523,7 +558,6 @@ impl LibraryProjection {
                     excluded_meeting_ids: excluded_meeting_ids.clone(),
                     limits,
                     metadata: metadata.unavailable_after_relative_validation(),
-                    projector,
                     hits: RefCell::new(BTreeMap::new()),
                 });
             }
@@ -535,7 +569,6 @@ impl LibraryProjection {
             excluded_meeting_ids: excluded_meeting_ids.clone(),
             limits,
             metadata,
-            projector,
             hits: RefCell::new(BTreeMap::new()),
         })
     }
@@ -896,10 +929,10 @@ impl LibraryProjection {
         if excluded_meeting_ids != &self.excluded_meeting_ids {
             return Err(LibraryReadError::SnapshotStale);
         }
-        let rebuilt = Self::rebuild_with_projector_excluding(
+        let rebuilt = Self::rebuild_with_accepted_claims_excluding(
             storage,
             self.limits,
-            self.projector.clone(),
+            &self.rows,
             excluded_meeting_ids,
         )?;
         if rebuilt.rows != self.rows
@@ -953,10 +986,10 @@ impl LibraryProjection {
             .ok_or(LibraryReadError::SnapshotStale)?;
         let rebuilt = storage
             .map(|storage| {
-                Self::rebuild_with_projector_excluding(
+                Self::rebuild_with_accepted_claims_excluding(
                     storage,
                     self.limits,
-                    self.projector.clone(),
+                    &self.rows,
                     &self.excluded_meeting_ids,
                 )
             })
@@ -1136,10 +1169,10 @@ impl LibraryProjection {
         let locator = locators
             .get(locator_ordinal)
             .ok_or(LibraryReadError::InvalidRequest)?;
-        let rebuilt = Self::rebuild_with_projector_excluding(
+        let rebuilt = Self::rebuild_with_accepted_claims_excluding(
             storage,
             self.limits,
-            self.projector.clone(),
+            &self.rows,
             excluded_meeting_ids,
         )
         .map_err(|_| LibraryReadError::SnapshotStale)?;
@@ -1212,7 +1245,7 @@ fn inspect_meeting(
     directory: &Path,
     limits: ReadLimits,
     total: &mut u64,
-    projector: &dyn NoteProjector,
+    claim_source: ClaimSource<'_>,
 ) -> Result<Option<LibraryRow>, MeetingInspectionError> {
     let _meeting_bytes = bounded_read(
         &directory.join("meeting.json"),
@@ -1408,46 +1441,64 @@ fn inspect_meeting(
                 .clone()
                 .ok_or(MeetingInspectionError::Quarantine)?,
         };
-        let transcript_text: Vec<_> = turns
-            .iter()
-            .filter(|turn| !turn.gated)
-            .map(|turn| turn.text.clone())
-            .collect();
-        let claims =
-            project_claims(projector, &request, &transcript_text).map_err(|error| match error {
-                ProjectionError::ArtifactMissing
-                | ProjectionError::ArtifactInvalid
-                | ProjectionError::ArtifactChanged => MeetingInspectionError::Quarantine,
-                ProjectionError::CapacityExceeded => MeetingInspectionError::CapacityExceeded,
-                ProjectionError::Unavailable => MeetingInspectionError::Unavailable,
-            })?;
-        let claims = claims
-            .into_iter()
-            .map(|claim| {
-                let locators = claim
-                    .locators
+        let claims = match claim_source {
+            ClaimSource::Accepted(rows) => rows
+                .iter()
+                .find(|row| {
+                    row.meeting_id == request.meeting_id
+                        && row.note_json_sha256.as_deref()
+                            == Some(request.note_json_sha256.as_str())
+                        && row.note_markdown_sha256.as_deref()
+                            == Some(request.note_markdown_sha256.as_str())
+                        && row.transcript_sha256.as_deref()
+                            == Some(request.transcript_sha256.as_str())
+                })
+                .map(|row| row.claims.clone())
+                .ok_or(MeetingInspectionError::Unavailable)?,
+            ClaimSource::Projector(projector) => {
+                let transcript_text: Vec<_> = turns
+                    .iter()
+                    .filter(|turn| !turn.gated)
+                    .map(|turn| turn.text.clone())
+                    .collect();
+                project_claims(projector, &request, &transcript_text)
+                    .map_err(|error| match error {
+                        ProjectionError::ArtifactMissing
+                        | ProjectionError::ArtifactInvalid
+                        | ProjectionError::ArtifactChanged => MeetingInspectionError::Quarantine,
+                        ProjectionError::CapacityExceeded => {
+                            MeetingInspectionError::CapacityExceeded
+                        }
+                        ProjectionError::Unavailable => MeetingInspectionError::Unavailable,
+                    })?
                     .into_iter()
-                    .map(|projected| {
-                        let source_turn_index = turns
-                            .iter()
-                            .find(|turn| turn.visible_index == Some(projected.turn))
-                            .map(|turn| turn.index)
-                            .ok_or(MeetingInspectionError::Unavailable)?;
-                        Ok(StoredLocator {
-                            projected,
-                            source_turn_index,
+                    .map(|claim| {
+                        let locators = claim
+                            .locators
+                            .into_iter()
+                            .map(|projected| {
+                                let source_turn_index = turns
+                                    .iter()
+                                    .find(|turn| turn.visible_index == Some(projected.turn))
+                                    .map(|turn| turn.index)
+                                    .ok_or(MeetingInspectionError::Unavailable)?;
+                                Ok(StoredLocator {
+                                    projected,
+                                    source_turn_index,
+                                })
+                            })
+                            .collect::<Result<_, MeetingInspectionError>>()?;
+                        Ok(StoredClaim {
+                            ordinal: claim.ordinal,
+                            sha256: claim.sha256,
+                            claim_type: claim.claim_type,
+                            text: claim.text,
+                            locators,
                         })
                     })
-                    .collect::<Result<_, MeetingInspectionError>>()?;
-                Ok(StoredClaim {
-                    ordinal: claim.ordinal,
-                    sha256: claim.sha256,
-                    claim_type: claim.claim_type,
-                    text: claim.text,
-                    locators,
-                })
-            })
-            .collect::<Result<Vec<_>, MeetingInspectionError>>()?;
+                    .collect::<Result<Vec<_>, MeetingInspectionError>>()?
+            }
+        };
         (
             Some(note.json.sha256.clone()),
             Some(note.markdown.sha256.clone()),
@@ -2150,7 +2201,23 @@ mod tests {
     }
 
     #[test]
-    fn current_claims_use_fixture_projection_preserve_duplicate_ordinals_and_reinspect_on_open() {
+    fn unchanged_snapshot_validation_reuses_accepted_claims_without_calling_the_projector() {
+        let fixture = Fixture::new();
+        fixture.ready_meeting("meeting-a", 10);
+        let projector = Arc::new(FixtureProjector::new(ProjectorMode::Success));
+        let projection = LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            ReadLimits::default(),
+            projector.clone(),
+        )
+        .unwrap();
+        projector.set(ProjectorMode::Transport);
+
+        assert_eq!(projection.validate_snapshot(&fixture.storage), Ok(()));
+    }
+
+    #[test]
+    fn current_claims_preserve_duplicate_ordinals_and_revalidate_sources_without_relaunching() {
         let fixture = Fixture::new();
         fixture.ready_meeting("meeting-a", 10);
         let projector = Arc::new(FixtureProjector::new(ProjectorMode::Success));
@@ -2176,7 +2243,10 @@ mod tests {
             );
         }
         projector.set(ProjectorMode::Refusal("artifact-changed"));
-        assert_stale!(projection.open(&fixture.storage, &claim_hits[0]));
+        assert!(
+            projection.open(&fixture.storage, &claim_hits[0]).is_ok(),
+            "an already accepted claim remains readable when its digest-bound artifacts are unchanged"
+        );
 
         let fixture = Fixture::new();
         let directory = fixture.ready_meeting("meeting-a", 10);

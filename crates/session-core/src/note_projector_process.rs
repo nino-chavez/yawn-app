@@ -486,10 +486,15 @@ fn note_runtime_model_id(file: &NoteModelFile) -> String {
 /// `generate` manifest here is how Rust learns which model the bundle pins
 /// without handing that manifest to this child; the signed model catalog
 /// carries no note-model role yet, so it is the only build-time pin available.
-/// `None` is refusal, not an error: the caller chooses whether refusal is
-/// cacheable.  Success may be held for the process lifetime (the projector
-/// re-verifies its manifest on every launch); refusal must be re-derived so a
-/// catalog or model that arrives mid-session admits without a restart.
+/// `note.project` never executes the model: it uses the generate manifest only
+/// to bind the deterministic projection role to the same installed runtime.
+/// Admission therefore verifies the install receipt, file inventory, and byte
+/// sizes without hashing the weights. The separate generate path content-
+/// verifies every model file before it executes one. `None` is refusal, not an
+/// error: the caller chooses whether refusal is cacheable. Success may be held
+/// for the process lifetime (the projector re-verifies its manifest on every
+/// launch); refusal must be re-derived so a catalog or model that arrives
+/// mid-session admits without a restart.
 pub fn admit_note_projector(
     storage: &StorageRoot,
     catalog: &ModelCatalog,
@@ -528,7 +533,7 @@ fn admitted_process_projector(
     }
     let directory = storage.resolve(&entry.relative_path()).ok()?;
     entry
-        .verify_directory(&directory, ModelVerification::Contents)
+        .verify_directory(&directory, ModelVerification::Metadata)
         .ok()?;
     verify_manifest(project_manifest_path, PROJECT_ROLE).ok()?;
     Some(ProcessNoteProjector::product(
@@ -3987,6 +3992,29 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         assert!(fixture.is_admitted());
         fs::write(fixture.model_directory().join("extra.bin"), b"extra").unwrap();
         assert!(!fixture.is_admitted());
+    }
+
+    #[test]
+    fn projector_admission_does_not_hash_model_bytes_it_never_executes() {
+        let fixture = generative_fixture("descriptor-binding");
+        let weights = fixture.model_directory().join("model.safetensors");
+        let installed = fs::read(&weights).unwrap();
+        fs::write(&weights, vec![b'x'; installed.len()]).unwrap();
+
+        assert!(
+            fixture.is_admitted(),
+            "read-only note projection must validate the installed model inventory without hashing 8 GB of weights"
+        );
+        assert!(
+            admit_note_generator(
+                &fixture.storage,
+                &fixture.catalog,
+                &fixture.generate_manifest_path,
+                ModelVerification::Contents,
+            )
+            .is_none(),
+            "the path that actually executes the model must still reject changed bytes"
+        );
     }
 
     #[test]

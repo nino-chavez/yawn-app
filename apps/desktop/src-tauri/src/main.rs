@@ -3643,7 +3643,7 @@ fn library_set_meeting_title(
 /// invokes and then refuses. `library_snapshot` is the one call the Home
 /// screen already makes on every load and on every search-box debounce, so
 /// piggybacking the flag bit here costs one more `Path::is_file` next to a
-/// storage-backed library rebuild that already runs on this exact call,
+/// storage-backed library revalidation that already runs on this exact call,
 /// rather than adding a third command whose only job is one boolean.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3662,7 +3662,11 @@ struct LibrarySnapshotResponse {
     first_run_sheet_seen: bool,
 }
 
-#[tauri::command]
+/// `(async)` is load-bearing. A cold snapshot may still scan retained meeting
+/// artifacts and admit the read-only projector; Tauri's default synchronous
+/// command context would run that work on the macOS event loop and freeze the
+/// window until it completed.
+#[tauri::command(async)]
 fn library_snapshot(
     filter: Option<library_reader::LibraryFilterArgs>,
     state: State<'_, ApplicationState>,
@@ -3723,8 +3727,22 @@ fn library_snapshot_with(
         Ok(coordination) => coordination,
         Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
     };
-    let projector = admitted_note_projector(state);
     with_meeting_storage_sequence(&coordination, |active_meeting_ids| {
+        let filter = filter.to_filter();
+        let mut library = match state.preview_library.lock() {
+            Ok(library) => library,
+            Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
+        };
+        if let Some(reader) = library.as_mut() {
+            let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
+            if snapshot.state != "stale" {
+                return snapshot;
+            }
+            *library = None;
+        }
+        drop(library);
+
+        let projector = admitted_note_projector(state);
         let mut reader = match library_reader::LibraryReader::rebuild_with_projector(
             storage,
             active_meeting_ids,
@@ -3733,7 +3751,7 @@ fn library_snapshot_with(
             Ok(reader) => reader,
             Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
         };
-        let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter.to_filter());
+        let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
         let Ok(mut library) = state.preview_library.lock() else {
             return library_reader::LibraryReader::unavailable_snapshot();
         };
@@ -12563,6 +12581,49 @@ mod tests {
         )
     }
 
+    fn write_ready_note_fixture(storage: &StorageRoot, meeting_id: &str) {
+        let transcript_path = write_transcript_fixture(
+            storage,
+            meeting_id,
+            10,
+            AudioState::Retained,
+            "synthetic note source",
+        );
+        let directory = transcript_path.parent().unwrap().parent().unwrap();
+        create_private_dir(&directory.join("notes")).unwrap();
+        let note_json = b"{}\n";
+        let note_markdown = b"# Synthetic note\n";
+        let note_json_relative = format!(
+            "notes/{:x}.json",
+            Sha256::digest(note_json.as_slice())
+        );
+        let note_markdown_relative = format!(
+            "notes/{:x}.md",
+            Sha256::digest(note_markdown.as_slice())
+        );
+        let note_json_path = directory.join(&note_json_relative);
+        let note_markdown_path = directory.join(&note_markdown_relative);
+        durable_create_new(&note_json_path, note_json).unwrap();
+        durable_create_new(&note_markdown_path, note_markdown).unwrap();
+
+        let mut meeting = load_meeting(directory).unwrap();
+        meeting.lifecycle = MeetingLifecycle::Ready;
+        meeting.artifacts.current_note = Some(
+            local_meeting_notes_session_core::meeting::NoteRevisionRef {
+                json: artifact_ref(directory, &note_json_relative).unwrap(),
+                markdown: artifact_ref(directory, &note_markdown_relative).unwrap(),
+                source_transcript_sha256: meeting
+                    .artifacts
+                    .current_transcript
+                    .as_ref()
+                    .unwrap()
+                    .sha256
+                    .clone(),
+            },
+        );
+        write_meeting(directory, &meeting).unwrap();
+    }
+
     pub(crate) fn write_transcript_fixture_with_turns(
         storage: &StorageRoot,
         meeting_id: &str,
@@ -12760,6 +12821,61 @@ mod tests {
         // No flag was ever written for this operator -- the point is that
         // `total` alone is enough to suppress the sheet regardless.
         assert!(!response.first_run_sheet_seen);
+    }
+
+    struct CountingProjector(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl NoteProjector for CountingProjector {
+        fn project(
+            &self,
+            request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+        ) -> Result<
+            Vec<u8>,
+            local_meeting_notes_session_core::note_projection::ProjectTransportError,
+        > {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(format!(
+                "{{\"schema\":\"note-projection-result/1\",\"request_id\":\"{}\",\"operation\":\"note.project\",\"outcome\":\"succeeded\",\"projection\":{{\"schema\":\"note-claim-projection/1\",\"note_json_sha256\":\"{}\",\"note_markdown_sha256\":\"{}\",\"transcript_sha256\":\"{}\",\"claims\":[]}},\"failure\":null}}\n",
+                request.request_id,
+                request.note_json_sha256,
+                request.note_markdown_sha256,
+                request.transcript_sha256,
+            )
+            .into_bytes())
+        }
+    }
+
+    #[test]
+    fn unchanged_library_snapshots_reuse_the_projection_instead_of_reprojecting_notes() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&storage, &meeting_id);
+        let state = vocabulary_command_state(&storage);
+        let projections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        *state.note_projector.lock().unwrap() = Some(Arc::new(CountingProjector(
+            Arc::clone(&projections),
+        )));
+
+        let _first = library_snapshot_for(&state);
+        assert_eq!(projections.load(Ordering::SeqCst), 1);
+
+        let _second = library_snapshot_for(&state);
+        assert_eq!(
+            projections.load(Ordering::SeqCst),
+            1,
+            "an unchanged refresh must revalidate and reissue handles from the cached projection"
+        );
+    }
+
+    #[test]
+    fn library_snapshot_runs_off_the_macos_event_loop() {
+        let source = include_str!("main.rs");
+        let command = source.find("fn library_snapshot(").unwrap();
+        let annotation = &source[command.saturating_sub(80)..command];
+        assert!(
+            annotation.contains("#[tauri::command(async)]"),
+            "library scans and projection admission must never run inside Tauri's main-thread command context"
+        );
     }
 
     /// Requirement 1, the dismissal path: `dismiss_first_run_sheet` writes the
