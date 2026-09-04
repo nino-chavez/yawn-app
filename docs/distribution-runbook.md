@@ -1,5 +1,51 @@
 # Yawn distribution runbook
 
+## 0.6.3 release receipt
+
+**0.6.3 was released on 2026-09-04 as a performance patch for switching
+between meetings.** The artifact was built from `main` commit `b6e3008`. The
+detail view now reuses the note-generation availability answer within one app
+session and invalidates it when the model or storage context changes. The
+actual generation path still performs its full runtime and model admission
+immediately before spawning, so the navigation cache cannot authorize work.
+Meeting-note and transcript opens also run off the macOS event loop. The 269
+desktop tests, full Rust workspace, UI harness, Clippy, and release-bundle
+checks passed before the release was cut.
+
+With the same eight-meeting library, six steady-state switches in the installed
+0.6.2 app took 1.30–1.84 seconds. A signed Preview bundle carrying the 0.6.3
+fix took 195–217 milliseconds across six switches. The screenshot-based
+measurement itself cost 116–142 milliseconds, so these are visible-response
+upper bounds rather than pure command timings. The final installed 0.6.3 bundle
+was not re-driven with synthetic UI input; the measured interaction receipt
+belongs to the signed Preview comparison.
+
+The signed artifact is `Yawn-0.6.3-macos-arm64.dmg`, 549,375,672 bytes, with
+SHA-256 `9f7bbf04d95ce7300bea0b27d9066a01365d21619ad385cb48c4242fe5c91c38`.
+Apple accepted app submission `ec8ce000-e1e1-46a0-856a-6baaf00b47f4` and DMG
+submission `18ca2a7d-c716-4abb-8af9-b9515f06dde0`. Both artifacts were stapled,
+Gatekeeper accepted them with `source=Notarized Developer ID`, and an
+independent signed-release verification passed with 199 arm64-compatible
+Mach-O files under the `internal-alpha` admission.
+
+The four immutable transcript-model objects were downloaded from their public
+catalog URLs and matched their sealed byte counts and SHA-256 values before
+signing. The public installer returned 200 with the recorded byte count,
+disk-image content type, byte-range support, and immutable cache control.
+
+Landing-site commit `72ffbb3` was manually deployed to Cloudflare Pages as
+production deployment `91832d6e-df42-467c-b93a-d7f8e069ac34`. Both that
+deployment and `yawn-site.pages.dev` showed version 0.6.3, the exact installer
+URL, the recorded checksum, and the measured switching release note. The
+public app card also rendered version 0.6.3.
+
+`/Applications/Yawn.app` reports version 0.6.3, passes strict code-signature,
+staple, and Gatekeeper verification, and its main executable matches the frozen
+release hash `eee00e581832a8431787f09b7ab898bffd4f164d02c2ad53382597ed96ee291a`.
+The replaced 0.6.2 app remains recoverable at
+`/Users/nino/.Trash/Yawn-0.6.2-replaced-2026-09-04.app`. No public installer was
+deleted.
+
 ## 0.6.2 release receipt
 
 **0.6.2 was released on 2026-09-03 as a performance patch for meeting-library
