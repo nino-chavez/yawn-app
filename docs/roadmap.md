@@ -1565,6 +1565,53 @@ summaries. The current evidence does not establish the first as useful. The
 worker boundary also makes capture the priority, and a live summary would add an
 uncapped interpretation path while the source is still being recorded.
 
+## Open decision — transcription engine floor, macOS 26 — 2026-09-07
+
+Status: open. Not sequenced. Nothing below is scheduled work.
+
+macOS 26 ships an on-device speech engine, `SpeechAnalyzer` with the
+`SpeechTranscriber` module, that needs no model download. Apple's
+documentation lists it as introduced in 26.0 on every platform. Yawn ships a
+minimum of macOS 14.4 and transcribes with mlx-whisper large-v3-turbo through
+the sandboxed Python worker, which is most of the roughly 2 GB first-run
+download and the reason the model store, install receipts, and re-verification
+exist. The [note-runtime decision](note-runtime-decision.md) already declined
+Apple Foundation Models for note generation partly on the same 26 floor, so
+this is the transcription half of a question the product has met once.
+
+The question: keep the 14.4 floor and the bundled whisper runtime, or raise the
+floor to 26 and let the system engine carry transcription. Either answer is a
+product decision, not a technical one, and it stays open until the operator
+takes it.
+
+What has to be true before it can be decided:
+
+- Accuracy on Yawn's own material is measured, not assumed. The only public
+  evidence seen so far is a thirty-second single-speaker dictation demo. Yawn's
+  transcripts are two-leg meeting audio up to an hour long, and the ship gate
+  requires re-measurement on the locked ledger for any engine change.
+- The engine returns word or phrase timing the evidence chain can use. Every
+  generated claim resolves to a span in the retained transcript; an engine that
+  cannot locate text in time cannot feed that chain. Unverified as of this entry.
+- The local vocabulary contract survives. Exact replacements must still project
+  onto notes without rewriting the retained transcript, whatever the engine.
+- The population running macOS 14.4 through 15 is known, or the decision says
+  plainly that it is being made without that number.
+
+What the decision does not include: NVIDIA Parakeet. It is faster in the same
+demo and its model card lists punctuation, 25 languages, and a CC-BY-4.0
+license, but it runs on NeMo or Transformers with no MLX port on the card. That
+is the new runtime class the note-runtime decision refuses, so it is not a
+drop-in and is not a candidate here.
+
+Source of the question: a 2026-08-20 video, "I Cancelled Wispr Flow & Built
+This Instead" (Pat Simmons), which builds a push-to-talk dictation clone on
+`SpeechTranscriber`. It is a dictation demo, not a meeting product, and its
+timings are not evidence for this decision; it is recorded only as the reason
+the question was raised. Checked on 2026-09-07 against
+[Apple's `SpeechAnalyzer` reference](https://developer.apple.com/documentation/speech/speechanalyzer)
+and the [Parakeet v3 model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
+
 ## Ideas this roadmap does not adopt
 
 The Wispr Flow emails also promoted writing styles, reusable dictation snippets,
