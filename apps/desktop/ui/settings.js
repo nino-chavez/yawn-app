@@ -369,9 +369,13 @@ async function useModel(modelId) {
 
 async function refreshTranscriptionEngine() {
   if (!invoke) return;
+  const wasChanging = transcriptionEngine?.operationActive;
   try {
     transcriptionEngine = await invoke("get_transcription_engine_settings");
     transcriptionEngineError = "";
+    if (wasChanging && !transcriptionEngine.operationActive) {
+      await Promise.all([refreshModels(), refreshNoteModels()]);
+    }
   } catch {
     transcriptionEngine = null;
     transcriptionEngineError = "Yawn could not check the speech engine.";

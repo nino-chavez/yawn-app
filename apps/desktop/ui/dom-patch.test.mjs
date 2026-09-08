@@ -173,9 +173,10 @@ test("a disabled Record explains itself, associated with the control via aria-de
     main.indexOf("function renderToolbarRecordControl"),
   );
   // Gate order mirrors canStartMeeting/canOpenStart (view-model.mjs): capture
-  // -not-idle first, then the background-transcription queue, then audio
+  // admission first, then the background-transcription queue, then audio
   // permission -- so the button and its explanation can never disagree about
-  // which condition is actually blocking Record.
+  // which condition is actually blocking Record. A restored transcript is
+  // capture-admissible and therefore falls through to the later gates.
   const captureGateAt = fn.indexOf('capture !== "idle"');
   const queueGateAt = fn.indexOf("backgroundTranscriptionPresentation(snapshot)");
   const permissionGateAt = fn.indexOf("permissionSummary(permission).detail");
@@ -186,16 +187,13 @@ test("a disabled Record explains itself, associated with the control via aria-de
   // copy as a literal in main.js -- one owner for that text.
   assert.match(fn, /processing\.detail/);
   assert.match(fn, /permissionSummary\(permission\)\.detail/);
-  // The three explicit capture-state reasons exist for exactly the states
-  // whose own CAPTURE_COPY detail (view-model.mjs) would contradict a
-  // disabled Record if reused verbatim here (transcript-ready's literally
-  // invites recording another meeting). "recovered-interrupted" already
-  // reads correctly for this purpose, so it is deliberately absent from this
-  // map and falls through to `capturePresentation(snapshot).detail`.
-  assert.match(main, /const RECORD_BLOCKED_CAPTURE_REASON = \{\s*"transcript-ready":/);
-  for (const capture of ["transcript-ready", "transcription-failed", "summary-failed"]) {
+  // A restored transcript reaches queue and permission checks; failed work
+  // retains its own explanation rather than inviting another recording.
+  assert.match(fn, /capture !== "idle" && capture !== "transcript-ready"/);
+  for (const capture of ["transcription-failed", "summary-failed"]) {
     assert.match(main, new RegExp(`"${capture}":\\s*"[^"]+"`));
   }
+  assert.doesNotMatch(main, /RECORD_BLOCKED_CAPTURE_REASON\s*=\s*\{[^}]*"transcript-ready"/s);
   assert.doesNotMatch(main, /RECORD_BLOCKED_CAPTURE_REASON\s*=\s*\{[^}]*"recovered-interrupted"/s);
   assert.match(fn, /capturePresentation\(snapshot\)\.detail/);
 

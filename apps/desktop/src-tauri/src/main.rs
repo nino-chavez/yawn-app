@@ -1292,6 +1292,20 @@ fn sitting_task_active(state: &ApplicationState) -> bool {
         .unwrap_or(true)
 }
 
+/// Arm a new recording from either the empty home state or a restored
+/// transcript. Restoring a transcript leaves the reducer in `TranscriptReady`
+/// so the reader can reopen it after restart; that terminal projection is not
+/// an active capture and must be dismissed in memory before arming.
+fn arm_new_meeting_capture(model: &mut AppModel) -> Result<(), String> {
+    if model.reducer.capture() == CaptureState::TranscriptReady {
+        transition_capture(model, CaptureState::Idle)?;
+    }
+    if model.reducer.capture() != CaptureState::Idle {
+        return Err("A meeting cannot start from the current state.".into());
+    }
+    transition_capture(model, CaptureState::Arming)
+}
+
 #[cfg(target_os = "macos")]
 fn sitting_kind_label(
     kind: local_meeting_notes_session_core::sitting_evidence::SittingKind,
@@ -2284,9 +2298,7 @@ fn start_meeting(
     let (sender, receiver) = mpsc::sync_channel(4);
     let snapshot = {
         let mut model = state.model.lock().expect("application model lock");
-        if model.reducer.startup() != StartupState::Ready
-            || model.reducer.capture() != CaptureState::Idle
-        {
+        if model.reducer.startup() != StartupState::Ready {
             return Err("A meeting cannot start from the current state.".into());
         }
         if !model.retention_operational {
@@ -2302,7 +2314,7 @@ fn start_meeting(
         if sitting_task_active(&state) {
             return Err("Finish the setup recording before starting a meeting.".into());
         }
-        transition_capture(&mut model, CaptureState::Arming)?;
+        arm_new_meeting_capture(&mut model)?;
         model.clear_meeting_projection();
         model.meeting_id = Some(meeting_id.clone());
         *active = Some(CaptureTaskControl {
@@ -3069,14 +3081,8 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
     let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    let capture_active = state
-        .model
-        .lock()
-        .expect("application model lock")
-        .reducer
-        .capture()
-        != CaptureState::Idle;
-    if capture_active || sitting_task_active(&state) || has_pending_transcription_work(&state)
+    let capture = state.model.lock().expect("application model lock").reducer.capture();
+    if !model_change_audio_idle(capture, sitting_task_active(&state)) || has_pending_transcription_work(&state)
         || state.note_model_install_active.load(Ordering::SeqCst) {
         return Err("A speech model cannot be installed while audio work is active.".into());
     }
@@ -3228,7 +3234,7 @@ fn remove_transcript_model(
         matches!(
             model.reducer.startup(),
             StartupState::Ready | StartupState::ModelRequired
-        ) && model.reducer.capture() == CaptureState::Idle
+        ) && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
     };
     if !ready || sitting_task_active(&state) || has_pending_transcription_work(&state) {
         return Err("Finish the current meeting before removing a speech model.".into());
@@ -3334,14 +3340,8 @@ fn install_note_model(
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
     let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    let capture_active = state
-        .model
-        .lock()
-        .expect("application model lock")
-        .reducer
-        .capture()
-        != CaptureState::Idle;
-    if capture_active || sitting_task_active(&state) {
+    let capture = state.model.lock().expect("application model lock").reducer.capture();
+    if !model_change_audio_idle(capture, sitting_task_active(&state)) {
         return Err("The note model cannot be installed while audio work is active.".into());
     }
     if state.model_install_active.load(Ordering::SeqCst) {
@@ -3478,7 +3478,8 @@ fn remove_note_model(
     }
     let ready = {
         let model = state.model.lock().expect("application model lock");
-        model.reducer.capture() == CaptureState::Idle
+        matches!(model.reducer.startup(), StartupState::Ready | StartupState::ModelRequired)
+            && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
     };
     if !ready || sitting_task_active(&state) {
         return Err("Finish the current meeting before removing the note model.".into());
@@ -14764,6 +14765,37 @@ mod tests {
         assert_eq!(snapshot.capture, CaptureState::TranscriptReady);
         assert_eq!(snapshot.meeting_id.as_deref(), Some("meeting-fixture"));
         assert_eq!(snapshot.turns[0].text, "visible");
+    }
+
+    #[test]
+    fn speech_engine_restart_restores_an_already_open_transcript() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "saved words");
+        let mut model = AppModel::default();
+        transition_startup(&mut model, StartupState::Checking).unwrap();
+        for restart in [false, true, true] {
+            if restart {
+                transition_startup(&mut model, StartupState::Retrying).unwrap();
+            }
+            let projection = load_latest_transcript_projection(&storage, &[meeting_id.clone()])
+                .unwrap().unwrap();
+            apply_restored_transcript_projection(&mut model, projection).unwrap();
+            transition_startup(&mut model, StartupState::Ready).unwrap();
+            let snapshot = model.snapshot();
+            assert_eq!(snapshot.startup, StartupState::Ready);
+            assert_eq!(snapshot.capture, CaptureState::TranscriptReady);
+            assert_eq!(snapshot.meeting_id.as_deref(), Some(meeting_id.as_str()));
+            assert_eq!(snapshot.turns[0].text, "saved words");
+            assert!(snapshot.error.is_none());
+        }
+        arm_new_meeting_capture(&mut model).unwrap();
+        model.clear_meeting_projection();
+        assert_eq!(model.reducer.capture(), CaptureState::Arming);
+        assert!(model.meeting_id.is_none());
+        assert!(model.turns.is_empty());
+        let saved = load_latest_transcript_projection(&storage, &[meeting_id]).unwrap().unwrap();
+        assert_eq!(saved.turns[0].text, "saved words");
     }
 
     #[test]

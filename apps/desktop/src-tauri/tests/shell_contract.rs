@@ -13,6 +13,9 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "dismiss_meeting",
     "retry_startup",
     "install_transcript_model",
+    "get_transcription_engine_settings",
+    "select_transcription_engine",
+    "install_apple_speech_assets",
     "transcript_model_settings",
     "remove_transcript_model",
     "note_model_settings",
@@ -144,6 +147,9 @@ const MAIN_PERMISSIONS: &[&str] = &[
     // side is gated.
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "allow-get-transcription-engine-settings",
+    "allow-select-transcription-engine",
+    "allow-install-apple-speech-assets",
 ];
 
 fn permissions(source: &str) -> Vec<String> {
@@ -300,6 +306,9 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
             "allow-note-model-settings",
             "allow-install-note-model",
             "allow-remove-note-model",
+            "allow-get-transcription-engine-settings",
+            "allow-select-transcription-engine",
+            "allow-install-apple-speech-assets",
         ]
     );
 
@@ -311,6 +320,9 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
         "transcript_model_settings",
         "install_transcript_model",
         "remove_transcript_model",
+        "get_transcription_engine_settings",
+        "select_transcription_engine",
+        "install_apple_speech_assets",
         "note_model_settings",
         "install_note_model",
         "remove_note_model",

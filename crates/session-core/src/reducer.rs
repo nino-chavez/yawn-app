@@ -185,7 +185,11 @@ impl Reducer {
                 self.startup,
                 StartupState::Checking | StartupState::Retrying
             )
-            && self.capture == CaptureState::Idle
+            // A runtime restart re-reads the saved transcript while its previous
+            // projection is still visible. This is restoration, not new capture.
+            && (self.capture == CaptureState::Idle
+                || (self.startup == StartupState::Retrying
+                    && self.capture == CaptureState::TranscriptReady))
             && to == CaptureState::TranscriptReady;
         if !valid {
             return Err(ReducerError::InvalidCaptureTransition {
@@ -255,6 +259,24 @@ mod tests {
         assert!(shell
             .restore_capture_projection(CaptureState::TranscriptReady)
             .is_err());
+    }
+
+    #[test]
+    fn retry_restoration_does_not_replace_active_capture_or_exclusive_work() {
+        for capture in [CaptureState::Arming, CaptureState::Recording, CaptureState::Paused,
+            CaptureState::Stopping, CaptureState::Captured, CaptureState::Transcribing,
+            CaptureState::Summarizing] {
+            let mut reducer = Reducer { startup: StartupState::Retrying, capture, exclusive: None };
+            assert!(reducer.restore_capture_projection(CaptureState::TranscriptReady).is_err());
+            assert_eq!(reducer.capture(), capture);
+        }
+        let mut reducer = Reducer { startup: StartupState::Retrying,
+            capture: CaptureState::TranscriptReady, exclusive: Some(ExclusiveOperation::CaptureTransition) };
+        assert!(reducer.restore_capture_projection(CaptureState::TranscriptReady).is_err());
+        reducer.exclusive = None;
+        reducer.restore_capture_projection(CaptureState::TranscriptReady).unwrap();
+        reducer.startup = StartupState::Ready;
+        assert!(reducer.restore_capture_projection(CaptureState::TranscriptReady).is_err());
     }
 
     #[test]

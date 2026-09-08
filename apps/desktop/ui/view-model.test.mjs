@@ -100,8 +100,11 @@ test("activity reports a real phase duration without inventing progress", () => 
   assert.equal(transcriptionWorkerHeartbeatAgeSeconds({ capture: "recording" }, 163), null);
 });
 
-test("recording starts only from the actual ready-and-idle state", () => {
+test("recording starts from idle or a restored transcript", () => {
   assert.equal(canStartMeeting({ startup: "ready", capture: "idle" }), true);
+  assert.equal(canStartMeeting({ startup: "ready", capture: "transcript-ready" }), true);
+  assert.equal(canStartMeeting({ startup: "retrying", capture: "transcript-ready" }), false);
+  assert.equal(canStartMeeting({ startup: "ready", capture: "transcript-ready", background_transcription_queued_count: 2 }), false);
   assert.equal(canStartMeeting({ startup: "checking", capture: "idle" }), false);
   assert.equal(canStartMeeting({ startup: "ready", capture: "recording" }), false);
   assert.equal(canStartMeeting({ startup: "ready", capture: "idle", background_transcription_active: true, background_transcription_queued_count: 1 }), true);

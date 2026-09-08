@@ -183,7 +183,7 @@ export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpe
 export function canStartMeeting(snapshot) {
   const backgroundJobs = Number(snapshot?.background_transcription_queued_count) || 0;
   return snapshot?.startup === "ready"
-    && snapshot?.capture === "idle"
+    && ["idle", "transcript-ready"].includes(snapshot?.capture)
     && backgroundJobs < 2;
 }
 
