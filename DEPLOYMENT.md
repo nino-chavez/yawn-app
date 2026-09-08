@@ -193,6 +193,38 @@ branch, and merge the exact source commit that produced the artifact. Keep
 release-document updates in a separate, clearly labeled commit when they are
 recorded after the artifact is made.
 
+## Prepare and publish release notes
+
+Use an annotated `vX.Y.Z` tag for a publicly released app. The tag points to
+the exact source commit used to build the signed artifact. An optional
+`build/vX.Y.Z-rc.N` tag identifies a candidate; it does not mean the app is
+public. Never move an existing release tag to different source.
+
+Before building, collect the changes since the previous published tag:
+
+```sh
+python3 scripts/prepare-release-notes.py \
+  --from v0.6.3 --to HEAD --version 0.6.4 \
+  --output .artifacts/release-0.6.4/commits.json
+```
+
+Use that complete commit record and the relevant diffs to draft release notes
+for someone deciding whether to update. State the main change first. Group
+user-visible additions, improvements, and fixes; include upgrade requirements
+and known limitations where needed. Keep internal work out of the reader's
+notes. Commit messages and generated drafts require review before publication.
+
+The landing site's release data owns the published copy. Its
+`scripts/render-release.mjs` renders the dedicated release-notes page and the
+latest summary. Preserve earlier release entries. Publish the version, date,
+source tag, and comparison to the previous release with the reviewed notes.
+
+After the signed installer is public and verified, create and push the release
+tag at the recorded build commit. Publish the reviewed notes with that tag as
+a GitHub release, then deploy the site. Include the installer URL and checksum;
+do not attach a different locally rebuilt artifact. Historical tags may be
+backfilled only when a recorded release receipt identifies the build commit.
+
 ## Final receipt
 
 Record only these delivery facts: source commit, app version, DMG filename and
