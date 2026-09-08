@@ -156,7 +156,9 @@ exists. If it does not exist, stop and obtain explicit authority to create one;
 do not silently mint a broad, long-lived credential during a release.
 
 Upload the exact completed DMG under its versioned filename with content type
-`application/x-apple-diskimage` and immutable cache control. Then verify the
+`application/x-apple-diskimage` and immutable cache control. With `rclone`,
+include `--metadata` as well as `--metadata-set` so those headers are applied.
+Then verify the
 public URL returns `200` and the expected `Content-Length` before editing the
 landing page. A byte range request is enough to prove public reachability; do
 not download the full image merely to test the link.
@@ -164,19 +166,24 @@ not download the full image merely to test the link.
 ## Update and deploy the landing page
 
 The site source is `/Users/nino/Workspace/dev/sites/ventures/yawn-site`. Its
-`index.html` owns the version, download URL, and SHA-256 shown to users. Update
-all three together only after the new R2 object is public.
+`release.json` owns the version, download URL, SHA-256, and release notes shown
+to users. Update them together only after the new R2 object is public. Run
+`node scripts/render-release.mjs` to generate the homepage, app card, and
+release-notes page. It also builds `dist/` with only those public artifacts.
 
 Commit the site source, then deploy it manually:
 
 ```sh
 cd /Users/nino/Workspace/dev/sites/ventures/yawn-site
-npx wrangler pages deploy . --project-name=yawn-site --branch=main
+node scripts/render-release.mjs
+node --test scripts/render-release.test.mjs
+npx wrangler pages deploy dist --project-name=yawn-site --branch=main
 ```
 
 This Pages project has no Git integration. A site commit or push does not deploy
 the public page. Re-fetch the exact live page with `Cache-Control: no-cache` and
-confirm it names the new version, URL, and checksum.
+confirm it names the new version, URL, and checksum. Check the release-notes
+page and app card on both the returned deployment URL and the production URL.
 
 Only after both the new R2 URL and live landing page are verified may the
 previous installer and its matching checksum sidecar be deleted. Confirm the

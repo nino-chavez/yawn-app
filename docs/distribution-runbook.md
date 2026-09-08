@@ -1,5 +1,56 @@
 # Yawn distribution runbook
 
+## 0.6.4 release receipt
+
+**0.6.4 was released on 2026-09-08 with Apple speech setup, matching-passage
+search, clearer Settings, and the Lavender Haze dark palette.** PR #74 merged
+source commit `58e13a276a352b7ef3d283951d52d037d2fad6af`, which produced the
+signed artifact. Annotated tag `v0.6.4` identifies that exact source. The
+[GitHub prerelease](https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.4)
+and [release-notes page](https://yawn-site.pages.dev/release-notes/#yawn-0.6.4)
+use the same reviewed release data. The commit corpus covers 19 commits after
+`v0.6.3`; it is input for review, not automatically published commit messages.
+
+The Rust workspace, UI harness, Python worker suite, distribution checks,
+release-corpus test, Swift capture self-test, and ordinary workspace Clippy
+check passed. An additional Clippy run with `-D warnings` failed on existing
+style warnings in unchanged code. The site renderer's five tests passed,
+including prior-release retention and deploying only public output.
+
+The signed artifact is `Yawn-0.6.4-macos-arm64.dmg`, 553,335,506 bytes, with
+SHA-256 `e45c96687ffab25e031c7ac946f328cce6417759134c7d1beaf664d0ee439c2a`.
+Apple accepted app submission `880c9061-f94d-49cf-bb61-f46dee603ad4` and DMG
+submission `ee2fea31-a6d6-4aae-9153-4a395bc47dd0`. Both artifacts were stapled.
+Signing and independent release verification passed with 200 arm64-compatible
+Mach-O files under the `internal-alpha` admission. Gatekeeper accepted the
+release. The ten hosted speech- and note-model objects matched their recorded
+byte counts and SHA-256 values after full streamed verification.
+
+The [public installer](https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.4-macos-arm64.dmg)
+returned 200 with its recorded byte count, disk-image content type, and
+immutable cache control. The first upload omitted the cache header because
+`rclone --metadata-set` also requires `--metadata`. An S3 metadata replacement
+corrected the header; a subsequent full public download matched the frozen
+DMG's byte count and SHA-256. No public installer was deleted.
+
+Landing-site commit `d8c1a2cf10309f7cb90317b84af7c649b95e3acc` was pushed to
+main and deployed as production deployment
+`bcfd9e7d-e14f-4eb9-b821-6ab5637cb98e`. The homepage, app card, and release-notes
+page on both `bcfd9e7d.yawn-site.pages.dev` and `yawn-site.pages.dev` matched
+the generated files byte for byte. The deployment uploaded only those three
+public files from `dist/`. Desktop and phone-width WebKit captures showed
+readable wrapping and no horizontal overflow on the release page; the phone
+download card also kept the button, model disclosure, and checksum in bounds.
+
+`/Applications/Yawn.app` was installed from the signed DMG and reports version
+0.6.4. Its signature and Gatekeeper checks passed. The main executable's
+SHA-256 is `40a86ab18fdaa5f82d05eb12e186d4ffa86fe1aa32236e81d18d63d3cc19bb16`.
+The replaced app remains recoverable at
+`/Users/nino/.Trash/Yawn-0.6.3-before-0.6.4-20260908T125406.app`.
+Installed-app interaction acceptance was not performed in this release pass.
+The operator deferred the real-meeting quality review; packaging and rendered
+page checks do not close that review or establish improved speech accuracy.
+
 ## 0.6.3 release receipt
 
 **0.6.3 was released on 2026-09-04 as a performance patch for switching
@@ -464,7 +515,8 @@ Pages project has no git integration — verified against the Cloudflare API on
 2026-08-05, its `source` is null — so committing and pushing the delivery page
 publishes nothing. The 0.2.1 and 0.2.2 page updates were both pushed and never
 deployed for exactly this reason; the live page served 0.2.0-era copy until
-0.3.0. Run `npx wrangler pages deploy . --project-name=yawn-site --branch=main`
+0.3.0. Run `node scripts/render-release.mjs`, then
+`npx wrangler pages deploy dist --project-name=yawn-site --branch=main`
 from the site repo, then re-fetch with `Cache-Control: no-cache`, because the
 edge keeps serving the previous HTML for a while after a deploy. The project also
 has no custom domain: it is `yawn-site.pages.dev`, and `yawn.ninochavez.com`
