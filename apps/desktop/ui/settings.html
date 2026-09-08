@@ -12,13 +12,54 @@
     <main class="settings-shell">
       <header>
         <h1>Settings</h1>
-        <p>Recording access and on-device storage live here.</p>
+        <p>Meeting audio, transcripts, and notes stay on this Mac.</p>
+        <nav class="settings-nav" aria-label="Settings sections">
+          <a href="#recording">Recording</a>
+          <a href="#transcription">Transcription</a>
+          <a href="#notes">Notes</a>
+          <a href="#storage">Storage</a>
+        </nav>
       </header>
-      <section class="settings-group" aria-labelledby="privacy-title">
+      <section id="recording" class="settings-group" tabindex="-1" aria-labelledby="audio-title">
+        <div class="settings-group-title">
+          <div><h2 id="audio-title">Recording access</h2><p>Yawn needs both sources before it can record a meeting.</p></div>
+          <button class="quiet-button" type="button" data-action="refresh">Check again</button>
+        </div>
+        <div class="settings-group-box">
+          <div id="permissions" class="permission-list" aria-live="polite"></div>
+        </div>
+        <p id="message" class="message" role="status"></p>
+      </section>
+      <section id="transcription" class="settings-group" tabindex="-1" aria-labelledby="model-title">
+        <div class="settings-group-title">
+          <div>
+            <h2 id="model-title">Transcription</h2>
+            <p>Choose how Yawn transcribes on this Mac. The selected option is used for your next transcription.</p>
+          </div>
+        </div>
+        <div class="settings-group-box">
+          <div id="transcription-engine" class="model-list" aria-live="polite"></div>
+          <div id="models" class="model-list" aria-live="polite"></div>
+          <p id="model-message" class="card-message" role="status"></p>
+        </div>
+      </section>
+      <section id="notes" class="settings-group" tabindex="-1" aria-labelledby="note-model-title">
+        <div class="settings-group-title">
+          <div>
+            <h2 id="note-model-title">Meeting notes</h2>
+            <p>An optional model that turns finished transcripts into meeting notes, on this Mac.</p>
+          </div>
+        </div>
+        <div class="settings-group-box">
+          <div id="note-models" class="model-list" aria-live="polite"></div>
+          <p id="note-model-message" class="card-message" role="status"></p>
+        </div>
+      </section>
+      <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">
         <div class="settings-group-title">
           <div>
             <h2 id="privacy-title">What happens with your meeting</h2>
-            <p>Three facts about this Mac, not a policy promise.</p>
+            <p>Where meeting data stays and when it is deleted.</p>
           </div>
         </div>
         <div class="settings-group-box">
@@ -29,7 +70,7 @@
             </div>
             <div class="privacy-row">
               <dt>Where transcription runs</dt>
-              <dd>On this Mac, using Apple speech or the downloaded model selected below.</dd>
+              <dd>On this Mac, using Apple speech or the downloaded model selected in Transcription.</dd>
             </div>
             <div class="privacy-row">
               <dt>What is kept, and for how long</dt>
@@ -38,41 +79,6 @@
           </dl>
         </div>
       </section>
-      <section class="settings-group" aria-labelledby="model-title">
-        <div class="settings-group-title">
-          <div>
-            <h2 id="model-title">Speech model</h2>
-            <p>Choose the model Yawn uses for transcripts. Meeting audio stays on this Mac.</p>
-          </div>
-        </div>
-        <div class="settings-group-box">
-          <div id="transcription-engine" class="model-list" aria-live="polite"></div>
-          <div id="models" class="model-list" aria-live="polite"></div>
-          <p id="model-message" class="card-message" role="status"></p>
-        </div>
-      </section>
-      <section class="settings-group" aria-labelledby="note-model-title">
-        <div class="settings-group-title">
-          <div>
-            <h2 id="note-model-title">Note model</h2>
-            <p>An optional model that turns finished transcripts into meeting notes, on this Mac.</p>
-          </div>
-        </div>
-        <div class="settings-group-box">
-          <div id="note-models" class="model-list" aria-live="polite"></div>
-          <p id="note-model-message" class="card-message" role="status"></p>
-        </div>
-      </section>
-      <section class="settings-group" aria-labelledby="audio-title">
-        <div class="settings-group-title">
-          <div><h2 id="audio-title">Audio access</h2><p>Yawn needs both sources before it can record a meeting.</p></div>
-          <button class="quiet-button" type="button" data-action="refresh">Check again</button>
-        </div>
-        <div class="settings-group-box">
-          <div id="permissions" class="permission-list" aria-live="polite"></div>
-        </div>
-      </section>
-      <p id="message" class="message" role="status"></p>
     </main>
     <script type="module" src="settings.js"></script>
   </body>

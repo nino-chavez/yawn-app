@@ -47,11 +47,11 @@ test("Settings switches both ways, preserves optional notes, and shows a rejecte
     await settle();
   };
   await settle();
-  assert.match(node("#models").innerHTML, /In use/);
+  assert.match(node("#models").innerHTML, /Selected/);
   await click("use-apple-speech");
   assert.equal(selected, "apple-native");
-  assert.match(node("#transcription-engine").innerHTML, /In Use/i);
-  assert.doesNotMatch(node("#models").innerHTML, /In use/);
+  assert.match(node("#transcription-engine").innerHTML, /Selected/i);
+  assert.doesNotMatch(node("#models").innerHTML, /Selected/);
   assert.match(node("#models").innerHTML, /data-action="use-model"/);
   assert.match(node("#models").innerHTML, /data-action="use-model"[^>]*disabled/);
   restarting = false;
@@ -61,7 +61,7 @@ test("Settings switches both ways, preserves optional notes, and shows a rejecte
   assert.notEqual(node("#model-message").textContent, "Startup pending");
   await click("use-model");
   assert.equal(selected, "whisper");
-  assert.match(node("#models").innerHTML, /In use/);
+  assert.match(node("#models").innerHTML, /Selected/);
   refuse = true;
   await click("use-apple-speech");
   assert.match(node("#transcription-engine").innerHTML, /Finish queued transcription/);

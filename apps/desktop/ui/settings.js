@@ -58,7 +58,7 @@ function humanize(value) {
 }
 
 function tone(value) {
-  return value === "authorized" ? "ready" : ["denied", "restricted", "unavailable", "unsupported", "unknown"].includes(value) ? "attention" : "neutral";
+  return ["authorized", "Selected", "Ready"].includes(value) ? "ready" : ["denied", "restricted", "unavailable", "unsupported", "unknown"].includes(value) ? "attention" : "neutral";
 }
 
 function byteSizeLabel(bytes) {
@@ -90,7 +90,7 @@ function render() {
     : "";
   permissionsRoot.innerHTML = [
     row("Microphone", permissions.microphone, "Yawn uses this to capture your voice.", microphoneAction),
-    row("System audio", permissions.systemAudio, "Yawn verifies that its capture helper can access meeting audio. This check does not save audio.", systemAction),
+    row("System audio", permissions.systemAudio, "Yawn checks access to audio from your meeting app. This check does not save audio.", systemAction),
   ].join("");
 }
 
@@ -133,7 +133,7 @@ function renderModels() {
     const selected = models.selectedModelId === option.id;
     const disabled = !models.canChange || busy || transcriptionEngine?.operationActive || transcriptionEngine?.canChange === false;
     const status = option.active && whisperInUse
-      ? `<span class="state" data-tone="ready">In use</span>`
+      ? `<span class="state" data-tone="ready">Selected</span>`
       : option.active
         ? `<span class="state">Stored</span>`
       : option.stored
@@ -191,9 +191,9 @@ function renderTranscriptionEngine() {
       : apple.state === "failed" || apple.state === "unavailable"
         ? (apple.reason || "Apple speech is unavailable on this Mac.")
         : appleReady
-          ? "Apple speech is available on this Mac."
-          : "The downloaded local speech model is active.");
-  const appleStatus = transcriptionEngine.selected === "apple-native" ? "In use" : appleReady ? "Ready" : humanize(apple.state);
+          ? "Ready to transcribe with Apple’s on-device speech engine. No Yawn speech-model download is needed."
+          : "The downloaded local speech model is selected.");
+  const appleStatus = transcriptionEngine.selected === "apple-native" ? "Selected" : appleReady ? "Ready" : humanize(apple.state);
   transcriptionEngineRoot.innerHTML = row("Apple speech", appleStatus, detail, action);
   transcriptionEngineRoot.setAttribute("aria-busy", busy ? "true" : "false");
 }
@@ -224,7 +224,7 @@ function renderNoteModels() {
     const selected = noteModels.selectedModelId === option.id;
     const disabled = !noteModels.canChange || busy;
     const status = option.active
-      ? `<span class="state" data-tone="ready">In use</span>`
+      ? `<span class="state" data-tone="ready">Selected</span>`
       : option.stored
         ? `<span class="state">On this Mac</span>`
         : `<span class="model-size">${byteSizeLabel(option.downloadBytes)}</span>`;
