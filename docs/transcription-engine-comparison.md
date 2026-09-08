@@ -737,3 +737,28 @@ is in `docs/evidence/progressive-setup-2026-09-07.json`; the cold screen review 
 in `docs/evidence/screen-reviews/progressive-installed-2026-09-08-cold.md`.
 Fresh-account setup, older macOS, Apple asset-download recovery, and human
 meeting-quality acceptance remain open. Nothing was pushed or published.
+
+## Retained Apple transcript-to-note replay — 2026-09-08
+
+The existing 12-minute two-leg meeting completed note generation using saved
+Apple speech results, current Yawn filters and grouping, and the installed
+generation runtime. The existing downloaded note model matched the installed
+catalog. Networking was denied before model loading, and all output went to a
+fresh private research directory. Source audio and session metadata were unchanged.
+
+An independent artifact check verified the generated-note digest, its exact
+transcript binding, and all 20 source locators across eight claims. The referenced
+timestamps fall within the recording. These are structural checks; they do not
+establish that the claims preserve meaning or capture every commitment.
+
+Note generation took 537.521 seconds in this one run. That is an observed timing,
+not a comparison or a general performance claim. The first invocation stopped
+before inference because it pointed to the base Python packages; the completed
+run used the installed generation packages. No product code changed.
+
+The content-free receipt is in
+`docs/evidence/progressive-setup-2026-09-07.json`. Private outputs remain outside
+Git. This completes the longer research replay only. Installed-app retry,
+vocabulary, playback, and human speech/note quality acceptance remain open.
+The existing four-variant human review packet is still unanswered; all six
+unique audio and transcript links were checked and exist.

@@ -397,15 +397,52 @@
         "worker_count": 2,
         "recorded_at": "2026-09-08T13:51:11.362636+00:00"
       }
+    },
+    "retained_apple_note_replay_2026_09_08": {
+      "status": "passed research replay and independent artifact checks",
+      "scope": "Existing retained two-leg capture, saved Apple results, current filters and note grouping; installed generation runtime and existing downloaded note model; fresh private output, no app IPC",
+      "duration_seconds": {
+        "microphone": 736.51,
+        "system": 736.59
+      },
+      "receipt_sha256": "390d61b92671f268a65ddfa2257b5f5057b50fb5e0fa68ea0b68199f06c31735",
+      "postcheck_sha256": "68dea4aadf8470a4f80984e75e00090469c0abc7653058ac8772dfeccaf30f47",
+      "note_generation_seconds": 537.521,
+      "operating_diagnostics": {
+        "note_requests": 89,
+        "claims": 8,
+        "validated_locators": 20
+      },
+      "generated_digest_verified": true,
+      "transcript_binding_verified": true,
+      "referenced_times_in_capture_bounds": true,
+      "source_bytes_unchanged": true,
+      "network": "Seatbelt no-network profile applied before model load",
+      "note_model": {
+        "id": "gemma-3-12b-it-qat-4bit",
+        "revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4"
+      },
+      "runtime": {
+        "mlx_lm": "0.31.3",
+        "mlx": "0.32.2"
+      },
+      "initial_attempt": "Stopped before inference because the research invocation pointed to base site-packages. Corrected invocation used the installed generate-site-packages directory; no product code changed.",
+      "limits": [
+        "Single retained meeting; no human quality acceptance",
+        "Saved Apple results reused; not a new speech run",
+        "No installed app retry, vocabulary, playback, or recording acceptance",
+        "Single observed timing, not a comparative performance result"
+      ],
+      "private_outputs": "Retained outside Git under the existing transcription comparison research directory; no audio, transcript, or note content included here"
     }
   },
   "not_verified": [
-    "Installed app UI startup and Settings switching; waiting for explicit operator-away confirmation before synthetic clicks",
+    "Fresh macOS account startup and setup without prior permissions or model assets; existing-account installed startup and Settings switching passed",
     "Older macOS execution; deployment guard is compiled only",
     "Real Apple asset download, interruption and recovery",
-    "Full retained meeting retry, vocabulary, note and playback workflow with Apple",
+    "Installed app full retained meeting retry, vocabulary, note and playback workflow with Apple; research transcript-to-note replay passed separately",
     "Human speech and note quality acceptance"
   ],
-  "release": "The internal-alpha test app and DMG were notarized, and the app was installed from the verified DMG on 2026-09-08. The prior bundle is retained for rollback. The app remains closed pending GUI checks. No push or publication performed.",
+  "release": "The corrected internal-alpha test app and DMG were notarized, and the app was installed from the verified DMG on 2026-09-08. Prior bundles are retained for rollback. Existing-account GUI checks passed, and the original smaller speech model was restored. No push or publication performed.",
   "source_commit": "6659eadaf3342ffd477e0b345cd218a20c738d06"
 }
