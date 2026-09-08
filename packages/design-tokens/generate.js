@@ -32,6 +32,7 @@ const light = {
   accent: c.accent.light,
   onAccent: c.onAccent.light,
   record: c.record.light,
+  onRecord: c.onRecord.light,
   attention: c.attention.light,
   attentionBg: c.attentionBackground.light,
   evidence: c.evidence.light,
@@ -41,6 +42,7 @@ const dark = {
   accent: c.accent.dark,
   onAccent: c.onAccent.dark,
   record: c.record.dark,
+  onRecord: c.onRecord.dark,
   attention: c.attention.dark,
   attentionBg: c.attentionBackground.dark,
   evidence: c.evidence.dark,
@@ -92,7 +94,7 @@ function render() {
   --control: ${light.control}; --control-border: ${light.controlBorder}; --control-shadow: ${light.controlShadow};
   --selection: ${light.selection}; --selection-active: ${light.selectionActive}; --selection-line: ${light.selectionLine}; --on-selection: ${light.onSelection};
   --accent: ${light.accent}; --on-accent: ${light.onAccent};
-  --record: ${light.record};                 /* the only red on screen; spent by Record and the live state */
+  --record: ${light.record}; --on-record: ${light.onRecord};                 /* the only red on screen; spent by Record and the live state */
   --attention: ${light.attention}; --attention-bg: ${light.attentionBg};
   --evidence: ${light.evidence};  /* one evidence accent, tint only */
 }
@@ -103,7 +105,7 @@ function render() {
   --label: ${dark.label}; --label-2: ${dark.label2}; --label-3: ${dark.label3};
   --control: ${dark.control}; --control-border: ${dark.controlBorder}; --control-shadow: ${dark.controlShadow};
   --selection: ${dark.selection}; --selection-active: ${dark.selectionActive}; --selection-line: ${dark.selectionLine}; --on-selection: ${dark.onSelection};
-  --accent: ${dark.accent}; --on-accent: ${dark.onAccent}; --record: ${dark.record};
+  --accent: ${dark.accent}; --on-accent: ${dark.onAccent}; --record: ${dark.record}; --on-record: ${dark.onRecord};
   --attention: ${dark.attention}; --attention-bg: ${dark.attentionBg};
   --evidence: ${dark.evidence};
 }
@@ -116,7 +118,7 @@ button, input { font: inherit; color: inherit; }
   border: 1px solid var(--control-border); box-shadow: none; cursor: default; font-size: 12px; font-weight: 620; line-height: 17px; white-space: nowrap; }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
-.btn.record.live { background: var(--record); color: #fff; border-color: transparent; }
+.btn.record.live { background: var(--record); color: var(--on-record); border-color: transparent; }
 .caption { font-size: var(--t-caption); color: var(--label-2); }
 .tertiary { color: var(--label-3); }
 .hairline { border-top: 1px solid var(--separator); }

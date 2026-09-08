@@ -32,20 +32,20 @@
   --control: #f8f6f9; --control-border: #d4ced8; --control-shadow: 0 0.5px 1px rgba(33,31,37,0.12);
   --selection: #d8d0e3; --selection-active: #d8d0e3; --selection-line: #8c7ca8; --on-selection: #211f25;
   --accent: #6855a9; --on-accent: #ffffff;
-  --record: #b74640;                 /* the only red on screen; spent by Record and the live state */
+  --record: #b74640; --on-record: #ffffff;                 /* the only red on screen; spent by Record and the live state */
   --attention: #9a641c; --attention-bg: #fff1dc;
   --evidence: #e7e0f2;  /* one evidence accent, tint only */
 }
 :root[data-theme="dark"] {
-  --window: #17161d; --sidebar: #14131a; --content: #1b1921; --panel: #17161d;
-  --notes: #211f29; --notes-border: #3c3846;
-  --separator: #302e39; --separator-strong: #484451;
-  --label: #f4f2f7; --label-2: #c8c3cf; --label-3: #9993a1;
-  --control: #23212b; --control-border: #484451; --control-shadow: 0 0.5px 1px rgba(0,0,0,0.38);
-  --selection: #292532; --selection-active: #292532; --selection-line: #8073a3; --on-selection: #f4f2f7;
-  --accent: #a99be4; --on-accent: #17131f; --record: #ef7168;
-  --attention: #dfa85c; --attention-bg: #33291d;
-  --evidence: #2b263c;
+  --window: #26242e; --sidebar: #22212a; --content: #2c2a35; --panel: #302d39;
+  --notes: #302e3a; --notes-border: #47424f;
+  --separator: #3e3a47; --separator-strong: #625a6f;
+  --label: #e8e2ed; --label-2: #c1b8ca; --label-3: #aaa0b5;
+  --control: #38343f; --control-border: #58505f; --control-shadow: 0 0.5px 1px rgba(0,0,0,0.38);
+  --selection: #3b3446; --selection-active: #3b3446; --selection-line: #a294b1; --on-selection: #e8e2ed;
+  --accent: #b8a7ce; --on-accent: #27212f; --record: #e5a19c; --on-record: #27212f;
+  --attention: #d6b886; --attention-bg: #3d352a;
+  --evidence: #3b3349;
 }
 html, body { margin: 0; height: 100%; }
 body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); background: var(--window);
@@ -56,7 +56,7 @@ button, input { font: inherit; color: inherit; }
   border: 1px solid var(--control-border); box-shadow: none; cursor: default; font-size: 12px; font-weight: 620; line-height: 17px; white-space: nowrap; }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
-.btn.record.live { background: var(--record); color: #fff; border-color: transparent; }
+.btn.record.live { background: var(--record); color: var(--on-record); border-color: transparent; }
 .caption { font-size: var(--t-caption); color: var(--label-2); }
 .tertiary { color: var(--label-3); }
 .hairline { border-top: 1px solid var(--separator); }

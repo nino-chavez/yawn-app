@@ -1,0 +1,50 @@
+[
+  {
+    "id": "current",
+    "pairs": {
+      "label/content": 15.64,
+      "label-2/content": 10.07,
+      "label-3/content": 5.83,
+      "label-3/control": 5.32,
+      "on-accent/accent": 7.39,
+      "record/control": 5.46,
+      "attention/attention-bg": 6.7
+    }
+  },
+  {
+    "id": "lavender",
+    "pairs": {
+      "label/content": 11.1,
+      "label-2/content": 7.37,
+      "label-3/content": 5.64,
+      "label-3/control": 4.86,
+      "on-accent/accent": 7.03,
+      "record/control": 5.72,
+      "attention/attention-bg": 6.35
+    }
+  },
+  {
+    "id": "graphite",
+    "pairs": {
+      "label/content": 10.69,
+      "label-2/content": 7.36,
+      "label-3/content": 5.63,
+      "label-3/control": 4.83,
+      "on-accent/accent": 7.56,
+      "record/control": 5.64,
+      "attention/attention-bg": 6.42
+    }
+  },
+  {
+    "id": "blue",
+    "pairs": {
+      "label/content": 10.68,
+      "label-2/content": 7.51,
+      "label-3/content": 6.0,
+      "label-3/control": 4.84,
+      "on-accent/accent": 7.73,
+      "record/control": 5.2,
+      "attention/attention-bg": 6.61
+    }
+  }
+]

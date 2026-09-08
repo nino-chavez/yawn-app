@@ -1,0 +1,14 @@
+{
+  "colors" : {
+    "accent" : "#a99be4",
+    "content" : "#1b1921",
+    "label" : "#f4f2f7",
+    "sidebar" : "#14131a",
+    "window" : "#17161d"
+  },
+  "height" : 900,
+  "palette" : "current",
+  "pass" : true,
+  "synthetic" : true,
+  "width" : 1080
+}

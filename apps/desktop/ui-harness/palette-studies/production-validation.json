@@ -1,0 +1,17 @@
+{
+  "palette": "Lavender Haze",
+  "synthetic": true,
+  "installedAppVerified": false,
+  "capturesPassed": 26,
+  "lightValuesUnchanged": true,
+  "layoutAndTypographyTokensUnchanged": true,
+  "specifiedContrastRatios": {
+    "liveRecording": 7.37,
+    "primaryAction": 7.03,
+    "readingText": 11.1
+  },
+  "receipts": ".artifacts/lavender-haze",
+  "settingsRecheckCapturesPassed": 10,
+  "settingsPrimaryTextUsesOnAccent": true,
+  "finalSettingsReceipts": ".artifacts/lavender-haze/settings-final"
+}

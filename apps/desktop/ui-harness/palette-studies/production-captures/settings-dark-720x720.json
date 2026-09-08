@@ -1,0 +1,50 @@
+{
+  "appliedScene": "settings",
+  "dark": true,
+  "errors": [],
+  "failures": [],
+  "height": 720,
+  "overflows": [],
+  "pass": true,
+  "provenance": {
+    "sha256": {
+      "apps/desktop/ui-harness/harness.html": "35acd8229bfb4fd51c32511c7b5135f47aac1651426e84a7e6c9421a2607facc",
+      "apps/desktop/ui-harness/layout/cases.json": "94616780cd150a713f252ce6767e9bc9f06b02de899f4e2827a5029c5c811cd1",
+      "apps/desktop/ui-harness/layout/native-scene.js": "97793968af40099d4514fb01e5c6a18ad44200656e05110bbc432aed2db795e2",
+      "apps/desktop/ui-harness/layout/run.py": "8398dc83fe5f37adebb8e35556aed0a9ac2768fda53a319ade758d845ac78d1e",
+      "apps/desktop/ui-harness/layout/scenes.js": "adfea1648a57ff334a8360f9c40744708a9e808b3bce34454439a5c3caaf4b8c",
+      "apps/desktop/ui-harness/layout/serve.py": "07dfc5a4355c92b0613ae4b92c84bf8bcafea21ae2e3b48fd91ed1e676226003",
+      "apps/desktop/ui-harness/layout/settings-scenes.js": "6367b77170b2b6ab04bc2a290c39269d019b9ff1cfb3e3c0c579e085e29684f7",
+      "apps/desktop/ui-harness/runner.swift": "8c313a3b637ea29f123be23d720c33912ecaff8838892217d761ab764667eec5",
+      "apps/desktop/ui-harness/tauri-stub.js": "5b88139007fc80e550c354c1e80c41101ef75827d904611b1622e7e3aa7eac90",
+      "apps/desktop/ui/dom-patch.mjs": "9f8de323533f76dceb694c777f7f102ad1de3050bebbea879819665c9109902f",
+      "apps/desktop/ui/dom-patch.test.mjs": "e7905c930c3b3c359e5d64c4c53b3949c52d8ade664622fe4122c81a23d037e9",
+      "apps/desktop/ui/error-codes.test.mjs": "d2384bcb48279d02a183e57e19b295483cb55e1c5c746a93b4b814bb70e600ec",
+      "apps/desktop/ui/index.html": "902d308ee2e377fc36c6d287d292334b0127e15add33578efcf021dba09e8d73",
+      "apps/desktop/ui/main.js": "dd9fc4793ed666f5e131e5f201d805a35d1723fb1d0f67efa83b78405d840225",
+      "apps/desktop/ui/review/harness.js": "5d639f90125b1145504a2129223f30e21fc199815f306e0ba8cc26fe75b22864",
+      "apps/desktop/ui/review/settings-harness.html": "04775799dc496fb3b00d1407008566f83de7e1d28853375bcecdba1d2fce3b9f",
+      "apps/desktop/ui/settings-interaction.test.mjs": "7ad0b1d7291a4304cbcebb7f921e913cc1a75f3616c26507d5c6d64edbf45a9e",
+      "apps/desktop/ui/settings-window.css": "5895e5140485c7d2119fb08463052b53b375b1d94add9df8d39fe15f9f9a2891",
+      "apps/desktop/ui/settings.html": "b6714433c931760f72210c3ac64ca3b7aac1fbc0720ad95dd22bf71e4342c0f3",
+      "apps/desktop/ui/settings.js": "6559e42aefac5aba4d6f73ce764ebdb65ebc6213187fe79e5423f320043386af",
+      "apps/desktop/ui/settings.test.mjs": "828654ba6c01c4218bfe4b3bf96c31cf491528801e9cf523f55c854a53f15861",
+      "apps/desktop/ui/styles.css": "c53df690e334655acc56e51ff47649ec4bdddd4e0e9fc20e465f954e3c0be579",
+      "apps/desktop/ui/tokens.css": "a3d4579840882505aaf4d4ae0845b231e40595aa20b0c2343ce6e77f210cbbb0",
+      "apps/desktop/ui/view-model.mjs": "3b4816ca913a687f6caab2f128be84535dde16fecd90f985e6bf52fbe563f9d0",
+      "apps/desktop/ui/view-model.test.mjs": "68c7194527a7f6233bff309c6f327318b47b8e9cbb7d53075a2a9903be50f9b5"
+    },
+    "sourceCommit": "02f8500d31c9d2fc7db811f88c21bc29299584ed",
+    "synthetic": true
+  },
+  "scene": "settings",
+  "width": 720,
+  "case": {
+    "scene": "settings",
+    "mode": "library",
+    "appearance": "dark",
+    "width": 720,
+    "height": 720
+  },
+  "exit": 0
+}

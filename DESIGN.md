@@ -1,7 +1,9 @@
 # DESIGN.md — Yawn desktop visual system
 
-Status: **Tonal Ledger — Canvas selected 2026-09-03**. Its static reference is
-the visual authority. The signed Preview bundle is verified; installed
+Status: **Tonal Ledger — Canvas selected 2026-09-03**. Lavender Haze was
+selected for dark appearance on 2026-09-08.
+The static reference remains the geometry authority; the selected palette
+supersedes its dark colors. The signed Preview bundle is verified; installed
 cold-review acceptance and visual-fidelity acceptance remain separate.
 
 Concept A remains the decided window structure: source list beside document,
@@ -83,18 +85,25 @@ family is introduced.
 ## Color
 
 Tonal Ledger uses direct light/dark values rather than a branded gradient.
-The generated token file is the value authority. Core roles are:
+The authored `packages/design-tokens/tokens.json` is the color value authority;
+`apps/desktop/ui/tokens.css` is generated from it. Lavender Haze lifts dark
+surfaces to violet charcoal, softens white text, and uses dusty lavender
+accents. Layout, typography, and light appearance retain their existing values.
+The comparison is preserved in `apps/desktop/ui-harness/palette-studies/`.
+Core roles are:
 
 | Role | Light | Dark |
 |---|---:|---:|
-| Window chrome | `#e4e0e7` | `#17161d` |
-| Sidebar | `#dfdbe3` | `#14131a` |
-| Document canvas | `#faf8fb` | `#1b1921` |
-| Primary label | `#211f25` | `#f4f2f7` |
-| Accent | `#6855a9` | `#a99be4` |
-| Selection locator | `#8c7ca8` | `#8073a3` |
+| Window chrome | `#e4e0e7` | `#26242e` |
+| Sidebar | `#dfdbe3` | `#22212a` |
+| Document canvas | `#faf8fb` | `#2c2a35` |
+| Primary label | `#211f25` | `#e8e2ed` |
+| Accent | `#6855a9` | `#b8a7ce` |
+| Selection locator | `#8c7ca8` | `#a294b1` |
 
-Record, attention, and evidence keep distinct semantic jobs:
+The live Record badge uses dark ink on the softened rose fill in dark mode
+(`onRecord`), preserving readable text. Record, attention, and evidence keep
+distinct semantic jobs:
 
 | Role | Where it may appear |
 |---|---|
