@@ -3,7 +3,7 @@
   "date": "2026-09-07",
   "branch": "feature/progressive-setup",
   "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
-  "state": "local bundle built and signed; installed acceptance pending",
+  "state": "notarized test build installed; GUI acceptance pending",
   "direction": {
     "first_run": "Apple speech when ready, otherwise smallest cataloged speech download",
     "later": "other speech models in Settings",
@@ -154,15 +154,116 @@
       "signature_verification": "PASS: strict signed bundle verification, 200 arm64-compatible Mach-O files, internal-alpha",
       "source_freshness": "PASS: bundled runtime matches committed source digests",
       "post_commit_review_hook": "Unavailable: the existing Claude hook reported an expired OAuth session; independent reviews are recorded separately."
+    },
+    "installation_2026_09_08": {
+      "schema": "yawn-progressive-installation/1",
+      "source_commit": "6659eadaf3342ffd477e0b345cd218a20c738d06",
+      "dmg_sha256": "4ea9efc8fb1a9e12cb62aace929b6c6badfd54ab280addeeb8640497eaed0de7",
+      "installed": {
+        "version": "0.6.3",
+        "identifier": "com.ninochavez.local-meeting-notes",
+        "main_sha256": "deb31c9db9cc1b80c1ede03cfe078567de3f1bf4745a579608c11a8637810075",
+        "manifest_sha256": "de9de6418f394ac082b0ba558e29aa0fc8a991898bac045a60604e0891ab991e"
+      },
+      "previous": {
+        "version": "0.6.3",
+        "identifier": "com.ninochavez.local-meeting-notes",
+        "main_sha256": "eee00e581832a8431787f09b7ab898bffd4f164d02c2ad53382597ed96ee291a",
+        "manifest_sha256": "8d76cb4e398984bcc9aafd9fedbb9c341a765be52af65351bb76792fe056377c"
+      },
+      "installed_from_verified_dmg": true,
+      "strict_signature": true,
+      "gatekeeper": true,
+      "rollback_bundle_retained": true,
+      "launched": false,
+      "gui_checks": "pending operator-away confirmation",
+      "published": false,
+      "recorded_at": "2026-09-08T06:57:31.734303+00:00",
+      "apple_notarization": {
+        "app": {
+          "submission_id": "e2a038af-44e4-4db5-84b5-d16451fd665d",
+          "status": "Accepted"
+        },
+        "dmg": {
+          "submission_id": "15520e29-22d0-4f41-b304-d48e3196966a",
+          "status": "Accepted"
+        }
+      },
+      "bundle_and_dmg_verification": "PASS: strict signatures, notarization tickets, Gatekeeper, DMG layout, runtime manifest and source freshness",
+      "hosted_models": {
+        "scope": "Full public downloads hashed without retaining model copies",
+        "files": [
+          {
+            "model": "whisper-large-v3-turbo-q4",
+            "file": "config.json",
+            "bytes": 341,
+            "sha256": "538e24557b8f9bc504700add5e7bbe32087c2353001ff563e64772ad4398671a",
+            "matches_catalog": true,
+            "elapsed_seconds": 0.2
+          },
+          {
+            "model": "whisper-large-v3-turbo-q4",
+            "file": "weights.npz",
+            "bytes": 463664664,
+            "sha256": "862bbc832b05f3f4ec19dd632b701d61a6d3f5c7906360a10d72a79870642a80",
+            "matches_catalog": true,
+            "elapsed_seconds": 18.8
+          },
+          {
+            "model": "whisper-large-v3-turbo",
+            "file": "config.json",
+            "bytes": 268,
+            "sha256": "b34fc29e4e11e0a25e812775dd67f4dd16fc2c8eb43d28ae25ff7d660ecb6379",
+            "matches_catalog": true,
+            "elapsed_seconds": 0.2
+          },
+          {
+            "model": "whisper-large-v3-turbo",
+            "file": "weights.safetensors",
+            "bytes": 1613977612,
+            "sha256": "951ed3fc1203e6a62467abb2144a96ce7eafca8fa77e3704fdb8635ff3e7f8a6",
+            "matches_catalog": true,
+            "elapsed_seconds": 67.5
+          }
+        ]
+      },
+      "installed_native_worker": {
+        "synthetic_capture": true,
+        "audio_source": "public AMI ES2004c, twelve seconds at 60s and 120s",
+        "capability": {
+          "asset_identity": "os-managed",
+          "locale": "en-US",
+          "os_version": "Version 26.6.2 (Build 25G83)",
+          "schema": "apple-speech-capability/1",
+          "state": "ready",
+          "reason": null
+        },
+        "transcript_created": true,
+        "turn_count": 1,
+        "capture_unchanged": true,
+        "whisper_model": null,
+        "helper_sha256": "84def55693b69d12db7dbbd9c147c4dfa9fc3f0945b0796b9522fbeb5cb2bf69",
+        "provenance_written": true,
+        "packaged_modules": true,
+        "packaged_worker_ready": true,
+        "parent_eof_exit": true,
+        "resource_root": "/Applications/Yawn.app/Contents/Resources"
+      },
+      "installed_source_freshness": "PASS",
+      "preinstall_queue_counts": {
+        "unfinished_queue_items": 0,
+        "captured_without_queue": 0,
+        "unreadable_meeting_receipts": 0
+      }
     }
   },
   "not_verified": [
-    "Installed app startup and model switching with an app-runtime/3 bundle",
+    "Installed app UI startup and Settings switching; waiting for explicit operator-away confirmation before synthetic clicks",
     "Older macOS execution; deployment guard is compiled only",
     "Real Apple asset download, interruption and recovery",
     "Full retained meeting retry, vocabulary, note and playback workflow with Apple",
     "Human speech and note quality acceptance"
   ],
-  "release": "Source committed on feature/progressive-setup and a local test app built and signed. No push, app installation, notarization, DMG publication, or release performed.",
+  "release": "The internal-alpha test app and DMG were notarized, and the app was installed from the verified DMG on 2026-09-08. The prior bundle is retained for rollback. The app remains closed pending GUI checks. No push or publication performed.",
   "source_commit": "6659eadaf3342ffd477e0b345cd218a20c738d06"
 }

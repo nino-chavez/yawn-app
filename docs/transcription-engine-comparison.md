@@ -676,7 +676,30 @@ capture bytes remained unchanged. The four hosted speech objects returned the
 cataloged lengths using Yawn's installer user agent; this was a reachability
 check, not a full remote-object digest check.
 
-This is a local signed test app. It has not been installed, notarized, pushed,
-or published. Actual first-run setup, Settings switching, older-macOS behavior,
-and real-meeting quality remain open. The verification record identifies the
-built source commit and signed executable and manifest digests.
+The verification record identifies the built source commit and signed executable
+and manifest digests. This bundle is for local testing; actual first-run setup,
+Settings switching, older-macOS behavior, and real-meeting quality remain separate
+acceptance checks.
+
+
+## Installed test build — 2026-09-08
+
+Apple accepted the app and installer. Strict signatures, attached notarization
+tickets, Gatekeeper, installer layout, and runtime verification passed. Full
+downloads of all four hosted speech-model files matched the cataloged byte counts
+and SHA-256 hashes.
+
+The app was installed from the verified disk image. Its version remains `0.6.3`;
+the source commit and binary digests distinguish this test build. The previous
+app is retained for rollback. No public artifact or repository branch was pushed.
+
+The installed worker and Apple helper started without Whisper, transcribed the
+short public AMI clips, preserved capture bytes, and wrote provenance. Parent
+disconnect stopped the worker. This exercised installed components; it did not
+launch the app interface or assess meeting quality.
+
+The app remains closed. Automated Settings checks await explicit confirmation
+that the operator is away, as required by `scripts/capture-installed-screens.sh`.
+They will check model selection, restart persistence, return to the previous
+model, and independent optional notes. Fresh-account setup, older macOS, Apple
+asset-download recovery, and human meeting-quality acceptance remain open.
