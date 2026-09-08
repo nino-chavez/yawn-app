@@ -572,6 +572,7 @@ h3 {
 
 .transcript-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-18);
@@ -639,6 +640,14 @@ h3 {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: var(--t-body);
   font-variant-numeric: tabular-nums;
+}
+
+.transcript-line > [data-action="restore-withheld-turn"] {
+  grid-column: 1 / -1;
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+  height: auto;
 }
 
 .transcript-line-meta span {
@@ -1069,8 +1078,9 @@ h3 {
 
 .transcript-workspace {
   display: flex;
-  height: clamp(380px, calc(100dvh - 250px), 760px);
-  min-height: 0;
+  /* Keep a readable transcript area when the toolbar wraps at minimum size. */
+  height: clamp(480px, calc(100dvh - 250px), 760px);
+  min-height: 480px;
   margin-top: 0;
   padding-top: 0;
   overflow: hidden;
@@ -1120,6 +1130,7 @@ h3 {
 }
 
 .transcript-search-row {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1149,7 +1160,8 @@ h3 {
 }
 
 .transcript-scroll {
-  min-height: 0;
+  flex: 1;
+  min-height: 160px;
   padding: 0 var(--space-18) var(--space-18);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1275,6 +1287,9 @@ h3 {
    the tree render() patches, by design, so a render tick mid-hover cannot
    disturb it. Same accent idiom as `.claim-source-button`; no new color. */
 .evidence-popover {
+  overflow-wrap: anywhere;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   z-index: 40;
   box-sizing: border-box;
   width: min(320px, calc(100vw - 24px));
@@ -1309,6 +1324,7 @@ h3 {
    is styled in the shell block near the end of this file, from tokens.css. */
 
 .startup-card {
+  overflow-wrap: anywhere;
   width: min(520px, 100%);
   margin: 22vh auto 0;
   padding: 0 var(--space-48);
@@ -1397,6 +1413,10 @@ h3 {
   font-weight: 600;
   letter-spacing: normal;
   line-height: 1.25;
+}
+
+.model-setup > [data-action="prepare-apple-speech"] {
+  margin-bottom: var(--space-12);
 }
 
 .model-setup-copy {
@@ -2114,6 +2134,7 @@ h3 {
 }
 
 .toast {
+  overflow-wrap: anywhere;
   position: fixed;
   z-index: 40;
   right: 24px;
@@ -2632,7 +2653,15 @@ html, body, #app {
   padding: 13px 7px 16px;
 }
 
+.sidebar [data-action="open-start-guided"] {
+  max-width: 100%;
+  white-space: normal;
+  height: auto;
+  text-align: left;
+}
+
 .sidebar-message {
+  overflow-wrap: anywhere;
   margin: 0;
   padding: var(--space-8) var(--space-16);
 }
@@ -2797,6 +2826,7 @@ html, body, #app {
 }
 
 .doc-wrap {
+  overflow-wrap: anywhere;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -2839,6 +2869,7 @@ html, body, #app {
 
 .doc-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
@@ -2846,6 +2877,7 @@ html, body, #app {
 }
 
 .doc-heading {
+  flex: 1 1 240px;
   min-width: 0;
 }
 
@@ -2928,6 +2960,26 @@ html, body, #app {
   margin: 9px 0 13px;
 }
 
+.doc-wrap > .trash-pane {
+  max-width: none;
+  padding: 36px clamp(26px, 5vw, 68px) 54px;
+  overflow-y: auto;
+}
+
+.trash-list li > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.trash-list .row-title,
+.trash-list .row-caption {
+  white-space: normal;
+}
+
+.trash-list .btn {
+  flex-shrink: 0;
+}
+
 .trash-pane h1 {
   font-size: var(--t-title);
   font-weight: 600;
@@ -2954,6 +3006,7 @@ html, body, #app {
 /* -- canvas (During capture) ------------------------------------------------ */
 
 .canvas-wrap {
+  overflow-wrap: anywhere;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -3067,6 +3120,10 @@ html, body, #app {
   gap: var(--space-12);
 }
 
+.doc-wrap:has(.inspector) .doc-main {
+  padding-inline: 24px;
+}
+
 .inspector-head {
   display: flex;
   align-items: center;
@@ -3099,6 +3156,7 @@ html, body, #app {
 
 .transcript-turn .t-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-6);
   align-items: baseline;
 }

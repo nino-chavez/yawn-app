@@ -6,6 +6,9 @@ behavior. This record tracks implementation prompted by the last30days pilot
 and the installed Meetily Community comparison. It does not rank transcription
 or note quality.
 
+The subsequent [whole-app layout review](layout-review-2026-09-08.md) records
+additional rendered defects and their corrections across the app.
+
 ## Settings makes the next action easier to find
 
 Source: `fd12238`.

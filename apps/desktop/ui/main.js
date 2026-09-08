@@ -3074,10 +3074,18 @@ function showEvidencePopover(anchor, ordinal) {
 function positionEvidencePopover(el, anchor) {
   const rect = anchor.getBoundingClientRect();
   const width = el.offsetWidth || 320;
+  const height = el.offsetHeight;
   const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  // Prefer below the claim; near the window edge, keep the preview readable
+  // above it. CSS bounds very long excerpts and lets the preview scroll.
+  const below = rect.bottom + 8;
+  const preferredTop = below + height <= window.innerHeight - 12
+    ? below
+    : rect.top - height - 8;
+  const top = Math.max(12, Math.min(preferredTop, window.innerHeight - height - 12));
   el.style.position = "fixed";
   el.style.left = `${left}px`;
-  el.style.top = `${rect.bottom + 8}px`;
+  el.style.top = `${top}px`;
 }
 
 function dismissEvidencePopover() {
