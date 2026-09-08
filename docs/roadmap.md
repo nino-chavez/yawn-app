@@ -22,6 +22,13 @@ Cross-meeting questions can follow once the source record is reliable.
 Cloud accounts, automatic call detection, meeting bots, and live meeting chat do
 not enter the roadmap through competitor comparison alone.
 
+**Research follow-up — 2026-09-08.** The last30days pilot and installed Meetily
+Community comparison prompted scoped Settings, transcript-search, and capture
+work. [The follow-up record](evidence/research-followup-2026-09-08.md) separates
+source changes and checks from remaining native validation. The existing search
+probe stays default-off. System-audio timeout detection and the deferred human
+note-quality review remain open; this work does not change the roadmap gates.
+
 ## Design direction rethink — 2026-09-02
 
 The operator rejected the visual direction: the installed app rendered a

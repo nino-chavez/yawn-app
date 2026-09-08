@@ -1,0 +1,76 @@
+== search: cross-meeting exact-match focus and honest result states ==
+{
+  "errors" : [
+
+  ],
+  "steps" : [
+    {
+      "name" : "no-result response stays explicit",
+      "ok" : true
+    },
+    {
+      "name" : "incomplete response keeps its coverage warning",
+      "ok" : true
+    },
+    {
+      "name" : "withheld result never renders invented source text",
+      "ok" : true
+    },
+    {
+      "name" : "metadata-only hit opens normally without inventing a turn target",
+      "ok" : true
+    },
+    {
+      "name" : "a changed transcript digest refuses the old locator",
+      "ok" : true
+    },
+    {
+      "name" : "a refused bound transcript keeps the results and asks for a new search",
+      "ok" : true
+    },
+    {
+      "name" : "cross-meeting retained match is offered",
+      "ok" : true
+    },
+    {
+      "name" : "cross-meeting match opens the matching turn",
+      "ok" : true
+    },
+    {
+      "name" : "matching turn is focused in the open transcript",
+      "ok" : true
+    },
+    {
+      "name" : "the system-audio channel label explains its shared scope",
+      "ok" : true
+    },
+    {
+      "name" : "a microphone channel does not get the system-audio warning",
+      "ok" : true
+    },
+    {
+      "name" : "withheld turn can be located without restoring its text",
+      "ok" : true
+    },
+    {
+      "name" : "a new transcript query clears the prior result focus",
+      "ok" : true
+    },
+    {
+      "name" : "leaving the reader wins over a slower search open",
+      "ok" : true
+    }
+  ]
+}
+== search: capture blocks the probe affordance ==
+{
+  "errors" : [
+
+  ],
+  "steps" : [
+    {
+      "name" : "capture leaves the probe unavailable",
+      "ok" : true
+    }
+  ]
+}

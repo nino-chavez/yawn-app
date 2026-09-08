@@ -1,0 +1,134 @@
+[
+  {
+    "width": 960,
+    "height": 760,
+    "theme": "dark",
+    "heading": {
+      "left": 364,
+      "right": 850,
+      "top": 155.953125,
+      "bottom": 201.1875
+    },
+    "actions": {
+      "left": 364,
+      "right": 840.53125,
+      "top": 217.1875,
+      "bottom": 243.1875
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  },
+  {
+    "width": 960,
+    "height": 760,
+    "theme": "light",
+    "heading": {
+      "left": 364,
+      "right": 850,
+      "top": 155.953125,
+      "bottom": 201.1875
+    },
+    "actions": {
+      "left": 364,
+      "right": 840.53125,
+      "top": 217.1875,
+      "bottom": 243.1875
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  },
+  {
+    "width": 900,
+    "height": 600,
+    "theme": "dark",
+    "heading": {
+      "left": 361,
+      "right": 791,
+      "top": 156.09375,
+      "bottom": 201.328125
+    },
+    "actions": {
+      "left": 361,
+      "right": 791,
+      "top": 217.328125,
+      "bottom": 277.328125
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  },
+  {
+    "width": 900,
+    "height": 600,
+    "theme": "light",
+    "heading": {
+      "left": 361,
+      "right": 791,
+      "top": 156.09375,
+      "bottom": 201.328125
+    },
+    "actions": {
+      "left": 361,
+      "right": 791,
+      "top": 217.328125,
+      "bottom": 277.328125
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  },
+  {
+    "width": 1280,
+    "height": 900,
+    "theme": "dark",
+    "heading": {
+      "left": 457.5,
+      "right": 943.5,
+      "top": 155.734375,
+      "bottom": 200.96875
+    },
+    "actions": {
+      "left": 457.5,
+      "right": 934.03125,
+      "top": 216.96875,
+      "bottom": 242.96875
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  },
+  {
+    "width": 1280,
+    "height": 900,
+    "theme": "light",
+    "heading": {
+      "left": 457.5,
+      "right": 943.5,
+      "top": 155.734375,
+      "bottom": 200.96875
+    },
+    "actions": {
+      "left": 457.5,
+      "right": 934.03125,
+      "top": 216.96875,
+      "bottom": 242.96875
+    },
+    "highlighted": true,
+    "toolbarVisible": true,
+    "noOverlap": true,
+    "buttonsContained": true,
+    "noHorizontalOverflow": true
+  }
+]

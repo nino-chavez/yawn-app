@@ -1,0 +1,26 @@
+[
+  {
+    "width": 720,
+    "height": 720,
+    "theme": "light",
+    "anchorsAndSwitching": "passed"
+  },
+  {
+    "width": 720,
+    "height": 720,
+    "theme": "dark",
+    "anchorsAndSwitching": "passed"
+  },
+  {
+    "width": 560,
+    "height": 480,
+    "theme": "light",
+    "anchorsAndSwitching": "passed"
+  },
+  {
+    "width": 560,
+    "height": 480,
+    "theme": "dark",
+    "anchorsAndSwitching": "passed"
+  }
+]
