@@ -736,7 +736,10 @@ Private screen captures stay outside Git. The content-free installed-test record
 is in `docs/evidence/progressive-setup-2026-09-07.json`; the cold screen review is
 in `docs/evidence/screen-reviews/progressive-installed-2026-09-08-cold.md`.
 Fresh-account setup, older macOS, Apple asset-download recovery, and human
-meeting-quality acceptance remain open. Nothing was pushed or published.
+meeting-quality acceptance remain open. This pilot was not pushed or published
+at the time of this receipt. Progressive setup later shipped in 0.6.4 at
+`58e13a2`; see the [release receipt](distribution-runbook.md#064-release-receipt).
+That release does not close these outstanding acceptance checks.
 
 ## Retained Apple transcript-to-note replay — 2026-09-08
 

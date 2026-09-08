@@ -1,9 +1,30 @@
 # Yawn product roadmap — trust before reach
 
-Status: active product direction as of 2026-08-17.
+Status: active product direction; release status reconciled on 2026-09-08.
 
 This roadmap sequences product work. It does not claim that a listed feature is
 shipped. The current product contract remains [the product brief](product-brief.md).
+
+## Current release and next acceptance work — 2026-09-08
+
+Yawn 0.6.4 is released and installed from source `58e13a2`. It includes
+progressive Apple/downloaded speech setup, Settings changes, microphone-stall
+handling, layout fixes, and Lavender Haze. The
+[release receipt](distribution-runbook.md#064-release-receipt) records the
+signed artifact and public delivery. Older Preview receipts below are historical;
+they do not describe the current distribution state.
+
+Transcript-content search remains an experimental, default-off local probe.
+Its matching-passage work is included in source, but is not generally available.
+Semantic source finding remains withheld under Order 5. The public 0.6.4 notes
+were corrected to remove the unqualified search feature claim.
+
+Next: verify the installed 0.6.4 journey through setup, engine switching and
+restart, recording and reopen, speaker correction, transcript retry, and note
+regeneration. Package checks do not close those interaction checks. Then measure
+quiet native system-audio callback behavior before enabling stall detection for
+that source. Real-meeting note-quality judgment remains deferred by the operator.
+The macOS 14.4 floor remains; no model-quality ranking or floor increase is approved.
 
 ## The decision
 
@@ -1577,8 +1598,8 @@ uncapped interpretation path while the source is still being recorded.
 Status: the operator authorized progressive setup on 2026-09-07: use Apple
 speech when ready, otherwise offer the smallest cataloged speech download,
 with other models available later in Settings. The [source implementation and checks](transcription-engine-comparison.md#progressive-setup-implementation--2026-09-07)
-are on `feature/progressive-setup`; it is not installed or released. The macOS
-14.4 floor remains. Quality acceptance and a future floor increase remain
+shipped in 0.6.4 at `58e13a2` and are installed from the notarized DMG. The macOS
+14.4 floor remains. Installed 0.6.4 interaction acceptance, quality acceptance, and a future floor increase remain
 open; this direction does not move work ahead of Orders 0–4.
 
 The operator previously authorized the [local integration pilot](transcription-engine-comparison.md#integration-pilot-dispatched--2026-09-07),
@@ -1594,8 +1615,8 @@ locale assets, which can download when missing. It does not mean there is no
 model download. See [Apple's implementation
 walkthrough](https://developer.apple.com/videos/play/wwdc2025/277/).
 
-Yawn currently requires macOS 14.4 and uses MLX Whisper through its Python
-worker. The installed Q4 speech model measured in this comparison is about
+Yawn currently requires macOS 14.4 and supports Apple speech on macOS 26,
+with MLX Whisper through its Python worker as the downloaded-model path. The installed Q4 speech model measured in this comparison is about
 464 MB, not a roughly 2 GB speech download. The separate installed note model
 is about 8.06 GB. Replacing transcription would not remove that model, its
 MLX-LM runtime, or the need to manage note-model assets. The

@@ -2,12 +2,13 @@
 
 ## 0.6.4 release receipt
 
-**0.6.4 was released on 2026-09-08 with Apple speech setup, matching-passage
-search, clearer Settings, and the Lavender Haze dark palette.** PR #74 merged
+**0.6.4 was released on 2026-09-08 with Apple speech setup, clearer Settings,
+and the Lavender Haze dark palette. Matching-passage search changes are included
+behind the existing default-off probe; search is not generally available.** PR #74 merged
 source commit `58e13a276a352b7ef3d283951d52d037d2fad6af`, which produced the
 signed artifact. Annotated tag `v0.6.4` identifies that exact source. The
 [GitHub prerelease](https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.4)
-and [release-notes page](https://yawn-site.pages.dev/release-notes/#yawn-0.6.4)
+and [release-notes page](https://apps.ninochavez.co/yawn/release-notes/#yawn-0.6.4)
 use the same reviewed release data. The commit corpus covers 19 commits after
 `v0.6.3`; it is input for review, not automatically published commit messages.
 
@@ -50,6 +51,45 @@ The replaced app remains recoverable at
 Installed-app interaction acceptance was not performed in this release pass.
 The operator deferred the real-meeting quality review; packaging and rendered
 page checks do not close that review or establish improved speech accuracy.
+
+### 0.6.4 follow-up: corrected claims and installed checks — 2026-09-08
+
+The initial public notes overstated transcript-content search availability.
+The homepage, release notes, app card, and GitHub prerelease now omit that
+feature claim and explicitly identify transcript-content search as experimental
+and disabled by default. Site commit `b77f933` was pushed and deployed at
+`https://84972cb2.yawn-site.pages.dev`. The corrected version and wording were
+checked on all three public files at that deployment, the Pages production
+address, and `https://apps.ninochavez.co/yawn/`. GitHub's published release body
+matches the corrected notes. The app artifact and release tag did not change.
+
+Fresh checks against `/Applications/Yawn.app` report version 0.6.4, a valid
+strict/deep code signature, a valid notarization staple, and Gatekeeper acceptance
+as Notarized Developer ID. Its executable still matches the SHA-256 recorded
+above. The installed `apple-speech --capabilities --locale en-US` command returned
+`state: ready` on macOS 26.6.2. This command checked availability without
+recording audio or installing assets.
+
+Installed interaction acceptance remains pending. This session had no
+`node_repl` tool, which the Computer Use skill requires for Mac UI interactions.
+No recording was started, meeting edited, model selection changed, or acceptance
+box checked. Source or synthetic-harness tests cannot stand in for these actions.
+
+| Next installed check | Passing observation | Status |
+|---|---|---|
+| Existing library and engine selection | Open a saved meeting, change between Apple and a previously downloaded speech model, restart, and confirm the choice and original transcript persist; restore the initial choice | Pending |
+| Fresh setup and downloads | In a separate disposable account, inspect first setup, missing Apple assets, optional speech/note downloads, and interrupted-download recovery without resetting the operator's library | Pending |
+| Record, pause, stop, and reopen | With a consenting operator and a synthetic spoken script, complete a two-source take, restart, and reopen its transcript; record interruptions as failures rather than completed takes | Pending |
+| Speaker correction and generation | In a disposable meeting, change one source group, reopen, regenerate, and confirm only intended attribution changes and source links remain valid | Pending |
+| Transcript retry and note preservation | In a disposable meeting with retained audio, compare a retry, keep the original, then promote a retry; observe note invalidation and regeneration without losing the source record | Pending |
+| Source playback | Open a generated claim's source and seek its retained audio; verify the intended passage and the unavailable-audio explanation | Pending |
+
+Use disposable meeting data for mutating checks. Do not attest that the operator
+is alone or wearing headphones on their behalf, and do not reset their existing
+library to manufacture fresh setup. Human speech/note quality judgment remains
+explicitly deferred. Native quiet-system-audio cadence and device-interruption
+checks follow this acceptance pass; system-audio stall detection stays disabled
+until those observations support it.
 
 ## 0.6.3 release receipt
 

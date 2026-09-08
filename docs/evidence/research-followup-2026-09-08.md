@@ -140,6 +140,10 @@ check; readable controls alone do not prove that understanding.
 
 ## Delivery boundary
 
-The changes recorded here are source and test results. They have not been
-installed, notarized, or publicly released. The installed-app receipts from the
-earlier progressive-setup work do not cover these changes.
+These changes were included in the signed, notarized, installed, and publicly
+released 0.6.4 artifact at `58e13a2`. See the
+[release receipt](../distribution-runbook.md#064-release-receipt).
+Transcript-content search remains default-off; including its implementation
+in the package does not make it a generally available feature. The checks above
+remain source and synthetic-render evidence. Neither the earlier progressive-setup
+receipts nor package verification establish installed 0.6.4 interaction acceptance.

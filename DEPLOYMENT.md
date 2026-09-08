@@ -158,8 +158,7 @@ do not silently mint a broad, long-lived credential during a release.
 Upload the exact completed DMG under its versioned filename with content type
 `application/x-apple-diskimage` and immutable cache control. With `rclone`,
 include `--metadata` as well as `--metadata-set` so those headers are applied.
-Then verify the
-public URL returns `200` and the expected `Content-Length` before editing the
+Then verify the public URL returns `200` and the expected `Content-Length` before editing the
 landing page. A byte range request is enough to prove public reachability; do
 not download the full image merely to test the link.
 
@@ -183,7 +182,10 @@ npx wrangler pages deploy dist --project-name=yawn-site --branch=main
 This Pages project has no Git integration. A site commit or push does not deploy
 the public page. Re-fetch the exact live page with `Cache-Control: no-cache` and
 confirm it names the new version, URL, and checksum. Check the release-notes
-page and app card on both the returned deployment URL and the production URL.
+page and app card on the returned deployment URL and the production URL.
+The public entry point is `https://apps.ninochavez.co/yawn/`; verify its
+`release-notes/` link as well. The router serves the Pages source under that
+prefix, so internal links should remain root-relative.
 
 Only after both the new R2 URL and live landing page are verified may the
 previous installer and its matching checksum sidecar be deleted. Confirm the
