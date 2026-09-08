@@ -18,6 +18,8 @@ private final class FakeSource: MeetingAudioSource, @unchecked Sendable {
   private let lock = NSLock()
   private var pcm: (@Sendable (Data) -> Void)?
   private var failure: (@Sendable (MeetingCaptureFault) -> Void)?
+  private var previousPCM: [@Sendable (Data) -> Void] = []
+  private var previousFailures: [@Sendable (MeetingCaptureFault) -> Void] = []
   private(set) var stops = 0
 
   init(_ leg: MeetingCaptureLeg) { self.leg = leg }
@@ -27,6 +29,8 @@ private final class FakeSource: MeetingAudioSource, @unchecked Sendable {
     onFailure: @escaping @Sendable (MeetingCaptureFault) -> Void
   ) throws {
     lock.lock()
+    if let pcm { previousPCM.append(pcm) }
+    if let failure { previousFailures.append(failure) }
     pcm = onPCM
     failure = onFailure
     lock.unlock()
@@ -47,6 +51,29 @@ private final class FakeSource: MeetingAudioSource, @unchecked Sendable {
     let callback = pcm
     lock.unlock()
     callback?(data)
+  }
+
+  /// Models a nonempty callback already queued by the source before `stop`.
+  /// A resumed acquisition must not accept it as readiness or fresh delivery.
+  func emitStale(_ data: Data) {
+    lock.lock()
+    let callback = previousPCM.last
+    lock.unlock()
+    callback?(data)
+  }
+
+  func fail(_ fault: MeetingCaptureFault) {
+    lock.lock()
+    let callback = failure
+    lock.unlock()
+    callback?(fault)
+  }
+
+  func failStale(_ fault: MeetingCaptureFault) {
+    lock.lock()
+    let callback = previousFailures.last
+    lock.unlock()
+    callback?(fault)
   }
 }
 
@@ -122,6 +149,29 @@ private struct Fixture {
 
 private func wait(_ semaphore: DispatchSemaphore, _ message: String) throws {
   try require(semaphore.wait(timeout: .now() + 2) == .success, message)
+}
+
+private func waitUntil(
+  _ message: String,
+  timeout: TimeInterval = 2,
+  _ condition: () -> Bool
+) throws {
+  let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeout * 1_000_000_000)
+  while !condition() {
+    if DispatchTime.now().uptimeNanoseconds >= deadline {
+      throw SelfTestFailure(description: message)
+    }
+    usleep(5_000)
+  }
+}
+
+private func terminalUpdates(_ updates: [MeetingCaptureUpdate]) -> [MeetingCaptureUpdate] {
+  updates.filter {
+    switch $0 {
+    case .finalized, .failed, .interrupted: return true
+    case .recording, .suspended, .resumed: return false
+    }
+  }
 }
 
 private func testOrderedFinalization() throws {
@@ -270,6 +320,222 @@ private func testOverflowAndInterrupt() throws {
     try fixture.assertWAV(".mic.wav.partial", frames: 2)
     try fixture.assertWAV(".system.wav.partial", frames: 1)
   }
+}
+
+private func testMicrophoneStallFailsWithSystemPCMStillArriving() throws {
+  let fixture = try Fixture()
+  defer { fixture.close() }
+  let mic = FakeSource(.mic)
+  let system = FakeSource(.system)
+  let updates = UpdateBox()
+  // The default watchdog uses a ten-second grace. This fixture uses a fast,
+  // deterministic grace while leaving system monitoring at its default off.
+  let coordinator = try MeetingCaptureCoordinator(
+    directoryFD: fixture.directoryFD, mic: mic, system: system,
+    stallGraceSeconds: 0.08, onUpdate: { update in updates.receive(update) })
+  coordinator.activate()
+  try wait(mic.started, "stall fixture mic did not start")
+  try wait(system.started, "stall fixture system did not start")
+  // PCM that happens to be all zeros is still a delivered block. The healthy
+  // system leg below must not hide a silently stalled microphone.
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try wait(updates.recording, "stall fixture did not enter recording")
+
+  for index in 0..<12 {
+    if index == 2 { mic.emit(Data()) }  // Empty data is never a fresh block.
+    system.emit(Data([0, 0]))
+    usleep(20_000)
+  }
+  try waitUntil("silent microphone did not become terminal") {
+    !terminalUpdates(updates.updates).isEmpty
+  }
+  guard case let .failed(fault)? = terminalUpdates(updates.updates).last else {
+    throw SelfTestFailure(description: "silent microphone did not fail")
+  }
+  try require(fault.code == "microphone_audio_stalled", "silent microphone used \(fault.code)")
+  try require(fault.leg == .mic, "silent microphone fault lost its leg")
+  try require(
+    try fixture.names() == [".mic.wav.partial", ".system.wav.partial"],
+    "silent microphone stall promoted or removed retained audio")
+}
+
+private func testDefaultSystemSilenceDoesNotFailAndOptInDoes() throws {
+  do {
+    let fixture = try Fixture()
+    defer { fixture.close() }
+    let mic = FakeSource(.mic)
+    let system = FakeSource(.system)
+    let updates = UpdateBox()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: fixture.directoryFD, mic: mic, system: system,
+      stallGraceSeconds: 0.08, onUpdate: { update in updates.receive(update) })
+    coordinator.activate()
+    try wait(mic.started, "default-system fixture mic did not start")
+    try wait(system.started, "default-system fixture system did not start")
+    mic.emit(Data([0, 0]))
+    system.emit(Data([0, 0]))
+    try wait(updates.recording, "default-system fixture did not enter recording")
+    for _ in 0..<12 {
+      mic.emit(Data([0, 0]))
+      usleep(20_000)
+    }
+    try require(coordinator.state == .recording, "quiet default system leg became terminal")
+    try require(terminalUpdates(updates.updates).isEmpty, "quiet default system leg emitted a fault")
+    _ = coordinator.stop()
+  }
+
+  do {
+    let fixture = try Fixture()
+    defer { fixture.close() }
+    let mic = FakeSource(.mic)
+    let system = FakeSource(.system)
+    let updates = UpdateBox()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: fixture.directoryFD, mic: mic, system: system,
+      stallGraceSeconds: 0.08, monitorSystemAudioStall: true,
+      onUpdate: { update in updates.receive(update) })
+    coordinator.activate()
+    try wait(mic.started, "opt-in system fixture mic did not start")
+    try wait(system.started, "opt-in system fixture system did not start")
+    mic.emit(Data([0, 0]))
+    system.emit(Data([0, 0]))
+    try wait(updates.recording, "opt-in system fixture did not enter recording")
+    for _ in 0..<12 {
+      mic.emit(Data([0, 0]))
+      usleep(20_000)
+    }
+    try waitUntil("silent opt-in system leg did not become terminal") {
+      !terminalUpdates(updates.updates).isEmpty
+    }
+    guard case let .failed(fault)? = terminalUpdates(updates.updates).last else {
+      throw SelfTestFailure(description: "silent opt-in system leg did not fail")
+    }
+    try require(fault.code == "system_audio_stalled", "silent opt-in system used \(fault.code)")
+    try require(fault.leg == .system, "silent opt-in system fault lost its leg")
+    try require(
+      try fixture.names() == [".mic.wav.partial", ".system.wav.partial"],
+      "silent opt-in system stall promoted or removed retained audio")
+  }
+}
+
+private func testCurrentSourceFaultWinsStopRace() throws {
+  let fixture = try Fixture()
+  defer { fixture.close() }
+  let mic = FakeSource(.mic)
+  let system = FakeSource(.system)
+  let updates = UpdateBox()
+  let coordinator = try MeetingCaptureCoordinator(
+    directoryFD: fixture.directoryFD, mic: mic, system: system,
+    onUpdate: { update in updates.receive(update) })
+  coordinator.activate()
+  try wait(mic.started, "source-fault fixture mic did not start")
+  try wait(system.started, "source-fault fixture system did not start")
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try wait(updates.recording, "source-fault fixture did not enter recording")
+  let fault = MeetingCaptureFault(code: "mic_source_fault", leg: .mic, detail: "fake current fault")
+  mic.fail(fault)
+  try require(coordinator.stop() == nil, "current source fault allowed promotion during stop")
+  try waitUntil("current source fault did not become terminal") {
+    !terminalUpdates(updates.updates).isEmpty
+  }
+  try require(
+    terminalUpdates(updates.updates).last == .failed(fault),
+    "current source fault lost the stop race")
+  try require(
+    try fixture.names() == [".mic.wav.partial", ".system.wav.partial"],
+    "current source fault promoted retained audio")
+}
+
+private func testStallWatchdogRespectsPauseResumeAndStop() throws {
+  let fixture = try Fixture()
+  defer { fixture.close() }
+  let mic = FakeSource(.mic)
+  let system = FakeSource(.system)
+  let updates = UpdateBox()
+  let coordinator = try MeetingCaptureCoordinator(
+    directoryFD: fixture.directoryFD, mic: mic, system: system,
+    stallGraceSeconds: 0.08, onUpdate: { update in updates.receive(update) })
+  coordinator.activate()
+  try wait(mic.started, "lifecycle fixture mic did not start")
+  try wait(system.started, "lifecycle fixture system did not start")
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try wait(updates.recording, "lifecycle fixture did not enter recording")
+
+  try require(coordinator.suspend(), "recording did not suspend")
+  usleep(160_000)
+  try require(coordinator.state == .suspended, "pause left the audio-stall watchdog armed")
+  try require(terminalUpdates(updates.updates).isEmpty, "pause emitted a terminal event")
+
+  coordinator.resume()
+  try wait(mic.started, "resume did not restart mic")
+  try wait(system.started, "resume did not restart system audio")
+  mic.emit(Data())
+  system.emit(Data())
+  mic.emitStale(Data([0, 0]))
+  system.emitStale(Data([0, 0]))
+  mic.failStale(MeetingCaptureFault(code: "stale_source_fault", leg: .mic, detail: "old callback"))
+  // This is both the resumed grace window and the stale-timer check. A timer
+  // from the paused acquisition must not fail the newly resumed one early.
+  usleep(40_000)
+  try require(coordinator.state == .resuming, "resume grace window failed before either leg produced")
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try waitUntil("both resumed legs did not re-enter recording") { coordinator.state == .recording }
+
+  _ = coordinator.stop()
+  try waitUntil("stop did not emit one terminal event") {
+    terminalUpdates(updates.updates).count == 1
+  }
+  usleep(160_000)
+  try require(
+    terminalUpdates(updates.updates).count == 1,
+    "stop left a watchdog that emitted a duplicate terminal event")
+}
+
+private func testStaleSourcePCMDoesNotRefreshResumedMicrophone() throws {
+  let fixture = try Fixture()
+  defer { fixture.close() }
+  let mic = FakeSource(.mic)
+  let system = FakeSource(.system)
+  let updates = UpdateBox()
+  let coordinator = try MeetingCaptureCoordinator(
+    directoryFD: fixture.directoryFD, mic: mic, system: system,
+    stallGraceSeconds: 0.08, onUpdate: { update in updates.receive(update) })
+  coordinator.activate()
+  try wait(mic.started, "stale fixture mic did not start")
+  try wait(system.started, "stale fixture system did not start")
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try wait(updates.recording, "stale fixture did not enter recording")
+  try require(coordinator.suspend(), "stale fixture did not suspend")
+
+  coordinator.resume()
+  try wait(mic.started, "stale fixture mic did not restart")
+  try wait(system.started, "stale fixture system did not restart")
+  mic.emit(Data([0, 0]))
+  system.emit(Data([0, 0]))
+  try waitUntil("stale fixture did not resume") { coordinator.state == .recording }
+
+  // The microphone's old callback continues to hand back valid zero PCM while
+  // the current system leg is healthy. An epochless watchdog would accept that
+  // data as fresh and keep Recording alive.
+  for _ in 0..<12 {
+    mic.emitStale(Data([0, 0]))
+    system.emit(Data([0, 0]))
+    usleep(20_000)
+  }
+  try waitUntil("stale microphone callbacks kept resumed capture alive") {
+    !terminalUpdates(updates.updates).isEmpty
+  }
+  guard case let .failed(fault)? = terminalUpdates(updates.updates).last else {
+    throw SelfTestFailure(description: "stale microphone callbacks did not fail")
+  }
+  try require(
+    fault.code == "microphone_audio_stalled" && fault.leg == .mic,
+    "stale microphone callbacks produced the wrong terminal fault")
 }
 
 private func testCoreBufferOverflowAndTailDrain() throws {
@@ -547,6 +813,11 @@ do {
   try testNoOverwrite()
   try testLateSecondLegCollisionRollsBackFirstPromotion()
   try testOverflowAndInterrupt()
+  try testMicrophoneStallFailsWithSystemPCMStillArriving()
+  try testDefaultSystemSilenceDoesNotFailAndOptInDoes()
+  try testCurrentSourceFaultWinsStopRace()
+  try testStallWatchdogRespectsPauseResumeAndStop()
+  try testStaleSourcePCMDoesNotRefreshResumedMicrophone()
   try testCoreBufferOverflowAndTailDrain()
   try testSittingStreamsExactBytesAndRefusesFiles()
   try testSittingOverflowAndInterrupt()

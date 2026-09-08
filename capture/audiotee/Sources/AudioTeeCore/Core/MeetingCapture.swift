@@ -79,6 +79,14 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
   private let system: MeetingAudioSource
   private let directoryFD: Int32
   private let maxPendingBytes: Int
+  /// A source has this long after activation or resume to deliver a normalized
+  /// PCM block. Ten seconds tolerates ordinary device wake-up without leaving a
+  /// take Recording forever when one source silently stops calling back.
+  private let stallGraceNanoseconds: UInt64
+  /// The system tap has no established contract that idle output delivers
+  /// nonempty zero PCM. Keep its watchdog opt-in until native evidence proves
+  /// that contract; microphone delivery remains protected by default.
+  private let monitorsSystemAudioStall: Bool
   private let onUpdate: @Sendable (MeetingCaptureUpdate) -> Void
   private let controlQueue = DispatchQueue(label: "local-meeting-notes.capture-control")
   private let lock = NSLock()
@@ -86,6 +94,10 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
   private var _state: MeetingCaptureState = .paused
   private var readyLegs: Set<MeetingCaptureLeg> = []
   private var stopDrainingLegs: Set<MeetingCaptureLeg> = []
+  private var lastBlockDelivery: [MeetingCaptureLeg: UInt64] = [:]
+  private var stallWatchdog: DispatchSourceTimer?
+  private var watchdogEpoch: UInt64?
+  private var acquisitionEpoch: UInt64 = 0
   private var storedFault: MeetingCaptureFault?
   private var pair: PrivateWAVPair?
 
@@ -94,6 +106,8 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     mic: MeetingAudioSource,
     system: MeetingAudioSource,
     maxPendingBytes: Int = 16_000 * 2 * 5,
+    stallGraceSeconds: TimeInterval = 10,
+    monitorSystemAudioStall: Bool = false,
     onUpdate: @escaping @Sendable (MeetingCaptureUpdate) -> Void
   ) throws {
     guard mic.leg == .mic, system.leg == .system else {
@@ -103,6 +117,14 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     guard maxPendingBytes > 0 else {
       throw MeetingCaptureFault(
         code: "invalid_queue_limit", detail: "capture queue limit must be positive")
+    }
+    guard
+      stallGraceSeconds.isFinite,
+      stallGraceSeconds > 0,
+      stallGraceSeconds <= Double(Int.max) / 1_000_000_000
+    else {
+      throw MeetingCaptureFault(
+        code: "invalid_stall_grace", detail: "capture audio-stall grace must be positive")
     }
     guard fcntl(directoryFD, F_GETFD) != -1 else {
       throw MeetingCaptureFault(
@@ -122,6 +144,8 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     self.mic = mic
     self.system = system
     self.maxPendingBytes = maxPendingBytes
+    self.stallGraceNanoseconds = UInt64(stallGraceSeconds * 1_000_000_000)
+    self.monitorsSystemAudioStall = monitorSystemAudioStall
     self.onUpdate = onUpdate
   }
 
@@ -139,9 +163,10 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
             code: "invalid_start", detail: "capture start is valid only while paused"))
         return
       }
+      let epoch = beginAcquisition()
       do {
-        try start(source: mic)
-        try start(source: system)
+        try start(source: mic, epoch: epoch)
+        try start(source: system, epoch: epoch)
       } catch let fault as MeetingCaptureFault {
         fail(fault)
       } catch {
@@ -165,6 +190,8 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
       // A source may hand back its buffered remainder synchronously from
       // `stop`. A pause is an instruction about the present, so that remainder
       // is dropped: `receive` refuses every leg while the state is suspending.
+      cancelStallWatchdog()
+      invalidateAcquisition()
       mic.stop()
       system.stop()
       readyLegs = []
@@ -187,9 +214,10 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
             code: "invalid_resume", detail: "capture resume is valid only while suspended"))
         return
       }
+      let epoch = beginAcquisition()
       do {
-        try start(source: mic)
-        try start(source: system)
+        try start(source: mic, epoch: epoch)
+        try start(source: system, epoch: epoch)
       } catch let fault as MeetingCaptureFault {
         fail(fault)
       } catch {
@@ -223,27 +251,31 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     }
   }
 
-  private func start(source: MeetingAudioSource) throws {
+  private func start(source: MeetingAudioSource, epoch: UInt64) throws {
     try source.start(
-      onPCM: { [weak self] data in self?.receive(data, from: source.leg) },
-      onFailure: { [weak self] fault in self?.recordSource(fault, from: source.leg) })
+      onPCM: { [weak self] data in self?.receive(data, from: source.leg, epoch: epoch) },
+      onFailure: { [weak self] fault in self?.recordSource(fault, from: source.leg, epoch: epoch) })
   }
 
-  private func receive(_ data: Data, from leg: MeetingCaptureLeg) {
+  private func receive(_ data: Data, from leg: MeetingCaptureLeg, epoch: UInt64) {
     guard !data.isEmpty else { return }
 
-    let snapshot = lock.withLock { (_state, pair, stopDrainingLegs.contains(leg)) }
+    let snapshot = lock.withLock {
+      (_state, pair, stopDrainingLegs.contains(leg), acquisitionEpoch == epoch)
+    }
+    guard snapshot.3 else { return }
     switch snapshot.0 {
     case .arming:
       // Readiness work, including file creation, stays off the real-time audio
       // callback. Blocks arriving before the gate opens are intentionally lost.
-      controlQueue.async { [weak self] in self?.markReady(leg) }
+      controlQueue.async { [weak self] in self?.markReady(leg, epoch: epoch) }
     case .resuming:
       // Same readiness rule as arming, without a second file-creation step:
       // the first block from each leg proves the source is producing and is
       // intentionally lost.
-      controlQueue.async { [weak self] in self?.markResumed(leg) }
+      controlQueue.async { [weak self] in self?.markResumed(leg, epoch: epoch) }
     case .recording:
+      controlQueue.async { [weak self] in self?.recordBlockDelivery(from: leg, epoch: epoch) }
       append(data, to: leg, pair: snapshot.1)
     case .stopping where snapshot.2:
       // A source may synchronously emit its already-buffered remainder from
@@ -282,15 +314,23 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     }
   }
 
-  private func recordSource(_ fault: MeetingCaptureFault, from leg: MeetingCaptureLeg) {
-    let accepted = lock.withLock {
-      _state != .stopping || stopDrainingLegs.contains(leg)
+  private func recordSource(_ fault: MeetingCaptureFault, from leg: MeetingCaptureLeg, epoch: UInt64) {
+    let shouldSchedule = lock.withLock { () -> Bool in
+      guard
+        acquisitionEpoch == epoch,
+        _state != .terminal,
+        _state != .stopping || stopDrainingLegs.contains(leg)
+      else { return false }
+      if storedFault == nil { storedFault = fault }
+      return _state != .stopping
     }
-    if accepted { record(fault) }
+    if shouldSchedule {
+      controlQueue.async { [weak self] in self?.fail(fault) }
+    }
   }
 
-  private func markReady(_ leg: MeetingCaptureLeg) {
-    guard state == .arming else { return }
+  private func markReady(_ leg: MeetingCaptureLeg, epoch: UInt64) {
+    guard isActiveAcquisition(epoch, state: .arming) else { return }
     readyLegs.insert(leg)
     guard readyLegs == Set(MeetingCaptureLeg.allCases) else { return }
 
@@ -303,6 +343,7 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
         pair = newPair
         _state = .recording
       }
+      armStallWatchdog(epoch: epoch)
       onUpdate(.recording)
     } catch let fault as MeetingCaptureFault {
       fail(fault)
@@ -312,17 +353,85 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     }
   }
 
-  private func markResumed(_ leg: MeetingCaptureLeg) {
-    guard state == .resuming else { return }
+  private func markResumed(_ leg: MeetingCaptureLeg, epoch: UInt64) {
+    guard isActiveAcquisition(epoch, state: .resuming) else { return }
     readyLegs.insert(leg)
     guard readyLegs == Set(MeetingCaptureLeg.allCases) else { return }
     lock.withLock { _state = .recording }
+    armStallWatchdog(epoch: epoch)
     onUpdate(.resumed)
+  }
+
+  /// All freshness bookkeeping runs on the control queue. It measures block
+  /// delivery, not sample magnitude, so a source producing silent zero PCM is
+  /// healthy just like one producing speech or system sound.
+  private func recordBlockDelivery(from leg: MeetingCaptureLeg, epoch: UInt64) {
+    guard isActiveAcquisition(epoch, state: .recording) else { return }
+    lastBlockDelivery[leg] = DispatchTime.now().uptimeNanoseconds
+  }
+
+  private func armStallWatchdog(epoch: UInt64) {
+    cancelStallWatchdog()
+    let now = DispatchTime.now().uptimeNanoseconds
+    lastBlockDelivery = Dictionary(uniqueKeysWithValues: monitoredStallLegs.map { ($0, now) })
+    let interval = max(UInt64(10_000_000), min(stallGraceNanoseconds / 2, UInt64(1_000_000_000)))
+    let timer = DispatchSource.makeTimerSource(queue: controlQueue)
+    timer.setEventHandler { [weak self] in self?.checkForStalledAudio(epoch: epoch) }
+    timer.schedule(
+      deadline: .now() + .nanoseconds(Int(stallGraceNanoseconds)),
+      repeating: .nanoseconds(Int(interval)))
+    stallWatchdog = timer
+    watchdogEpoch = epoch
+    timer.resume()
+  }
+
+  private func cancelStallWatchdog() {
+    stallWatchdog?.setEventHandler {}
+    stallWatchdog?.cancel()
+    stallWatchdog = nil
+    watchdogEpoch = nil
+    lastBlockDelivery = [:]
+  }
+
+  private func checkForStalledAudio(epoch: UInt64) {
+    guard watchdogEpoch == epoch, isActiveAcquisition(epoch, state: .recording) else { return }
+    guard lock.withLock({ storedFault == nil }) else { return }
+    let now = DispatchTime.now().uptimeNanoseconds
+    guard let stalledLeg = monitoredStallLegs.first(where: {
+      guard let delivered = lastBlockDelivery[$0] else { return true }
+      return now &- delivered >= stallGraceNanoseconds
+    }) else { return }
+    let code = stalledLeg == .mic ? "microphone_audio_stalled" : "system_audio_stalled"
+    fail(
+      MeetingCaptureFault(
+        code: code, leg: stalledLeg,
+        detail: "\(stalledLeg.rawValue) source delivered no PCM before its stall deadline"))
   }
 
   private func fail(_ fault: MeetingCaptureFault) {
     guard state != .terminal else { return }
     _ = finish(promote: false, interrupted: false, failure: fault)
+  }
+
+  private var monitoredStallLegs: [MeetingCaptureLeg] {
+    monitorsSystemAudioStall ? [.mic, .system] : [.mic]
+  }
+
+  private func beginAcquisition() -> UInt64 {
+    lock.withLock {
+      acquisitionEpoch &+= 1
+      return acquisitionEpoch
+    }
+  }
+
+  private func invalidateAcquisition() {
+    lock.withLock { acquisitionEpoch &+= 1 }
+  }
+
+  private func isActiveAcquisition(_ epoch: UInt64, state requiredState: MeetingCaptureState? = nil) -> Bool {
+    lock.withLock {
+      acquisitionEpoch == epoch && (requiredState == nil || _state == requiredState)
+    }
   }
 
   private func finish(
@@ -332,6 +441,7 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
   ) -> MeetingCaptureReceipt? {
     let prior = state
     guard prior != .terminal else { return nil }
+    cancelStallWatchdog()
     lock.withLock {
       _state = .stopping
       if pair != nil { stopDrainingLegs = Set(MeetingCaptureLeg.allCases) }
@@ -360,6 +470,7 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     lock.withLock {
       pair = nil
       _state = .terminal
+      acquisitionEpoch &+= 1
     }
 
     if interrupted {
