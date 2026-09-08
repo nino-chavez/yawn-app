@@ -8,13 +8,15 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     let pageURL: URL
     let scenarioPath: String
     let mode: String
+    let capturePath: String?
     var webView: WKWebView!
     var window: NSWindow!
 
-    init(pageURL: URL, scenarioPath: String, mode: String) {
+    init(pageURL: URL, scenarioPath: String, mode: String, capturePath: String?) {
         self.pageURL = pageURL
         self.scenarioPath = scenarioPath
         self.mode = mode
+        self.capturePath = capturePath
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -30,7 +32,14 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Yawn undo harness"
+        window.title = capturePath == nil ? "Yawn undo harness" : "Yawn layout review — synthetic"
+        if let appearance = components?.queryItems?.first(where: { $0.name == "appearance" })?.value {
+            switch appearance.lowercased() {
+            case "light": window.appearance = NSAppearance(named: .aqua)
+            case "dark": window.appearance = NSAppearance(named: .darkAqua)
+            default: break
+            }
+        }
         window.contentView = webView
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -67,14 +76,46 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
                         ($0["ok"] as? Bool) == false
                     } == true
                     if explicitFailure || returnedError || capturedErrors || failedStep {
-                        exit(1)
+                        self.finish(exitCode: 1)
+                        return
                     }
                 }
+                self.finish(exitCode: 0)
             case .failure(let error):
                 FileHandle.standardError.write(Data("JS ERROR: \(error)\n".utf8))
-                exit(1)
+                self.finish(exitCode: 1)
             }
-            exit(0)
+        }
+    }
+
+    private func finish(exitCode: Int32) {
+        guard exitCode == 0, let capturePath else {
+            exit(exitCode)
+        }
+        // Let WebKit commit the scenario's final DOM/layout work before its
+        // native snapshot. This stays entirely inside the synthetic harness.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [self] in
+            let configuration = WKSnapshotConfiguration()
+            configuration.rect = webView.bounds
+            webView.takeSnapshot(with: configuration) { image, error in
+                guard let image else {
+                    FileHandle.standardError.write(Data("SNAPSHOT ERROR: \(error?.localizedDescription ?? "unknown error")\n".utf8))
+                    exit(1)
+                }
+                guard let tiff = image.tiffRepresentation,
+                      let bitmap = NSBitmapImageRep(data: tiff),
+                      let png = bitmap.representation(using: .png, properties: [:]) else {
+                    FileHandle.standardError.write(Data("SNAPSHOT ERROR: could not encode PNG\n".utf8))
+                    exit(1)
+                }
+                do {
+                    try png.write(to: URL(fileURLWithPath: capturePath), options: .atomic)
+                    exit(0)
+                } catch {
+                    FileHandle.standardError.write(Data("SNAPSHOT ERROR: \(error.localizedDescription)\n".utf8))
+                    exit(1)
+                }
+            }
         }
     }
 
@@ -93,6 +134,7 @@ let components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
 let mode = components?.queryItems?.first(where: { $0.name == "mode" })?.value ?? "capture"
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let delegate = Delegate(pageURL: pageURL, scenarioPath: arguments[2], mode: mode)
+let capturePath = ProcessInfo.processInfo.environment["HARNESS_CAPTURE_PATH"]
+let delegate = Delegate(pageURL: pageURL, scenarioPath: arguments[2], mode: mode, capturePath: capturePath)
 app.delegate = delegate
 app.run()
