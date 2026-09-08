@@ -11242,6 +11242,12 @@ fn capture_user_message(code: &str) -> &'static str {
         "system_tap_setup_failed" | "system_tap_unavailable" | "system_tap_start_failed" => {
             "System-audio access was unavailable. Nothing was marked complete."
         }
+        "microphone_audio_stalled" => {
+            "Recording stopped because the microphone stopped sending audio. Check your microphone connection. Nothing was marked complete."
+        }
+        "system_audio_stalled" => {
+            "Recording stopped because meeting audio stopped arriving. Check your meeting app and audio output. Nothing was marked complete."
+        }
         _ => "An audio channel failed. Nothing was marked complete.",
     }
 }
@@ -11278,6 +11284,18 @@ fn io_error(error: io::Error) -> Box<dyn std::error::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stalled_audio_message_identifies_the_source_without_claiming_recovery() {
+        let microphone = capture_user_message("microphone_audio_stalled");
+        let system = capture_user_message("system_audio_stalled");
+        assert!(microphone.contains("microphone stopped sending audio"));
+        assert!(system.contains("meeting audio stopped arriving"));
+        for message in [microphone, system] {
+            assert!(message.starts_with("Recording stopped"));
+            assert!(message.contains("Nothing was marked complete"));
+        }
+    }
 
     #[test]
     fn repeated_meeting_opens_reuse_note_generation_admission() {
