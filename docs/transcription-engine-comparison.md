@@ -662,3 +662,21 @@ The review found unclear download buttons and no introduction to optional notes.
 The buttons now name the download, and setup explains that notes can be added
 later in Settings. The primary author and independent reviewer opened the updated frame; the
 reviewer confirmed the wording findings were resolved. These captures establish browser presentation only; packaged-app behavior is still open.
+
+
+The local app bundle now exists from source commit `6659ead`, version `0.6.3`.
+The runtime build ran 248 tests: 171 passed and 77 were skipped by existing test
+conditions. Strict signed-bundle verification passed for 200 arm64-compatible
+Mach-O files. The bundled runtime also passed its source-freshness check.
+
+Using only the packaged Python modules and signed Apple helper, the worker
+started without a Whisper download, exited on parent disconnect, and produced
+a transcript with provenance from the same short public AMI clips. Temporary
+capture bytes remained unchanged. The four hosted speech objects returned the
+cataloged lengths using Yawn's installer user agent; this was a reachability
+check, not a full remote-object digest check.
+
+This is a local signed test app. It has not been installed, notarized, pushed,
+or published. Actual first-run setup, Settings switching, older-macOS behavior,
+and real-meeting quality remain open. The verification record identifies the
+built source commit and signed executable and manifest digests.

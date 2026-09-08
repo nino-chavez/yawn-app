@@ -3,7 +3,7 @@
   "date": "2026-09-07",
   "branch": "feature/progressive-setup",
   "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
-  "state": "source-implemented; packaged acceptance pending",
+  "state": "local bundle built and signed; installed acceptance pending",
   "direction": {
     "first_run": "Apple speech when ready, otherwise smallest cataloged speech download",
     "later": "other speech models in Settings",
@@ -74,7 +74,87 @@
       "scope": "Desktop unit-test executable compiled against installed resources for development metadata only; no release bundle."
     },
     "independent_visual_review": "Cold reviewer opened browser-harness setup and Settings captures. Setup download actions needed clearer wording and optional notes needed an introduction. Source copy was corrected; primary author and independent reviewer opened the updated frame, and the reviewer confirmed all three wording findings resolved. Settings model choices were understandable. This is not installed-app acceptance.",
-    "precommit_privacy": "Staged JSON passes the existing content classifier after public-receipt schemas were distinguished from transcript schemas. Full-repository scan still flags 11 existing HEAD JSON files, including fixture data and the package tokens script; no full-repository pass is claimed."
+    "precommit_privacy": "Staged JSON passes the existing content classifier after public-receipt schemas were distinguished from transcript schemas. Full-repository scan still flags 11 existing HEAD JSON files, including fixture data and the package tokens script; no full-repository pass is claimed.",
+    "local_bundle": {
+      "schema": "yawn-local-bundle-build/1",
+      "source_commit": "6659eadaf3342ffd477e0b345cd218a20c738d06",
+      "app_version": "0.6.3",
+      "macos_floor": "14.4",
+      "runtime_schema": "app-runtime/3",
+      "runtime_tests": {
+        "run": 248,
+        "passed": 171,
+        "skipped": 77,
+        "failed": 0
+      },
+      "install_authorized": false,
+      "installed_app_modified": false,
+      "notarized": false,
+      "published": false,
+      "bundle_path": "/Users/nino/Workspace/dev/apps/yawn-app/.worktrees/progressive-setup/target/release/bundle/macos/Yawn.app",
+      "observed_at": "2026-09-08T02:53:07.292536+00:00",
+      "bundle_main_sha256": "b4d1060b4b5ab1d882c6afbd8111c1c32629057b06c95e7d13776caa1ec45d48",
+      "bundle_manifest_sha256": "aa9d275dc500dba6e900376a44bed8992eabef268f2fd2a8454da61b45498997",
+      "packaged_native_execution": {
+        "synthetic_capture": true,
+        "audio_source": "public AMI ES2004c, twelve seconds at 60s and 120s",
+        "capability": {
+          "asset_identity": "os-managed",
+          "locale": "en-US",
+          "os_version": "Version 26.6.2 (Build 25G83)",
+          "schema": "apple-speech-capability/1",
+          "state": "ready",
+          "reason": null
+        },
+        "transcript_created": true,
+        "turn_count": 1,
+        "capture_unchanged": true,
+        "whisper_model": null,
+        "helper_sha256": "375135dd0fb26fb0dd8b40c8d53616e2f2ac3646ccb23c816710027cb415e3fc",
+        "provenance_written": true,
+        "packaged_modules": true,
+        "packaged_worker_ready": true,
+        "parent_eof_exit": true,
+        "resource_root": "/Users/nino/Workspace/dev/apps/yawn-app/.worktrees/progressive-setup/target/release/bundle/macos/Yawn.app/Contents/Resources"
+      },
+      "model_hosting": {
+        "user_agent": "Yawn model installer",
+        "scope": "reachability and sizes only; remote full-object digests not checked",
+        "files": [
+          {
+            "model": "whisper-large-v3-turbo-q4",
+            "filename": "config.json",
+            "status": 200,
+            "content_length": 341,
+            "size_matches_catalog": true
+          },
+          {
+            "model": "whisper-large-v3-turbo-q4",
+            "filename": "weights.npz",
+            "status": 200,
+            "content_length": 463664664,
+            "size_matches_catalog": true
+          },
+          {
+            "model": "whisper-large-v3-turbo",
+            "filename": "config.json",
+            "status": 200,
+            "content_length": 268,
+            "size_matches_catalog": true
+          },
+          {
+            "model": "whisper-large-v3-turbo",
+            "filename": "weights.safetensors",
+            "status": 200,
+            "content_length": 1613977612,
+            "size_matches_catalog": true
+          }
+        ]
+      },
+      "signature_verification": "PASS: strict signed bundle verification, 200 arm64-compatible Mach-O files, internal-alpha",
+      "source_freshness": "PASS: bundled runtime matches committed source digests",
+      "post_commit_review_hook": "Unavailable: the existing Claude hook reported an expired OAuth session; independent reviews are recorded separately."
+    }
   },
   "not_verified": [
     "Installed app startup and model switching with an app-runtime/3 bundle",
@@ -83,5 +163,6 @@
     "Full retained meeting retry, vocabulary, note and playback workflow with Apple",
     "Human speech and note quality acceptance"
   ],
-  "release": "No commit, push, app installation, signing or release performed."
+  "release": "Source committed on feature/progressive-setup and a local test app built and signed. No push, app installation, notarization, DMG publication, or release performed.",
+  "source_commit": "6659eadaf3342ffd477e0b345cd218a20c738d06"
 }
