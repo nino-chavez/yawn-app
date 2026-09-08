@@ -127,12 +127,12 @@ enum ActiveOperation {
 
 /// A held claim on the slot. Dropping it without `settle` releases the slot,
 /// so an early return, an error, or a panic cannot strand it as `Starting`.
-struct OperationClaim<'a> {
-    slot: &'a Mutex<Option<ActiveOperation>>,
+pub(crate) struct OperationClaim {
+    slot: Arc<Mutex<Option<ActiveOperation>>>,
     settled: bool,
 }
 
-impl OperationClaim<'_> {
+impl OperationClaim {
     fn settle(
         mut self,
         accepted: UiOperationAccepted,
@@ -147,7 +147,7 @@ impl OperationClaim<'_> {
     }
 }
 
-impl Drop for OperationClaim<'_> {
+impl Drop for OperationClaim {
     fn drop(&mut self) {
         if self.settled {
             return;
@@ -160,19 +160,19 @@ impl Drop for OperationClaim<'_> {
 
 pub(crate) struct ProductOperationFacade {
     coordinator: Arc<dyn ProductOperationCoordinator>,
-    active: Mutex<Option<ActiveOperation>>,
+    active: Arc<Mutex<Option<ActiveOperation>>>,
 }
 
 impl ProductOperationFacade {
     pub(crate) fn new(coordinator: Arc<dyn ProductOperationCoordinator>) -> Self {
         Self {
             coordinator,
-            active: Mutex::new(None),
+            active: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Reserves the slot or refuses. Held only for the check and the write.
-    fn claim(&self) -> Result<OperationClaim<'_>, ProductOperationFacadeError> {
+    fn claim(&self) -> Result<OperationClaim, ProductOperationFacadeError> {
         let mut slot = self
             .active
             .lock()
@@ -182,9 +182,20 @@ impl ProductOperationFacade {
         }
         *slot = Some(ActiveOperation::Starting);
         Ok(OperationClaim {
-            slot: &self.active,
+            slot: self.active.clone(),
             settled: false,
         })
+    }
+
+    /// Holds the same slot as notes, corrections and retries across a runtime
+    /// change. Ownership can move to the background task; drop releases it on
+    /// every exit, including a failed thread spawn.
+    pub(crate) fn claim_runtime_change(&self) -> Result<OperationClaim, String> {
+        self.claim().map_err(|_| "Wait for the current note, transcript or model change to finish.".into())
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.active.lock().map(|slot| slot.is_some()).unwrap_or(true)
     }
 
     pub(crate) fn restore_withheld_turn(
@@ -704,6 +715,34 @@ mod tests {
     }
 
     #[test]
+    fn runtime_changes_and_meeting_actions_exclude_each_other() {
+        let fixture = fixture();
+        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
+        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
+        let facade = ProductOperationFacade::new(Arc::new(FakeCoordinator::accepting(
+            source_for(args.meeting_id, args.source_transcript_sha256.clone(),
+                MeetingLifecycle::TranscriptReady, false),
+            Uuid::nil(), expected.operation_id,
+        )));
+        let change = facade.claim_runtime_change().unwrap();
+        assert!(facade.is_active());
+        assert_eq!(facade.regenerate_note(args.clone()),
+            Err(ProductOperationFacadeError::OperationAlreadyActive));
+        assert!(facade.claim_runtime_change().is_err());
+        // An unrelated completion cannot clear the runtime reservation.
+        facade.finish(expected.operation_id);
+        assert!(facade.is_active());
+        // The background task owns the claim, including its error exit.
+        std::thread::spawn(move || drop(change)).join().unwrap();
+        assert!(!facade.is_active());
+        let accepted = facade.regenerate_note(args).unwrap();
+        assert!(facade.claim_runtime_change().is_err());
+        facade.finish(accepted.operation_id);
+        assert!(!facade.is_active());
+        assert!(facade.claim_runtime_change().is_ok());
+    }
+
+    #[test]
     fn a_second_operation_is_refused_until_the_first_reaches_a_terminal_receipt() {
         let fixture = fixture();
         let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
@@ -807,6 +846,7 @@ mod tests {
             .recv_timeout(Duration::from_secs(5))
             .expect("the second attempt answered instead of queueing behind the first");
         assert_eq!(refused, Err(ProductOperationFacadeError::OperationAlreadyActive));
+        assert!(facade.claim_runtime_change().is_err());
 
         release_tx.send(()).expect("the parked operation is waiting");
         assert_eq!(running.join().expect("the first operation finished"), Ok(expected.clone()));

@@ -98,3 +98,22 @@ test("button primary actions follow one-per-group rule", async () => {
     "must apply allow-button (primary) only for unstored options"
   );
 });
+
+test("settings owns native speech preparation and guarded switching", async () => {
+  const source = await readFile(new URL("./settings.js", import.meta.url), "utf8");
+  assert.match(source, /get_transcription_engine_settings/);
+  assert.match(source, /install_apple_speech_assets/);
+  assert.match(source, /select_transcription_engine/);
+  assert.match(source, /transcriptionEngine\?\.canChange === false/);
+  assert.match(source, /Apple manages this download in macOS/);
+});
+
+test("the settings review harness exposes native engine states and actions", async () => {
+  const source = await readFile(new URL("./review/harness.js", import.meta.url), "utf8");
+  assert.match(source, /get_transcription_engine_settings/);
+  assert.match(source, /install_apple_speech_assets/);
+  assert.match(source, /select_transcription_engine/);
+  assert.match(source, /\|\| "whisper"/);
+  assert.match(source, /window\.__reviewSelectedEngine = args\?\.engine/);
+  assert.match(source, /selected: "apple-native"/);
+});

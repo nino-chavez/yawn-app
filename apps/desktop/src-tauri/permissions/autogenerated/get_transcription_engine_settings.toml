@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-transcription-engine-settings"
+description = "Enables the get_transcription_engine_settings command without any pre-configured scope."
+commands.allow = ["get_transcription_engine_settings"]
+
+[[permission]]
+identifier = "deny-get-transcription-engine-settings"
+description = "Denies the get_transcription_engine_settings command without any pre-configured scope."
+commands.deny = ["get_transcription_engine_settings"]

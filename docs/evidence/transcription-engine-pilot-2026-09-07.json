@@ -1,0 +1,741 @@
+{
+  "schema": "speech-engine-pilot-public-receipt/1",
+  "date": "2026-09-07",
+  "base_commit": "c9dfcdb",
+  "scope": {
+    "state": "uncommitted local integration",
+    "shipping_engine": "whisper",
+    "minimum_macos": "14.4",
+    "new_model_inference": false,
+    "app_install_or_release": false,
+    "human_approval": false
+  },
+  "source_sha256": {
+    "worker/speech_results.py": "d8d9a989a8a80e564c7a89b0857daabc6de08637197e9329a0dcd84c634da918",
+    "worker/transcription.py": "0cc5b0e8587fe9b29019b100e785fdcf5220f4093a04151225c5ce9942629535",
+    "worker/tests/test_transcription.py": "5cffed1f4e9628f41672206db6668a0e39b2b023b376fb0b72022d30644aad3c",
+    "worker/tests/test_speech_results.py": "088370a52d351751f7a628384888e22ba954d74685a731938b785cd1ae5183f5",
+    "worker/tests/test_speech_pilot_contract.py": "a23860c876ae41fddf1b84a53a82d45c913ad8ff773eede380ec6e74eb5e814f",
+    "spike/speech-engine-comparison/replay_notes.py": "85e44dcff22208474c047e091b50887463cf40bd8dc1a44ce81f60f88edb5c83",
+    "spike/speech-engine-comparison/test_replay_notes.py": "96931b5495596ebf6bd2b48a58217ecd1cf6ba55f3a4bf7733b6ef2a0dd6aad3",
+    "spike/speech-engine-comparison/prepare_note_review.py": "8869ad22e870f8e424e4c9d05bf6d998b484942e1b7a73bc82b2a649438f978d",
+    "spike/speech-engine-comparison/test_note_review.py": "a7ae09a81a9d48cd0d35ce80caf5fdf6576c45d7f0d5b2017a8359f6ffb212be",
+    "spike/speech-engine-comparison/compare_segmentation.py": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+    "spike/speech-engine-comparison/test_segmentation_comparison.py": "cfac36354b43125e22b688c01eca24a815342139dc0a80f01820b69ae5a05ee0"
+  },
+  "native_validation": [
+    {
+      "case": "silence",
+      "engine": "apple",
+      "result_sha256": "a855a7482b44252a435716acdfbbc21106ec76c4f7dc5a7235284d87635efe73",
+      "audio_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+      "repetitions_validated": 2,
+      "selected_groups": 0
+    },
+    {
+      "case": "silence",
+      "engine": "parakeet",
+      "result_sha256": "139b71328e13b33350a489be2aff3c251e69750ddc6ddc7ed764ef80633d0e11",
+      "audio_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+      "repetitions_validated": 2,
+      "selected_groups": 0
+    },
+    {
+      "case": "private-short-mic",
+      "engine": "apple",
+      "result_sha256": "29ead0e9b6ad770add1e76d52203dd8212aa167727a58d1f1656061a6b56711f",
+      "audio_sha256": "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+      "repetitions_validated": 2,
+      "selected_groups": 11
+    },
+    {
+      "case": "private-short-mic",
+      "engine": "parakeet",
+      "result_sha256": "90cd2b6022c83fda77ab1981e0942acc8853b38ea7ee5d01eed35990a57779bd",
+      "audio_sha256": "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+      "repetitions_validated": 2,
+      "selected_groups": 13
+    },
+    {
+      "case": "private-short-system",
+      "engine": "apple",
+      "result_sha256": "1de5f1bf6796ad1a63eceb4a638d790eb967b32c869311b5509e6f401559fd66",
+      "audio_sha256": "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+      "repetitions_validated": 2,
+      "selected_groups": 34
+    },
+    {
+      "case": "private-short-system",
+      "engine": "parakeet",
+      "result_sha256": "95b839f7bae6025600b0c832f91267e3347914374d9404d923232778c8788cca",
+      "audio_sha256": "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+      "repetitions_validated": 2,
+      "selected_groups": 36
+    },
+    {
+      "case": "private-ledger-mic",
+      "engine": "apple",
+      "result_sha256": "d35997285036afb76ca5101ed3608cd87acc8289f9fe2debe6028df986d9c8ac",
+      "audio_sha256": "b9c53d494fd165fdf847882c8f0ea942214119fd2ee11cc875777127bd42cfec",
+      "repetitions_validated": 2,
+      "selected_groups": 185
+    },
+    {
+      "case": "private-ledger-mic",
+      "engine": "parakeet",
+      "result_sha256": "b31995f8b63c6b14104e92f36a88077faa107e6c76d3f05547478e728a915e4c",
+      "audio_sha256": "b9c53d494fd165fdf847882c8f0ea942214119fd2ee11cc875777127bd42cfec",
+      "repetitions_validated": 2,
+      "selected_groups": 201
+    },
+    {
+      "case": "private-ledger-system",
+      "engine": "apple",
+      "result_sha256": "21f4fb068a5a1cb103e54b1661e31b4906de780242fd7b37c098ae0153cac875",
+      "audio_sha256": "21fd165c92b5b72a4a9d0fc38c5fc8df8ed2617b2b4f4a2ed3a895c49248a83a",
+      "repetitions_validated": 2,
+      "selected_groups": 0
+    },
+    {
+      "case": "private-ledger-system",
+      "engine": "parakeet",
+      "result_sha256": "a36462654a279d514814f97dc29e99a5ab56f73cdd656df1e6d8294a82949d60",
+      "audio_sha256": "21fd165c92b5b72a4a9d0fc38c5fc8df8ed2617b2b4f4a2ed3a895c49248a83a",
+      "repetitions_validated": 2,
+      "selected_groups": 0
+    },
+    {
+      "case": "ami-full",
+      "engine": "apple",
+      "result_sha256": "e0ca0e3b34485497854753d097929369a4cf59145b59d8811a525aa0a06fbf99",
+      "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+      "repetitions_validated": 2,
+      "selected_groups": 498
+    },
+    {
+      "case": "ami-full",
+      "engine": "parakeet",
+      "result_sha256": "05ccc0b8e0a159e8607016dc39721508bc5b99754232e33fdb04cb37c4b27c62",
+      "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+      "repetitions_validated": 2,
+      "selected_groups": 534
+    }
+  ],
+  "transcript_replays": [
+    {
+      "engine": "apple",
+      "sample": "short",
+      "returncode": 0,
+      "whisper_model_supplied": false,
+      "transcript_identical": false,
+      "transcript_id": "280b7b4207d6a14c82044334460e9cb2d27d6a5dd86b4974ace222c644fd37dd",
+      "source_unchanged": true,
+      "receipt_sha256": "53102b169ce832d1742967882bc80b6c6dacbba10e4488911d00420940092ce0",
+      "different_fields": [
+        "source"
+      ],
+      "content_equal_except_creation_label": true,
+      "creation_label_owner": "spike/dual_capture.py: transcript source uses creation minute",
+      "original_transcript_id": "0c745b51dfbc8bf8fc0a4d3885c94001a67abdbb83fdbb626f4c8f63c8f875f7"
+    },
+    {
+      "engine": "apple",
+      "sample": "ledger",
+      "returncode": 0,
+      "whisper_model_supplied": false,
+      "transcript_identical": false,
+      "transcript_id": "d5ea7032a4c5dc02721c651513d0fac17bab01302c8e5f84e4c07db89f2697fb",
+      "source_unchanged": true,
+      "receipt_sha256": "306df6f13803cc95eb465402bf468d6a4e95874721531e21c0b1daea36cbdd97",
+      "different_fields": [
+        "source"
+      ],
+      "content_equal_except_creation_label": true,
+      "creation_label_owner": "spike/dual_capture.py: transcript source uses creation minute",
+      "original_transcript_id": "4b5b2a096bfe2ecb2fcd1b29309d0759d00e1e135b4f05e93890c7dea1569253"
+    },
+    {
+      "engine": "parakeet",
+      "sample": "short",
+      "returncode": 0,
+      "whisper_model_supplied": false,
+      "transcript_identical": false,
+      "transcript_id": "6c44009299fc643fdb18085b7b3fd17ace0ffb74b3a2be74cc45b43b7e95ba99",
+      "source_unchanged": true,
+      "receipt_sha256": "8ea5b1c5cfd7746849d06ab472f37c6aff48d354b8d2b2f0da3bea49d3bc5bab",
+      "different_fields": [
+        "source"
+      ],
+      "content_equal_except_creation_label": true,
+      "creation_label_owner": "spike/dual_capture.py: transcript source uses creation minute",
+      "original_transcript_id": "4eecc1c4717535051ceb90ec68ce1df2d3178f1c7d0e64873d976ac2701efc0a"
+    },
+    {
+      "engine": "parakeet",
+      "sample": "ledger",
+      "returncode": 0,
+      "whisper_model_supplied": false,
+      "transcript_identical": false,
+      "transcript_id": "0e92a5eb3d99abf45f562fca4bfa06b22cb74963917bc01ecee2343d77ce0d6f",
+      "source_unchanged": true,
+      "receipt_sha256": "dbf00e8c0e6bcafd7adc329af47d0f9ba8913eefa38d155a0b1a48df4137d9da",
+      "different_fields": [
+        "source"
+      ],
+      "content_equal_except_creation_label": true,
+      "creation_label_owner": "spike/dual_capture.py: transcript source uses creation minute",
+      "original_transcript_id": "9acac0d34e2ccecc8fa24145f670607b51bdb8abf9e99830f063314cf01f41da"
+    }
+  ],
+  "review": {
+    "status": "pending",
+    "answered": false,
+    "responses": 0,
+    "claims": 18,
+    "labels": [
+      "Variant A",
+      "Variant B",
+      "Variant C"
+    ],
+    "randomized_blind_trial": false,
+    "private_outside_git": true,
+    "files_sha256": {
+      "provenance.json": "4e1b0d37c1858dfe6a09e52e0f516ed0c375a26b5328d919c0666ead4ae2ec42",
+      "engine-key.json": "63e1deeb31fff3711c520d812b051dd71ca7edb52240dd2c6b6461a4e6f24693",
+      "REVIEW.md": "bd0e3c4961b49b39f8be60c8782f61006d6f7210ae7a9e12c78c97408d410250",
+      "review.json": "6c11b8f6efc76b53e589b9da2210cfa1f1dea5c87f6bf92d3092f40b7aca5f35"
+    },
+    "old_lock": {
+      "matching_bytes_recovered": true,
+      "lock_sha256": "7d3a45d9badf82dfcb05f769ea761cb81fcfd8f41c3f302c763d52ee3cd6930f",
+      "scope": "superseded evaluation cycle",
+      "current_registration_bound": false,
+      "current_reference_validated": false,
+      "downstream_ledger_validation": null,
+      "new_approval": false
+    }
+  },
+  "tests": [
+    {
+      "command": "/Applications/Yawn.app/Contents/Resources/python-runtime/bin/python3.12 -m unittest worker.tests.test_transcription worker.tests.test_speech_results worker.tests.test_speech_pilot_contract -q",
+      "passed": 37
+    },
+    {
+      "command": "/tmp/yawn-speech-scoring-venv/bin/python -m unittest discover -s spike/speech-engine-comparison -p 'test_*.py' -q",
+      "passed": 30
+    },
+    {
+      "command": "PYTHONPATH=notes python3 -m unittest notes.test_prompt_overlay worker.tests.test_note_bridge.NoteGenerateBridgeTests.test_generate_applies_the_bounded_overlay_without_changing_locator_source worker.tests.test_note_bridge.NoteGenerateBridgeTests.test_changed_length_vocabulary_overlay_preserves_original_locator_offsets -q",
+      "passed": 5
+    },
+    {
+      "command": "/tmp/yawn-speech-scoring-venv/bin/python -m unittest discover -s spike/speech-engine-comparison -p test_segmentation_comparison.py -q",
+      "passed": 7,
+      "scope": "replaces six grouping tests in the earlier 30-test research run after one workload-skip test was added"
+    },
+    {
+      "command": "git diff --check",
+      "passed": true
+    }
+  ],
+  "limitations": [
+    "no new engine or note inference in this pilot",
+    "no human note-quality acceptance",
+    "no locked ship-gate pass",
+    "no packaged-app, cancellation, recovery, or playback-seeking acceptance",
+    "bridge harness requires system Python; embedded interpreter cannot start its scrubbed child environment",
+    "original benchmark sources preserved privately before pilot edits"
+  ],
+  "grouping": {
+    "reports": [
+      {
+        "file": "grouping-private-short-v2.json",
+        "sha256": "c6bcf9232f7b064598138296e9ba549702c6779297650316ac243205bee35c81",
+        "measurement_source_sha256": "f6eb1e37a2cc72b16c65a9485aa73ca926300030278d9a14a99b924bb680c95b",
+        "inputs": {
+          "apple_private_mic": {
+            "engine": "apple",
+            "input_sha256": "29ead0e9b6ad770add1e76d52203dd8212aa167727a58d1f1656061a6b56711f",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 7,
+                "lexical_tokens": 119,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2238,
+                  "classifier_prompt_bytes_total": 7622,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 3496,
+                  "classifier_user_prompt_bytes_max": 1364,
+                  "classifier_user_prompt_bytes_total": 4126,
+                  "manifest_candidates": 7,
+                  "model_calls": 4,
+                  "offer_stride": 2,
+                  "offered_candidates": 4
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 11,
+                "lexical_tokens": 119,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2093,
+                  "classifier_prompt_bytes_total": 11295,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 5244,
+                  "classifier_user_prompt_bytes_max": 1219,
+                  "classifier_user_prompt_bytes_total": 6051,
+                  "manifest_candidates": 12,
+                  "model_calls": 6,
+                  "offer_stride": 2,
+                  "offered_candidates": 6
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 11,
+                "lexical_tokens": 119,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2093,
+                  "classifier_prompt_bytes_total": 11295,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 5244,
+                  "classifier_user_prompt_bytes_max": 1219,
+                  "classifier_user_prompt_bytes_total": 6051,
+                  "manifest_candidates": 12,
+                  "model_calls": 6,
+                  "offer_stride": 2,
+                  "offered_candidates": 6
+                },
+                "workload_status": "measured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 12,
+                "lexical_tokens": 119,
+                "exceptions": 1,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2093,
+                  "classifier_prompt_bytes_total": 12939,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 6118,
+                  "classifier_user_prompt_bytes_max": 1219,
+                  "classifier_user_prompt_bytes_total": 6821,
+                  "manifest_candidates": 13,
+                  "model_calls": 7,
+                  "offer_stride": 2,
+                  "offered_candidates": 7
+                },
+                "workload_status": "measured"
+              }
+            }
+          },
+          "apple_private_system": {
+            "engine": "apple",
+            "input_sha256": "1de5f1bf6796ad1a63eceb4a638d790eb967b32c869311b5509e6f401559fd66",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 11,
+                "lexical_tokens": 298,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2663,
+                  "classifier_prompt_bytes_total": 13567,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 5244,
+                  "classifier_user_prompt_bytes_max": 1789,
+                  "classifier_user_prompt_bytes_total": 8323,
+                  "manifest_candidates": 11,
+                  "model_calls": 6,
+                  "offer_stride": 2,
+                  "offered_candidates": 6
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 34,
+                "lexical_tokens": 298,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2100,
+                  "classifier_prompt_bytes_total": 32691,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 14858,
+                  "classifier_user_prompt_bytes_max": 1226,
+                  "classifier_user_prompt_bytes_total": 17833,
+                  "manifest_candidates": 34,
+                  "model_calls": 17,
+                  "offer_stride": 2,
+                  "offered_candidates": 17
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 34,
+                "lexical_tokens": 298,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2100,
+                  "classifier_prompt_bytes_total": 32691,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 14858,
+                  "classifier_user_prompt_bytes_max": 1226,
+                  "classifier_user_prompt_bytes_total": 17833,
+                  "manifest_candidates": 34,
+                  "model_calls": 17,
+                  "offer_stride": 2,
+                  "offered_candidates": 17
+                },
+                "workload_status": "measured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 34,
+                "lexical_tokens": 298,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2100,
+                  "classifier_prompt_bytes_total": 32691,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 14858,
+                  "classifier_user_prompt_bytes_max": 1226,
+                  "classifier_user_prompt_bytes_total": 17833,
+                  "manifest_candidates": 34,
+                  "model_calls": 17,
+                  "offer_stride": 2,
+                  "offered_candidates": 17
+                },
+                "workload_status": "measured"
+              }
+            }
+          },
+          "parakeet_private_mic": {
+            "engine": "parakeet",
+            "input_sha256": "90cd2b6022c83fda77ab1981e0942acc8853b38ea7ee5d01eed35990a57779bd",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 7,
+                "lexical_tokens": 123,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2216,
+                  "classifier_prompt_bytes_total": 7623,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 3496,
+                  "classifier_user_prompt_bytes_max": 1342,
+                  "classifier_user_prompt_bytes_total": 4127,
+                  "manifest_candidates": 7,
+                  "model_calls": 4,
+                  "offer_stride": 2,
+                  "offered_candidates": 4
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 13,
+                "lexical_tokens": 123,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2046,
+                  "classifier_prompt_bytes_total": 12904,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 6118,
+                  "classifier_user_prompt_bytes_max": 1172,
+                  "classifier_user_prompt_bytes_total": 6786,
+                  "manifest_candidates": 13,
+                  "model_calls": 7,
+                  "offer_stride": 2,
+                  "offered_candidates": 7
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 123,
+                "lexical_tokens": 123,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 1763,
+                  "classifier_prompt_bytes_total": 108082,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 54188,
+                  "classifier_user_prompt_bytes_max": 889,
+                  "classifier_user_prompt_bytes_total": 53894,
+                  "manifest_candidates": 123,
+                  "model_calls": 62,
+                  "offer_stride": 2,
+                  "offered_candidates": 62
+                },
+                "workload_status": "measured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 13,
+                "lexical_tokens": 123,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2046,
+                  "classifier_prompt_bytes_total": 12904,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 6118,
+                  "classifier_user_prompt_bytes_max": 1172,
+                  "classifier_user_prompt_bytes_total": 6786,
+                  "manifest_candidates": 13,
+                  "model_calls": 7,
+                  "offer_stride": 2,
+                  "offered_candidates": 7
+                },
+                "workload_status": "measured"
+              }
+            }
+          },
+          "parakeet_private_system": {
+            "engine": "parakeet",
+            "input_sha256": "95b839f7bae6025600b0c832f91267e3347914374d9404d923232778c8788cca",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 12,
+                "lexical_tokens": 310,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2660,
+                  "classifier_prompt_bytes_total": 13716,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 5244,
+                  "classifier_user_prompt_bytes_max": 1786,
+                  "classifier_user_prompt_bytes_total": 8472,
+                  "manifest_candidates": 12,
+                  "model_calls": 6,
+                  "offer_stride": 2,
+                  "offered_candidates": 6
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 36,
+                "lexical_tokens": 310,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2097,
+                  "classifier_prompt_bytes_total": 34527,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 15732,
+                  "classifier_user_prompt_bytes_max": 1223,
+                  "classifier_user_prompt_bytes_total": 18795,
+                  "manifest_candidates": 36,
+                  "model_calls": 18,
+                  "offer_stride": 2,
+                  "offered_candidates": 18
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 310,
+                "lexical_tokens": 310,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 1768,
+                  "classifier_prompt_bytes_total": 271554,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 135470,
+                  "classifier_user_prompt_bytes_max": 894,
+                  "classifier_user_prompt_bytes_total": 136084,
+                  "manifest_candidates": 310,
+                  "model_calls": 155,
+                  "offer_stride": 2,
+                  "offered_candidates": 155
+                },
+                "workload_status": "measured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 36,
+                "lexical_tokens": 310,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2097,
+                  "classifier_prompt_bytes_total": 34527,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 15732,
+                  "classifier_user_prompt_bytes_max": 1223,
+                  "classifier_user_prompt_bytes_total": 18795,
+                  "manifest_candidates": 36,
+                  "model_calls": 18,
+                  "offer_stride": 2,
+                  "offered_candidates": 18
+                },
+                "workload_status": "measured"
+              }
+            }
+          }
+        },
+        "limits": [
+          "raw per-leg representation and classifier-request diagnostic only; it does not predict merged or filtered note-time workload",
+          "no quality or latency claim",
+          "recognised text is not written to this report",
+          "recording duration is explicit because result process_seconds is not audio duration",
+          "manual annotation gaps are not audio silence"
+        ]
+      },
+      {
+        "file": "grouping-public-ami-v3.json",
+        "sha256": "3bb1ceb9266a29c41d14d96c7e571ae33dca112fb909a224f1ab25926ac9881f",
+        "measurement_source_sha256": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+        "inputs": {
+          "apple_ami": {
+            "engine": "apple",
+            "input_sha256": "e0ca0e3b34485497854753d097929369a4cf59145b59d8811a525aa0a06fbf99",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 170,
+                "lexical_tokens": 5965,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2835,
+                  "classifier_prompt_bytes_total": 225968,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 74290,
+                  "classifier_user_prompt_bytes_max": 1961,
+                  "classifier_user_prompt_bytes_total": 151678,
+                  "manifest_candidates": 170,
+                  "model_calls": 85,
+                  "offer_stride": 2,
+                  "offered_candidates": 85
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 498,
+                "lexical_tokens": 5965,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2459,
+                  "classifier_prompt_bytes_total": 517227,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 221122,
+                  "classifier_user_prompt_bytes_max": 1585,
+                  "classifier_user_prompt_bytes_total": 296105,
+                  "manifest_candidates": 505,
+                  "model_calls": 253,
+                  "offer_stride": 2,
+                  "offered_candidates": 253
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 498,
+                "lexical_tokens": 5965,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2459,
+                  "classifier_prompt_bytes_total": 517227,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 221122,
+                  "classifier_user_prompt_bytes_max": 1585,
+                  "classifier_user_prompt_bytes_total": 296105,
+                  "manifest_candidates": 505,
+                  "model_calls": 253,
+                  "offer_stride": 2,
+                  "offered_candidates": 253
+                },
+                "workload_status": "measured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 560,
+                "lexical_tokens": 5965,
+                "exceptions": 5,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2424,
+                  "classifier_prompt_bytes_total": 565023,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 245594,
+                  "classifier_user_prompt_bytes_max": 1550,
+                  "classifier_user_prompt_bytes_total": 319429,
+                  "manifest_candidates": 562,
+                  "model_calls": 281,
+                  "offer_stride": 2,
+                  "offered_candidates": 281
+                },
+                "workload_status": "measured"
+              }
+            }
+          },
+          "parakeet_ami": {
+            "engine": "parakeet",
+            "input_sha256": "05ccc0b8e0a159e8607016dc39721508bc5b99754232e33fdb04cb37c4b27c62",
+            "methods": {
+              "bounded_40_tokens_max_15s": {
+                "groups": 171,
+                "lexical_tokens": 6058,
+                "exceptions": 0,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2833,
+                  "classifier_prompt_bytes_total": 226259,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 75164,
+                  "classifier_user_prompt_bytes_max": 1959,
+                  "classifier_user_prompt_bytes_total": 151095,
+                  "manifest_candidates": 171,
+                  "model_calls": 86,
+                  "offer_stride": 2,
+                  "offered_candidates": 86
+                },
+                "workload_status": "measured"
+              },
+              "current_pilot": {
+                "groups": 534,
+                "lexical_tokens": 6058,
+                "exceptions": 10,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2487,
+                  "classifier_prompt_bytes_total": 543720,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 235106,
+                  "classifier_user_prompt_bytes_max": 1613,
+                  "classifier_user_prompt_bytes_total": 308614,
+                  "manifest_candidates": 538,
+                  "model_calls": 269,
+                  "offer_stride": 2,
+                  "offered_candidates": 269
+                },
+                "workload_status": "measured"
+              },
+              "native_api": {
+                "groups": 6055,
+                "lexical_tokens": 6058,
+                "exceptions": 0,
+                "candidate_workload": null,
+                "workload_status": "unmeasured"
+              },
+              "punctuation_gap_1s_max_15s": {
+                "groups": 534,
+                "lexical_tokens": 6058,
+                "exceptions": 10,
+                "candidate_workload": {
+                  "classifier_prompt_bytes_max": 2487,
+                  "classifier_prompt_bytes_total": 543720,
+                  "classifier_system_prompt_bytes_max": 874,
+                  "classifier_system_prompt_bytes_total": 235106,
+                  "classifier_user_prompt_bytes_max": 1613,
+                  "classifier_user_prompt_bytes_total": 308614,
+                  "manifest_candidates": 538,
+                  "model_calls": 269,
+                  "offer_stride": 2,
+                  "offered_candidates": 269
+                },
+                "workload_status": "measured"
+              }
+            }
+          }
+        },
+        "limits": [
+          "raw per-leg representation and classifier-request diagnostic only; it does not predict merged or filtered note-time workload",
+          "no quality or latency claim",
+          "recognised text is not written to this report",
+          "recording duration is explicit because result process_seconds is not audio duration",
+          "manual annotation gaps are not audio silence"
+        ]
+      }
+    ],
+    "adopted_new_grouping": false,
+    "partial_measurement": "Raw Parakeet native_api workload is unmeasured in public v3; that representation is not an implemented pilot path. The interrupted public v2 produced no result.",
+    "interpretation": "Exact classifier request construction on raw single legs; no model calls, no merged-filtered workload prediction, no note-quality claim."
+  }
+}

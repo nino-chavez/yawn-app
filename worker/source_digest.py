@@ -41,6 +41,8 @@ COPIED_SOURCES = (
     "worker/storage.py",
     "worker/fbank.py",
     "worker/transcription.py",
+    "worker/speech_results.py",
+    "worker/apple_speech.py",
     "worker/embedding.py",
     "worker/note_bridge.py",
     "worker/note_generator_mlx.py",
@@ -68,6 +70,7 @@ TOOLING_SOURCES = (
 SWIFT_PACKAGES = (
     "capture/audiotee",
     "capture/permission-probe",
+    "capture/apple-speech",
 )
 
 

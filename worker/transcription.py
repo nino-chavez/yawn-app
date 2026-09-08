@@ -115,77 +115,97 @@ def _release_mlx_whisper_runtime() -> None:
         pass
 
 
-def create_transcript_revision(
-    capture_dir: Path,
-    transcript_dir: Path,
-    model_dir: Path,
-    *,
-    transcribe_audio: Callable[[np.ndarray, str, str], list[dict]] | None = None,
-    voicing_filter: Callable[[list[dict], np.ndarray, str], list[dict]] | None = None,
-    bleed_filter: Callable[
-        [list[dict], np.ndarray, np.ndarray, dict | None, str], list[dict]
-    ]
-    | None = None,
-    gate_filter: Callable[
-        [list[dict], np.ndarray, dict | None, str],
-        tuple[list[dict], dict | None],
-    ]
-    | None = None,
-) -> tuple[str, Path]:
-    """Create one immutable transcript revision without mutating capture bytes."""
+def _verify_capture(capture_dir: Path) -> None:
+    """Refuse an unverified acquisition before any model or audio work."""
     from verify_capture import verify_acquisition
-    from dual_capture import (
-        MergedTurn,
-        bleed,
-        drop_bled,
-        drop_unvoiced,
-        sha256,
-        transcribe,
-        write_transcript,
-    )
-    from transcript import load
 
     verify_acquisition(capture_dir)
-    model_dir = require_whisper_model(model_dir)
+
+
+def _capture_health(capture_dir: Path) -> dict:
+    """Load the already-verified acquisition health into a transcript receipt."""
     try:
         session = json.loads((capture_dir / "session.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise TranscriptionRefused(f"capture session is unreadable ({exc})") from None
-    health = _transcript_health(session.get("health"))
+    return _transcript_health(session.get("health"))
+
+
+def _read_capture_audio(
+    capture_dir: Path,
+) -> tuple[np.ndarray, np.ndarray, dict | None]:
+    """Decode both checked capture legs and derive their acoustic overlap."""
+    from dual_capture import bleed
+
     mic = _read_leg(capture_dir / "mic.wav")
     system = _read_leg(capture_dir / "system.wav")
-    acoustic = bleed(mic, system)
+    return mic, system, bleed(mic, system)
 
-    owns_mlx_runtime = transcribe_audio is None
-    transcribe_audio = transcribe_audio or transcribe
+
+def _capture_context(capture_dir: Path) -> tuple[dict, np.ndarray, np.ndarray, dict | None]:
+    """Verify one acquisition and load the audio needed by native filters."""
+    _verify_capture(capture_dir)
+    health = _capture_health(capture_dir)
+    mic, system, acoustic = _read_capture_audio(capture_dir)
+    return health, mic, system, acoustic
+
+
+def _filter_mic_segments(
+    mic_segments: list[dict],
+    *,
+    mic: np.ndarray,
+    system: np.ndarray,
+    acoustic: dict | None,
+    voicing_filter: Callable[[list[dict], np.ndarray, str], list[dict]] | None,
+    bleed_filter: Callable[
+        [list[dict], np.ndarray, np.ndarray, dict | None, str], list[dict]
+    ]
+    | None,
+    gate_filter: Callable[
+        [list[dict], np.ndarray, dict | None, str],
+        tuple[list[dict], dict | None],
+    ]
+    | None,
+) -> tuple[list[dict], dict | None, bool]:
+    """Apply the established mic-only voicing, bleed, and operator gate order."""
+    from dual_capture import drop_bled, drop_unvoiced
+
     voicing_filter = voicing_filter or drop_unvoiced
     bleed_filter = bleed_filter or drop_bled
-    try:
-        mic_segments = voicing_filter(
-            transcribe_audio(mic, str(model_dir), "en"), mic, "mic"
-        )
-        filtered_mic_segments = bleed_filter(
-            mic_segments, mic, system, acoustic, "mic"
-        )
-        partial_bleed_detected = len(filtered_mic_segments) < len(mic_segments)
-        mic_segments = filtered_mic_segments
-        # The third and last question asked of the microphone leg, and the only one
-        # asked of a person rather than of the audio: is this the operator at all.
-        # Mic leg only — the system leg is by definition not the operator, and a
-        # voiceprint has nothing to say about it. `gating` is what the artifact
-        # carries about whether the gate ran; None means no profile was installed,
-        # which is a different claim from a gate that was installed and declined.
-        gating = None
-        if gate_filter is not None:
-            mic_segments, gating = gate_filter(mic_segments, mic, acoustic, "mic")
-        del mic
-        system_segments = voicing_filter(
-            transcribe_audio(system, str(model_dir), "en"), system, "system"
-        )
-        del system
-    finally:
-        if owns_mlx_runtime:
-            _release_mlx_whisper_runtime()
+    voiced = voicing_filter(mic_segments, mic, "mic")
+    filtered = bleed_filter(voiced, mic, system, acoustic, "mic")
+    partial_bleed_detected = len(filtered) < len(voiced)
+    gating = None
+    if gate_filter is not None:
+        filtered, gating = gate_filter(filtered, mic, acoustic, "mic")
+    return filtered, gating, partial_bleed_detected
+
+
+def _filter_system_segments(
+    system_segments: list[dict],
+    *,
+    system: np.ndarray,
+    voicing_filter: Callable[[list[dict], np.ndarray, str], list[dict]] | None,
+) -> list[dict]:
+    """Apply the established system-leg voicing filter."""
+    from dual_capture import drop_unvoiced
+
+    return (voicing_filter or drop_unvoiced)(system_segments, system, "system")
+
+
+def _write_transcript_revision(
+    transcript_dir: Path,
+    *,
+    health: dict,
+    acoustic: dict | None,
+    mic_segments: list[dict],
+    system_segments: list[dict],
+    gating: dict | None,
+    partial_bleed_detected: bool,
+) -> tuple[str, Path]:
+    """Write already-filtered segments using the immutable transcript protocol."""
+    from dual_capture import MergedTurn, sha256, write_transcript
+    from transcript import load
 
     merged = [
         MergedTurn(
@@ -244,3 +264,107 @@ def create_transcript_revision(
                 os.fsync(directory)
             finally:
                 os.close(directory)
+
+
+def create_transcript_revision_from_segments(
+    capture_dir: Path,
+    transcript_dir: Path,
+    *,
+    mic_segments: list[dict],
+    system_segments: list[dict],
+    voicing_filter: Callable[[list[dict], np.ndarray, str], list[dict]] | None = None,
+    bleed_filter: Callable[
+        [list[dict], np.ndarray, np.ndarray, dict | None, str], list[dict]
+    ]
+    | None = None,
+    gate_filter: Callable[
+        [list[dict], np.ndarray, dict | None, str],
+        tuple[list[dict], dict | None],
+    ]
+    | None = None,
+) -> tuple[str, Path]:
+    """Write a filtered immutable revision from externally validated segments.
+
+    This path has no speech-model argument and never imports an ASR runtime.
+    Callers must validate their engine-specific result before passing it here.
+    """
+    health, mic, system, acoustic = _capture_context(capture_dir)
+    mic_segments, gating, partial_bleed_detected = _filter_mic_segments(
+        mic_segments,
+        mic=mic,
+        system=system,
+        acoustic=acoustic,
+        voicing_filter=voicing_filter,
+        bleed_filter=bleed_filter,
+        gate_filter=gate_filter,
+    )
+    system_segments = _filter_system_segments(
+        system_segments,
+        system=system,
+        voicing_filter=voicing_filter,
+    )
+    return _write_transcript_revision(
+        transcript_dir,
+        health=health,
+        acoustic=acoustic,
+        mic_segments=mic_segments,
+        system_segments=system_segments,
+        gating=gating,
+        partial_bleed_detected=partial_bleed_detected,
+    )
+
+
+def create_transcript_revision(
+    capture_dir: Path,
+    transcript_dir: Path,
+    model_dir: Path,
+    *,
+    transcribe_audio: Callable[[np.ndarray, str, str], list[dict]] | None = None,
+    voicing_filter: Callable[[list[dict], np.ndarray, str], list[dict]] | None = None,
+    bleed_filter: Callable[
+        [list[dict], np.ndarray, np.ndarray, dict | None, str], list[dict]
+    ]
+    | None = None,
+    gate_filter: Callable[
+        [list[dict], np.ndarray, dict | None, str],
+        tuple[list[dict], dict | None],
+    ]
+    | None = None,
+) -> tuple[str, Path]:
+    """Create one immutable transcript revision without mutating capture bytes."""
+    _verify_capture(capture_dir)
+    model_dir = require_whisper_model(model_dir)
+    health = _capture_health(capture_dir)
+    mic, system, acoustic = _read_capture_audio(capture_dir)
+    from dual_capture import transcribe
+    owns_mlx_runtime = transcribe_audio is None
+    transcribe_audio = transcribe_audio or transcribe
+    try:
+        mic_segments, gating, partial_bleed_detected = _filter_mic_segments(
+            transcribe_audio(mic, str(model_dir), "en"),
+            mic=mic,
+            system=system,
+            acoustic=acoustic,
+            voicing_filter=voicing_filter,
+            bleed_filter=bleed_filter,
+            gate_filter=gate_filter,
+        )
+        del mic
+        system_segments = _filter_system_segments(
+            transcribe_audio(system, str(model_dir), "en"),
+            system=system,
+            voicing_filter=voicing_filter,
+        )
+        del system
+    finally:
+        if owns_mlx_runtime:
+            _release_mlx_whisper_runtime()
+    return _write_transcript_revision(
+        transcript_dir,
+        health=health,
+        acoustic=acoustic,
+        mic_segments=mic_segments,
+        system_segments=system_segments,
+        gating=gating,
+        partial_bleed_detected=partial_bleed_detected,
+    )

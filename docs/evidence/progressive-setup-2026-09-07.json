@@ -1,0 +1,87 @@
+{
+  "schema": "yawn-progressive-setup-check/1",
+  "date": "2026-09-07",
+  "branch": "feature/progressive-setup",
+  "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
+  "state": "source-implemented; packaged acceptance pending",
+  "direction": {
+    "first_run": "Apple speech when ready, otherwise smallest cataloged speech download",
+    "later": "other speech models in Settings",
+    "note_models": "optional separate capability",
+    "minimum_macos": "14.4"
+  },
+  "checks": {
+    "desktop": "cargo check -p local-meeting-notes-desktop --tests -j 2 passed; existing installed resources read only for build metadata, no release bundle produced",
+    "swift": "debug helper compiled with macOS 14 deployment target and macOS 26 API guards",
+    "ui_tests": {
+      "passed": 154,
+      "failed": 0
+    },
+    "worker_tests": {
+      "passed": 103,
+      "failed": 0
+    },
+    "queue_tests": {
+      "passed": 10,
+      "failed": 0
+    },
+    "source_digest_tests": {
+      "passed": 11,
+      "failed": 0
+    },
+    "distribution_tests": {
+      "passed": 19,
+      "failed": 0
+    },
+    "real_native_adapter": {
+      "synthetic_capture": true,
+      "audio_source": "public AMI ES2004c, twelve seconds at 60s and 120s",
+      "capability": {
+        "asset_identity": "os-managed",
+        "locale": "en-US",
+        "os_version": "Version 26.6.2 (Build 25G83)",
+        "schema": "apple-speech-capability/1",
+        "state": "ready",
+        "reason": null
+      },
+      "transcript_created": true,
+      "turn_count": 1,
+      "capture_unchanged": true,
+      "whisper_model": null,
+      "helper_sha256": "0372925d310dd50624f7ae2583786c793958e27e87cf07bdbef6c8172f88d32a",
+      "provenance_written": true
+    },
+    "browser": "Synthetic real-UI harness: Apple preparation reaches recording screen; failed Apple setup can use Q4; Settings switches both directions; primary author opened setup and Settings captures.",
+    "integration_followup": {
+      "operation_exclusion": "Engine selection, Apple preparation, speech-model and note-model changes, and startup retry hold the same operation reservation as note generation, correction and transcript retry until the background task exits.",
+      "failure_recovery": "Failed engine-switch spawn and downloaded-model preference writes reach a retryable startup error. Apple preparation surfaces preference failure. Unsupported saved Apple selection in a bundled-only runtime surfaces a startup failure instead of hanging.",
+      "facade_tests": {
+        "passed": 8,
+        "failed": 0
+      },
+      "setup_recording_guard_tests": {
+        "passed": 1,
+        "failed": 0
+      },
+      "apple_capability_tests": {
+        "passed": 1,
+        "failed": 0
+      },
+      "ui_tests": {
+        "passed": 154,
+        "failed": 0
+      },
+      "scope": "Desktop unit-test executable compiled against installed resources for development metadata only; no release bundle."
+    },
+    "independent_visual_review": "Cold reviewer opened browser-harness setup and Settings captures. Setup download actions needed clearer wording and optional notes needed an introduction. Source copy was corrected; primary author and independent reviewer opened the updated frame, and the reviewer confirmed all three wording findings resolved. Settings model choices were understandable. This is not installed-app acceptance.",
+    "precommit_privacy": "Staged JSON passes the existing content classifier after public-receipt schemas were distinguished from transcript schemas. Full-repository scan still flags 11 existing HEAD JSON files, including fixture data and the package tokens script; no full-repository pass is claimed."
+  },
+  "not_verified": [
+    "Installed app startup and model switching with an app-runtime/3 bundle",
+    "Older macOS execution; deployment guard is compiled only",
+    "Real Apple asset download, interruption and recovery",
+    "Full retained meeting retry, vocabulary, note and playback workflow with Apple",
+    "Human speech and note quality acceptance"
+  ],
+  "release": "No commit, push, app installation, signing or release performed."
+}

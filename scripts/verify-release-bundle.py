@@ -134,7 +134,7 @@ def verify_runtime(resources: Path, admission: str) -> None:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise VerificationError(f"runtime manifest is unreadable ({exc})") from None
     schema = manifest.get("schema")
-    require(schema in {"app-runtime/1", "app-runtime/2"}, "runtime schema is not current")
+    require(schema in {"app-runtime/1", "app-runtime/2", "app-runtime/3"}, "runtime schema is not current")
     # Bound in every admission as the fallback requester. Internal-alpha routes
     # first-run permission setup through meeting-capture itself, while builds
     # without that helper still need a bounded microphone-status surface.
@@ -142,6 +142,19 @@ def verify_runtime(resources: Path, admission: str) -> None:
         (manifest.get("permission_probe") or {}).get("path") == "bin/permission-probe",
         "runtime is not bound to the first-run permission probe",
     )
+    if schema == "app-runtime/3":
+        require(admission == "internal-alpha", "Apple speech requires internal-alpha")
+        require(
+            (manifest.get("apple_speech") or {}).get("path") == "bin/apple-speech",
+            "runtime is not bound to the Apple speech helper",
+        )
+        helper = resources / "bin/apple-speech"
+        require(
+            helper.is_file() and not helper.is_symlink() and os.access(helper, os.X_OK),
+            "Apple speech helper is missing or unsafe",
+        )
+    else:
+        require("apple_speech" not in manifest, "legacy runtime cannot bind Apple speech")
     verify_note_runtime_resources_present(resources)
     require(
         manifest.get("admission") == admission,
@@ -195,7 +208,7 @@ def verify_runtime(resources: Path, admission: str) -> None:
             actual_models == expected_models,
             "internal-alpha model inventory is incomplete or unexpected",
         )
-        if schema == "app-runtime/2":
+        if schema in {"app-runtime/2", "app-runtime/3"}:
             verify_model_catalog(resources, manifest)
     python = resources / "python-runtime/bin/python3.12"
     require(python.is_file() and os.access(python, os.X_OK), "bundled Python is missing")
@@ -552,6 +565,13 @@ def verify(app: Path, *, signed: bool, admission: str) -> tuple[str, int]:
     resources, plist = verify_metadata(app)
     verify_runtime(resources, admission)
     inventory = macho_inventory(app)
+    manifest = json.loads((resources / "app-runtime.json").read_text(encoding="utf-8"))
+    if manifest.get("schema") == "app-runtime/3":
+        require(
+            any(path == resources / "bin/apple-speech" and "executable" in kind
+                for path, kind in inventory),
+            "Apple speech helper is not a bundled Mach-O executable",
+        )
     if signed:
         verify_signatures(app, inventory)
     return str(plist["CFBundleShortVersionString"]), len(inventory)

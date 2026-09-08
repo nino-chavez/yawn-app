@@ -1,0 +1,99 @@
+{
+  "schema": "speech-local-review-public-receipt/1",
+  "date": "2026-09-07",
+  "scope": "local model suggestions for human inspection; no quality verdict",
+  "model_id": "gemma-3-12b-it-qat-4bit",
+  "model_revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4",
+  "same_model_family_as_note_generator": true,
+  "audio_reviewed": false,
+  "human_review": "pending",
+  "adopted_change": false,
+  "network": "Seatbelt no-network",
+  "attempt": {
+    "returncode": 0,
+    "timed_out": false,
+    "elapsed_seconds": 56.31270249991212,
+    "human_review": "pending"
+  },
+  "plan_sha256": "7b1ef9b63f6488307e9f354f9a7fad508a56ab0d2c376f4a475e960f7fd317dd",
+  "private_receipt_sha256": "47e645c9fc833cbec288bb76ad83f6d0b03e72bd88c385d33dd1693b03e70c06",
+  "review_sha256": "4ae5f50452b66b3f88429d5ba8d2d697ca97e8be9386fc7ee30e9d931eaf94df",
+  "system_prompt_sha256": "2df7d5d010c0cee89bef7a01b2af17efebf560196718a17c9ee3e63895aea8e9",
+  "max_output_tokens": 2048,
+  "temperature": 0,
+  "helper_sha256": "f2c2c6f1e2074c45d8e529b826f1530d8438fceb41dabfaad3b48e1a47cc0492",
+  "generation_source_sha256": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+  "inputs": [
+    {
+      "label": "Variant A",
+      "transcript_sha256": "d36da59c39b1dc4c32d52e60058040c8a804854ab43b253e4b03916453260a68",
+      "generated_sha256": "70280b6c0dd1ad16ae309171eb940b3a855d590311ad35bdbd0f9cc6a421561d",
+      "prompt_sha256": "22d4256192cef0bc4771c31989335c86331c9def5cfad97ba0901f27d5134549"
+    },
+    {
+      "label": "Variant B",
+      "transcript_sha256": "71a9772cc895f6e99ce51ddae19f60c7a27a9099228e0550b6c8d3257852a191",
+      "generated_sha256": "0abe564f7322536eb8b10a55b06e8846d2a19679b9013ee54ac6ee47eda8374d",
+      "prompt_sha256": "166dce6f6404b344be2d8d0152466f59fa47e59b815f0089b6634176369041ae"
+    },
+    {
+      "label": "Variant C",
+      "transcript_sha256": "c5dd38db3e67c5c9872ec02e5503b9853e855e0a416ecbf40ca4fd362c567d73",
+      "generated_sha256": "bfe26b9d11c56a8bf44a341db9f94e6f15a3ed187b41d7d6e1b0192d18905f94",
+      "prompt_sha256": "5a9dddbfab8d9409fd0d71c81678cc9e283e348dcf11471a7250215cc1ed36c7"
+    },
+    {
+      "label": "Variant D",
+      "transcript_sha256": "3cdba4ac101b5afb015a0c877316cf225fdd06431bba24aae5de31680c2c67b7",
+      "generated_sha256": "92cb13534a5c78fe0a26cc6aa334e9731c694fed53ca341cb0bf12ce58755de3",
+      "prompt_sha256": "801c565db1e4e85ce60195ac5716d147324e1dcf3f632a863349f1f1dd261d42"
+    }
+  ],
+  "conditions": [
+    {
+      "label": "Variant A",
+      "status": "suggestions_for_review",
+      "suggestions": 2,
+      "rejected_flags": 1,
+      "suggestion_file_sha256": "f5c4134fe5e4d2d41933f61056a8c6b20d9feca1719990cf9a0e44ccbd579d67",
+      "raw_sha256": "adf1f1a3ee81cc817b43a1671fac816dbdebf4fe4f229a5991cf6d577637e1eb"
+    },
+    {
+      "label": "Variant B",
+      "status": "suggestions_for_review",
+      "suggestions": 2,
+      "rejected_flags": 1,
+      "suggestion_file_sha256": "33cdcf9f045fe8fdc68bbc419948d1a7402666d62362f35c6743410da6276617",
+      "raw_sha256": "960501fa5da9f90d05786697e4baf67c682a8dde8f4c82a9b7b0452452f181d7"
+    },
+    {
+      "label": "Variant C",
+      "status": "suggestions_for_review",
+      "suggestions": 1,
+      "rejected_flags": 1,
+      "suggestion_file_sha256": "e712e745bdd9005155bcfd3dfcddba064f13550bfe9a75e3e02f6088afe3dbe4",
+      "raw_sha256": "0f3dce4ef1477997ff60939efcd7d6990c0a2c0c3c3a5044505c474e7a812a5e"
+    },
+    {
+      "label": "Variant D",
+      "status": "suggestions_for_review",
+      "suggestions": 1,
+      "rejected_flags": 0,
+      "suggestion_file_sha256": "758978179c0c0fc23ef8b84c6845c0d5c35846b849fb19a04e7b31f7f2242409",
+      "raw_sha256": "8b41b6c005377598e384c96f79b76ca5a722a92c90d8fbc7965fee1de2b3c7d5"
+    }
+  ],
+  "verification": {
+    "tests_passed": 5,
+    "source_quotes_and_claim_ids_rechecked": true,
+    "original_review_packet_unchanged": true,
+    "private_permissions_verified": true,
+    "git_diff_check": "passed"
+  },
+  "limits": [
+    "The model saw each note and its own transcript, not audio.",
+    "Exact quotation checks prove source location, not the proposed concern.",
+    "The same local model family can repeat the note generator errors.",
+    "An empty or invalid response is not approval."
+  ]
+}

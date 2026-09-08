@@ -370,6 +370,31 @@ export function modelSetupOptionsPresentation(setup, formatBytes) {
   });
 }
 
+// The native speech engine is the first-run capability when the backend can
+// use it. Whisper remains a qualified local fallback for Macs that need it.
+// Keep this presentation additive so older snapshots continue through the
+// existing model_setup renderer.
+export function transcriptionEnginePresentation(engine = null) {
+  if (!engine || typeof engine !== "object") return { state: "legacy" };
+  const apple = engine.apple || {};
+  const whisper = engine.whisper || {};
+  if (engine.selected === "apple-native" && apple.state === "ready") {
+    return { state: "native-ready", detail: "Apple speech is ready on this Mac." };
+  }
+  if (apple.state === "installing") {
+    return { state: "apple-installing", detail: apple.reason || "Preparing Apple speech on this Mac…" };
+  }
+  if (apple.state === "assets-required") {
+    return { state: "apple-assets-required", detail: apple.reason || "Apple needs to prepare speech assets on this Mac." };
+  }
+  if (apple.state === "failed" || apple.state === "unavailable") {
+    return { state: "apple-unavailable", detail: apple.reason || "Apple speech is unavailable on this Mac." };
+  }
+  if (whisper.state === "downloading") return { state: "whisper-downloading", detail: whisper.reason || "Downloading the local speech model…" };
+  if (whisper.state === "failed" || whisper.state === "unavailable") return { state: "whisper-unavailable", detail: whisper.reason || "The local speech fallback is unavailable." };
+  return { state: "whisper-required", detail: whisper.reason || "Choose the smallest local speech model to continue." };
+}
+
 // Refit R24. The document's metadata caption used to render
 // `humanize(note.state)` -- the storage lifecycle enum, title-cased. A cold
 // reviewer read "Transcript Only" as a restriction on the meeting rather

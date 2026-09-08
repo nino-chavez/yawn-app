@@ -17,6 +17,7 @@ if (typeof window.matchMedia === "function") {
 const invoke = window.__TAURI__?.core?.invoke;
 const permissionsRoot = document.querySelector("#permissions");
 const modelsRoot = document.querySelector("#models");
+const transcriptionEngineRoot = document.querySelector("#transcription-engine");
 const modelMessage = document.querySelector("#model-message");
 const noteModelsRoot = document.querySelector("#note-models");
 const noteModelMessage = document.querySelector("#note-model-message");
@@ -24,6 +25,9 @@ const message = document.querySelector("#message");
 
 let permissions = null;
 let models = null;
+let transcriptionEngine = null;
+let transcriptionEngineError = "";
+let transcriptionEnginePoll = null;
 let modelLoadError = "";
 // D-MODEL (roadmap): a runtime staged without downloadable speech models
 // rejects `transcript_model_settings` with this exact sentence -- a fact
@@ -123,12 +127,15 @@ function renderModels() {
     return;
   }
   const busy = models.changeActive;
+  const whisperInUse = !transcriptionEngine || transcriptionEngine.selected === "whisper";
   modelsRoot.setAttribute("aria-busy", busy ? "true" : "false");
   modelsRoot.innerHTML = models.options.map((option) => {
     const selected = models.selectedModelId === option.id;
-    const disabled = !models.canChange || busy;
-    const status = option.active
+    const disabled = !models.canChange || busy || transcriptionEngine?.operationActive || transcriptionEngine?.canChange === false;
+    const status = option.active && whisperInUse
       ? `<span class="state" data-tone="ready">In use</span>`
+      : option.active
+        ? `<span class="state">Stored</span>`
       : option.stored
         ? `<span class="state">On this Mac</span>`
         : `<span class="model-size">${byteSizeLabel(option.downloadBytes)}</span>`;
@@ -139,7 +146,7 @@ function renderModels() {
     // (it acquires a resource); a stored option is secondary (it switches to
     // what's already available). Permission rows are always primary (allow access).
     const isPrimaryUseAction = !option.stored;
-    const use = option.active
+    const use = option.active && whisperInUse
       ? ""
       : `<button class="${isPrimaryUseAction ? "allow-button" : "quiet-button"}" type="button" data-action="use-model" data-model-id="${escapeHtml(option.id)}" ${disabled ? "disabled" : ""}>${option.stored ? "Use this model" : "Download and use"}</button>`;
     const remove = option.stored && !option.active
@@ -161,6 +168,43 @@ function renderModels() {
     ? "Inactive downloads can be removed to free space."
     : "You can download the other model at any time.");
   modelMessage.dataset.tone = models.error ? "attention" : "neutral";
+}
+
+function renderTranscriptionEngine() {
+  if (!transcriptionEngineRoot) return;
+  if (!transcriptionEngine) {
+    transcriptionEngineRoot.innerHTML = row("Checking speech engine", "checking", transcriptionEngineError || "Yawn is checking what can transcribe on this Mac.");
+    return;
+  }
+  const apple = transcriptionEngine.apple || {};
+  const busy = transcriptionEngine.operationActive || !transcriptionEngine.canChange;
+  const appleReady = apple.state === "ready";
+  const action = !busy && appleReady && transcriptionEngine.selected !== "apple-native"
+    ? `<button class="quiet-button" type="button" data-action="use-apple-speech">Use Apple speech</button>`
+    : !busy && ["assets-required", "failed"].includes(apple.state)
+      ? `<button class="allow-button" type="button" data-action="prepare-apple-speech">Download Apple speech</button>`
+      : "";
+  const detail = transcriptionEngineError || (apple.state === "assets-required"
+    ? `${apple.reason || "Apple speech needs preparation."} Apple manages this download in macOS.`
+    : apple.state === "installing"
+      ? (apple.reason || "Preparing Apple speech on this Mac…")
+      : apple.state === "failed" || apple.state === "unavailable"
+        ? (apple.reason || "Apple speech is unavailable on this Mac.")
+        : appleReady
+          ? "Apple speech is available on this Mac."
+          : "The downloaded local speech model is active.");
+  const appleStatus = transcriptionEngine.selected === "apple-native" ? "In use" : appleReady ? "Ready" : humanize(apple.state);
+  transcriptionEngineRoot.innerHTML = row("Apple speech", appleStatus, detail, action);
+  transcriptionEngineRoot.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
+function scheduleTranscriptionEnginePoll() {
+  clearTimeout(transcriptionEnginePoll);
+  if (transcriptionEngine?.operationActive) {
+    transcriptionEnginePoll = setTimeout(() => void refreshTranscriptionEngine(), 500);
+  } else if (!transcriptionEngine) {
+    transcriptionEnginePoll = setTimeout(() => void refreshTranscriptionEngine(), 2000);
+  }
 }
 
 function renderNoteModels() {
@@ -316,9 +360,47 @@ async function useModel(modelId) {
   try {
     await invoke("install_transcript_model", { modelId });
     await refreshModels();
+    await refreshTranscriptionEngine();
   } catch (error) {
     modelMessage.textContent = String(error || "Yawn could not change the speech model.");
     modelMessage.dataset.tone = "attention";
+  }
+}
+
+async function refreshTranscriptionEngine() {
+  if (!invoke) return;
+  try {
+    transcriptionEngine = await invoke("get_transcription_engine_settings");
+    transcriptionEngineError = "";
+  } catch {
+    transcriptionEngine = null;
+    transcriptionEngineError = "Yawn could not check the speech engine.";
+  }
+  renderTranscriptionEngine();
+  renderModels();
+  scheduleTranscriptionEnginePoll();
+}
+
+async function prepareAppleSpeech() {
+  if (!invoke) return;
+  try {
+    await invoke("install_apple_speech_assets");
+    await refreshTranscriptionEngine();
+  } catch (error) {
+    transcriptionEngineError = String(error || "Yawn could not prepare Apple speech.");
+    renderTranscriptionEngine();
+  }
+}
+
+async function useAppleSpeech() {
+  if (!invoke || transcriptionEngine?.canChange === false) return;
+  try {
+    await invoke("select_transcription_engine", { engine: "apple-native" });
+    await refreshTranscriptionEngine();
+    await refreshModels();
+  } catch (error) {
+    transcriptionEngineError = String(error || "Yawn could not change the speech engine.");
+    renderTranscriptionEngine();
   }
 }
 
@@ -369,6 +451,8 @@ document.addEventListener("click", (event) => {
   if (action === "refresh") void refresh();
   if (action === "microphone" || action === "system-audio") void request(action);
   if (action === "use-model") void useModel(control.dataset.modelId);
+  if (action === "prepare-apple-speech") void prepareAppleSpeech();
+  if (action === "use-apple-speech") void useAppleSpeech();
   if (action === "remove-model") void removeModel(control.dataset.modelId, control.dataset.modelTitle);
   if (action === "use-note-model") void useNoteModel(control.dataset.modelId);
   if (action === "remove-note-model") void removeNoteModel(control.dataset.modelId, control.dataset.modelTitle);
@@ -376,4 +460,5 @@ document.addEventListener("click", (event) => {
 
 void refresh();
 void refreshModels();
+void refreshTranscriptionEngine();
 void refreshNoteModels();

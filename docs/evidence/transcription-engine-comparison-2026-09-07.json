@@ -1,0 +1,1788 @@
+{
+  "schema": "speech-comparison-public-receipt/1",
+  "date": "2026-09-07",
+  "scope": "local research; no app migration, human note acceptance, or ship-gate pass",
+  "machine": {
+    "chip": "Apple M3 Max",
+    "ram_bytes": 38654705664,
+    "macos": "26.6.2",
+    "build": "25G83"
+  },
+  "manifest_sha256": "77b79e9e19406a650ad72897e6d9fb842e43c6492cb12ecf228d1c262c6d68dc",
+  "reference": {
+    "sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010",
+    "manual_lexical_tokens": 7084,
+    "correction": "v2 fixes NITE range parsing; original annotations unchanged; v1 span scores discarded",
+    "original_derived_reference_sha256": "66a0e9b71c614e265132867b51bc609c8e001a15495f3f173602d5ed13b8c1af"
+  },
+  "private_reference": {
+    "sha256": "7348e352b96f2c58988ea0a69ed9f51ce169ddeb2f58e2b94801aa3aa8f95f9b",
+    "kind": "event-time-proxy-not-human-ASR-reference",
+    "approval": {
+      "reference_status": "DRAFT",
+      "human_approval": "PENDING_HUMAN_APPROVAL",
+      "fresh_transcript_approval": false
+    },
+    "original_lock_validated": false,
+    "timing_used_fallback": false,
+    "counts": {
+      "events": 13,
+      "alternative_witness_spans": 41,
+      "transcript_turns": 164
+    }
+  },
+  "native_model_identity": {
+    "schema": "speech-engine-native-model-identity/1",
+    "observed_at": "2026-09-07",
+    "platform": {
+      "macos_build": "25G83",
+      "sdk": "MacOSX26.5.sdk"
+    },
+    "probe": {
+      "binary_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+      "source_files": [
+        {
+          "path": "spike/speech-engine-comparison/native/Package.swift",
+          "sha256": "11ebe5813e587905c0cf6f1c718ac8b79c7a5f5954e284a9dc16ef69e5e30aeb"
+        },
+        {
+          "path": "spike/speech-engine-comparison/native/Package.resolved",
+          "sha256": "2a422230451948ac3939ce214d722d5fc94a3c4239d1e44b9358f2791db535fa"
+        },
+        {
+          "path": "spike/speech-engine-comparison/native/Sources/native-probe/main.swift",
+          "sha256": "4648e55892be06b69d34fecd92ce9cffc7ff6b1fa122c80dc5eacfeccf8479b5"
+        }
+      ],
+      "fluidaudio": {
+        "version": "0.15.6",
+        "revision": "4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b"
+      }
+    },
+    "parakeet": {
+      "model": "Parakeet TDT 0.6B v3",
+      "encoder_precision": "int8",
+      "source": "FluidInference/parakeet-tdt-0.6b-v3-coreml",
+      "source_revision": "not exposed by FluidAudio download API",
+      "cache_relative_path": "FluidAudio/Models/parakeet-tdt-0.6b-v3",
+      "file_bytes": 483257242,
+      "allocated_kib": 480408,
+      "files": [
+        {
+          "path": "Decoder.mlmodelc/analytics/coremldata.bin",
+          "bytes": 243,
+          "sha256": "4238c4e81ecd0dc94bd7dfbb60f7e2cc824107c1ffe0387b8607b72833dba350"
+        },
+        {
+          "path": "Decoder.mlmodelc/coremldata.bin",
+          "bytes": 554,
+          "sha256": "18647af085d87bd8f3121c8a9b4d4564c1ede038dab63d295b4e745cf2d7fb99"
+        },
+        {
+          "path": "Decoder.mlmodelc/metadata.json",
+          "bytes": 3427,
+          "sha256": "a39e93cd8371b8ded92635c7804fcd0590f0d1dd9415c6d19a0484be073077d9"
+        },
+        {
+          "path": "Decoder.mlmodelc/model.mil",
+          "bytes": 13110,
+          "sha256": "ef2a0a281695398a62fde86ac269c68f73d5b578d7ed3b31f2ba91a2d1ea1f35"
+        },
+        {
+          "path": "Decoder.mlmodelc/weights/weight.bin",
+          "bytes": 23604992,
+          "sha256": "48adf0f0d47c406c8253d4f7fef967436a39da14f5a65e66d5a4b407be355d41"
+        },
+        {
+          "path": "Encoder.mlmodelc/analytics/coremldata.bin",
+          "bytes": 243,
+          "sha256": "42e638870d73f26b332918a3496ce36793fbb413a81cbd3d16ba01328637a105"
+        },
+        {
+          "path": "Encoder.mlmodelc/coremldata.bin",
+          "bytes": 485,
+          "sha256": "d48034a167a82e88fc3df64f60af963ab3983538271175b8319e7d5720a0fb86"
+        },
+        {
+          "path": "Encoder.mlmodelc/metadata.json",
+          "bytes": 2921,
+          "sha256": "da24da9cca943fb29d7fa8e376d57fca7cb3aa08ca51b956b0b0e56813f087e9"
+        },
+        {
+          "path": "Encoder.mlmodelc/model.mil",
+          "bytes": 959769,
+          "sha256": "ed7b19156ca29fa7dfd6891deb9fda4b0e8893f68597c985d135736546a43808"
+        },
+        {
+          "path": "Encoder.mlmodelc/weights/weight.bin",
+          "bytes": 445187200,
+          "sha256": "e2020f323703477a5b21d7c2d282c403e371afb5962e79877e3033e73ba6f421"
+        },
+        {
+          "path": "JointDecisionv3.mlmodelc/analytics/coremldata.bin",
+          "bytes": 243,
+          "sha256": "26def4bf73dd56d29dee21c8ef97cb8969e62f6120ed1adc91e46828e2737b6c"
+        },
+        {
+          "path": "JointDecisionv3.mlmodelc/coremldata.bin",
+          "bytes": 521,
+          "sha256": "f5fc08b741400f0088492c9e839418b1e18522f19cba28d361dd030c5f398342"
+        },
+        {
+          "path": "JointDecisionv3.mlmodelc/metadata.json",
+          "bytes": 3453,
+          "sha256": "d9307211b9a37e0f0ac260c7660b1571a3de25841035cfdf9b58fd40425f890f"
+        },
+        {
+          "path": "JointDecisionv3.mlmodelc/model.mil",
+          "bytes": 11775,
+          "sha256": "be60732943389a047175111a83f8839f3eb39d4803adafa828a0871b2f39818d"
+        },
+        {
+          "path": "JointDecisionv3.mlmodelc/weights/weight.bin",
+          "bytes": 12642764,
+          "sha256": "4e0e63d840032f7f07ddb1d64446051166281e5491bf22da8a945c41f6eedb3e"
+        },
+        {
+          "path": "Preprocessor.mlmodelc/analytics/coremldata.bin",
+          "bytes": 243,
+          "sha256": "c9beeb989c8d66f8be11df59bc6df277ec76cee404f6865b46243835ef562f6d"
+        },
+        {
+          "path": "Preprocessor.mlmodelc/coremldata.bin",
+          "bytes": 486,
+          "sha256": "dbde3f2300842c1fd51ef3ff948a0bcffe65ffd2dca10707f2509f32c1d65b1d"
+        },
+        {
+          "path": "Preprocessor.mlmodelc/metadata.json",
+          "bytes": 2841,
+          "sha256": "2a98699e22d279dd37fa1d238aeb1c6db1df0d6fad687775324157689d8f3acf"
+        },
+        {
+          "path": "Preprocessor.mlmodelc/model.mil",
+          "bytes": 28181,
+          "sha256": "4b8518a956450fec57f06c2a21bdffc26973f7f1fa6842fb38fe917f896b6b93"
+        },
+        {
+          "path": "Preprocessor.mlmodelc/weights/weight.bin",
+          "bytes": 491072,
+          "sha256": "129b76e3aeafa8afa3ea76d995b964b145fe83700d579f6ff42c4c38fa0968ea"
+        },
+        {
+          "path": "config.json",
+          "bytes": 475,
+          "sha256": "97f19ecccd0fdc730d76fb918090fa8bc64bce8ea4ad43715d5e9c2c7350db66"
+        },
+        {
+          "path": "parakeet_v3_vocab.json",
+          "bytes": 151122,
+          "sha256": "7ec60e05f1b24480736ec0eed40900f4626bce1fa9a60fd700ec7e2a59198735"
+        },
+        {
+          "path": "parakeet_vocab.json",
+          "bytes": 151122,
+          "sha256": "7ec60e05f1b24480736ec0eed40900f4626bce1fa9a60fd700ec7e2a59198735"
+        }
+      ]
+    },
+    "apple": {
+      "model": "Apple SpeechTranscriber on-device asset",
+      "identity": "OS-managed locale asset; version and files are not exposed to this probe",
+      "locale": "en-US",
+      "file_hashes": "unavailable by design"
+    }
+  },
+  "silence_after_current_voicing_filter": {
+    "whisper": [
+      {
+        "raw_segments": 1,
+        "retained_segments": 0,
+        "retained_characters": 0
+      },
+      {
+        "raw_segments": 1,
+        "retained_segments": 0,
+        "retained_characters": 0
+      }
+    ],
+    "apple": [
+      {
+        "raw_segments": 0,
+        "retained_segments": 0,
+        "retained_characters": 0
+      },
+      {
+        "raw_segments": 0,
+        "retained_segments": 0,
+        "retained_characters": 0
+      }
+    ],
+    "parakeet": [
+      {
+        "raw_segments": 0,
+        "retained_segments": 0,
+        "retained_characters": 0
+      },
+      {
+        "raw_segments": 0,
+        "retained_segments": 0,
+        "retained_characters": 0
+      }
+    ]
+  },
+  "engines": {
+    "whisper": {
+      "cases": {
+        "silence": {
+          "duration_seconds": 10.0,
+          "audio_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+          "result_sha256": "a9d20624cfd3d4f9015208a44a403a761b404b50f08039a090e99fca9877a2ee",
+          "attempt_sha256": "963d10d429c4f5b2c0acc876a8c01e57e6d0b7627799f103fbf0ac0f960d93e9",
+          "source_unchanged": true,
+          "setup_seconds": 2.7248981670709327,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 4.388818416977301,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 0.8244467079639435,
+              "total_seconds": 3.549344875034876,
+              "process_peak_rss_bytes": 826851328,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 2,
+              "timing": {
+                "segments": 1,
+                "segments_with_tokens": 1,
+                "timed_segments": 1,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 1,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 0.31700008304324,
+              "total_seconds": 0.31700008304324,
+              "process_peak_rss_bytes": 829161472,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 2,
+              "timing": {
+                "segments": 1,
+                "segments_with_tokens": 1,
+                "timed_segments": 1,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 1,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-mic": {
+          "duration_seconds": 179.8,
+          "audio_sha256": "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "result_sha256": "12f5d5b78c0386f136697b69326dda0841e191a85f955ff48024cf2380d14b5d",
+          "attempt_sha256": "97d271dbcec1426bf9a2827d3b249d853456ea3ab1abefd645ea362de6a5e7a7",
+          "source_unchanged": true,
+          "setup_seconds": 2.2703202919801697,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 7.045370542095043,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 2.2542535829124972,
+              "total_seconds": 4.524573874892667,
+              "process_peak_rss_bytes": 861913088,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 119,
+              "timing": {
+                "segments": 15,
+                "segments_with_tokens": 15,
+                "timed_segments": 15,
+                "segments_with_usable_timing": 15,
+                "text_segments_with_usable_timing": 15,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 2.0852420409210026,
+              "total_seconds": 2.0852420409210026,
+              "process_peak_rss_bytes": 873463808,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 119,
+              "timing": {
+                "segments": 15,
+                "segments_with_tokens": 15,
+                "timed_segments": 15,
+                "segments_with_usable_timing": 15,
+                "text_segments_with_usable_timing": 15,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-system": {
+          "duration_seconds": 180.0,
+          "audio_sha256": "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "result_sha256": "d3132ac48145e898337829e24c458083e8a5b96bdb182e91f6b76322501851f8",
+          "attempt_sha256": "6e5b76636889bbbe165e58ca2fa2da80d6d9e78c2559d4faaa0dfe5487645dfc",
+          "source_unchanged": true,
+          "setup_seconds": 2.3247338340152055,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 9.50482616701629,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 3.525256583932787,
+              "total_seconds": 5.849990417947993,
+              "process_peak_rss_bytes": 867860480,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 279,
+              "timing": {
+                "segments": 37,
+                "segments_with_tokens": 37,
+                "timed_segments": 37,
+                "segments_with_usable_timing": 37,
+                "text_segments_with_usable_timing": 37,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 3.2123552080010995,
+              "total_seconds": 3.2123552080010995,
+              "process_peak_rss_bytes": 879411200,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 279,
+              "timing": {
+                "segments": 37,
+                "segments_with_tokens": 37,
+                "timed_segments": 37,
+                "segments_with_usable_timing": 37,
+                "text_segments_with_usable_timing": 37,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-mic": {
+          "duration_seconds": 736.511625,
+          "audio_sha256": "b9c53d494fd165fdf847882c8f0ea942214119fd2ee11cc875777127bd42cfec",
+          "result_sha256": "e17cfcabf8f12bef7c3e21620c8371cb34943b6b46f7826380187f0042ce9e6d",
+          "attempt_sha256": "78fb5f70e7c9d2aac80aecc02b55348f26b68e095a43c9767bc7bbf4f8320978",
+          "source_unchanged": true,
+          "setup_seconds": 2.307894458062947,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 32.63765679206699,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 14.584442207938991,
+              "total_seconds": 16.89233666600194,
+              "process_peak_rss_bytes": 974585856,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 1717,
+              "timing": {
+                "segments": 170,
+                "segments_with_tokens": 170,
+                "timed_segments": 170,
+                "segments_with_usable_timing": 170,
+                "text_segments_with_usable_timing": 170,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 15.247167875058949,
+              "total_seconds": 15.247167875058949,
+              "process_peak_rss_bytes": 974585856,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 1717,
+              "timing": {
+                "segments": 170,
+                "segments_with_tokens": 170,
+                "timed_segments": 170,
+                "segments_with_usable_timing": 170,
+                "text_segments_with_usable_timing": 170,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-system": {
+          "duration_seconds": 736.589375,
+          "audio_sha256": "21fd165c92b5b72a4a9d0fc38c5fc8df8ed2617b2b4f4a2ed3a895c49248a83a",
+          "result_sha256": "f7f431bfb352ac5f4d1360b1395ee8b4bff587666b366cc74c1001aa3061cf1d",
+          "attempt_sha256": "f4e06982b70174a682b11a884f4b2006be09cff0eef7c4cf0c606eff7ba99cae",
+          "source_unchanged": true,
+          "setup_seconds": 3.0751946659293026,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 23.085925374994986,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 9.639001374947838,
+              "total_seconds": 12.714196040877141,
+              "process_peak_rss_bytes": 971046912,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 50,
+              "timing": {
+                "segments": 25,
+                "segments_with_tokens": 25,
+                "timed_segments": 25,
+                "segments_with_usable_timing": 24,
+                "text_segments_with_usable_timing": 24,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 1,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 9.790332249947824,
+              "total_seconds": 9.790332249947824,
+              "process_peak_rss_bytes": 1018249216,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 50,
+              "timing": {
+                "segments": 25,
+                "segments_with_tokens": 25,
+                "timed_segments": 25,
+                "segments_with_usable_timing": 24,
+                "text_segments_with_usable_timing": 24,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 1,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "ami-full": {
+          "duration_seconds": 2334.368,
+          "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+          "result_sha256": "ec083d915767e474ce86c2b9d12bd26a53cf0409733ac3f9734e5008d910bd26",
+          "attempt_sha256": "c7fcb01808c5a5d1f9c25f74a91a67c37f9e716c06181c638240acac1ea16587",
+          "source_unchanged": true,
+          "setup_seconds": 2.7001785000320524,
+          "probe_sha256": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 103.04310604196507,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 46.368863457930274,
+              "total_seconds": 49.06904195796233,
+              "process_peak_rss_bytes": 1349419008,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 5689,
+              "timing": {
+                "segments": 674,
+                "segments_with_tokens": 674,
+                "timed_segments": 674,
+                "segments_with_usable_timing": 674,
+                "text_segments_with_usable_timing": 674,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 53.170221042004414,
+              "total_seconds": 53.170221042004414,
+              "process_peak_rss_bytes": 1349419008,
+              "timing_granularity": "Whisper decoded segment ranges; product defaults",
+              "timing_issue_count": null,
+              "output_tokens": 5689,
+              "timing": {
+                "segments": 674,
+                "segments_with_tokens": 674,
+                "timed_segments": 674,
+                "segments_with_usable_timing": 674,
+                "text_segments_with_usable_timing": 674,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        }
+      },
+      "ami_manual_diagnostics": {
+        "schema": "speech-engine-comparison-score/1",
+        "status": "scored",
+        "duration_seconds": 2334.368,
+        "runs": [
+          {
+            "index": 0,
+            "status": "scored",
+            "timing": {
+              "segments": 674,
+              "segments_with_tokens": 674,
+              "timed_segments": 674,
+              "segments_with_usable_timing": 674,
+              "text_segments_with_usable_timing": 674,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 5689,
+              "segment_text_tokens": 5689
+            },
+            "output_shape": {
+              "tokens": 5689,
+              "adjacent_repeated_tokens": 18
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 339,
+              "deletions": 1437,
+              "insertions": 42,
+              "normalized_edit_distance": 0.25663466967814796
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 361,
+              "aligned": 352,
+              "outside_segment": 9
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 101,
+              "complete_spans": 3,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 114,
+              "complete_spans": 103,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 240,
+              "retention": 0.8191126279863481
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 0,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          },
+          {
+            "index": 1,
+            "status": "scored",
+            "timing": {
+              "segments": 674,
+              "segments_with_tokens": 674,
+              "timed_segments": 674,
+              "segments_with_usable_timing": 674,
+              "text_segments_with_usable_timing": 674,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 5689,
+              "segment_text_tokens": 5689
+            },
+            "output_shape": {
+              "tokens": 5689,
+              "adjacent_repeated_tokens": 18
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 339,
+              "deletions": 1437,
+              "insertions": 42,
+              "normalized_edit_distance": 0.25663466967814796
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 361,
+              "aligned": 352,
+              "outside_segment": 9
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 101,
+              "complete_spans": 3,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 114,
+              "complete_spans": 103,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 240,
+              "retention": 0.8191126279863481
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 0,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          }
+        ],
+        "limits": [
+          "No engine transcript text is returned.",
+          "Exact whole-transcript edit counts are computed with RapidFuzz; manual WER remains unsupported for the temporally sorted mixed-channel reference.",
+          "Important-span and entity results measure exact annotated local token survival, not semantic commitment or name understanding.",
+          "Lexical timing only checks globally unique exact reference tokens against enclosing engine segments; no word timestamps are interpolated.",
+          "Manual annotation gaps are not acoustic-silence labels."
+        ]
+      },
+      "private_event_proxy": {
+        "events": 13,
+        "mean_best_alternative_local_term_fraction": 0.9668113495699703,
+        "events_with_complete_lexical_alternative": 9,
+        "retained_transcript_turns": 168,
+        "transcript_sha256": "5975598e03b3faf100c287bff79243054a5d215eaac1e251564632ee8638582c",
+        "limitation": "draft Whisper-derived local token proxy after capture filters; not semantic recall or an approved gate"
+      },
+      "short_note_replay": {
+        "status": "validated-note-output",
+        "claims": 7,
+        "refusal": null,
+        "source_unchanged": true,
+        "filter_seconds": 0.09638108289800584,
+        "note_setup_seconds": 5.931655666907318,
+        "note_generation_seconds": 99.01976312499028,
+        "segmentation": [
+          "native decoded segments",
+          "native decoded segments"
+        ],
+        "transcript_id": "afad59690781ba4009eeba1de6ddc98f4125d464d7b77da2fff4dba9680328d1",
+        "generated_sha256": "ef7d647e2a63bfd4db61ac0240972561b905ffae3320b16dedc8ac29e2d810d3",
+        "note_model": {
+          "id": "gemma-3-12b-it-qat-4bit",
+          "revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4"
+        },
+        "runtime": {
+          "mlx_lm": "0.31.3",
+          "mlx": "0.32.2"
+        },
+        "network": "Seatbelt no-network profile applied before model load",
+        "source_code_hashes": {
+          "worker/transcription.py": "527c33a3bd5fd7f2062ebe7d630a595924bd3129ee9c84805c9096b720284146",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca"
+        },
+        "request_count": 25,
+        "receipt_sha256": "d9cadf903f826b09362a5e62ee882427dc3e603bcc44fc59a83a3cf38919f142",
+        "whole_process_seconds": 109.9607495421078
+      }
+    },
+    "apple": {
+      "cases": {
+        "silence": {
+          "duration_seconds": 10.0,
+          "audio_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+          "result_sha256": "a855a7482b44252a435716acdfbbc21106ec76c4f7dc5a7235284d87635efe73",
+          "attempt_sha256": "fb7c86f716964d0449f9f06a69ed8c8faf5013eb91db873c29f792c079fa3cd3",
+          "source_unchanged": true,
+          "setup_seconds": 0.1694034580141306,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 0.93662462499924,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 0.1513566659996286,
+              "total_seconds": 0.3207601240137592,
+              "process_peak_rss_bytes": 19300352,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 0.08911408402491361,
+              "total_seconds": 0.08911408402491361,
+              "process_peak_rss_bytes": 19529728,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-mic": {
+          "duration_seconds": 179.8,
+          "audio_sha256": "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "result_sha256": "29ead0e9b6ad770add1e76d52203dd8212aa167727a58d1f1656061a6b56711f",
+          "attempt_sha256": "d2de671815b502fab23420d6b9870941c19bb7771077d87d1adf264eac1e0aaf",
+          "source_unchanged": true,
+          "setup_seconds": 0.09410829201806337,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 2.3906747499713674,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 1.1348689999431372,
+              "total_seconds": 1.2289772919612005,
+              "process_peak_rss_bytes": 20627456,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 119,
+              "timing": {
+                "segments": 119,
+                "segments_with_tokens": 119,
+                "timed_segments": 119,
+                "segments_with_usable_timing": 119,
+                "text_segments_with_usable_timing": 119,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 1.1273736659204587,
+              "total_seconds": 1.1273736659204587,
+              "process_peak_rss_bytes": 21037056,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 119,
+              "timing": {
+                "segments": 119,
+                "segments_with_tokens": 119,
+                "timed_segments": 119,
+                "segments_with_usable_timing": 119,
+                "text_segments_with_usable_timing": 119,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-system": {
+          "duration_seconds": 180.0,
+          "audio_sha256": "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "result_sha256": "1de5f1bf6796ad1a63eceb4a638d790eb967b32c869311b5509e6f401559fd66",
+          "attempt_sha256": "c352c0be849e43bf5cd129f4b12f81850e51615e706704371d95c59a1f4d95fc",
+          "source_unchanged": true,
+          "setup_seconds": 0.09665395808406174,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 3.4805267499759793,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 1.6880610829684883,
+              "total_seconds": 1.78471504105255,
+              "process_peak_rss_bytes": 21561344,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 298,
+              "timing": {
+                "segments": 298,
+                "segments_with_tokens": 298,
+                "timed_segments": 298,
+                "segments_with_usable_timing": 298,
+                "text_segments_with_usable_timing": 298,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 1.6796649590833113,
+              "total_seconds": 1.6796649590833113,
+              "process_peak_rss_bytes": 22167552,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 298,
+              "timing": {
+                "segments": 298,
+                "segments_with_tokens": 298,
+                "timed_segments": 298,
+                "segments_with_usable_timing": 298,
+                "text_segments_with_usable_timing": 298,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-mic": {
+          "duration_seconds": 736.511625,
+          "audio_sha256": "b9c53d494fd165fdf847882c8f0ea942214119fd2ee11cc875777127bd42cfec",
+          "result_sha256": "d35997285036afb76ca5101ed3608cd87acc8289f9fe2debe6028df986d9c8ac",
+          "attempt_sha256": "f162fad25d0b6ad6a8f1553e06f13dcffdc809ea277dc007cd3a7cc377025909",
+          "source_unchanged": true,
+          "setup_seconds": 0.09373099997173995,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 17.2744048750028,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 8.502032415941358,
+              "total_seconds": 8.595763415913098,
+              "process_peak_rss_bytes": 21856256,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 1740,
+              "timing": {
+                "segments": 1736,
+                "segments_with_tokens": 1736,
+                "timed_segments": 1736,
+                "segments_with_usable_timing": 1736,
+                "text_segments_with_usable_timing": 1736,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 8.650842832983471,
+              "total_seconds": 8.650842832983471,
+              "process_peak_rss_bytes": 22462464,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 1740,
+              "timing": {
+                "segments": 1736,
+                "segments_with_tokens": 1736,
+                "timed_segments": 1736,
+                "segments_with_usable_timing": 1736,
+                "text_segments_with_usable_timing": 1736,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-system": {
+          "duration_seconds": 736.589375,
+          "audio_sha256": "21fd165c92b5b72a4a9d0fc38c5fc8df8ed2617b2b4f4a2ed3a895c49248a83a",
+          "result_sha256": "21f4fb068a5a1cb103e54b1661e31b4906de780242fd7b37c098ae0153cac875",
+          "attempt_sha256": "fcbfb6dac805c8fe535e7adef387c0b6a314b3709a5524ba5d22cc4b32040b17",
+          "source_unchanged": true,
+          "setup_seconds": 0.09683391696307808,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 5.9969687920529395,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 2.8078386660199612,
+              "total_seconds": 2.9046725829830393,
+              "process_peak_rss_bytes": 19496960,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 3.031015375046991,
+              "total_seconds": 3.031015375046991,
+              "process_peak_rss_bytes": 19873792,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "ami-full": {
+          "duration_seconds": 2334.368,
+          "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+          "result_sha256": "e0ca0e3b34485497854753d097929369a4cf59145b59d8811a525aa0a06fbf99",
+          "attempt_sha256": "1d069d441accbdce034dd10831d3dd92840482f19b14ccd937a22a565c92768f",
+          "source_unchanged": true,
+          "setup_seconds": 0.10614866705145687,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 64.25119724997785,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 31.562772333971225,
+              "total_seconds": 31.66892100102268,
+              "process_peak_rss_bytes": 21463040,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 5965,
+              "timing": {
+                "segments": 5963,
+                "segments_with_tokens": 5963,
+                "timed_segments": 5963,
+                "segments_with_usable_timing": 5963,
+                "text_segments_with_usable_timing": 5963,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 32.50209583295509,
+              "total_seconds": 32.50209583295509,
+              "process_peak_rss_bytes": 21479424,
+              "timing_granularity": "SpeechTranscriber final-result attributed spans (audioTimeRange); process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 5965,
+              "timing": {
+                "segments": 5963,
+                "segments_with_tokens": 5963,
+                "timed_segments": 5963,
+                "segments_with_usable_timing": 5963,
+                "text_segments_with_usable_timing": 5963,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        }
+      },
+      "ami_manual_diagnostics": {
+        "schema": "speech-engine-comparison-score/1",
+        "status": "scored",
+        "duration_seconds": 2334.368,
+        "runs": [
+          {
+            "index": 0,
+            "status": "scored",
+            "timing": {
+              "segments": 5963,
+              "segments_with_tokens": 5963,
+              "timed_segments": 5963,
+              "segments_with_usable_timing": 5963,
+              "text_segments_with_usable_timing": 5963,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 5965,
+              "segment_text_tokens": 5965
+            },
+            "output_shape": {
+              "tokens": 5965,
+              "adjacent_repeated_tokens": 24
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 374,
+              "deletions": 1159,
+              "insertions": 40,
+              "normalized_edit_distance": 0.2220496894409938
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 370,
+              "aligned": 228,
+              "outside_segment": 142
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 100,
+              "complete_spans": 3,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 102,
+              "complete_spans": 91,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 245,
+              "retention": 0.8361774744027304
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 0,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          },
+          {
+            "index": 1,
+            "status": "scored",
+            "timing": {
+              "segments": 5963,
+              "segments_with_tokens": 5963,
+              "timed_segments": 5963,
+              "segments_with_usable_timing": 5963,
+              "text_segments_with_usable_timing": 5963,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 5965,
+              "segment_text_tokens": 5965
+            },
+            "output_shape": {
+              "tokens": 5965,
+              "adjacent_repeated_tokens": 24
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 374,
+              "deletions": 1159,
+              "insertions": 40,
+              "normalized_edit_distance": 0.2220496894409938
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 370,
+              "aligned": 228,
+              "outside_segment": 142
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 100,
+              "complete_spans": 3,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 102,
+              "complete_spans": 91,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 245,
+              "retention": 0.8361774744027304
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 0,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          }
+        ],
+        "limits": [
+          "No engine transcript text is returned.",
+          "Exact whole-transcript edit counts are computed with RapidFuzz; manual WER remains unsupported for the temporally sorted mixed-channel reference.",
+          "Important-span and entity results measure exact annotated local token survival, not semantic commitment or name understanding.",
+          "Lexical timing only checks globally unique exact reference tokens against enclosing engine segments; no word timestamps are interpolated.",
+          "Manual annotation gaps are not acoustic-silence labels."
+        ]
+      },
+      "private_event_proxy": {
+        "events": 13,
+        "mean_best_alternative_local_term_fraction": 0.9874125874125874,
+        "events_with_complete_lexical_alternative": 10,
+        "retained_transcript_turns": 174,
+        "transcript_sha256": "4b5b2a096bfe2ecb2fcd1b29309d0759d00e1e135b4f05e93890c7dea1569253",
+        "limitation": "draft Whisper-derived local token proxy after capture filters; not semantic recall or an approved gate"
+      },
+      "short_note_replay": {
+        "status": "validated-note-output",
+        "claims": 6,
+        "refusal": null,
+        "source_unchanged": true,
+        "filter_seconds": 0.07877474999986589,
+        "note_setup_seconds": 4.23940283304546,
+        "note_generation_seconds": 95.2985867500538,
+        "segmentation": [
+          "native final utterances",
+          "native final utterances"
+        ],
+        "transcript_id": "0c745b51dfbc8bf8fc0a4d3885c94001a67abdbb83fdbb626f4c8f63c8f875f7",
+        "generated_sha256": "4042a298f602977a395c2d24cceb7a6df1198b4401d90063c64794d863b3617f",
+        "note_model": {
+          "id": "gemma-3-12b-it-qat-4bit",
+          "revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4"
+        },
+        "runtime": {
+          "mlx_lm": "0.31.3",
+          "mlx": "0.32.2"
+        },
+        "network": "Seatbelt no-network profile applied before model load",
+        "source_code_hashes": {
+          "worker/transcription.py": "527c33a3bd5fd7f2062ebe7d630a595924bd3129ee9c84805c9096b720284146",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca"
+        },
+        "request_count": 22,
+        "receipt_sha256": "772b9b3f294928bebed470dc23d31697a74012a3860a34b8defa61ac9058028f",
+        "whole_process_seconds": 103.8939043750288
+      }
+    },
+    "parakeet": {
+      "cases": {
+        "silence": {
+          "duration_seconds": 10.0,
+          "audio_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+          "result_sha256": "139b71328e13b33350a489be2aff3c251e69750ddc6ddc7ed764ef80633d0e11",
+          "attempt_sha256": "ec5cbf055509c96069c5c42a6114d72a0e4c3971edfa76c3fb5d8982e8440838",
+          "source_unchanged": true,
+          "setup_seconds": 0.1894757499685511,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 0.3986582920188084,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 0.10954016691539437,
+              "total_seconds": 0.29901591688394547,
+              "process_peak_rss_bytes": 85868544,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 0.06998920894693583,
+              "total_seconds": 0.06998920894693583,
+              "process_peak_rss_bytes": 86753280,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-mic": {
+          "duration_seconds": 179.8,
+          "audio_sha256": "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "result_sha256": "90cd2b6022c83fda77ab1981e0942acc8853b38ea7ee5d01eed35990a57779bd",
+          "attempt_sha256": "0a3b1245891d2e5aad34a2e3d5208cf58d217048652df2efdf42ef0e969568f8",
+          "source_unchanged": true,
+          "setup_seconds": 0.12177604110911489,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 3.3733685419429094,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 1.6721630829852074,
+              "total_seconds": 1.7939391240943223,
+              "process_peak_rss_bytes": 141000704,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 123,
+              "timing": {
+                "segments": 123,
+                "segments_with_tokens": 123,
+                "timed_segments": 123,
+                "segments_with_usable_timing": 123,
+                "text_segments_with_usable_timing": 123,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 1.5187963749049231,
+              "total_seconds": 1.5187963749049231,
+              "process_peak_rss_bytes": 149602304,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 123,
+              "timing": {
+                "segments": 123,
+                "segments_with_tokens": 123,
+                "timed_segments": 123,
+                "segments_with_usable_timing": 123,
+                "text_segments_with_usable_timing": 123,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-short-system": {
+          "duration_seconds": 180.0,
+          "audio_sha256": "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "result_sha256": "95b839f7bae6025600b0c832f91267e3347914374d9404d923232778c8788cca",
+          "attempt_sha256": "307c9ced45d3a851fa06a75e300758d2eff91e8b6c567c07e12433340d23f081",
+          "source_unchanged": true,
+          "setup_seconds": 0.11621287500020117,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 2.167425416992046,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 1.0260664579691365,
+              "total_seconds": 1.1422793329693377,
+              "process_peak_rss_bytes": 141475840,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 310,
+              "timing": {
+                "segments": 310,
+                "segments_with_tokens": 310,
+                "timed_segments": 310,
+                "segments_with_usable_timing": 310,
+                "text_segments_with_usable_timing": 310,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 0.9834493339294568,
+              "total_seconds": 0.9834493339294568,
+              "process_peak_rss_bytes": 154009600,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 310,
+              "timing": {
+                "segments": 310,
+                "segments_with_tokens": 310,
+                "timed_segments": 310,
+                "segments_with_usable_timing": 310,
+                "text_segments_with_usable_timing": 310,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-mic": {
+          "duration_seconds": 736.511625,
+          "audio_sha256": "b9c53d494fd165fdf847882c8f0ea942214119fd2ee11cc875777127bd42cfec",
+          "result_sha256": "b31995f8b63c6b14104e92f36a88077faa107e6c76d3f05547478e728a915e4c",
+          "attempt_sha256": "e3331b2393d5c54b93845c7d82f0c314a33c1b36dcd78a8b5276f098b4b747c3",
+          "source_unchanged": true,
+          "setup_seconds": 0.11144358408637345,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 5.477204290917143,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 2.5398087500361726,
+              "total_seconds": 2.651252334122546,
+              "process_peak_rss_bytes": 187138048,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 1796,
+              "timing": {
+                "segments": 1794,
+                "segments_with_tokens": 1794,
+                "timed_segments": 1794,
+                "segments_with_usable_timing": 1794,
+                "text_segments_with_usable_timing": 1794,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 2.7655652499524876,
+              "total_seconds": 2.7655652499524876,
+              "process_peak_rss_bytes": 194740224,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 1796,
+              "timing": {
+                "segments": 1794,
+                "segments_with_tokens": 1794,
+                "timed_segments": 1794,
+                "segments_with_usable_timing": 1794,
+                "text_segments_with_usable_timing": 1794,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "private-ledger-system": {
+          "duration_seconds": 736.589375,
+          "audio_sha256": "21fd165c92b5b72a4a9d0fc38c5fc8df8ed2617b2b4f4a2ed3a895c49248a83a",
+          "result_sha256": "a36462654a279d514814f97dc29e99a5ab56f73cdd656df1e6d8294a82949d60",
+          "attempt_sha256": "ddba5508133d7788ee34a04c616dd13dbebb4ca7359968b7512518f7f0b55492",
+          "source_unchanged": true,
+          "setup_seconds": 0.11591487494297326,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 3.3362669170601293,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 1.5963223329745233,
+              "total_seconds": 1.7122372079174966,
+              "process_peak_rss_bytes": 170557440,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 1.565895791980438,
+              "total_seconds": 1.565895791980438,
+              "process_peak_rss_bytes": 172638208,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 0,
+              "timing": {
+                "segments": 0,
+                "segments_with_tokens": 0,
+                "timed_segments": 0,
+                "segments_with_usable_timing": 0,
+                "text_segments_with_usable_timing": 0,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        },
+        "ami-full": {
+          "duration_seconds": 2334.368,
+          "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+          "result_sha256": "05ccc0b8e0a159e8607016dc39721508bc5b99754232e33fdb04cb37c4b27c62",
+          "attempt_sha256": "60ae3b363e8ae697b68c49c5b61a5a40175801f449563a87e93ce492a155cd8c",
+          "source_unchanged": true,
+          "setup_seconds": 0.11033583304379135,
+          "probe_sha256": "f3c154a1860e50846ab468b83cd795e52a661a69a0238b178d9a45a5663afc4f",
+          "runner_sha256": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+          "whole_process_seconds_two_repeats": 24.068643542006612,
+          "runs": [
+            {
+              "repeat": 0,
+              "process_seconds": 11.740494333091192,
+              "total_seconds": 11.850830166134983,
+              "process_peak_rss_bytes": 292421632,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 6058,
+              "timing": {
+                "segments": 6055,
+                "segments_with_tokens": 6055,
+                "timed_segments": 6055,
+                "segments_with_usable_timing": 6055,
+                "text_segments_with_usable_timing": 6055,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            },
+            {
+              "repeat": 1,
+              "process_seconds": 12.12095537490677,
+              "total_seconds": 12.12095537490677,
+              "process_peak_rss_bytes": 298024960,
+              "timing_granularity": "FluidAudio token timings grouped to words by FluidAudio buildWordTimings; process_seconds includes WAV open and validation",
+              "timing_issue_count": 0,
+              "output_tokens": 6058,
+              "timing": {
+                "segments": 6055,
+                "segments_with_tokens": 6055,
+                "timed_segments": 6055,
+                "segments_with_usable_timing": 6055,
+                "text_segments_with_usable_timing": 6055,
+                "timing_missing_or_non_numeric_values": 0,
+                "timing_non_finite_values": 0,
+                "timing_out_of_bounds": 0,
+                "timing_non_monotonic": 0
+              }
+            }
+          ]
+        }
+      },
+      "ami_manual_diagnostics": {
+        "schema": "speech-engine-comparison-score/1",
+        "status": "scored",
+        "duration_seconds": 2334.368,
+        "runs": [
+          {
+            "index": 0,
+            "status": "scored",
+            "timing": {
+              "segments": 6055,
+              "segments_with_tokens": 6055,
+              "timed_segments": 6055,
+              "segments_with_usable_timing": 6055,
+              "text_segments_with_usable_timing": 6055,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 6058,
+              "segment_text_tokens": 6058
+            },
+            "output_shape": {
+              "tokens": 6058,
+              "adjacent_repeated_tokens": 74
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 283,
+              "deletions": 1080,
+              "insertions": 54,
+              "normalized_edit_distance": 0.2000282326369283
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 373,
+              "aligned": 142,
+              "outside_segment": 231
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 106,
+              "complete_spans": 2,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 122,
+              "complete_spans": 108,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 231,
+              "retention": 0.78839590443686
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 1,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          },
+          {
+            "index": 1,
+            "status": "scored",
+            "timing": {
+              "segments": 6055,
+              "segments_with_tokens": 6055,
+              "timed_segments": 6055,
+              "segments_with_usable_timing": 6055,
+              "text_segments_with_usable_timing": 6055,
+              "timing_missing_or_non_numeric_values": 0,
+              "timing_non_finite_values": 0,
+              "timing_out_of_bounds": 0,
+              "timing_non_monotonic": 0
+            },
+            "text_coverage": {
+              "run_text_tokens": 6058,
+              "segment_text_tokens": 6058
+            },
+            "output_shape": {
+              "tokens": 6058,
+              "adjacent_repeated_tokens": 74
+            },
+            "exact_manual_serialization_distance": {
+              "method": "rapidfuzz-exact-whole-transcript-token-levenshtein",
+              "rapidfuzz_version": "3.14.3",
+              "manual_wer_status": "unsupported",
+              "manual_wer": null,
+              "diagnostic_limit": "manual words are temporally sorted mixed-channel annotations, not a verified single-channel reference serialization",
+              "reference_tokens": 7084,
+              "substitutions": 283,
+              "deletions": 1080,
+              "insertions": 54,
+              "normalized_edit_distance": 0.2000282326369283
+            },
+            "lexical_timing_alignment": {
+              "method": "globally-unique-exact-token-within-enclosing-segment",
+              "word_timestamps_used": false,
+              "candidates": 373,
+              "aligned": 142,
+              "outside_segment": 231
+            },
+            "important_span_term_survival": {
+              "spans": 9,
+              "terms": 123,
+              "survived_terms": 106,
+              "complete_spans": 2,
+              "window_tolerance_seconds": 2.0
+            },
+            "annotated_entity_term_survival": {
+              "spans": 115,
+              "terms": 132,
+              "survived_terms": 122,
+              "complete_spans": 108,
+              "window_tolerance_seconds": 2.0
+            },
+            "tail_retention": {
+              "tail_start_seconds": 2100.9312,
+              "terms": 293,
+              "survived_terms": 231,
+              "retention": 0.78839590443686
+            },
+            "annotation_gap_output": {
+              "manual_annotation_gaps_at_least_10_seconds": 4,
+              "output_tokens_wholly_within_manual_annotation_gaps": 1,
+              "limit": "manual annotation gaps are not verified acoustic silence"
+            }
+          }
+        ],
+        "limits": [
+          "No engine transcript text is returned.",
+          "Exact whole-transcript edit counts are computed with RapidFuzz; manual WER remains unsupported for the temporally sorted mixed-channel reference.",
+          "Important-span and entity results measure exact annotated local token survival, not semantic commitment or name understanding.",
+          "Lexical timing only checks globally unique exact reference tokens against enclosing engine segments; no word timestamps are interpolated.",
+          "Manual annotation gaps are not acoustic-silence labels."
+        ]
+      },
+      "private_event_proxy": {
+        "events": 13,
+        "mean_best_alternative_local_term_fraction": 0.9863848282005209,
+        "events_with_complete_lexical_alternative": 9,
+        "retained_transcript_turns": 193,
+        "transcript_sha256": "9acac0d34e2ccecc8fa24145f670607b51bdb8abf9e99830f063314cf01f41da",
+        "limitation": "draft Whisper-derived local token proxy after capture filters; not semantic recall or an approved gate"
+      },
+      "short_note_replay": {
+        "status": "validated-note-output",
+        "claims": 5,
+        "refusal": null,
+        "source_unchanged": true,
+        "filter_seconds": 0.07162100006826222,
+        "note_setup_seconds": 3.747856125002727,
+        "note_generation_seconds": 147.42975604103412,
+        "segmentation": [
+          "research word grouping: sentence punctuation, gap >1s, span >15s; native endpoints",
+          "research word grouping: sentence punctuation, gap >1s, span >15s; native endpoints"
+        ],
+        "transcript_id": "4eecc1c4717535051ceb90ec68ce1df2d3178f1c7d0e64873d976ac2701efc0a",
+        "generated_sha256": "2f115faa63f5261f5c0fc9779d96454969b03e29cdd44beca335a05dff2bc3aa",
+        "note_model": {
+          "id": "gemma-3-12b-it-qat-4bit",
+          "revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4"
+        },
+        "runtime": {
+          "mlx_lm": "0.31.3",
+          "mlx": "0.32.2"
+        },
+        "network": "Seatbelt no-network profile applied before model load",
+        "source_code_hashes": {
+          "worker/transcription.py": "527c33a3bd5fd7f2062ebe7d630a595924bd3129ee9c84805c9096b720284146",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca"
+        },
+        "request_count": 23,
+        "receipt_sha256": "6edc142783006135542f1c57860f27c079bd7fb86fa44e98126ccd87e56b48c1",
+        "whole_process_seconds": 155.5703598749824
+      }
+    }
+  },
+  "research_source_sha256": {
+    "native/Package.resolved": "2a422230451948ac3939ce214d722d5fc94a3c4239d1e44b9358f2791db535fa",
+    "native/Package.swift": "11ebe5813e587905c0cf6f1c718ac8b79c7a5f5954e284a9dc16ef69e5e30aeb",
+    "native/Sources/native-probe/main.swift": "4648e55892be06b69d34fecd92ce9cffc7ff6b1fa122c80dc5eacfeccf8479b5",
+    "prepare_ami.py": "eb2e8dba5189117edc3256e9f3d6348f06a5c93ed6109102fdd25afd90026079",
+    "prepare_private_reference.py": "5a7f82408153098659f6ca6c7d3e88f5d9a3fe8e79a0006fb4d34a0fb3ec5cae",
+    "replay_notes.py": "855f11e86611522d6ac6222cd46b09360b7775070f59267e7ba5960ec7299634",
+    "run_comparison.py": "46f4fd3f9fc58ace1119591545d3b05a43cb9b43e6e4091d6e12878f1f712918",
+    "scoring.py": "af6f7ce2893ed26792a1ef2adcf2ff3a8c45453879f6f516969dcba9bf5d6efe",
+    "summarize_results.py": "d6593af723cf2967f94a70aaf3d785c87d671b5b5567338c75c28d49852419fb",
+    "test_replay_notes.py": "26f0d60151ee656c4169c244276b78710504d698feae90328d9d3aff1b77e225",
+    "test_scoring.py": "7e992317eb93b1543fb512659985af51cf4ce6a8d504c84fd37460aa5b703661",
+    "whisper_probe.py": "623d9298ed62d95dcc99479195b12110db36712b5ef2c1ce9325b9acc214935c"
+  }
+}

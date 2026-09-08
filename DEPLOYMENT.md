@@ -90,10 +90,13 @@ sidecar or this final command. Never retype or reuse a previous release digest.
 
 ## Stage and publish the two transcript models
 
-The DMG does not carry Whisper weights. On first launch, the signed app asks the
-user to choose the 464 MB Q4 model or the 1.61 GB full Turbo model. It downloads
-that choice to Yawn's private Application Support directory and refuses it
-unless every byte matches the catalog signed inside the app.
+The DMG does not carry Whisper weights. Fresh setup uses Apple speech when its
+language files are ready on a supported Mac. Otherwise, setup offers an explicit
+Apple language-file download or the 464 MB Q4 speech model. The 1.61 GB full Turbo
+model remains available in Settings. Existing downloaded-model choices survive
+startup. Downloaded models go to Yawn's private Application Support directory
+and are refused unless every byte matches the catalog signed inside the app.
+The app still supports macOS 14.4; the Apple speech path requires macOS 26.
 
 Stage the exact immutable object keys before building the release:
 

@@ -146,3 +146,43 @@ six installed apps, device captures. Product brief (2026-08-10, amended
 2026-09-01). Granola first-run doc fetched 2026-09-02 for the demo-content
 fact. The adopt/decline table is the author's proposal; the operator's
 selection in the concept ADR is what makes it direction.
+
+
+## Progressive setup refit — 2026-09-07
+
+Help a person reach their first recording with the least preparation their Mac
+needs. The operator authorized this direction in the progressive-setup thread.
+This refit preserves the Tonal Ledger Canvas, existing type and control styles,
+reading width, recording consent flow, meeting reader, and optional note flow.
+
+Three approaches were considered against the same first-run cases. Requiring a
+Whisper download on every Mac preserves one engine but delays every new user.
+Requiring macOS 26 excludes older supported Macs. Progressive setup uses Apple
+speech when ready and retains the downloaded engine on older or unsupported
+systems. The operator chose progressive setup; it keeps the macOS 14.4 floor.
+
+| Situation | First useful action | What stays available later |
+|---|---|---|
+| Fresh setup, Apple speech ready | Continue to recording setup | Download or switch speech models in Settings |
+| Apple language files absent | Prepare Apple speech, with an explicit download action | Use the smallest cataloged speech download instead |
+| Apple unsupported or preparation failed | Download the smallest cataloged speech model | Retry Apple preparation when available; choose another model |
+| Download in progress | Read progress or the actionable failure | Prevent competing setup operations |
+| Existing downloaded model selected | Keep that selection | Switch to Apple between operations |
+| No note model installed | Record and read the transcript | Download a note model in Settings |
+| Capture or transcription waiting/running | Finish the current work | Switch once all affected work is idle |
+
+The setup screen gives one path visual priority. It discloses other speech
+models in Settings instead of requiring a model comparison before recording.
+Settings names the selected engine, the stored downloads, and their catalog
+sizes. Apple manages its own language files; do not promise zero download or
+invent their size. Larger files do not imply better results.
+
+A transcript and a generated note are different capabilities. There is no
+qualified small note model in the current catalog. Preserve the existing
+transcript-only experience and the separate note download controls.
+
+Validation must cover every row above, including a failed preparation followed
+by a successful fallback, and switching in both directions. Harness captures
+are synthetic interaction evidence. Native helper execution, packaged app
+behavior, older-OS fallback, and human transcript quality need separate evidence.
+This implementation does not itself accept a replacement engine's quality.

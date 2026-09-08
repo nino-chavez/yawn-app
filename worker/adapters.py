@@ -472,6 +472,11 @@ def transcript_create(
     model_dir: Path | None,
     encoder_digest: str,
     encoder_path: Path | None = None,
+    transcription_engine: str = "whisper",
+    speech_locale: str = "en-US",
+    apple_speech_helper: Path | None = None,
+    apple_speech_helper_sha256: str | None = None,
+    apple_speech_os_version: str | None = None,
 ) -> dict[str, str]:
     values = _exact_arguments(arguments, {"meeting_id"})
     meeting_id = opaque_id(values["meeting_id"], "meeting_id")
@@ -500,17 +505,47 @@ def transcript_create(
             durable_create_new(target, source.read_bytes())
         return {"transcript": transcript_digest}
 
-    if admission not in {"internal-alpha", "product"} or model_dir is None:
-        raise AdapterRefused("runtime admission lacks the fixed transcript model")
-    from .transcription import create_transcript_revision
-
-    transcript_digest, _ = create_transcript_revision(
-        capture_dir,
-        target_dir,
-        model_dir,
-        gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
-    )
+    if transcription_engine == "whisper":
+        if admission not in {"internal-alpha", "product"} or model_dir is None:
+            raise AdapterRefused("runtime admission lacks the fixed transcript model")
+        from .transcription import create_transcript_revision
+        transcript_digest, _ = create_transcript_revision(
+            capture_dir, target_dir, model_dir,
+            gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
+        )
+    elif transcription_engine == "apple-native":
+        transcript_digest = _create_apple_native_transcript(
+            root, capture_dir, target_dir, encoder_digest, encoder_path,
+            speech_locale, apple_speech_helper, apple_speech_helper_sha256,
+            apple_speech_os_version,
+        )
+    else:
+        raise AdapterRefused("transcription engine is unsupported")
     return {"transcript": transcript_digest}
+
+
+def _create_apple_native_transcript(
+    root: Path, capture_dir: Path, target_dir: Path, encoder_digest: str,
+    encoder_path: Path | None, locale: str, helper: Path | None, helper_sha256: str | None, os_version: str | None,
+) -> str:
+    """Run both retained legs through the explicit signed Apple helper."""
+    from .apple_speech import AppleSpeechRefused, make_producer, transcribe_leg, write_provenance
+    from .transcription import create_transcript_revision_from_segments
+    try:
+        producer = make_producer(helper=helper, helper_sha256=helper_sha256, locale=locale, os_version=os_version or "")
+        # This capture verifier precedes any native process, mirroring Whisper.
+        from verify_capture import verify_acquisition
+        verify_acquisition(capture_dir)
+        mic, mic_receipt = transcribe_leg(producer, capture_dir / "mic.wav", temporary_parent=target_dir)
+        system, system_receipt = transcribe_leg(producer, capture_dir / "system.wav", temporary_parent=target_dir)
+        digest, _ = create_transcript_revision_from_segments(
+            capture_dir, target_dir, mic_segments=mic, system_segments=system,
+            gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
+        )
+        write_provenance(target_dir, digest, producer, mic=mic_receipt, system=system_receipt)
+        return digest
+    except (AppleSpeechRefused, OSError, ValueError) as exc:
+        raise AdapterRefused(str(exc)) from None
 
 
 def _retry_artifact_reference(
@@ -673,6 +708,11 @@ def transcript_retry(
     model_dir: Path | None,
     encoder_digest: str,
     encoder_path: Path | None = None,
+    transcription_engine: str = "whisper",
+    speech_locale: str = "en-US",
+    apple_speech_helper: Path | None = None,
+    apple_speech_helper_sha256: str | None = None,
+    apple_speech_os_version: str | None = None,
 ) -> dict[str, str]:
     """Create an uncommitted immutable transcript candidate from retained audio."""
     root = require_private_root(root)
@@ -680,8 +720,10 @@ def transcript_retry(
         values = validate_transcript_retry_arguments(arguments)
     except ProductContractRefused as exc:
         raise AdapterRefused(str(exc)) from None
-    if admission not in {"internal-alpha", "product"} or model_dir is None:
+    if transcription_engine == "whisper" and (admission not in {"internal-alpha", "product"} or model_dir is None):
         raise AdapterRefused("runtime admission lacks the fixed transcript model")
+    if transcription_engine not in {"whisper", "apple-native"}:
+        raise AdapterRefused("transcription engine is unsupported")
 
     bindings = _retry_source_bindings(root, values)
     before = _read_retry_sources(bindings)
@@ -689,18 +731,32 @@ def transcript_retry(
     target_dir = resolve_below(root, "meetings", values["meeting_id"], "transcript")
     private_directory(target_dir)
     from verify_capture import verify_acquisition
-    from .transcription import create_transcript_revision
-
     try:
         verify_acquisition(capture_dir)
     except (OSError, ValueError, SystemExit) as exc:
         raise AdapterRefused(f"retained capture is invalid ({exc})") from None
-    candidate_digest, candidate_path = create_transcript_revision(
-        capture_dir,
-        target_dir,
-        model_dir,
-        gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
-    )
+    if transcription_engine == "whisper":
+        from .apple_speech import provenance_path
+        if provenance_path(target_dir, values["source_transcript_sha256"]).exists():
+            raise AdapterRefused("This transcript used Apple speech. Select Apple speech in Settings before retrying.")
+        from .transcription import create_transcript_revision
+        candidate_digest, candidate_path = create_transcript_revision(
+            capture_dir, target_dir, model_dir,
+            gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
+        )
+    else:
+        from .apple_speech import AppleSpeechRefused, make_producer, require_matching_provenance
+        try:
+            producer = make_producer(helper=apple_speech_helper, helper_sha256=apple_speech_helper_sha256, locale=speech_locale, os_version=apple_speech_os_version or "")
+            require_matching_provenance(target_dir, values["source_transcript_sha256"], producer)
+            candidate_digest = _create_apple_native_transcript(
+                root, capture_dir, target_dir, encoder_digest, encoder_path,
+                speech_locale, apple_speech_helper, apple_speech_helper_sha256,
+                apple_speech_os_version,
+            )
+            candidate_path = _transcript_path(root, values["meeting_id"], candidate_digest)
+        except AppleSpeechRefused as exc:
+            raise AdapterRefused(str(exc)) from None
     candidate_digest = content_digest_id(
         candidate_digest, "candidate transcript digest"
     )
@@ -1799,6 +1855,11 @@ def dispatch(
     model_dir: Path | None = None,
     encoder_path: Path | None = None,
     embedding_dir: Path | None = None,
+    transcription_engine: str = "whisper",
+    speech_locale: str = "en-US",
+    apple_speech_helper: Path | None = None,
+    apple_speech_helper_sha256: str | None = None,
+    apple_speech_os_version: str | None = None,
 ) -> dict[str, str]:
     adapters = {
         "profile.inspect": lambda: profile_inspect(root, arguments, encoder_digest),
@@ -1814,6 +1875,9 @@ def dispatch(
             model_dir=model_dir,
             encoder_digest=encoder_digest,
             encoder_path=encoder_path,
+            transcription_engine=transcription_engine, speech_locale=speech_locale,
+            apple_speech_helper=apple_speech_helper, apple_speech_helper_sha256=apple_speech_helper_sha256,
+            apple_speech_os_version=apple_speech_os_version,
         ),
         "transcript.retry": lambda: transcript_retry(
             root,
@@ -1822,6 +1886,9 @@ def dispatch(
             model_dir=model_dir,
             encoder_digest=encoder_digest,
             encoder_path=encoder_path,
+            transcription_engine=transcription_engine, speech_locale=speech_locale,
+            apple_speech_helper=apple_speech_helper, apple_speech_helper_sha256=apple_speech_helper_sha256,
+            apple_speech_os_version=apple_speech_os_version,
         ),
         "sitting.derive": lambda: sitting_derive(
             root,

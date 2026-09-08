@@ -22,6 +22,7 @@ from worker.transcription import (
     TranscriptionRefused,
     _release_mlx_whisper_runtime,
     create_transcript_revision,
+    create_transcript_revision_from_segments,
 )
 
 
@@ -91,6 +92,22 @@ class TranscriptionTests(unittest.TestCase):
         self.assertTrue(document.capture_health["transcription"]["requested"])
         self.assertFalse((self.capture / "transcript.json").exists())
         self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_validated_segment_path_needs_no_whisper_model(self) -> None:
+        _digest, path = create_transcript_revision_from_segments(
+            self.capture,
+            self.root / "native-transcript",
+            mic_segments=[{"start": 0.0, "end": 0.2, "text": "microphone words"}],
+            system_segments=[{"start": 0.0, "end": 0.2, "text": "system words"}],
+            voicing_filter=self.keep,
+            bleed_filter=self.keep,
+        )
+        document = load(path)
+        self.assertEqual(
+            [(turn.speaker, turn.text) for turn in document.turns],
+            [("Me", "microphone words"), ("Them", "system words")],
+        )
+        self.assertFalse((self.capture / "transcript.json").exists())
 
     def test_refuses_an_existing_different_revision_without_overwrite(self) -> None:
         digest, path = create_transcript_revision(
@@ -273,6 +290,78 @@ class TranscriptionTests(unittest.TestCase):
             )
 
         release.assert_called_once_with()
+
+    def test_legacy_whisper_filters_mic_before_system_and_releases_before_write(self) -> None:
+        """Keep the legacy failure and unified-memory boundary observable."""
+        from dual_capture import write_transcript as write_original
+
+        events: list[str] = []
+
+        def transcribe(audio, _model, _language):
+            label = "mic" if float(audio[0]) < 0.02 else "system"
+            events.append(f"transcribe:{label}")
+            return [{"start": 0.0, "end": 0.2, "text": f"{label} words"}]
+
+        def voicing(segments, _audio, label):
+            events.append(f"voicing:{label}")
+            return segments
+
+        def bleed(segments, _mic, _system, _acoustic, label):
+            events.append(f"bleed:{label}")
+            return segments
+
+        def gate(segments, _mic, _acoustic, label):
+            events.append(f"gate:{label}")
+            return segments, None
+
+        def write(*arguments, **keywords):
+            events.append("write")
+            return write_original(*arguments, **keywords)
+
+        with (
+            unittest.mock.patch("dual_capture.transcribe", transcribe),
+            unittest.mock.patch(
+                "worker.transcription._release_mlx_whisper_runtime",
+                side_effect=lambda: events.append("release"),
+            ),
+            unittest.mock.patch("dual_capture.write_transcript", side_effect=write),
+        ):
+            create_transcript_revision(
+                self.capture,
+                self.root / "transcript",
+                self.model,
+                voicing_filter=voicing,
+                bleed_filter=bleed,
+                gate_filter=gate,
+            )
+
+        self.assertEqual(
+            events,
+            [
+                "transcribe:mic",
+                "voicing:mic",
+                "bleed:mic",
+                "gate:mic",
+                "transcribe:system",
+                "voicing:system",
+                "release",
+                "write",
+            ],
+        )
+
+    def test_legacy_model_refusal_precedes_audio_decode(self) -> None:
+        missing_model = self.root / "missing-model"
+        with (
+            unittest.mock.patch("worker.transcription._read_capture_audio") as read_audio,
+            self.assertRaisesRegex(TranscriptionRefused, "model is missing"),
+        ):
+            create_transcript_revision(
+                self.capture,
+                self.root / "transcript",
+                missing_model,
+                transcribe_audio=self.fake_transcribe,
+            )
+        read_audio.assert_not_called()
 
     def test_mlx_runtime_release_drops_the_model_and_clears_metal_cache(self) -> None:
         holder = types.SimpleNamespace(model=object(), model_path="model")

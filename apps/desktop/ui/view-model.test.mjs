@@ -40,6 +40,7 @@ import {
   audioReleasedFact,
   meetingStateCaption,
   modelSetupOptionsPresentation,
+  transcriptionEnginePresentation,
   AUDIO_RELEASED_DETAIL,
   AUDIO_RELEASED_DETAIL_NO_NOTE,
   meetingNotePresentation,
@@ -2089,4 +2090,28 @@ test("model setup recommends the smallest download and shows one primary (R22)",
   assert.deepEqual(modelSetupOptionsPresentation({ options: [] }, bytes), []);
   const [sizeless] = modelSetupOptionsPresentation({ options: [{ id: "z", title: "Z", detail: "d" }] }, bytes);
   assert.equal(sizeless.primary, true, "a sizeless surface still has one primary");
+});
+
+test("transcription engine presentation leads with native speech and truthful fallback states", () => {
+  assert.equal(transcriptionEnginePresentation({
+    selected: "apple-native",
+    apple: { state: "ready" },
+    whisper: { state: "ready" },
+  }).state, "native-ready");
+  assert.equal(transcriptionEnginePresentation({
+    selected: null,
+    apple: { state: "assets-required", reason: "Prepare it" },
+    whisper: { state: "download-required" },
+  }).state, "apple-assets-required");
+  assert.equal(transcriptionEnginePresentation({
+    selected: null,
+    apple: { state: "failed", reason: "Unavailable here" },
+    whisper: { state: "download-required" },
+  }).state, "apple-unavailable");
+  assert.equal(transcriptionEnginePresentation({
+    selected: null,
+    apple: { state: "ready" },
+    whisper: { state: "downloading" },
+  }).state, "whisper-downloading");
+  assert.equal(transcriptionEnginePresentation(null).state, "legacy");
 });

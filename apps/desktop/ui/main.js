@@ -24,6 +24,7 @@ import {
   audioReleasedFact,
   meetingStateCaption,
   modelSetupOptionsPresentation,
+  transcriptionEnginePresentation,
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
@@ -532,8 +533,11 @@ function renderStartup(checking) {
 
 function renderModelSetup() {
   const setup = state.snapshot?.model_setup || {};
-  const working = ["downloading", "verifying"].includes(setup.state);
+  const engine = transcriptionEnginePresentation(state.snapshot?.transcriptionEngine);
+  const working = ["downloading", "verifying"].includes(setup.state) || engine.state === "apple-installing";
   const selected = (setup.options || []).find((option) => option.id === setup.selectedModelId);
+  const modelOptions = modelSetupOptionsPresentation(setup, byteSizeLabel);
+  const primaryModel = modelOptions.find((option) => option.primary) || modelOptions[0];
   const total = Math.max(1, Number(setup.totalBytes) || 1);
   const downloaded = Math.min(total, Math.max(0, Number(setup.downloadedBytes) || 0));
   const progressCopy = setup.state === "verifying"
@@ -543,32 +547,39 @@ function renderModelSetup() {
     <section class="model-setup" aria-labelledby="model-setup-title">
       <div class="model-setup-copy">
         
-        <h1 id="model-setup-title">Choose how much space Yawn uses.</h1>
-        <p class="lede">Both models run on this Mac. The smaller model saves disk space. The full model keeps the original Turbo weights.</p>
+        <h1 id="model-setup-title">Get Yawn ready to record.</h1>
+        ${engine.state === "native-ready" ? `<p class="lede">Apple speech is ready on this Mac. You can continue without a Yawn speech-model download.</p>` : ""}
+        ${engine.state === "apple-assets-required" ? `<p class="lede">Download Apple’s language files to get started. Apple manages this download in macOS. You can also choose the smaller model below.</p>` : ""}
+        ${engine.state === "apple-unavailable" ? `<p class="lede">${escapeHtml(engine.detail)} Download the smaller speech model below.</p>` : ""}
+        ${engine.state === "legacy" || engine.state === "whisper-required" ? `<p class="lede">Choose the smallest local speech model to continue. It runs on this Mac.</p>` : ""}
       </div>
       ${working ? `
         <div class="model-download" role="status" aria-live="polite">
           
-          <h2>${escapeHtml(selected?.title || "Speech model")}</h2>
-          <progress max="${total}" value="${downloaded}"></progress>
-          <p>${escapeHtml(progressCopy)}</p>
-          <small>Keep Yawn open. Recording stays off until setup finishes.</small>
+          <h2>${escapeHtml(engine.state === "apple-installing" ? "Apple speech" : (selected?.title || "Speech model"))}</h2>
+          ${engine.state === "apple-installing" ? `<progress aria-label="Preparing Apple speech"></progress>` : `<progress max="${total}" value="${downloaded}"></progress>`}
+          <p>${escapeHtml(engine.state === "apple-installing" ? engine.detail : progressCopy)}</p>
+          <small>${engine.state === "apple-installing" ? "Apple manages this preparation. Recording stays off until it finishes." : "Keep Yawn open. Recording stays off until setup finishes."}</small>
         </div>
       ` : `
         ${setup.error ? `<p class="model-setup-error" role="alert">${escapeHtml(setup.error)}</p>` : ""}
+        ${engine.state === "native-ready" && state.snapshot?.startup === "model-required" ? `<div class="model-option model-native-option"><div class="model-option-copy"><h2>Apple speech</h2><p>Ready to use on this Mac.</p></div><button class="button button-primary" type="button" data-action="use-apple-speech">Continue with Apple speech</button></div>` : ""}
+        ${engine.state === "apple-assets-required" ? `<div class="model-option model-native-option"><div class="model-option-copy"><h2>Apple speech</h2><p>Use the speech service built into macOS. Apple manages its language files.</p></div><button class="button button-primary" type="button" data-action="prepare-apple-speech">Download Apple speech</button></div>` : ""}
+        ${state.snapshot?.transcriptionEngine?.apple?.state === "failed" ? `<button class="button button-secondary" type="button" data-action="prepare-apple-speech">Try Apple speech again</button>` : ""}
         <div class="model-options">
-          ${modelSetupOptionsPresentation(setup, byteSizeLabel).map((option) => `
+          ${primaryModel ? [primaryModel].map((option) => `
             <div class="model-option">
               <div class="model-option-copy">
                 <h2>${escapeHtml(option.title)}</h2>
                 <p>${escapeHtml(option.detail)}</p>
                 ${option.sizeNote ? `<p class="model-option-size">${escapeHtml(option.sizeNote)}</p>` : ""}
               </div>
-              <button class="button ${option.primary ? "button-primary" : "button-secondary"}" type="button" data-action="install-model" data-model-id="${escapeHtml(option.id)}">Use this model</button>
+              <button class="button ${engine.state === "apple-assets-required" || (engine.state === "native-ready" && state.snapshot?.startup === "model-required") ? "button-secondary" : (option.primary ? "button-primary" : "button-secondary")}" type="button" data-action="install-model" data-model-id="${escapeHtml(option.id)}">${option.primary ? "Download smaller model" : "Download this model"}</button>
             </div>
-          `).join("")}
+          `).join("") : ""}
         </div>
-        <p class="model-privacy">The model is downloaded directly to Yawn’s private folder. Meeting audio is not uploaded.</p>
+        ${modelOptions.length > 1 ? `<p class="model-setup-secondary"><button class="button button-secondary" type="button" data-action="open-settings">Choose another speech model in Settings</button></p>` : ""}
+        <p class="model-privacy">Meeting audio stays on this Mac. You can add optional meeting notes later in Settings.</p>
       `}
     </section>
   `;
@@ -3375,6 +3386,16 @@ async function installModel(modelId) {
   render();
 }
 
+async function prepareAppleSpeech() {
+  await invoke("install_apple_speech_assets");
+  await refreshSnapshot();
+}
+
+async function selectTranscriptionEngine(engine) {
+  await invoke("select_transcription_engine", { engine });
+  await refreshSnapshot();
+}
+
 function handleClick(event) {
   const control = event.target.closest("[data-action]");
   if (!control || control.disabled) return;
@@ -3475,6 +3496,8 @@ function handleClick(event) {
   else if (action === "refresh-library") void refreshLibraryFromRecovery();
   else if (action === "refresh-selected-meeting") void refreshSelectedMeetingFromRecovery();
   else if (action === "install-model") void installModel(control.dataset.modelId).catch(reportError);
+  else if (action === "prepare-apple-speech") void prepareAppleSpeech().catch(reportError);
+  else if (action === "use-apple-speech") void selectTranscriptionEngine("apple-native").catch(reportError);
   else if (action === "request-microphone") void requestPermission("microphone");
   else if (action === "request-system-audio") void requestPermission("system-audio");
   else if (action === "settings" || action === "open-settings") {

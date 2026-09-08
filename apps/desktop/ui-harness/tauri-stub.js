@@ -124,6 +124,16 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" ? { ...captureSnapshot }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
+      : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
+      : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
+          { id: "whisper-large-v3-turbo-q4", title: "Smaller download", detail: "A 4-bit local transcription model that uses about 464 MB.", downloadBytes: 463665005, installedBytes: 463665005 },
+          { id: "whisper-large-v3-turbo", title: "Full model", detail: "The full local Turbo transcription model, using about 1.61 GB.", downloadBytes: 1613977880, installedBytes: 1613977880 },
+        ] } }
+      : mode === "apple-installing" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: false, operationActive: true, apple: { state: "installing", reason: "Preparing Apple speech on this Mac…", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "downloading", selectedModelId: "", options: [] } }
+      : mode === "apple-failed" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "failed", reason: "Apple speech could not be prepared.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
+          { id: "whisper-large-v3-turbo-q4", title: "Smaller download", detail: "A 4-bit local transcription model that uses about 464 MB.", downloadBytes: 463665005, installedBytes: 463665005 },
+          { id: "whisper-large-v3-turbo", title: "Full model", detail: "The full local Turbo transcription model, using about 1.61 GB.", downloadBytes: 1613977880, installedBytes: 1613977880 },
+        ] } }
       : mode === "model-setup" ? { ...idleSnapshot, startup: "model-required", model_setup: { state: "idle", selectedModelId: "", options: [
           // The catalog's real two speech models, so the surface renders the
           // row count, titles, and sizes it renders in a packaged build.
@@ -191,6 +201,32 @@
     }),
     library_retained_audio_playback_status: () => ({ state: "idle", source: null, message: "" }),
   };
+  // Synthetic transitions exercise the real click handlers; no downloads run.
+  let setupOverride = null;
+  const initialSnapshot = responses.app_snapshot;
+  responses.app_snapshot = () => setupOverride || initialSnapshot();
+  window.__setupCalls = [];
+  responses.install_apple_speech_assets = () => {
+    window.__setupCalls.push("install_apple_speech_assets");
+    const initial = initialSnapshot();
+    setupOverride = { ...initial, transcriptionEngine: { ...initial.transcriptionEngine, operationActive: true, canChange: false, apple: { state: "installing", locale: "en-US", reason: "Preparing Apple speech…" } } };
+    setTimeout(() => {
+      setupOverride = { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", locale: "en-US", reason: null }, whisper: { state: "download-required", reason: null } } };
+    }, 800);
+    return setupOverride.transcriptionEngine;
+  };
+  responses.install_transcript_model = ({modelId}) => {
+    window.__setupCalls.push(["install_transcript_model", modelId]);
+    setupOverride = { ...initialSnapshot(), model_setup: { ...initialSnapshot().model_setup, state: "downloading", selectedModelId: modelId, totalBytes: 463665005, downloadedBytes: 100000000 } };
+    setTimeout(() => { setupOverride = { ...idleSnapshot, transcriptionEngine: { selected: "whisper", canChange: true, operationActive: false, apple: { state: "unavailable", locale: "en-US", reason: "Apple speech is unavailable." }, whisper: { state: "ready", reason: null } } }; }, 800);
+    return setupOverride;
+  };
+  responses.select_transcription_engine = ({engine}) => {
+    window.__setupCalls.push(["select_transcription_engine", engine]);
+    setupOverride = { ...idleSnapshot, transcriptionEngine: { ...initialSnapshot().transcriptionEngine, selected: engine } };
+    return setupOverride.transcriptionEngine;
+  };
+  responses.open_settings_window = () => { window.__setupCalls.push("open_settings_window"); return null; };
   window.__TAURI__ = {
     core: {
       invoke: (command, args) => {

@@ -42,8 +42,52 @@ pub struct TranscriptionRequest {
     pub microphone_audio_sha256: String,
     pub system_audio_sha256: String,
     pub model_identity: String,
+    /// New requests bind the engine inputs here.  `None` is reserved for
+    /// legacy receipts, whose `model_identity` remains their frozen Whisper
+    /// producer identity.
+    #[serde(default)]
+    pub producer: Option<TranscriptionProducer>,
     pub worker_runtime_identity: String,
     pub enqueued_at_epoch_seconds: u64,
+}
+
+/// The closed producer identity recorded before a capture enters the queue.
+/// It prevents a later Settings choice from reinterpreting queued audio.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "engine", rename_all = "kebab-case", deny_unknown_fields)]
+pub enum TranscriptionProducer {
+    Whisper { model_identity: String },
+    AppleNative {
+        locale: String,
+        helper_sha256: String,
+        asset_identity: String,
+        os_version: String,
+    },
+}
+
+impl TranscriptionProducer {
+    pub fn whisper(model_identity: String) -> Self {
+        Self::Whisper { model_identity }
+    }
+
+    pub fn validates(&self) -> bool {
+        match self {
+            Self::Whisper { model_identity } => valid_identity(model_identity, 256),
+            Self::AppleNative { locale, helper_sha256, asset_identity, os_version } => {
+                valid_identity(locale, 64)
+                    && helper_sha256.len() == 64
+                    && helper_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    && asset_identity == "os-managed"
+                    && !os_version.is_empty() && os_version.len() <= 1024
+            }
+        }
+    }
+}
+
+fn valid_identity(value: &str, maximum: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_.@".contains(&byte))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -656,6 +700,9 @@ fn validate_request(request: &TranscriptionRequest) -> Result<(), TranscriptionQ
     {
         return Err(TranscriptionQueueError::Malformed("request identity"));
     }
+    if request.producer.as_ref().is_some_and(|producer| !producer.validates()) {
+        return Err(TranscriptionQueueError::Malformed("transcription producer"));
+    }
     for digest in [
         &request.capture_session_sha256,
         &request.microphone_audio_sha256,
@@ -746,6 +793,7 @@ mod tests {
             microphone_audio_sha256: digest(),
             system_audio_sha256: digest(),
             model_identity: "model/v1".into(),
+            producer: None,
             worker_runtime_identity: "worker/v1".into(),
             enqueued_at_epoch_seconds: 1,
         }

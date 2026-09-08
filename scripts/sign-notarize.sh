@@ -136,9 +136,13 @@ echo "== refreshing runtime manifests from signed bytes"
 ENCODER_PATH="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["encoder"]["path"])' \
   "$APP/Contents/Resources/app-runtime.json")"
 MANIFEST_ARGS=()
-if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' \
-    "$APP/Contents/Resources/app-runtime.json")" == "app-runtime/2" ]]; then
+runtime_schema="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' \
+    "$APP/Contents/Resources/app-runtime.json")"
+if [[ "$runtime_schema" == "app-runtime/2" || "$runtime_schema" == "app-runtime/3" ]]; then
   MANIFEST_ARGS+=(--external-transcript-models)
+fi
+if [[ "$runtime_schema" == "app-runtime/3" ]]; then
+  MANIFEST_ARGS+=(--apple-speech)
 fi
 "$ROOT/worker/build_manifest.py" \
   "$APP/Contents/Resources" --admission "$ADMISSION" \

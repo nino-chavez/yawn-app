@@ -37,6 +37,11 @@ pub struct RuntimeManifest {
     /// per-user model store. Version 1 manifests have no catalog and keep the
     /// transcript weights in `models`; version 2 requires this resource.
     pub model_catalog: Option<RuntimeResource>,
+    /// The signed Apple Speech helper.  Runtime v3 makes this resource
+    /// mandatory so the desktop can prove the helper it probes or launches is
+    /// the helper selected by the transcription receipt.  Older runtimes keep
+    /// this absent and truthfully report native speech as unavailable.
+    pub apple_speech: Option<RuntimeResource>,
     pub models: Vec<ModelResource>,
 }
 
@@ -54,6 +59,8 @@ pub enum RuntimeSchema {
     V1,
     #[serde(rename = "app-runtime/2")]
     V2,
+    #[serde(rename = "app-runtime/3")]
+    V3,
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,9 +119,16 @@ impl RuntimeManifest {
         verify_resource(&root, &manifest.tap)?;
         verify_resource(&root, &manifest.encoder)?;
         verify_resource(&root, &manifest.permission_probe)?;
-        match (&manifest.schema, &manifest.model_catalog) {
-            (RuntimeSchema::V1, None) => {}
-            (RuntimeSchema::V2, Some(catalog)) => verify_resource(&root, catalog)?,
+        match (&manifest.schema, &manifest.model_catalog, &manifest.apple_speech) {
+            (RuntimeSchema::V1, None, None) => {}
+            (RuntimeSchema::V2, Some(catalog), None) => verify_resource(&root, catalog)?,
+            (RuntimeSchema::V3, Some(catalog), Some(apple_speech)) => {
+                if manifest.admission != RuntimeAdmission::InternalAlpha {
+                    return Err(RuntimeError::Malformed);
+                }
+                verify_resource(&root, catalog)?;
+                verify_resource(&root, apple_speech)?;
+            }
             _ => return Err(RuntimeError::Malformed),
         }
         let mut model_ids = HashSet::new();
@@ -251,6 +265,30 @@ impl RuntimeManifest {
         self.model_catalog
             .as_ref()
             .and_then(|catalog| manifest_path.parent().map(|root| root.join(&catalog.path)))
+    }
+
+    /// Returns the verified helper path only for the v3 native-speech runtime.
+    /// The selective verifier mirrors the permission probe path: a Settings
+    /// readiness refresh must prove the executable it will run, without
+    /// rehashing an installed Whisper model.
+    pub fn verified_apple_speech_helper(manifest_path: &Path) -> Result<Option<PathBuf>, RuntimeError> {
+        if manifest_path.is_symlink() || !manifest_path.is_file() {
+            return Err(RuntimeError::Malformed);
+        }
+        let manifest: Self = serde_json::from_slice(&fs::read(manifest_path)?)
+            .map_err(|_| RuntimeError::Malformed)?;
+        let root = manifest_path
+            .parent()
+            .ok_or(RuntimeError::UnsafePath)?
+            .canonicalize()?;
+        match (&manifest.schema, &manifest.apple_speech) {
+            (RuntimeSchema::V3, Some(helper)) => {
+                verify_resource(&root, helper)?;
+                Ok(Some(root.join(&helper.path)))
+            }
+            (RuntimeSchema::V1 | RuntimeSchema::V2, None) => Ok(None),
+            _ => Err(RuntimeError::Malformed),
+        }
     }
 }
 

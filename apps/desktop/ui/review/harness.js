@@ -226,13 +226,13 @@
     return {
       state: "ready",
       options: [
-        { id: "turbo-q4", title: "Compact model", detail: "Smaller download, less disk space.", downloadBytes: 900000000, installedBytes: 900000000, stored: true, active: true },
-        { id: "turbo-full", title: "Full model", detail: "Original Turbo weights, best fidelity.", downloadBytes: 3100000000, installedBytes: 0, stored: false, active: false },
+        { id: "whisper-large-v3-turbo-q4", title: "Compact model", detail: "Smaller download, less disk space.", downloadBytes: 463665005, installedBytes: 463665005, stored: true, active: true },
+        { id: "whisper-large-v3-turbo", title: "Full model", detail: "Original Turbo weights, using about 1.61 GB.", downloadBytes: 1613977880, installedBytes: 0, stored: false, active: false },
       ],
-      activeModelId: "turbo-q4",
-      selectedModelId: "turbo-q4",
-      downloadedBytes: 900000000,
-      totalBytes: 900000000,
+      activeModelId: "whisper-large-v3-turbo-q4",
+      selectedModelId: "whisper-large-v3-turbo-q4",
+      downloadedBytes: 463665005,
+      totalBytes: 463665005,
       error: null,
       changeActive: false,
       canChange: true,
@@ -244,12 +244,12 @@
     return {
       state: "ready",
       options: [
-        { id: "note-local-1", title: "Local note model", detail: "Turns finished transcripts into meeting notes, on this Mac.", downloadBytes: 1200000000, installedBytes: 1200000000, stored: true, active: true },
+        { id: "gemma-3-12b-it-qat-4bit", title: "Local note model", detail: "Turns finished transcripts into meeting notes, on this Mac.", downloadBytes: 8063332687, installedBytes: 8063332687, stored: true, active: true },
       ],
-      activeModelId: "note-local-1",
-      selectedModelId: "note-local-1",
-      downloadedBytes: 1200000000,
-      totalBytes: 1200000000,
+      activeModelId: "gemma-3-12b-it-qat-4bit",
+      selectedModelId: "gemma-3-12b-it-qat-4bit",
+      downloadedBytes: 8063332687,
+      totalBytes: 8063332687,
       error: null,
       changeActive: false,
       canChange: true,
@@ -257,9 +257,20 @@
     };
   }
 
+  function transcriptionEngineSettingsFixture() {
+    const selected = window.__reviewSelectedEngine || "whisper";
+    return {
+      selected,
+      canChange: true,
+      operationActive: false,
+      apple: { state: "ready", reason: null, locale: "en-US" },
+      whisper: { state: "ready", reason: null },
+    };
+  }
+
   // ---- dispatch ------------------------------------------------------------
 
-  function respond(command) {
+  function respond(command, args) {
     switch (command) {
       case "app_snapshot":
         return currentSnapshotFixture();
@@ -286,6 +297,17 @@
         return { state: "idle", source: null, message: "No recording is playing." };
       case "transcript_model_settings":
         return transcriptModelSettingsFixture();
+      case "get_transcription_engine_settings":
+        return transcriptionEngineSettingsFixture();
+      case "select_transcription_engine":
+        window.__reviewSelectedEngine = args?.engine || "whisper";
+        return transcriptionEngineSettingsFixture();
+      case "install_transcript_model":
+        window.__reviewSelectedEngine = "whisper";
+        return currentSnapshotFixture();
+      case "install_apple_speech_assets":
+        window.__reviewSelectedEngine = "apple-native";
+        return { ...transcriptionEngineSettingsFixture(), selected: "apple-native" };
       case "note_model_settings":
         return noteModelSettingsFixture();
       case "dismiss_first_run_sheet":

@@ -3,6 +3,7 @@
 node_modules/
 dist/
 target/
+.artifacts/
 .venv/
 __pycache__/
 .build/

@@ -119,9 +119,14 @@ sign_bundle() {
     codesign --force --sign "$identity" --entitlements "$ENTITLEMENTS" "$PROBE"
   fi
   manifest_args=()
-  if [[ "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' \
-      "$RESOURCES/app-runtime.json")" == "app-runtime/2" ]]; then
+  local runtime_schema
+  runtime_schema="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' \
+      "$RESOURCES/app-runtime.json")"
+  if [[ "$runtime_schema" == "app-runtime/2" || "$runtime_schema" == "app-runtime/3" ]]; then
     manifest_args+=(--external-transcript-models)
+  fi
+  if [[ "$runtime_schema" == "app-runtime/3" ]]; then
+    manifest_args+=(--apple-speech)
   fi
   "$RESOURCES/python-runtime/bin/python3.12" -E -s -B \
     "$ROOT/worker/build_manifest.py" "$RESOURCES" --admission internal-alpha \

@@ -17,6 +17,9 @@
     "allow-remove-transcript-model",
     "allow-note-model-settings",
     "allow-install-note-model",
-    "allow-remove-note-model"
+    "allow-remove-note-model",
+    "allow-get-transcription-engine-settings",
+    "allow-select-transcription-engine",
+    "allow-install-apple-speech-assets"
   ]
 }

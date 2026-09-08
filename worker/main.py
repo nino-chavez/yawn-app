@@ -206,17 +206,23 @@ def load_manifest(path: Path) -> dict:
         "permission_probe",
         "models",
     }
-    if isinstance(document, dict) and document.get("schema") == "app-runtime/2":
+    if isinstance(document, dict) and document.get("schema") in {"app-runtime/2", "app-runtime/3"}:
         required.add("model_catalog")
+    if isinstance(document, dict) and document.get("schema") == "app-runtime/3":
+        required.add("apple_speech")
     if not isinstance(document, dict) or set(document) != required:
         raise ValueError("runtime manifest has the wrong shape")
-    if document["schema"] not in {"app-runtime/1", "app-runtime/2"}:
+    if document["schema"] not in {"app-runtime/1", "app-runtime/2", "app-runtime/3"}:
         raise ValueError("runtime manifest schema is not current")
     if document["admission"] not in {"boundary-test", "internal-alpha", "product"}:
         raise ValueError("runtime manifest admission is not current")
+    if document["schema"] == "app-runtime/3" and document["admission"] != "internal-alpha":
+        raise ValueError("Apple speech requires internal-alpha admission")
     resources = ["runtime", "worker", "tap", "encoder", "permission_probe"]
-    if document["schema"] == "app-runtime/2":
+    if document["schema"] in {"app-runtime/2", "app-runtime/3"}:
         resources.append("model_catalog")
+    if document["schema"] == "app-runtime/3":
+        resources.append("apple_speech")
     for name in resources:
         entry = document[name]
         if not isinstance(entry, dict) or set(entry) != {"path", "sha256"}:
@@ -278,7 +284,7 @@ def external_transcript_model(
     manifest: dict,
     receipt_path: Path | None,
 ) -> tuple[Path, list[dict]]:
-    if manifest["schema"] != "app-runtime/2" or receipt_path is None:
+    if manifest["schema"] not in {"app-runtime/2", "app-runtime/3"} or receipt_path is None:
         raise ValueError("external transcript model receipt is unavailable")
     root = root.resolve(strict=True)
     expected_parent = root / "models"
@@ -456,6 +462,11 @@ def dispatch_without_protocol_output(
     model_dir: Path | None,
     encoder_path: Path | None = None,
     embedding_dir: Path | None = None,
+    transcription_engine: str = "whisper",
+    speech_locale: str = "en-US",
+    apple_speech_helper: Path | None = None,
+    apple_speech_helper_sha256: str | None = None,
+    apple_speech_os_version: str | None = None,
 ) -> dict:
     # The worker owns stdout as a newline-delimited JSON protocol. Research
     # adapters and model libraries may print progress on data-dependent paths;
@@ -473,6 +484,11 @@ def dispatch_without_protocol_output(
                 model_dir=model_dir,
                 encoder_path=encoder_path,
                 embedding_dir=embedding_dir,
+                transcription_engine=transcription_engine,
+                speech_locale=speech_locale,
+                apple_speech_helper=apple_speech_helper,
+                apple_speech_helper_sha256=apple_speech_helper_sha256,
+                apple_speech_os_version=apple_speech_os_version,
             )
 
 
@@ -481,6 +497,8 @@ def run(
     manifest_path: Path,
     parent_fd: int,
     transcript_model_receipt: Path | None = None,
+    transcription_engine: str = "whisper",
+    speech_locale: str = "en-US",
 ) -> int:
     # dispatch_without_protocol_output redirects sys.stdout while model adapters
     # run. Capture the actual protocol stream before that redirect so a
@@ -488,14 +506,33 @@ def run(
     protocol_output = sys.stdout
     root = require_private_root(root)
     manifest = load_manifest(manifest_path)
-    if manifest["schema"] == "app-runtime/2":
+    if transcription_engine not in {"whisper", "apple-native"}:
+        raise ValueError("transcription engine is unsupported")
+    if manifest["schema"] in {"app-runtime/2", "app-runtime/3"} and (transcription_engine == "whisper" or transcript_model_receipt is not None):
         model_dir, external_models = external_transcript_model(
             root, manifest_path, manifest, transcript_model_receipt
         )
     else:
-        model_dir = transcript_model_dir(manifest_path, manifest)
+        model_dir = None if transcription_engine == "apple-native" else transcript_model_dir(manifest_path, manifest)
         external_models = []
     embedding_dir = embedding_model_dir(manifest_path, manifest)
+    apple_helper: Path | None = None
+    apple_helper_sha256: str | None = None
+    apple_os_version: str | None = None
+    if transcription_engine == "apple-native":
+        if manifest["schema"] != "app-runtime/3":
+            raise ValueError("Apple native transcription requires app-runtime/3")
+        entry = manifest["apple_speech"]
+        apple_helper = (manifest_path.parent / entry["path"]).resolve(strict=True)
+        apple_helper_sha256 = entry["sha256"]
+        from .apple_speech import AppleSpeechRefused, read_capability
+        try:
+            capability = read_capability(apple_helper, locale=speech_locale, temporary_parent=root)
+        except AppleSpeechRefused as exc:
+            raise ValueError(str(exc)) from None
+        if capability["state"] != "ready":
+            raise ValueError("Apple speech assets are not ready")
+        apple_os_version = capability["os_version"]
     operations = operations_for(manifest["admission"])
     emit(
         {
@@ -552,6 +589,11 @@ def run(
                     model_dir=model_dir,
                     encoder_path=manifest_path.parent / manifest["encoder"]["path"],
                     embedding_dir=embedding_dir,
+                    transcription_engine=transcription_engine,
+                    speech_locale=speech_locale,
+                    apple_speech_helper=apple_helper,
+                    apple_speech_helper_sha256=apple_helper_sha256,
+                    apple_speech_os_version=apple_os_version,
                 )
             finally:
                 if heartbeat is not None:
@@ -596,6 +638,8 @@ def main() -> int:
     parser.add_argument("--app-data-root", required=True, type=Path)
     parser.add_argument("--runtime-manifest", required=True, type=Path)
     parser.add_argument("--transcript-model-receipt", type=Path)
+    parser.add_argument("--transcription-engine", choices=["whisper", "apple-native"], default="whisper")
+    parser.add_argument("--speech-locale", default="en-US")
     parser.add_argument("--parent-liveness-fd", type=int)
     arguments = parser.parse_args()
     parent_fd = arguments.parent_liveness_fd
@@ -611,6 +655,8 @@ def main() -> int:
             arguments.runtime_manifest,
             parent_fd,
             arguments.transcript_model_receipt,
+            arguments.transcription_engine,
+            arguments.speech_locale,
         )
     except (OSError, ValueError, StorageRefused, json.JSONDecodeError):
         return 2

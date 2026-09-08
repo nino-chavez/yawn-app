@@ -61,6 +61,9 @@
     "allow-preview-library-search",
     "allow-preview-library-open-search-result",
     "core:event:allow-listen",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    "allow-get-transcription-engine-settings",
+    "allow-select-transcription-engine",
+    "allow-install-apple-speech-assets"
   ]
 }

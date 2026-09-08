@@ -82,6 +82,7 @@ mod capture_timing;
 // coupling no longer relies on exact string equality with a hand-maintained
 // JS array. See the module docs for the two transports this covers.
 mod error_codes;
+mod apple_speech;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -89,7 +90,8 @@ use manual_delete_facade::{
 };
 
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
+use std::os::unix::fs::OpenOptionsExt;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
@@ -161,7 +163,7 @@ use local_meeting_notes_session_core::transcript_retry_diff::{
     DiffTurnInput, TranscriptRetryDiffState, diff_transcript_turns,
 };
 use local_meeting_notes_session_core::transcription_queue::{
-    TranscriptionQueue, TranscriptionRequest,
+    TranscriptionProducer, TranscriptionQueue, TranscriptionRequest,
 };
 use error_codes::CommandError;
 use serde::{Deserialize, Serialize};
@@ -284,6 +286,7 @@ struct ApplicationState {
     model_install_active: AtomicBool,
     note_model_install_active: AtomicBool,
     note_model_setup: Mutex<NoteModelSetup>,
+    transcription_engine: Mutex<TranscriptionEngineState>,
     preview_library: Mutex<Option<library_reader::LibraryReader>>,
     /// The one audio child the shell owns. This is deliberately a `Child`,
     /// never a PID: every stop and reap action is constrained to this exact
@@ -340,6 +343,7 @@ impl Default for ApplicationState {
                 state: "idle".into(),
                 ..NoteModelSetup::default()
             }),
+            transcription_engine: Mutex::new(TranscriptionEngineState::default()),
             preview_library: Mutex::new(None),
             audio_playback: Mutex::new(None),
             preview_profile: Mutex::new(PreviewProfileSnapshot::unavailable()),
@@ -516,6 +520,7 @@ struct AppModel {
     retention_operational: bool,
     startup_message: String,
     model_setup: ModelSetupSnapshot,
+    transcription_engine: TranscriptionEngineSettingsSnapshot,
     meeting_id: Option<String>,
     started_at_epoch_seconds: Option<u64>,
     capture_state_started_at_epoch_seconds: Option<u64>,
@@ -551,6 +556,7 @@ impl Default for AppModel {
             retention_operational: false,
             startup_message: "Preparing your private workspace.".into(),
             model_setup: ModelSetupSnapshot::default(),
+            transcription_engine: TranscriptionEngineSettingsSnapshot::unavailable(),
             meeting_id: None,
             started_at_epoch_seconds: None,
             capture_state_started_at_epoch_seconds: None,
@@ -577,6 +583,7 @@ impl AppModel {
             retention_operational: self.retention_operational,
             startup_message: self.startup_message.clone(),
             model_setup: self.model_setup.clone(),
+            transcription_engine: self.transcription_engine.clone(),
             capture: self.reducer.capture(),
             meeting_id: self.meeting_id.clone(),
             started_at_epoch_seconds: self.started_at_epoch_seconds,
@@ -619,6 +626,8 @@ struct AppSnapshot {
     retention_operational: bool,
     startup_message: String,
     model_setup: ModelSetupSnapshot,
+    #[serde(rename = "transcriptionEngine")]
+    transcription_engine: TranscriptionEngineSettingsSnapshot,
     capture: CaptureState,
     meeting_id: Option<String>,
     started_at_epoch_seconds: Option<u64>,
@@ -735,6 +744,173 @@ struct NoteModelSettingsOption {
     installed_bytes: u64,
     stored: bool,
     active: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+enum TranscriptionEngine {
+    AppleNative,
+    Whisper,
+}
+
+impl TranscriptionEngine {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::AppleNative => "apple-native",
+            Self::Whisper => "whisper",
+        }
+    }
+}
+
+#[derive(Clone)]
+struct TranscriptionEngineState {
+    selected: Option<TranscriptionEngine>,
+    explicit: bool,
+    apple: apple_speech::Capability,
+}
+
+impl Default for TranscriptionEngineState {
+    fn default() -> Self {
+        Self {
+            selected: None,
+            explicit: false,
+            apple: apple_speech::unavailable("en-US", "Apple Speech has not been checked yet."),
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppleSpeechSettingsSnapshot {
+    state: String,
+    reason: Option<String>,
+    locale: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WhisperSettingsSnapshot {
+    state: String,
+    reason: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscriptionEngineSettingsSnapshot {
+    selected: Option<String>,
+    can_change: bool,
+    operation_active: bool,
+    apple: AppleSpeechSettingsSnapshot,
+    whisper: WhisperSettingsSnapshot,
+}
+
+impl TranscriptionEngineSettingsSnapshot {
+    fn unavailable() -> Self {
+        Self {
+            selected: None,
+            can_change: false,
+            operation_active: false,
+            apple: AppleSpeechSettingsSnapshot {
+                state: "unavailable".into(),
+                reason: Some("Apple Speech has not been checked yet.".into()),
+                locale: "en-US".into(),
+            },
+            whisper: WhisperSettingsSnapshot {
+                state: "unavailable".into(),
+                reason: Some("Speech models have not been checked yet.".into()),
+            },
+        }
+    }
+}
+
+const TRANSCRIPTION_ENGINE_PREFERENCE: &str = "profile/transcription-engine.json";
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TranscriptionEnginePreference {
+    schema: String,
+    selected: TranscriptionEngine,
+}
+
+fn load_transcription_engine_preference(storage: &StorageRoot) -> Result<Option<TranscriptionEngine>, String> {
+    let path = storage
+        .resolve(Path::new(TRANSCRIPTION_ENGINE_PREFERENCE))
+        .map_err(error_text)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = read_private_bytes(&path, 4096).map_err(error_text)?;
+    let preference: TranscriptionEnginePreference = serde_json::from_slice(&bytes).map_err(error_text)?;
+    if preference.schema != "transcription-engine-preference/1" {
+        return Err("the stored transcription engine preference is invalid".into());
+    }
+    Ok(Some(preference.selected))
+}
+
+fn store_transcription_engine_preference(storage: &StorageRoot, selected: TranscriptionEngine) -> Result<(), String> {
+    let path = storage
+        .resolve(Path::new(TRANSCRIPTION_ENGINE_PREFERENCE))
+        .map_err(error_text)?;
+    if path.is_symlink() {
+        return Err("the stored transcription engine preference is unsafe".into());
+    }
+    let parent = path.parent().ok_or_else(|| "the stored transcription engine preference is unsafe".to_string())?;
+    create_private_dir(parent).map_err(error_text)?;
+    let bytes = serde_json::to_vec(&TranscriptionEnginePreference {
+        schema: "transcription-engine-preference/1".into(),
+        selected,
+    }).map_err(error_text)?;
+    let temporary = parent.join(format!(".transcription-engine-{}.tmp", Uuid::new_v4()));
+    let mut output = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(error_text)?;
+    output.write_all(&bytes).map_err(error_text)?;
+    output.sync_all().map_err(error_text)?;
+    drop(output);
+    fs::rename(&temporary, &path).map_err(error_text)?;
+    sync_directory(parent).map_err(error_text)
+}
+
+fn sync_transcription_engine_snapshot(state: &ApplicationState, whisper_ready: bool, product_operation_active: bool) {
+    let engine = state.transcription_engine.lock().expect("transcription engine lock").clone();
+    let mut operation_active = product_operation_active || has_pending_transcription_work(state)
+        || state.model_install_active.load(Ordering::SeqCst)
+        || state.note_model_install_active.load(Ordering::SeqCst);
+    let (capture, startup) = {
+        let model = state.model.lock().expect("application model lock");
+        (model.reducer.capture(), model.reducer.startup())
+    };
+    operation_active |= matches!(startup, StartupState::Checking | StartupState::Retrying);
+    let can_change = matches!(startup, StartupState::Ready | StartupState::ModelRequired)
+        && model_change_audio_idle(capture, sitting_task_active(state))
+        && !operation_active;
+    let whisper = if whisper_ready {
+        WhisperSettingsSnapshot { state: "ready".into(), reason: None }
+    } else {
+        WhisperSettingsSnapshot { state: "download-required".into(), reason: Some("Download a speech model to use Whisper transcription.".into()) }
+    };
+    let snapshot = TranscriptionEngineSettingsSnapshot {
+        selected: engine.selected.map(|selected| selected.as_str().into()),
+        can_change,
+        operation_active,
+        apple: AppleSpeechSettingsSnapshot {
+            state: engine.apple.state.as_str().into(),
+            reason: engine.apple.reason.clone(),
+            locale: engine.apple.locale.clone(),
+        },
+        whisper,
+    };
+    state.model.lock().expect("application model lock").transcription_engine = snapshot;
+}
+
+fn transcription_operation_active(state: &ApplicationState) -> bool {
+    let model = state.model.lock().expect("application model lock");
+    model.background_transcription_active
+        || model.background_transcription_queued_count > 0
+        || matches!(model.reducer.capture(), CaptureState::Arming | CaptureState::Recording | CaptureState::Paused | CaptureState::Stopping | CaptureState::Captured | CaptureState::Transcribing)
 }
 
 impl From<&TranscriptModel> for ModelSetupOption {
@@ -1318,6 +1494,8 @@ struct RuntimeIdentity {
     admission: String,
     worker_build_sha256: String,
     worker_executable_sha256: String,
+    transcription_producer: TranscriptionProducer,
+    /// Legacy receipt field retained while v1 queue requests remain readable.
     transcript_model_identity: String,
     tap_build_sha256: String,
     tap_path: PathBuf,
@@ -2498,6 +2676,7 @@ fn prepare_startup_retry(model: &mut AppModel) -> Result<(), String> {
 fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
+    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
     // A startup retry re-runs reconciliation over the same stores the take
     // is writing; it lands after the take, by refusal.
     if sitting_task_active(&state) {
@@ -2534,7 +2713,10 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
     let task_app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("meeting-runtime-retry".into())
-        .spawn(move || initialize_application(task_app, true));
+        .spawn(move || {
+            let _operation = operation;
+            initialize_application(task_app, true);
+        });
     if let Err(error) = spawned {
         write_diagnostic(&state, "startup_retry_spawn_failed", &error.to_string());
         finish_startup_failure(
@@ -2688,7 +2870,8 @@ fn transcript_model_settings_for(
         )
     };
     let startup_ready = matches!(startup, StartupState::Ready | StartupState::ModelRequired);
-    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state));
+    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state))
+        && !has_pending_transcription_work(state);
     let can_change = startup_ready && audio_idle && !installing;
     let unavailable_reason = if installing {
         Some("Wait for the current model change to finish.".into())
@@ -2718,6 +2901,138 @@ fn transcript_model_settings(
     state: State<'_, ApplicationState>,
 ) -> Result<TranscriptModelSettingsSnapshot, String> {
     transcript_model_settings_for(&state)
+}
+
+fn has_pending_transcription_work(state: &ApplicationState) -> bool {
+    if transcription_operation_active(state) {
+        return true;
+    }
+    let storage = state.storage.lock().ok().and_then(|slot| slot.as_ref().map(|context| context.storage.clone()));
+    match storage.and_then(|storage| TranscriptionQueue::open(&storage).ok()?.discover().ok()) {
+        Some(discovery) => discovery.items.into_iter().any(|item| item.commit.is_none() && item.terminal.is_none()),
+        None => true,
+    }
+}
+
+#[tauri::command]
+fn get_transcription_engine_settings(
+    app: AppHandle,
+) -> Result<TranscriptionEngineSettingsSnapshot, String> {
+    let state = app.state::<ApplicationState>();
+    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let manifest = cached_verified_manifest(&state, &storage.manifest_path)?;
+    let whisper_ready = verified_model_catalog(&storage.manifest_path, &manifest)?
+        .map(|catalog| installed_model(&storage.storage, &catalog).ok().flatten().is_some())
+        .unwrap_or(true);
+    sync_transcription_engine_snapshot(&state, whisper_ready, app.state::<product_facade::ProductOperationFacade>().is_active());
+    Ok(state.model.lock().expect("application model lock").transcription_engine.clone())
+}
+
+#[tauri::command]
+fn select_transcription_engine(
+    app: AppHandle,
+    engine: TranscriptionEngine,
+) -> Result<TranscriptionEngineSettingsSnapshot, String> {
+    let state = app.state::<ApplicationState>();
+    let _command = state.command_lock.lock().expect("command lock");
+    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
+    if !matches!(state.model.lock().expect("application model lock").reducer.startup(),
+        StartupState::Ready | StartupState::ModelRequired) {
+        return Err("Wait for Yawn to finish starting before changing speech models.".into());
+    }
+    if has_pending_transcription_work(&state) || sitting_task_active(&state)
+        || state.model_install_active.load(Ordering::SeqCst) || state.note_model_install_active.load(Ordering::SeqCst) {
+        return Err("Finish queued or active transcription before changing the transcription engine.".into());
+    }
+    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let current = get_transcription_engine_settings(app.clone())?;
+    match engine {
+        TranscriptionEngine::AppleNative if current.apple.state != "ready" => {
+            return Err(current.apple.reason.unwrap_or_else(|| "Apple Speech is not ready on this Mac.".into()));
+        }
+        TranscriptionEngine::Whisper if current.whisper.state != "ready" => {
+            return Err("Download a speech model before choosing Whisper transcription.".into());
+        }
+        _ => {}
+    }
+    store_transcription_engine_preference(&storage.storage, engine)?;
+    {
+        let mut selected = state.transcription_engine.lock().expect("transcription engine lock");
+        selected.selected = Some(engine);
+        selected.explicit = true;
+    }
+    {
+        let mut model = state.model.lock().expect("application model lock");
+        transition_startup(&mut model, StartupState::Retrying)?;
+    }
+    let task_app = app.clone();
+    let spawned = std::thread::Builder::new().name("speech-engine-switch".into())
+        .spawn(move || {
+            let _operation = operation;
+            initialize_application(task_app, true);
+        });
+    if let Err(error) = spawned {
+        write_diagnostic(&state, "speech_engine_switch_spawn_failed", &error.to_string());
+        finish_startup_failure(&state, true, StartupFailure::Diagnostic,
+            "The speech engine change could not start. Check again to retry.");
+        return Err("The speech engine change could not start. Check again to retry.".into());
+    }
+    get_transcription_engine_settings(app.clone())
+}
+
+#[tauri::command]
+fn install_apple_speech_assets(app: AppHandle) -> Result<TranscriptionEngineSettingsSnapshot, String> {
+    let state = app.state::<ApplicationState>();
+    let _command = state.command_lock.lock().expect("command lock");
+    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
+    if !matches!(state.model.lock().expect("application model lock").reducer.startup(),
+        StartupState::Ready | StartupState::ModelRequired) {
+        return Err("Wait for Yawn to finish starting before changing speech models.".into());
+    }
+    if has_pending_transcription_work(&state) || sitting_task_active(&state)
+        || state.note_model_install_active.load(Ordering::SeqCst) {
+        return Err("Finish queued or active transcription before preparing Apple speech.".into());
+    }
+    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let helper = RuntimeManifest::verified_apple_speech_helper(&storage.manifest_path)
+        .map_err(error_text)?.ok_or_else(|| "Apple speech is not included in this version of Yawn.".to_string())?;
+    if state.model_install_active.swap(true, Ordering::SeqCst) {
+        return Err("Wait for the current model change to finish.".into());
+    }
+    state.transcription_engine.lock().expect("transcription engine lock").apple.state = apple_speech::State::Installing;
+    let task_app = app.clone();
+    if let Err(error) = std::thread::Builder::new().name("apple-speech-assets".into()).spawn(move || {
+        let _operation = operation;
+        let task_state = task_app.state::<ApplicationState>();
+        let capability = apple_speech::install_assets(&helper, storage.storage.path(), "en-US");
+        let ready = capability.state == apple_speech::State::Ready;
+        task_state.transcription_engine.lock().expect("transcription engine lock").apple = capability;
+        if ready {
+            let result = store_transcription_engine_preference(&storage.storage, TranscriptionEngine::AppleNative).and_then(|()| {
+                let mut model = task_state.model.lock().expect("application model lock");
+                transition_startup(&mut model, StartupState::Retrying)
+            });
+            match result {
+                Ok(()) => initialize_application(task_app.clone(), true),
+                Err(error) => {
+                    write_diagnostic(&task_state, "apple_speech_selection_failed", &error);
+                    let mut engine = task_state.transcription_engine.lock().expect("transcription engine lock");
+                    engine.apple.state = apple_speech::State::Failed;
+                    engine.apple.reason = Some("Apple speech is ready, but Yawn could not save the selection. Try again.".into());
+                }
+            }
+        }
+        task_state.model_install_active.store(false, Ordering::SeqCst);
+        let _ = get_transcription_engine_settings(task_app.clone());
+    }) {
+        state.model_install_active.store(false, Ordering::SeqCst);
+        state.transcription_engine.lock().expect("transcription engine lock").apple.state = apple_speech::State::Failed;
+        return Err(error_text(error));
+    }
+    get_transcription_engine_settings(app.clone())
 }
 
 fn finish_model_selection(
@@ -2753,6 +3068,7 @@ fn finish_model_selection(
 fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
+    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
     let capture_active = state
         .model
         .lock()
@@ -2760,7 +3076,8 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
         .reducer
         .capture()
         != CaptureState::Idle;
-    if capture_active || sitting_task_active(&state) {
+    if capture_active || sitting_task_active(&state) || has_pending_transcription_work(&state)
+        || state.note_model_install_active.load(Ordering::SeqCst) {
         return Err("A speech model cannot be installed while audio work is active.".into());
     }
     if state
@@ -2823,6 +3140,7 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
     let spawned = std::thread::Builder::new()
         .name("meeting-model-download".into())
         .spawn(move || {
+            let _operation = operation;
             let install_result = model_download::install(
                 &storage_context.storage,
                 &selected,
@@ -2854,6 +3172,13 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
                             state.model_install_active.store(false, Ordering::SeqCst);
                             return;
                         }
+                    }
+                    if let Err(error) = store_transcription_engine_preference(&storage_context.storage, TranscriptionEngine::Whisper) {
+                        state.model_install_active.store(false, Ordering::SeqCst);
+                        write_diagnostic(&state, "speech_preference_failed", &error);
+                        finish_startup_failure(&state, true, StartupFailure::Diagnostic,
+                            "The downloaded speech model could not be selected. Check again to retry.");
+                        return;
                     }
                     initialize_application(task_app.clone(), true);
                     state.model_install_active.store(false, Ordering::SeqCst);
@@ -2891,8 +3216,10 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
 fn remove_transcript_model(
     model_id: String,
     state: State<'_, ApplicationState>,
+    facade: State<'_, product_facade::ProductOperationFacade>,
 ) -> Result<TranscriptModelSettingsSnapshot, String> {
     let _command = state.command_lock.lock().expect("command lock");
+    let _operation = facade.claim_runtime_change()?;
     if state.model_install_active.load(Ordering::SeqCst) {
         return Err("Wait for the current model change to finish.".into());
     }
@@ -2903,7 +3230,7 @@ fn remove_transcript_model(
             StartupState::Ready | StartupState::ModelRequired
         ) && model.reducer.capture() == CaptureState::Idle
     };
-    if !ready || sitting_task_active(&state) {
+    if !ready || sitting_task_active(&state) || has_pending_transcription_work(&state) {
         return Err("Finish the current meeting before removing a speech model.".into());
     }
     let storage_context = state
@@ -3006,6 +3333,7 @@ fn install_note_model(
 ) -> Result<NoteModelSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
+    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
     let capture_active = state
         .model
         .lock()
@@ -3066,6 +3394,7 @@ fn install_note_model(
     let spawned = std::thread::Builder::new()
         .name("note-model-download".into())
         .spawn(move || {
+            let _operation = operation;
             let install_result = model_download::install(
                 &storage_context.storage,
                 &selected,
@@ -3140,8 +3469,10 @@ fn install_note_model(
 fn remove_note_model(
     model_id: String,
     state: State<'_, ApplicationState>,
+    facade: State<'_, product_facade::ProductOperationFacade>,
 ) -> Result<NoteModelSettingsSnapshot, String> {
     let _command = state.command_lock.lock().expect("command lock");
+    let _operation = facade.claim_runtime_change()?;
     if state.note_model_install_active.load(Ordering::SeqCst) {
         return Err("Wait for the current note model change to finish.".into());
     }
@@ -4716,6 +5047,9 @@ fn claim_sitting_start(
     source_class: Option<String>,
     sender: mpsc::Sender<()>,
 ) -> Result<(), String> {
+    if state.model_install_active.load(Ordering::SeqCst) {
+        return Err("Wait for the speech model change to finish before a setup recording.".into());
+    }
     let model = state
         .model
         .lock()
@@ -7640,6 +7974,9 @@ fn main() {
             dismiss_meeting,
             retry_startup,
             install_transcript_model,
+            get_transcription_engine_settings,
+            select_transcription_engine,
+            install_apple_speech_assets,
             transcript_model_settings,
             remove_transcript_model,
             note_model_settings,
@@ -8193,6 +8530,27 @@ fn initialize_application(app: AppHandle, retry: bool) {
             return;
         }
     };
+    let apple_capability = match RuntimeManifest::verified_apple_speech_helper(&storage_context.manifest_path) {
+        Ok(Some(helper)) => apple_speech::probe(&helper, storage_context.storage.path(), "en-US"),
+        Ok(None) => apple_speech::unavailable("en-US", "Apple Speech is not included in this version of Yawn."),
+        Err(_) => apple_speech::unavailable("en-US", "Apple Speech could not be verified in this version of Yawn."),
+    };
+    let stored_engine = match load_transcription_engine_preference(&storage_context.storage) {
+        Ok(preference) => preference,
+        Err(_) => {
+            finish_startup_failure(&state, retry, StartupFailure::Diagnostic,
+                "The saved speech selection could not be read safely.");
+            return;
+        }
+    };
+    {
+        let mut engine = state.transcription_engine.lock().expect("transcription engine lock");
+        engine.apple = apple_capability.clone();
+        if let Some(selected) = stored_engine {
+            engine.selected = Some(selected);
+            engine.explicit = true;
+        }
+    }
     let installed_transcript_model: Option<InstalledTranscriptModel> = match catalog.as_ref() {
         Some(catalog) => match installed_model(&storage_context.storage, catalog) {
             Ok(Some(installed)) => {
@@ -8208,8 +8566,21 @@ fn initialize_application(app: AppHandle, retry: bool) {
                 Some(installed)
             }
             Ok(None) => {
-                finish_model_selection(&state, retry, catalog, None);
-                return;
+                let selected = state.transcription_engine.lock().expect("transcription engine lock").selected;
+                if selected == Some(TranscriptionEngine::AppleNative)
+                    || (selected.is_none() && apple_capability.state == apple_speech::State::Ready)
+                {
+                    let mut engine = state.transcription_engine.lock().expect("transcription engine lock");
+                    engine.selected = Some(TranscriptionEngine::AppleNative);
+                    drop(engine);
+                    let mut model = state.model.lock().expect("application model lock");
+                    model.model_setup = ModelSetupSnapshot { state: "native".into(), ..ModelSetupSnapshot::default() };
+                    None
+                } else {
+                    finish_model_selection(&state, retry, catalog, None);
+                    sync_transcription_engine_snapshot(&state, false, app.state::<product_facade::ProductOperationFacade>().is_active());
+                    return;
+                }
             }
             Err(_) => {
                 finish_model_selection(
@@ -8233,6 +8604,19 @@ fn initialize_application(app: AppHandle, retry: bool) {
             None
         }
     };
+    let selected_engine = state.transcription_engine.lock().expect("transcription engine lock").selected
+        .unwrap_or(TranscriptionEngine::Whisper);
+    state.transcription_engine.lock().expect("transcription engine lock").selected = Some(selected_engine);
+    if selected_engine == TranscriptionEngine::AppleNative && apple_capability.state != apple_speech::State::Ready {
+        if let Some(catalog) = catalog.as_ref() {
+            finish_model_selection(&state, retry, catalog, Some("Apple speech is unavailable. Prepare it again or choose a downloaded model.".into()));
+            sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
+        } else {
+            finish_startup_failure(&state, retry, StartupFailure::Runtime,
+                "This version cannot use the saved Apple speech selection. Install a version that includes Apple speech.");
+        }
+        return;
+    }
     set_startup_message(&state, "Starting the local transcription engine.");
     let worker_path = storage_context.resource_root.join(&manifest.runtime.path);
     let mut command = Command::new(&worker_path);
@@ -8247,6 +8631,7 @@ fn initialize_application(app: AppHandle, retry: bool) {
             .arg("--transcript-model-receipt")
             .arg(&installed.receipt_path);
     }
+    command.args(["--transcription-engine", selected_engine.as_str(), "--speech-locale", "en-US"]);
     command.current_dir(&storage_context.resource_root);
     let mut worker = match OwnedChild::spawn(&mut command) {
         Ok(worker) => worker,
@@ -8357,15 +8742,37 @@ fn initialize_application(app: AppHandle, retry: bool) {
         .map(|model| (model.id.clone(), model.sha256.clone()))
         .collect();
     packaged_models.extend(external_models.clone());
+    let selected_engine = state.transcription_engine.lock().expect("transcription engine lock").selected;
+    let selected_engine = selected_engine.unwrap_or(TranscriptionEngine::Whisper);
+    if installed_transcript_model.is_some() && selected_engine == TranscriptionEngine::AppleNative
+        && apple_capability.state != apple_speech::State::Ready
+    {
+        finish_startup_failure(&state, retry, StartupFailure::Runtime, "Apple Speech is not ready and no fallback speech model is selected");
+        return;
+    }
+    let transcription_producer = match selected_engine {
+        TranscriptionEngine::AppleNative => TranscriptionProducer::AppleNative {
+            locale: "en-US".into(),
+            helper_sha256: manifest.apple_speech.as_ref().expect("verified v3 apple resource").sha256.clone(),
+            asset_identity: "os-managed".into(),
+            os_version: apple_capability.os_version.clone(),
+        },
+        TranscriptionEngine::Whisper => TranscriptionProducer::whisper(
+            installed_transcript_model.as_ref()
+                .map(|model| format!("{}@{}", model.entry.id, model.entry.revision))
+                .or_else(|| manifest.models.first().map(|model| model.id.clone()))
+                .unwrap_or_else(|| "bundled-transcript-model".into()),
+        ),
+    };
     let runtime = RuntimeIdentity {
         admission: "internal-alpha".into(),
         worker_build_sha256: manifest.worker.sha256.clone(),
         worker_executable_sha256: manifest.runtime.sha256.clone(),
-        transcript_model_identity: installed_transcript_model
-            .as_ref()
-            .map(|model| format!("{}@{}", model.entry.id, model.entry.revision))
-            .or_else(|| manifest.models.first().map(|model| model.id.clone()))
-            .unwrap_or_else(|| "bundled-transcript-model".into()),
+        transcription_producer: transcription_producer.clone(),
+        transcript_model_identity: match &transcription_producer {
+            TranscriptionProducer::Whisper { model_identity } => model_identity.clone(),
+            TranscriptionProducer::AppleNative { .. } => "apple-native".into(),
+        },
         tap_build_sha256: manifest.tap.sha256.clone(),
         tap_path: storage_context.resource_root.join(&manifest.tap.path),
         encoder_sha256: manifest.encoder.sha256.clone(),
@@ -8381,6 +8788,14 @@ fn initialize_application(app: AppHandle, retry: bool) {
         .arg(storage_context.storage.path())
         .arg("--runtime-manifest")
         .arg(&storage_context.manifest_path);
+    match &runtime.transcription_producer {
+        TranscriptionProducer::AppleNative { locale, .. } => {
+            transcription_command
+                .args(["--transcription-engine", "apple-native", "--speech-locale"])
+                .arg(locale);
+        }
+        TranscriptionProducer::Whisper { .. } => {}
+    }
     if let Some(installed) = installed_transcript_model.as_ref() {
         transcription_command
             .arg("--transcript-model-receipt")
@@ -8452,6 +8867,7 @@ fn initialize_application(app: AppHandle, retry: bool) {
         model.startup_message = "Yawn is ready.".into();
     }
     drop(model);
+    sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
     start_transcription_queue_executor(&app, &storage_context.storage, &runtime);
 }
 
@@ -9450,6 +9866,7 @@ fn run_capture_task(
                     microphone_audio_sha256: meeting.artifacts.microphone_audio.as_ref().unwrap().sha256.clone(),
                     system_audio_sha256: meeting.artifacts.system_audio.as_ref().unwrap().sha256.clone(),
                     model_identity: runtime.transcript_model_identity.clone(),
+                    producer: Some(runtime.transcription_producer.clone()),
                     worker_runtime_identity: runtime.worker_executable_sha256.clone(),
                     enqueued_at_epoch_seconds: now_epoch_seconds(),
                 },
@@ -9733,6 +10150,26 @@ fn start_transcription_queue_executor(
                 std::thread::sleep(Duration::from_millis(250));
                 continue;
             };
+            let producer_matches = match item.request.producer.as_ref() {
+                Some(producer) => producer == &runtime.transcription_producer,
+                // Old immutable requests predate the structured producer.  Their
+                // only safe interpretation is the exact Whisper identity they
+                // already recorded; Apple is never inferred for them.
+                None => matches!(
+                    &runtime.transcription_producer,
+                    TranscriptionProducer::Whisper { model_identity }
+                        if model_identity == &item.request.model_identity
+                ),
+            };
+            if !producer_matches {
+                let _ = queue.fail(
+                    item.request.request_id,
+                    local_meeting_notes_session_core::transcription_queue::TranscriptionTerminalKind::Failed,
+                    now_epoch_seconds(),
+                );
+                write_diagnostic(&state, "transcription_queue_producer_mismatch", "queued transcription producer no longer matches the verified engine");
+                continue;
+            }
             let request_id = item.request.request_id;
             let claim = match queue.claim(request_id, runtime.worker_executable_sha256.clone(), now_epoch_seconds()) {
                 Ok(item) => item.claim,
@@ -9852,6 +10289,7 @@ fn recover_transcription_queue(
             microphone_audio_sha256: meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "captured meeting has no microphone artifact".to_string())?.sha256.clone(),
             system_audio_sha256: meeting.artifacts.system_audio.as_ref().ok_or_else(|| "captured meeting has no system artifact".to_string())?.sha256.clone(),
             model_identity: runtime.transcript_model_identity.clone(),
+            producer: Some(runtime.transcription_producer.clone()),
             worker_runtime_identity: runtime.worker_executable_sha256.clone(),
             enqueued_at_epoch_seconds: now_epoch_seconds(),
         };
@@ -11410,6 +11848,7 @@ mod tests {
             worker_build_sha256: "worker-build".into(),
             worker_executable_sha256: "worker-executable".into(),
             transcript_model_identity: "model/v1".into(),
+            transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
             packaged_models: Vec::new(),
@@ -11736,6 +12175,7 @@ mod tests {
             worker_build_sha256: "worker-build".into(),
             worker_executable_sha256: "worker-executable".into(),
             transcript_model_identity: "model/v1".into(),
+            transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
             packaged_models: Vec::new(),
@@ -11759,6 +12199,16 @@ mod tests {
             transition_startup(&mut model, StartupState::Checking).unwrap();
             transition_startup(&mut model, StartupState::Ready).unwrap();
         }
+        state.model_install_active.store(true, Ordering::SeqCst);
+        assert!(claim_sitting_start(
+            &state,
+            "11111111-1111-4111-8111-111111111111",
+            "operator-sitting",
+            None,
+            sender.clone(),
+        ).is_err());
+        assert!(!sitting_task_active(&state));
+        state.model_install_active.store(false, Ordering::SeqCst);
         claim_sitting_start(
             &state,
             "11111111-1111-4111-8111-111111111111",
@@ -11893,6 +12343,7 @@ mod tests {
             worker_build_sha256: "worker-build".into(),
             worker_executable_sha256: "worker-executable".into(),
             transcript_model_identity: "model/v1".into(),
+            transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
             packaged_models: Vec::new(),
@@ -14167,6 +14618,7 @@ mod tests {
             microphone_audio_sha256: "b".repeat(64),
             system_audio_sha256: "c".repeat(64),
             model_identity: "model/v1".into(),
+            producer: None,
             worker_runtime_identity: "runtime/v1".into(),
             enqueued_at_epoch_seconds: 1,
         };

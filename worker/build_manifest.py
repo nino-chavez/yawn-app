@@ -385,7 +385,16 @@ def main() -> int:
         action="store_true",
         help="bind the signed hosted-model catalog instead of bundled Whisper weights",
     )
+    parser.add_argument(
+        "--apple-speech",
+        action="store_true",
+        help="bind the Apple speech helper alongside the external-model catalog",
+    )
     arguments = parser.parse_args()
+    if arguments.apple_speech and not (
+        arguments.external_transcript_models and arguments.admission == "internal-alpha"
+    ):
+        raise SystemExit("Apple speech requires internal-alpha external transcript models")
     root = arguments.root.resolve(strict=True)
     if arguments.encoder.is_absolute() or not (root / arguments.encoder).resolve().is_relative_to(
         root
@@ -401,7 +410,7 @@ def main() -> int:
             canonical_note_manifest(note_generate_manifest(root, note_model_pins())),
         )
     # Tauri's resource map is intentionally identical in every lane. The
-    # catalog is signed into all bundles; only app-runtime/2 authorizes models
+    # catalog is signed into all bundles; app-runtime/2 and /3 authorize models
     # installed outside the bundle.
     catalog_path = write_model_catalog(root)
     resources = {
@@ -418,6 +427,8 @@ def main() -> int:
         # digest-verified from this manifest before it is spawned.
         "permission_probe": Path("bin/permission-probe"),
     }
+    if arguments.apple_speech:
+        resources["apple_speech"] = Path("bin/apple-speech")
     models = []
     if arguments.admission == "internal-alpha":
         if not arguments.external_transcript_models:
@@ -461,7 +472,8 @@ def main() -> int:
             raise SystemExit("external transcript models require internal-alpha admission")
         catalog_resource = {"path": catalog_path.name, "sha256": sha256(catalog_path)}
     manifest = {
-        "schema": "app-runtime/2" if catalog_resource else "app-runtime/1",
+        "schema": ("app-runtime/3" if arguments.apple_speech else
+                   "app-runtime/2" if catalog_resource else "app-runtime/1"),
         "admission": arguments.admission,
         **{
             name: {"path": str(relative), "sha256": sha256(root / relative)}

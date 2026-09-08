@@ -1,0 +1,315 @@
+{
+  "schema": "speech-grouping-pilot-public-receipt/1",
+  "date": "2026-09-07",
+  "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
+  "state": "uncommitted local research integration",
+  "matched_summary": {
+    "adopted_change": false,
+    "conditions": [
+      {
+        "attempt_sha256": "310cb0d7bf79203175bbafd1bca8fb0c905644759116249c9b9f00af24976f7f",
+        "audio_snapshot_revalidated": false,
+        "elapsed_seconds": 99.78463991708122,
+        "engine": "apple",
+        "generated_sha256": "70280b6c0dd1ad16ae309171eb940b3a855d590311ad35bdbd0f9cc6a421561d",
+        "generation_seconds": 90.29493991693016,
+        "grouping": "current",
+        "label": "Variant A",
+        "note_model_revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4",
+        "note_request_count": 22,
+        "note_requests_by_kind": {
+          "note-classification-request/1": 21,
+          "note-synthesis-request/1": 1
+        },
+        "outer_source_snapshot_rehashed_files": 0,
+        "outer_source_snapshot_sha256": "da7c08c88f43ba5c32cd2b0fdd90802809707db09809bd306682242f8203fe8b",
+        "outer_source_snapshot_unavailable_files": 15,
+        "outer_source_unchanged": true,
+        "peak_rss_scope": "process-wide replay-process maximum RSS as reported by producer",
+        "preflight_sha256": "4910f677f36c066160de8a528e0fc3cb8b0f48fe1657713076cca3e8177abada",
+        "process_peak_rss_bytes": 2967404544.0,
+        "receipt_sha256": "fd3101d912b3afb6367b472949fb43c5e010380b598782e5c20df99341b49291",
+        "setup_seconds": 4.90660458302591,
+        "source_audio_hashes": [
+          "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "d5d2b7ebe569cc660657141737e484c308a5c57c214b6983776fd69dd9f563e8"
+        ],
+        "source_code_hashes": {
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca",
+          "spike/speech-engine-comparison/compare_segmentation.py": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+          "spike/speech-engine-comparison/replay_notes.py": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/speech_results.py": "d8d9a989a8a80e564c7a89b0857daabc6de08637197e9329a0dcd84c634da918",
+          "worker/transcription.py": "0cc5b0e8587fe9b29019b100e785fdcf5220f4093a04151225c5ce9942629535"
+        },
+        "speech_source_hashes": [
+          "29ead0e9b6ad770add1e76d52203dd8212aa167727a58d1f1656061a6b56711f",
+          "1de5f1bf6796ad1a63eceb4a638d790eb967b32c869311b5509e6f401559fd66"
+        ],
+        "status": "available",
+        "transcript_sha256": "d36da59c39b1dc4c32d52e60058040c8a804854ab43b253e4b03916453260a68",
+        "validated_claim_count": 6
+      },
+      {
+        "attempt_sha256": "3d20a7ed905ae43b704fccbfb1beab20ac8cfab1af0d9e340e50d9dad6b1dbf6",
+        "audio_snapshot_revalidated": false,
+        "elapsed_seconds": 58.96824483398814,
+        "engine": "parakeet",
+        "generated_sha256": "0abe564f7322536eb8b10a55b06e8846d2a19679b9013ee54ac6ee47eda8374d",
+        "generation_seconds": 50.381213166052476,
+        "grouping": "bounded",
+        "label": "Variant B",
+        "note_model_revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4",
+        "note_request_count": 9,
+        "note_requests_by_kind": {
+          "note-classification-request/1": 8,
+          "note-synthesis-request/1": 1
+        },
+        "outer_source_snapshot_rehashed_files": 0,
+        "outer_source_snapshot_sha256": "da7c08c88f43ba5c32cd2b0fdd90802809707db09809bd306682242f8203fe8b",
+        "outer_source_snapshot_unavailable_files": 15,
+        "outer_source_unchanged": true,
+        "peak_rss_scope": "process-wide replay-process maximum RSS as reported by producer",
+        "preflight_sha256": "4910f677f36c066160de8a528e0fc3cb8b0f48fe1657713076cca3e8177abada",
+        "process_peak_rss_bytes": 2825650176.0,
+        "receipt_sha256": "49a5fefdf63057d6693405eb31fa45672e3ea675b0a3fbfac27cec05634f58b8",
+        "setup_seconds": 4.346952292020433,
+        "source_audio_hashes": [
+          "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "d5d2b7ebe569cc660657141737e484c308a5c57c214b6983776fd69dd9f563e8"
+        ],
+        "source_code_hashes": {
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca",
+          "spike/speech-engine-comparison/compare_segmentation.py": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+          "spike/speech-engine-comparison/replay_notes.py": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/speech_results.py": "d8d9a989a8a80e564c7a89b0857daabc6de08637197e9329a0dcd84c634da918",
+          "worker/transcription.py": "0cc5b0e8587fe9b29019b100e785fdcf5220f4093a04151225c5ce9942629535"
+        },
+        "speech_source_hashes": [
+          "90cd2b6022c83fda77ab1981e0942acc8853b38ea7ee5d01eed35990a57779bd",
+          "95b839f7bae6025600b0c832f91267e3347914374d9404d923232778c8788cca"
+        ],
+        "status": "available",
+        "transcript_sha256": "71a9772cc895f6e99ce51ddae19f60c7a27a9099228e0550b6c8d3257852a191",
+        "validated_claim_count": 6
+      },
+      {
+        "attempt_sha256": "f8fd4e1a597074f1e41aff740b33c5fe7a6a1216e9cc85432ed008131487023a",
+        "audio_snapshot_revalidated": false,
+        "elapsed_seconds": 111.81889104098082,
+        "engine": "parakeet",
+        "generated_sha256": "bfe26b9d11c56a8bf44a341db9f94e6f15a3ed187b41d7d6e1b0192d18905f94",
+        "generation_seconds": 103.2649243340129,
+        "grouping": "current",
+        "label": "Variant C",
+        "note_model_revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4",
+        "note_request_count": 23,
+        "note_requests_by_kind": {
+          "note-classification-request/1": 22,
+          "note-synthesis-request/1": 1
+        },
+        "outer_source_snapshot_rehashed_files": 0,
+        "outer_source_snapshot_sha256": "da7c08c88f43ba5c32cd2b0fdd90802809707db09809bd306682242f8203fe8b",
+        "outer_source_snapshot_unavailable_files": 15,
+        "outer_source_unchanged": true,
+        "peak_rss_scope": "process-wide replay-process maximum RSS as reported by producer",
+        "preflight_sha256": "4910f677f36c066160de8a528e0fc3cb8b0f48fe1657713076cca3e8177abada",
+        "process_peak_rss_bytes": 3324067840.0,
+        "receipt_sha256": "1c566e18f77e6c43addb3125767c4d71aa353fe1dddd694483c5cdacb2f8eed4",
+        "setup_seconds": 4.2362941660685465,
+        "source_audio_hashes": [
+          "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "d5d2b7ebe569cc660657141737e484c308a5c57c214b6983776fd69dd9f563e8"
+        ],
+        "source_code_hashes": {
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca",
+          "spike/speech-engine-comparison/compare_segmentation.py": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+          "spike/speech-engine-comparison/replay_notes.py": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/speech_results.py": "d8d9a989a8a80e564c7a89b0857daabc6de08637197e9329a0dcd84c634da918",
+          "worker/transcription.py": "0cc5b0e8587fe9b29019b100e785fdcf5220f4093a04151225c5ce9942629535"
+        },
+        "speech_source_hashes": [
+          "90cd2b6022c83fda77ab1981e0942acc8853b38ea7ee5d01eed35990a57779bd",
+          "95b839f7bae6025600b0c832f91267e3347914374d9404d923232778c8788cca"
+        ],
+        "status": "available",
+        "transcript_sha256": "c5dd38db3e67c5c9872ec02e5503b9853e855e0a416ecbf40ca4fd362c567d73",
+        "validated_claim_count": 5
+      },
+      {
+        "attempt_sha256": "d8276d8ea356e9d9b34af4e5a9afbc5f1c6d82b31ec69d8a83c1ce3fa07a1ed1",
+        "audio_snapshot_revalidated": false,
+        "elapsed_seconds": 54.21210408303887,
+        "engine": "apple",
+        "generated_sha256": "92cb13534a5c78fe0a26cc6aa334e9731c694fed53ca341cb0bf12ce58755de3",
+        "generation_seconds": 45.74163329100702,
+        "grouping": "bounded",
+        "label": "Variant D",
+        "note_model_revision": "66fc51ef25778c03d33c4c8bc446973d062e73f4",
+        "note_request_count": 9,
+        "note_requests_by_kind": {
+          "note-classification-request/1": 8,
+          "note-synthesis-request/1": 1
+        },
+        "outer_source_snapshot_rehashed_files": 0,
+        "outer_source_snapshot_sha256": "da7c08c88f43ba5c32cd2b0fdd90802809707db09809bd306682242f8203fe8b",
+        "outer_source_snapshot_unavailable_files": 15,
+        "outer_source_unchanged": true,
+        "peak_rss_scope": "process-wide replay-process maximum RSS as reported by producer",
+        "preflight_sha256": "4910f677f36c066160de8a528e0fc3cb8b0f48fe1657713076cca3e8177abada",
+        "process_peak_rss_bytes": 2576662528.0,
+        "receipt_sha256": "316dad3737fbdee51bb305bce0efbff5aedc00d59f819d376ee8db29ffd071fd",
+        "setup_seconds": 4.2483823749935254,
+        "source_audio_hashes": [
+          "b5b8ce95bcc7e63d5c948f7007386ca527f7a0550d4e8e1fb8dede497c912c72",
+          "994d03e5714aacbec1fb0393d6d39e38d3c7dcfb79f217ae622aa127da8e5e67",
+          "d5d2b7ebe569cc660657141737e484c308a5c57c214b6983776fd69dd9f563e8"
+        ],
+        "source_code_hashes": {
+          "notes/candidate_first.py": "cb13e17f1f20ed0786d8c516278c860d4a747acd894be8897f9a9e0ce0c968a6",
+          "notes/transcript.py": "cd6817879225bf7772fe9af525a9d71d6e7a63e60f34544025b8261ec9040b5d",
+          "spike/dual_capture.py": "ce860e503b6fce645f49545eed412ee15e63246da77cd0e9c5585df03830e0ca",
+          "spike/speech-engine-comparison/compare_segmentation.py": "0f3a8b5dc2afb46144aa653bdc72a965bb7d0130de89ef3a98e9c19bd578ab13",
+          "spike/speech-engine-comparison/replay_notes.py": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+          "worker/note_generator_mlx.py": "0b0fe61b57d23c1834334e6600e4026cd4d384795f5d59cdfd359ff58eab3407",
+          "worker/note_validator.py": "83658cfa695c2401507f25bf89115edd41e0d6dd7f70ff28b47538dd46fcb58f",
+          "worker/speech_results.py": "d8d9a989a8a80e564c7a89b0857daabc6de08637197e9329a0dcd84c634da918",
+          "worker/transcription.py": "0cc5b0e8587fe9b29019b100e785fdcf5220f4093a04151225c5ce9942629535"
+        },
+        "speech_source_hashes": [
+          "29ead0e9b6ad770add1e76d52203dd8212aa167727a58d1f1656061a6b56711f",
+          "1de5f1bf6796ad1a63eceb4a638d790eb967b32c869311b5509e6f401559fd66"
+        ],
+        "status": "available",
+        "transcript_sha256": "3cdba4ac101b5afb015a0c877316cf225fdd06431bba24aae5de31680c2c67b7",
+        "validated_claim_count": 4
+      }
+    ],
+    "engine_comparisons": [
+      {
+        "bounded_minus_current": {
+          "elapsed_seconds": -45.572535834042355,
+          "generation_seconds": -44.55330662592314,
+          "note_request_count": -13,
+          "process_peak_rss_bytes": -390742016.0,
+          "setup_seconds": -0.6582222080323845,
+          "validated_claim_count": -2
+        },
+        "engine": "apple",
+        "status": "available"
+      },
+      {
+        "bounded_minus_current": {
+          "elapsed_seconds": -52.85064620699268,
+          "generation_seconds": -52.88371116796043,
+          "note_request_count": -14,
+          "process_peak_rss_bytes": -498417664.0,
+          "setup_seconds": 0.11065812595188618,
+          "validated_claim_count": 1
+        },
+        "engine": "parakeet",
+        "status": "available"
+      }
+    ],
+    "frozen_run_plan_sha256": "825d31be533bea55204ea3d9863dc41ed1ff7dde3bf6cf1027ff994569c2c702",
+    "frozen_variants_manifest_sha256": "990f626c247010af4d216446103213f72aedb5c2ee18e3e0968232eb40066dc6",
+    "human_review": "pending",
+    "limitations": [
+      "raw per-condition receipt diagnostic; no model or source data was changed by this helper",
+      "one sample per condition cannot establish a causal speed improvement",
+      "validated claim count is a diagnostic only and is not a quality score",
+      "unavailable timeout, refusal, and failed attempts are preserved and excluded from signed deltas",
+      "no missing-commitment, negation, or meaning conclusion is inferred from counts or string overlap",
+      "outer source snapshots bind before/after hashes; only snapshot entries with resolvable local paths are rehashed here, while capture rehash remains a separate parent check"
+    ],
+    "local_checker_sha256": "6fc4a6609edc6a511d6fe4fb18b2435eee817841dbfe2ffaca8a6e7446cb492f",
+    "producer_replay_notes_sha256": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+    "schema": "speech-grouping-pilot-summary/1"
+  },
+  "matched_summary_sha256": "1dd8aa52bfa6a20de060d95255e8f3ec35f7664f43702ea9c904d88530943d69",
+  "superseded_summary_sha256": "51e36dc5473c90fa1dce9fd2c347c787c4814140dde470ccafda92f4319c1b78",
+  "parent_source_verification": [
+    {
+      "engine": "apple",
+      "grouping": "current",
+      "matched_source_files_rehashed": 15,
+      "capture_audio_and_session_rehashed": true,
+      "corpora_catalog_and_nine_code_files_rehashed": true,
+      "source_unchanged": true
+    },
+    {
+      "engine": "parakeet",
+      "grouping": "bounded",
+      "matched_source_files_rehashed": 15,
+      "capture_audio_and_session_rehashed": true,
+      "corpora_catalog_and_nine_code_files_rehashed": true,
+      "source_unchanged": true
+    },
+    {
+      "engine": "parakeet",
+      "grouping": "current",
+      "matched_source_files_rehashed": 15,
+      "capture_audio_and_session_rehashed": true,
+      "corpora_catalog_and_nine_code_files_rehashed": true,
+      "source_unchanged": true
+    },
+    {
+      "engine": "apple",
+      "grouping": "bounded",
+      "matched_source_files_rehashed": 15,
+      "capture_audio_and_session_rehashed": true,
+      "corpora_catalog_and_nine_code_files_rehashed": true,
+      "source_unchanged": true
+    }
+  ],
+  "integrated_source_sha256": {
+    "spike/speech-engine-comparison/replay_notes.py": "00a9e2c8d82d8f65d86beead3f1e0cf88b84e68f94a3c463d2932af26ec22fed",
+    "spike/speech-engine-comparison/test_replay_notes.py": "dbe7c47dda61aec84da64544a2c7b9fcfdc786e163411c0554b84337668ffcd3",
+    "spike/speech-engine-comparison/prepare_note_review.py": "0cc4a0f6ca2b096bf0a4299bc21a3938d791e762e8eb8223ca0c30876ec98aec",
+    "spike/speech-engine-comparison/test_note_review.py": "23a8017f7ac1d6560fb4872bbff1f72b797a28ee4083d469e3a006c0efdbb70f",
+    "spike/speech-engine-comparison/summarize_grouping_pilot.py": "6fc4a6609edc6a511d6fe4fb18b2435eee817841dbfe2ffaca8a6e7446cb492f",
+    "spike/speech-engine-comparison/test_grouping_pilot.py": "7aeacb3627a70a9738aa0871bbe92a03e5a1d7acf6bcdd17dafcbc6b32ad9e10"
+  },
+  "review_packet": {
+    "status": "pending",
+    "answered": false,
+    "available_conditions": 4,
+    "claim_sections": 21,
+    "neutral_labels": true,
+    "files_private_and_outside_git": true,
+    "file_sha256": {
+      "provenance.json": "52d26e518e66d342070c042c2ebeaa195a8becbca33b0749d455b4025640632e",
+      "engine-key.json": "87cc1140ee863afef614b94d0c01885c5c627496e854073a02ff73a1dcf67d16",
+      "REVIEW.md": "f2b131b989c9bc50629e7212654d4ae9329e843522dc79cea01de84e1178f2f8",
+      "review.json": "082dff1d5bb646287eeed15667f955c870f97553279bc4f047024e2207718dd6"
+    }
+  },
+  "verification": {
+    "focused_tests_passed": 30,
+    "command": "PYTHONPATH=spike/speech-engine-comparison /Applications/Yawn.app/Contents/Resources/python-runtime/bin/python3.12 -m unittest test_replay_notes test_note_review test_grouping_pilot -q",
+    "git_diff_check": "passed",
+    "runtime_note": "Replay CLI tests require numpy; used the installed Python runtime. The scoring-only venv lacks numpy."
+  },
+  "adoption": {
+    "engine_changed": false,
+    "grouping_changed": false,
+    "minimum_macos_changed": false,
+    "human_approval": false,
+    "packaged_app_acceptance": false,
+    "commit_or_push": false
+  }
+}

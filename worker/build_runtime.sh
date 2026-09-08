@@ -88,7 +88,10 @@ verify() {
     [[ -x "$STAGE/bin/meeting-capture" ]]
     local schema
     schema="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["schema"])' "$STAGE/app-runtime.json")"
-    if [[ "$schema" == "app-runtime/2" ]]; then
+    if [[ "$schema" == "app-runtime/3" ]]; then
+      [[ -x "$STAGE/bin/apple-speech" ]]
+    fi
+    if [[ "$schema" == "app-runtime/2" || "$schema" == "app-runtime/3" ]]; then
       [[ -f "$STAGE/model-catalog.json" ]]
       [[ ! -e "$STAGE/models/whisper-large-v3-turbo" ]]
       PYTHONPATH="$REPO" python3 -c \
@@ -216,7 +219,8 @@ fi
 cp "$REPO/worker/__init__.py" "$REPO/worker/main.py" \
   "$REPO/worker/adapters.py" "$REPO/worker/product_contracts.py" \
   "$REPO/worker/storage.py" "$REPO/worker/fbank.py" \
-  "$REPO/worker/transcription.py" "$REPO/worker/embedding.py" "$STAGE/worker/"
+  "$REPO/worker/transcription.py" "$REPO/worker/embedding.py" \
+  "$REPO/worker/speech_results.py" "$REPO/worker/apple_speech.py" "$STAGE/worker/"
 cp "$REPO/worker/note_bridge.py" "$STAGE/note-bridge.py"
 cp "$REPO/worker/note_generator_mlx.py" "$STAGE/note-generator-mlx.py"
 cp "$REPO/spike/verify_capture.py" "$REPO/spike/capture_health.py" \
@@ -246,6 +250,13 @@ swift build -c release --product permission-probe \
 cp "$REPO/capture/permission-probe/.build/arm64-apple-macosx/release/permission-probe" \
   "$STAGE/bin/permission-probe"
 chmod 0755 "$STAGE/bin/permission-probe"
+if [[ "$mode" == "build-alpha-external" ]]; then
+  swift build -c release --product apple-speech \
+    --package-path "$REPO/capture/apple-speech"
+  cp "$REPO/capture/apple-speech/.build/arm64-apple-macosx/release/apple-speech" \
+    "$STAGE/bin/apple-speech"
+  chmod 0755 "$STAGE/bin/apple-speech"
+fi
 if [[ "$mode" == build-alpha* ]]; then
   if [[ "$mode" != "build-alpha-external" ]]; then
     [[ -f "$WHISPER_SOURCE/config.json" && -f "$WHISPER_SOURCE/weights.safetensors" ]] || {
@@ -295,7 +306,7 @@ if [[ "$mode" == "build-alpha-encoder" ]]; then
     --encoder "$ENCODER_STAGE_RELATIVE"
 elif [[ "$mode" == "build-alpha-external" ]]; then
   python3 "$REPO/worker/build_manifest.py" "$STAGE" --admission internal-alpha \
-    --external-transcript-models
+    --external-transcript-models --apple-speech
 elif [[ "$mode" == "build-alpha" ]]; then
   python3 "$REPO/worker/build_manifest.py" "$STAGE" --admission internal-alpha
 else

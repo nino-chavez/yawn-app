@@ -132,7 +132,7 @@ class WorkerProcess:
             prefix = [str(executable), "-E", "-s", "-B", "-m", "worker.main"]
             cwd = packaged_root
             packaged_manifest = json.loads(manifest.read_text())
-            if packaged_manifest["schema"] == "app-runtime/2":
+            if packaged_manifest["schema"] in {"app-runtime/2", "app-runtime/3"}:
                 source_value = os.environ.get("LMN_TRANSCRIPT_MODEL_DIR")
                 if not source_value:
                     raise AssertionError(

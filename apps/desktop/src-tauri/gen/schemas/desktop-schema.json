@@ -243,6 +243,18 @@
           "markdownDescription": "Enables the get_desktop_layout command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_transcription_engine_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-transcription-engine-settings",
+          "markdownDescription": "Enables the get_transcription_engine_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the install_apple_speech_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-apple-speech-assets",
+          "markdownDescription": "Enables the install_apple_speech_assets command without any pre-configured scope."
+        },
+        {
           "description": "Enables the install_note_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-install-note-model",
@@ -585,6 +597,12 @@
           "markdownDescription": "Enables the save_operator_note command without any pre-configured scope."
         },
         {
+          "description": "Enables the select_transcription_engine command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-select-transcription-engine",
+          "markdownDescription": "Enables the select_transcription_engine command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_desktop_layout command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-desktop-layout",
@@ -697,6 +715,18 @@
           "type": "string",
           "const": "deny-get-desktop-layout",
           "markdownDescription": "Denies the get_desktop_layout command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_transcription_engine_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-transcription-engine-settings",
+          "markdownDescription": "Denies the get_transcription_engine_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install_apple_speech_assets command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-apple-speech-assets",
+          "markdownDescription": "Denies the install_apple_speech_assets command without any pre-configured scope."
         },
         {
           "description": "Denies the install_note_model command without any pre-configured scope.",
@@ -1039,6 +1069,12 @@
           "type": "string",
           "const": "deny-save-operator-note",
           "markdownDescription": "Denies the save_operator_note command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the select_transcription_engine command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-select-transcription-engine",
+          "markdownDescription": "Denies the select_transcription_engine command without any pre-configured scope."
         },
         {
           "description": "Denies the set_desktop_layout command without any pre-configured scope.",

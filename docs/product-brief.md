@@ -86,9 +86,15 @@ it is not the home-screen subject. Settings remain a small auxiliary window.
   full transcript available without placing it in the main reading path.
 - Keep the status language concrete: recording, preparing, finishing,
   transcript ready, or needs attention.
-- Keep Settings limited to audio access and local speech-model storage. Show
-  which model is in use. Allow switching only between meetings, and never
-  remove the active model.
+- Start with Apple speech when it is ready on a fresh setup. Otherwise offer
+  the smallest cataloged speech download. Keep other models in Settings and
+  preserve an existing selection. Prepare Apple language files only through
+  an explicit action; the operating system manages those files.
+- Keep Settings focused on audio access, speech selection, and optional note
+  models. Show which engine is in use. Allow switching only when capture and
+  queued transcription are idle, and never remove the active downloaded model.
+- Keep recording and transcript access usable without a note model. Offer note
+  generation separately; do not imply that a larger model is more accurate.
 - Use a short, quiet Mac-native surface: generous reading width, one main
   content column, light chrome, and color only for recording or attention.
 - Never use fake counts, placeholder meetings, promised automation, or a

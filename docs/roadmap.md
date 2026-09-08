@@ -1567,50 +1567,92 @@ uncapped interpretation path while the source is still being recorded.
 
 ## Open decision — transcription engine floor, macOS 26 — 2026-09-07
 
-Status: open. Not sequenced. Nothing below is scheduled work.
+Status: the operator authorized progressive setup on 2026-09-07: use Apple
+speech when ready, otherwise offer the smallest cataloged speech download,
+with other models available later in Settings. The [source implementation and checks](transcription-engine-comparison.md#progressive-setup-implementation--2026-09-07)
+are on `feature/progressive-setup`; it is not installed or released. The macOS
+14.4 floor remains. Quality acceptance and a future floor increase remain
+open; this direction does not move work ahead of Orders 0–4.
 
-macOS 26 ships an on-device speech engine, `SpeechAnalyzer` with the
-`SpeechTranscriber` module, that needs no model download. Apple's
-documentation lists it as introduced in 26.0 on every platform. Yawn ships a
-minimum of macOS 14.4 and transcribes with mlx-whisper large-v3-turbo through
-the sandboxed Python worker, which is most of the roughly 2 GB first-run
-download and the reason the model store, install receipts, and re-verification
-exist. The [note-runtime decision](note-runtime-decision.md) already declined
-Apple Foundation Models for note generation partly on the same 26 floor, so
-this is the transcription half of a question the product has met once.
+The operator previously authorized the [local integration pilot](transcription-engine-comparison.md#integration-pilot-dispatched--2026-09-07),
+which tests the native boundary and prepares a private note review. It does not
+change the shipping engine, macOS floor, or Orders 0–4. The
+[executed engine comparison](transcription-engine-comparison.md) recommends
+retaining the current shipping baseline while keeping both native candidates
+under consideration.
 
-The question: keep the 14.4 floor and the bundled whisper runtime, or raise the
-floor to 26 and let the system engine carry transcription. Either answer is a
-product decision, not a technical one, and it stays open until the operator
-takes it.
+Apple's `SpeechAnalyzer` with `SpeechTranscriber` offers on-device transcription
+on supported macOS 26 hardware. It supplies audio timing and manages its own
+locale assets, which can download when missing. It does not mean there is no
+model download. See [Apple's implementation
+walkthrough](https://developer.apple.com/videos/play/wwdc2025/277/).
 
-What has to be true before it can be decided:
+Yawn currently requires macOS 14.4 and uses MLX Whisper through its Python
+worker. The installed Q4 speech model measured in this comparison is about
+464 MB, not a roughly 2 GB speech download. The separate installed note model
+is about 8.06 GB. Replacing transcription would not remove that model, its
+MLX-LM runtime, or the need to manage note-model assets. The
+[note-runtime decision](note-runtime-decision.md) continues to govern note
+generation.
 
-- Accuracy on Yawn's own material is measured, not assumed. The only public
-  evidence seen so far is a thirty-second single-speaker dictation demo. Yawn's
-  transcripts are two-leg meeting audio up to an hour long, and the ship gate
-  requires re-measurement on the locked ledger for any engine change.
-- The engine returns word or phrase timing the evidence chain can use. Every
-  generated claim resolves to a span in the retained transcript; an engine that
-  cannot locate text in time cannot feed that chain. Unverified as of this entry.
-- The local vocabulary contract survives. Exact replacements must still project
-  onto notes without rewriting the retained transcript, whatever the engine.
-- The population running macOS 14.4 through 15 is known, or the decision says
-  plainly that it is being made without that number.
+The question is which speech engine best preserves Yawn's meeting record while
+reducing waiting or setup. Changing the engine and raising the minimum OS are
+related but distinct decisions. Apple can be evaluated behind an availability
+check; shipping it alongside a fallback would add a second supported path.
+The operator has chosen to implement both paths through progressive setup.
+The remaining product judgment concerns the quality required to ship the new
+path, not permission to implement capability detection and optional downloads.
 
-What the decision does not include: NVIDIA Parakeet. It is faster in the same
-demo and its model card lists punctuation, 25 languages, and a CC-BY-4.0
-license, but it runs on NeMo or Transformers with no MLX port on the card. That
-is the new runtime class the note-runtime decision refuses, so it is not a
-drop-in and is not a candidate here.
+The comparison executed on 2026-09-07 found:
 
-Source of the question: a 2026-08-20 video, "I Cancelled Wispr Flow & Built
-This Instead" (Pat Simmons), which builds a push-to-talk dictation clone on
-`SpeechTranscriber`. It is a dictation demo, not a meeting product, and its
-timings are not evidence for this decision; it is recorded only as the reason
-the question was raised. Checked on 2026-09-07 against
-[Apple's `SpeechAnalyzer` reference](https://developer.apple.com/documentation/speech/speechanalyzer)
-and the [Parakeet v3 model card](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
+- On a full 38:54 public meeting, first decoding took 46.37 s with Whisper,
+  31.56 s with Apple, and 11.74 s with Parakeet. Assets were already available;
+  those timings exclude preparation and note generation.
+- On a three-minute remote-call replay, note generation took 99.02 s, 95.30 s,
+  and 147.43 s respectively. All outputs passed the existing source validator,
+  but they contained different claims. Human usefulness was not scored.
+- Both native engines returned timed text. Missing API timing is no longer a
+  blocker; actual seeking accuracy and the complete app integration remain
+  unaccepted.
+- Accuracy diagnostics were mixed. The available private event reference
+  remains a draft proxy. The pilot recovered matching old lock bytes from a
+  superseded cycle, but they do not bind the current registration. No locked
+  ship-gate pass or new transcript approval is claimed.
+- The local pilot now replays Apple and Parakeet results through the existing
+  transcript filters without a Whisper model. The private note review is
+  prepared and unanswered; app integration and migration remain unaccepted.
+- In the matched short-call grouping experiment, total note replay took
+  99.78 → 54.21 s for Apple and 111.82 → 58.97 s for Parakeet. Each condition
+  ran once using saved speech results. The four-note review remains unanswered;
+  these timings do not establish note quality or select a new grouping.
+
+What has to be true before choosing a replacement:
+
+- Measure decisions, commitments, names, numbers, negation, and source links on
+  Yawn's own material under an approved comparison. An engine change produces
+  new transcript and candidate identities; old approvals cannot silently carry
+  over. The existing ship gate remains authoritative.
+- Validate the complete transcript-to-note path, including utterance grouping,
+  vocabulary projection, playback timing, cancellation, and recovery. Existing
+  vocabulary tests preserve original offsets, but the combined alternate-engine
+  app workflow has not been accepted.
+- Measure user-visible waiting and first-use asset behavior. A decoding win
+  alone is insufficient when note generation dominates the wait.
+- Know the population on macOS 14.4 through 15, or explicitly record that the
+  floor decision is being made without that number.
+
+Parakeet remains a candidate. [FluidAudio](https://github.com/FluidInference/FluidAudio)
+provides a Swift/Core ML route, and the experiment ran its v3 model locally
+through version 0.15.6. It does not require adopting NeMo or Transformers at
+runtime. This adds a dependency and model lifecycle to assess, and its older-OS
+support remains untested here. Absence of an MLX port on NVIDIA's model card is
+not a valid reason to exclude the native route.
+
+Source of the question: Pat Simmons's video, "I Cancelled Wispr Flow & Built
+This Instead," supplied on 2026-09-07. Its push-to-talk dictation demonstration
+prompted this research; it is not meeting-product benchmark evidence. External
+references above were fetched on 2026-09-07. The comparison report contains
+local measurements, model identities, method corrections, and remaining limits.
 
 ## Ideas this roadmap does not adopt
 
