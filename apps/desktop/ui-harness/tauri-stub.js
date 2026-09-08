@@ -36,6 +36,7 @@
   };
   const sheetMode = mode === "retry-sheet" || mode === "retry-sheet-no-note"
     || mode === "retry-sheet-diff-skipped" || mode === "delete-sheet";
+  const searchMode = mode === "search-results" || mode === "search-capture";
   // The retry sheet forks on whether a generated note exists, and picking one
   // side of a fork as "the" fixture is how a branch stays unreachable after
   // the surface is supposedly covered (R23/R24b: making a hidden state visible
@@ -63,6 +64,14 @@
     { start: 1, end: 3, speaker: "Me", text: "alpha decision about the launch date", sourceTurnIndex: 0 },
     { start: 4, end: 6, speaker: "Them", text: "bravo follow-up owed by Thursday", sourceTurnIndex: 1 },
   ];
+  const searchTurns = [
+    { start: 1, end: 3, sourceSpeaker: "Me", speaker: "Me", text: "Opening context from the earlier meeting.", sourceTurnIndex: 0 },
+    { start: 4, end: 7, sourceSpeaker: "Them", speaker: "Them", text: "The exact budget decision is recorded here.", sourceTurnIndex: 1 },
+    { start: 8, end: 10, sourceSpeaker: "Them", speaker: "Them", text: "", withheld: true, sourceTurnIndex: 2 },
+  ];
+  let openedSearchMeeting = false;
+  let searchResultHandle = "";
+  let searchTranscriptReadCount = 0;
   // A generated note, so the retry sheet renders its "this clears the current
   // note" warning (it is suppressed on a transcript-only meeting) and the
   // transcript column renders the cited-turn control.
@@ -122,7 +131,7 @@
     // mode=startup: the local startup check still running; mode=model-setup:
     // no speech model installed yet. Both render surfaces the other modes
     // never reach, so the harness can show them without a packaged build.
-    app_snapshot: () => (mode === "capture" ? { ...captureSnapshot }
+    app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
@@ -142,23 +151,89 @@
         ] } }
       : { ...idleSnapshot }),
     first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
-    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "summary-failed" || sheetMode
+    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "summary-failed" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",
           label: "Earlier harness meeting",
           createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60),
-        }], total: 2, metadataRevision: 1 }
+        }], total: 2, metadataRevision: 1, searchProbeEnabled: searchMode }
       : { rows: [], total: 0, metadataRevision: 1 }),
     preview_list_trash: () => ({ entries: [] }),
     operator_note: () => ({ text: "", unreadable: false }),
     meeting_context: () => ({ text: "", unreadable: false }),
     save_operator_note: () => ({ unreadable: false }),
     save_meeting_context: () => ({ unreadable: false }),
+    start_meeting: () => ({ ...captureSnapshot }),
+    preview_library_search: ({ query }) => {
+      const normalized = String(query || "").trim().toLowerCase();
+      if (normalized === "noresult") return { state: "no-results", results: [], message: "No retained transcript, title, or folder matched that search." };
+      if (normalized === "incomplete") return { state: "incomplete", results: [], message: "No retained transcript, title, or folder match was found among readable meetings. 1 could not be searched." };
+      if (normalized === "withheld") return {
+        state: "results",
+        results: [{ handle: "withheld-search-handle", kind: "withheld", meetingId: "harness-meeting-2", text: null }],
+        message: "",
+      };
+      if (normalized === "metadata") return {
+        state: "results",
+        results: [{ handle: "metadata-search-handle", kind: "meeting", meetingId: "harness-meeting-2", text: null }],
+        message: "",
+      };
+      if (normalized === "slow") return {
+        state: "results",
+        results: [{ handle: "slow-search-handle", kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
+        message: "",
+      };
+      if (normalized === "changed") return {
+        state: "results",
+        results: [{ handle: "changed-search-handle", kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
+        message: "",
+      };
+      return {
+        state: "results",
+        results: [{ handle: "transcript-search-handle", kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
+        message: "",
+      };
+    },
+    preview_library_open_search_result: ({ handle }) => {
+      openedSearchMeeting = true;
+      searchResultHandle = handle;
+      searchTranscriptReadCount = 0;
+      if (handle === "slow-search-handle") return new Promise((resolve) => setTimeout(() => resolve({
+        state: "transcript", transcriptHandle: "search-transcript-handle", meetingId: "harness-meeting-2", sourceTurnIndex: 1, start: 0, end: 36,
+        message: "Opening the exact retained transcript turn that matched.",
+      }), 180));
+      if (handle === "withheld-search-handle") return {
+        state: "withheld", transcriptHandle: "search-transcript-handle", meetingId: "harness-meeting-2", sourceTurnIndex: 2, start: null, end: null,
+        message: "A voice check withheld this matching turn. It is not shown as transcript text.",
+      };
+      if (handle === "metadata-search-handle") return {
+        state: "metadata-only", transcriptHandle: null, meetingId: "harness-meeting-2", sourceTurnIndex: null, start: null, end: null,
+        message: "No transcript was created for this retained meeting.",
+      };
+      if (handle === "changed-search-handle") return {
+        state: "transcript", transcriptHandle: "search-transcript-handle", meetingId: "harness-meeting-2", sourceTurnIndex: 1, start: 0, end: 36,
+        message: "Opening the exact retained transcript turn that matched.",
+      };
+      return {
+        state: "transcript", transcriptHandle: "search-transcript-handle", meetingId: "harness-meeting-2", sourceTurnIndex: 1, start: 0, end: 36,
+        message: "Opening the exact retained transcript turn that matched.",
+      };
+    },
     // mode=summary-failed: the same meeting after a rejected generation,
     // audio released, with a source pin so the retry control renders (R23).
-    library_open_note: () => (sheetMode ? { ...sheetNote } : mode === "summary-failed" ? {
+    library_open_note: () => (searchMode && openedSearchMeeting ? {
+      meetingId: "harness-meeting-2",
+      state: "transcript-only",
+      claims: [],
+      noteGenerationAvailable: true,
+      operatorNote: { text: "", unreadable: false },
+      operatorNoteHandle: "note-handle-2",
+      transcriptHandle: "transcript-handle-2",
+      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      capturePauses: null,
+    } : sheetMode ? { ...sheetNote } : mode === "summary-failed" ? {
       meetingId: "harness-meeting-1",
       state: "summary-failed",
       claims: [],
@@ -183,7 +258,15 @@
         : { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     }),
-    library_open_transcript: () => ({
+    library_open_transcript: () => (searchMode && openedSearchMeeting ? {
+      meetingId: "harness-meeting-2",
+      state: "available",
+      currentTranscriptSha256: searchResultHandle === "changed-search-handle" && ++searchTranscriptReadCount > 1
+        ? "3333333333333333333333333333333333333333333333333333333333333333"
+        : "2222222222222222222222222222222222222222222222222222222222222222",
+      transcriptFileHandle: "transcript-file-handle-2",
+      turns: searchTurns.map((turn) => ({ ...turn })),
+    } : {
       meetingId: "harness-meeting-1",
       state: "available",
       currentTranscriptSha256: "0000000000000000000000000000000000000000000000000000000000000000",

@@ -151,7 +151,9 @@ test("audio setup does not confuse unknown with permission denied", () => {
   assert.equal(permissionSummary(null).state, "checking");
   assert.equal(permissionSummary({ probeUnavailable: true }).title, "Audio access could not be checked");
   assert.equal(permissionSummary({ microphone: "denied", systemAudio: "unmeasured" }).title, "Microphone access is needed");
-  assert.equal(permissionSummary({ microphone: "authorized", systemAudio: "unmeasured" }).title, "Allow system audio");
+  const systemAudioSetup = permissionSummary({ microphone: "authorized", systemAudio: "unmeasured" });
+  assert.equal(systemAudioSetup.title, "Allow system audio");
+  assert.equal(systemAudioSetup.detail, "Microphone access is ready. Check system-audio access in Settings before recording.");
   assert.equal(permissionSummary({ microphone: "authorized", systemAudio: "authorized" }).state, "ready");
 });
 
@@ -1927,7 +1929,7 @@ test("a sidebar row for a recovered-interrupted meeting says interrupted, never 
 
 test("opening a meeting from the list takes a fresh library snapshot before spending a row handle", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  const start = source.indexOf("async function openMeeting(handle)");
+  const start = source.indexOf("async function openMeeting(handle,");
   const body = source.slice(start, source.indexOf("\n}\n", start));
   const refresh = body.indexOf("await refreshLibrary();");
   const load = body.indexOf("await loadSelectedMeeting(row,");

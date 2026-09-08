@@ -35,6 +35,12 @@ run() { "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1${3:-}" 
 case "$mode" in
   capture) run capture scenario.js ;;
   library) run library scenario.js ;;
+  search)
+    echo "== search: cross-meeting exact-match focus and honest result states =="
+    run search-results search.js
+    echo "== search: capture blocks the probe affordance =="
+    run search-capture search.js
+    ;;
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
   fidelity) run fidelity fidelity.js "&width=1080&height=900" ;;
@@ -48,5 +54,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|library|smoke|sheets|fidelity|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|library|search|smoke|sheets|fidelity|all]" >&2; exit 2 ;;
 esac

@@ -153,6 +153,10 @@ let contextSaveTimer;
 let permissionsRefreshTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
+// Every route into a meeting reader gets an epoch. A slower search-result
+// open must never overwrite a newer direct meeting selection (or vice versa).
+let meetingOpenEpoch = 0;
+let transcriptSearchEpoch = 0;
 
 // Desktop-design audit (2026-09-01), fix 1: the bounded wait before the
 // library's loading line escalates to honest stall copy. The phase and the
@@ -414,6 +418,7 @@ function render() {
     </div>
   `);
   restoreEditorFocus(editorFocus);
+  focusTranscriptSearchMatch();
   if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
   dismissEvidencePopoverIfDetached();
@@ -446,6 +451,23 @@ function restoreEditorFocus(focus) {
   const start = Math.min(focus.start, target.value.length);
   const end = Math.min(Math.max(start, focus.end), target.value.length);
   target.setSelectionRange(start, end, focus.direction);
+}
+
+// A search result names a turn by stable source index. The target is rendered
+// from selected state, then focused after the patch so the disclosure is open
+// and assistive technology lands on the same retained turn the result opened.
+function focusTranscriptSearchMatch() {
+  const selection = state.selected;
+  const targetTurnIndex = selection?.transcriptMatch?.sourceTurnIndex;
+  if (!selection?.transcriptMatchFocusPending || !Number.isInteger(targetTurnIndex)) return;
+  selection.transcriptMatchFocusPending = false;
+  queueMicrotask(() => {
+    if (state.selected !== selection) return;
+    const target = root.querySelector(`.transcript-workspace .transcript-line[data-turn-index="${targetTurnIndex}"]`);
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+  });
 }
 
 // Roadmap intake I2: the Rust side already brought the window forward and
@@ -874,8 +896,8 @@ function renderCapturePane() {
       </details>
       ${snapshot.turns?.length ? `
         <details class="transcript-disclosure">
-          <summary>Live transcript (${snapshot.turns.length} turns)</summary>
-          <div class="transcript-disclosure-content">${renderTranscript(snapshot.turns, inProgress ? "Live transcript" : "Source transcript", inProgress ? "Yawn adds local transcription here as it becomes available." : "The retained record for checking a detail that matters.", {
+          <summary>Transcript (${snapshot.turns.length} turns)</summary>
+          <div class="transcript-disclosure-content">${renderTranscript(snapshot.turns, "Transcript", inProgress ? "Yawn prepares the retained transcript after you stop recording." : "The retained record for checking a detail that matters.", {
             copyAction: "copy-current-transcript",
             openFileAction: snapshot.capture === "transcript-ready" && snapshot.current_transcript_sha256 ? "open-current-transcript-file" : "",
           })}</div>
@@ -1020,7 +1042,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
     // about the next time `dom-patch.mjs` syncs this node's attributes.
     const isSyncTarget = Number.isInteger(targetTurnIndex) && Number(turn.sourceTurnIndex) === targetTurnIndex;
     return `
-      <div class="transcript-line ${turn.withheld ? "withheld" : ""}${isSyncTarget ? " transcript-line-target" : ""}" data-turn-index="${escapeHtml(turn.sourceTurnIndex)}">
+      <div class="transcript-line ${turn.withheld ? "withheld" : ""}${isSyncTarget ? " transcript-line-target" : ""}" data-turn-index="${escapeHtml(turn.sourceTurnIndex)}"${isSyncTarget ? " tabindex=\"-1\"" : ""}>
         <div class="transcript-line-meta">
           <time>${escapeHtml(timeLabel(turn.start))}</time>
           ${speakerLabel ? correctionAvailable
@@ -1153,8 +1175,9 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
   // stated its state as a word instead of the disclosure triangle a native
   // list uses. <summary> is already the row's whole click target; this
   // changes only what marks that, to a chevron that flips on `[open]`.
+  const targetTurnIndex = state.selected?.transcriptMatch?.sourceTurnIndex;
   return `
-    <details class="transcript-disclosure">
+    <details class="transcript-disclosure" ${Number.isInteger(targetTurnIndex) ? "open" : ""}>
       <summary><span>Full transcript</span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
       <div class="transcript-disclosure-content">
         ${transcript?.turns?.length ? renderTranscript(transcript.turns, "Source transcript", "Search or read the complete retained conversation.", {
@@ -1163,6 +1186,7 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
           exportAction: "export-meeting",
           workspace: true,
           citations: note ? { turnsCited: note.turnsCited, claims: note.claims } : null,
+          targetTurnIndex,
         }) : `<section class="note-section transcript-unavailable"><p class="message-card">${escapeHtml(transcript.message)}</p></section>`}
       </div>
     </details>
@@ -1670,17 +1694,21 @@ function renderSpeakerCorrectionSheet() {
   const turns = state.selected?.transcript?.turns || [];
   if (!correction) return "";
   const affected = transcriptTurnsForSourceSpeaker(turns, correction.sourceSpeaker).length;
+  const systemAudioChannel = String(correction.sourceSpeaker || "").trim().toLowerCase() === "them";
+  const correctionTitle = systemAudioChannel ? "Label system audio." : "Name this speaker.";
+  const correctionFieldLabel = systemAudioChannel ? "Review label" : "Speaker name";
+  const correctionSaveLabel = systemAudioChannel ? "Save label" : "Save speaker name";
   const saving = state.busyAction === "speaker-correction";
   return `
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet speaker-correction-sheet" role="dialog" aria-modal="true" aria-labelledby="speaker-correction-title">
         <div class="sheet-head">
-          <div><h2 id="speaker-correction-title">Name this speaker.</h2><p>This changes the review label for ${affected} matching transcript ${affected === 1 ? "turn" : "turns"}. The retained transcript file stays unchanged.</p></div>
+          <div><h2 id="speaker-correction-title">${correctionTitle}</h2><p>This changes the review label for ${affected} matching transcript ${affected === 1 ? "turn" : "turns"}. The retained transcript file stays unchanged.</p>${systemAudioChannel ? "<p>System audio can contain several people. Changing this label names the whole channel, not individual voices.</p>" : ""}</div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close">×</button>
         </div>
         <div class="speaker-correction-source"><span>Source label</span><strong>${escapeHtml(correction.sourceLabel)}</strong></div>
         <form data-form="speaker-correction">
-          <label class="field-label" for="speaker-name-input">Speaker name
+          <label class="field-label" for="speaker-name-input">${correctionFieldLabel}
             <input class="meeting-title-input" id="speaker-name-input" data-field="speaker-name" data-meeting-id="${escapeHtml(state.speakerCorrection?.meetingId || "")}" maxlength="80" value="${escapeHtml(state.speakerCorrectionDraft)}" placeholder="e.g. Alex" autocomplete="off" />
             <small>Every turn tied to this source label will use the same name in this meeting.</small>
           </label>
@@ -1688,7 +1716,7 @@ function renderSpeakerCorrectionSheet() {
           <div class="sheet-actions">
             <button class="button button-quiet" type="button" data-action="use-source-speaker">Use source label</button>
             <button class="button button-quiet" type="button" data-action="close-modal">Cancel</button>
-            <button class="button button-primary" type="submit" ${saving || !state.speakerCorrectionDraft.trim() ? "disabled" : ""}>${saving ? "Saving…" : "Save speaker name"}</button>
+            <button class="button button-primary" type="submit" ${saving || !state.speakerCorrectionDraft.trim() ? "disabled" : ""}>${saving ? "Saving…" : correctionSaveLabel}</button>
           </div>
         </form>
       </section>
@@ -2324,6 +2352,7 @@ async function closeFirstRunSheet() {
 
 async function startRecording() {
   if (!canOpenStart(state.snapshot, state.permissions) || !Object.values(state.consent).every(Boolean)) return;
+  meetingOpenEpoch += 1;
   const journeyTiming = takeJourneyTimingForConfirm();
   await runBusy("start", async () => {
     state.snapshot = await invoke("start_meeting", {
@@ -2371,6 +2400,7 @@ async function recordAnother() {
 }
 
 async function leaveCurrentCapture({ startAnother = false } = {}) {
+  meetingOpenEpoch += 1;
   await runBusy(startAnother ? "record-another" : "dismiss", async () => {
     await flushPendingNoteSave();
     await flushPendingContextSave();
@@ -2399,10 +2429,11 @@ async function confirmLockedAction(handle, action) {
   return { proceed: true, token: response.token };
 }
 
-async function openMeeting(handle) {
+async function openMeeting(handle, transcriptMatch = null, openEpoch = ++meetingOpenEpoch) {
   const known = state.library?.rows?.find((candidate) => candidate.handle === handle);
   if (!known) return;
   await flushSelectedNoteSave();
+  if (openEpoch !== meetingOpenEpoch) return;
   state.trashOpen = false;
   await runBusy("meeting", async () => {
     // The reader spends every row handle when a note is opened
@@ -2413,6 +2444,7 @@ async function openMeeting(handle) {
     // With the list beside the document, take the fresh snapshot here, the
     // same step reopenSelectedMeeting already performs.
     await refreshLibrary();
+    if (openEpoch !== meetingOpenEpoch) return;
     const row = state.library?.rows?.find((candidate) => candidate.meetingId === known.meetingId);
     if (!row) return;
     let lockToken = null;
@@ -2421,12 +2453,12 @@ async function openMeeting(handle) {
       if (!confirmed.proceed) {
         // Still show the meeting, so the reader lands on the barrier and its
         // sentence rather than on a list with a toast they may have missed.
-        await loadSelectedMeeting(row, null);
+        await loadSelectedMeeting(row, null, transcriptMatch, openEpoch);
         return;
       }
       lockToken = confirmed.token;
     }
-    await loadSelectedMeeting(row, lockToken);
+    await loadSelectedMeeting(row, lockToken, transcriptMatch, openEpoch);
   });
 }
 
@@ -2435,14 +2467,30 @@ async function openMeeting(handle) {
 // caller and simply asks the backend, which re-checks the flag itself as the
 // first thing it does either way.
 async function searchTranscripts(query) {
+  const searchEpoch = ++transcriptSearchEpoch;
   await runBusy("transcript-search", async () => {
     const [results, unfiltered] = await Promise.all([
       invoke("preview_library_search", { query }),
       invoke("library_snapshot", { filter: null }),
     ]);
+    if (searchEpoch !== transcriptSearchEpoch) return;
     state.transcriptSearchResults = results;
     state.transcriptSearchRows = unfiltered.rows || [];
   });
+}
+
+function transcriptSearchMatchLocator(response, transcriptSha256 = null) {
+  if (response?.sourceTurnIndex === null || response?.sourceTurnIndex === undefined) return null;
+  const sourceTurnIndex = Number(response?.sourceTurnIndex);
+  if (!Number.isInteger(sourceTurnIndex) || sourceTurnIndex < 0) return null;
+  const start = response.start === null || response.start === undefined ? null : Number(response.start);
+  const end = response.end === null || response.end === undefined ? null : Number(response.end);
+  return {
+    sourceTurnIndex,
+    start: start !== null && Number.isFinite(start) ? start : null,
+    end: end !== null && Number.isFinite(end) ? end : null,
+    transcriptSha256: typeof transcriptSha256 === "string" && transcriptSha256 ? transcriptSha256 : null,
+  };
 }
 
 // Opens a cross-meeting search hit through the library's ordinary open path
@@ -2451,6 +2499,8 @@ async function searchTranscripts(query) {
 // filename or a general path, so this resolves that meeting id to the same
 // row `openMeeting` already knows how to open (lock confirmation included).
 async function openTranscriptSearchResult(handle) {
+  const openEpoch = ++meetingOpenEpoch;
+  const searchEpoch = transcriptSearchEpoch;
   let response;
   try {
     response = await invoke("preview_library_open_search_result", { handle });
@@ -2458,16 +2508,32 @@ async function openTranscriptSearchResult(handle) {
     reportError(error);
     return;
   }
+  if (openEpoch !== meetingOpenEpoch || searchEpoch !== transcriptSearchEpoch) return;
   if (!response.meetingId) {
     state.notice = response.message || "That result is no longer available.";
     render();
     return;
+  }
+  let transcriptMatch = transcriptSearchMatchLocator(response);
+  if (transcriptMatch && response.transcriptHandle) {
+    try {
+      // start/end are scalar offsets, not audio time. This bounded handle
+      // provides the digest that owned the locator before the reader refresh.
+      const matchedTranscript = await invoke("library_open_transcript", { handle: response.transcriptHandle });
+      if (openEpoch !== meetingOpenEpoch || searchEpoch !== transcriptSearchEpoch) return;
+      transcriptMatch = transcriptSearchMatchLocator(response, matchedTranscript.currentTranscriptSha256);
+    } catch {
+      transcriptMatch = null;
+    }
+  } else {
+    transcriptMatch = null;
   }
   let row = state.transcriptSearchRows?.find((candidate) => candidate.meetingId === response.meetingId)
     || state.library?.rows?.find((candidate) => candidate.meetingId === response.meetingId);
   if (!row) {
     try {
       const unfiltered = await invoke("library_snapshot", { filter: null });
+      if (openEpoch !== meetingOpenEpoch || searchEpoch !== transcriptSearchEpoch) return;
       state.transcriptSearchRows = unfiltered.rows || [];
       row = state.transcriptSearchRows.find((candidate) => candidate.meetingId === response.meetingId);
     } catch (error) {
@@ -2482,7 +2548,7 @@ async function openTranscriptSearchResult(handle) {
   }
   state.transcriptSearchResults = null;
   state.transcriptSearchRows = null;
-  await openMeeting(row.handle);
+  await openMeeting(row.handle, transcriptMatch, openEpoch);
 }
 
 // `lockToken` is roadmap intake I5's reading authority: a single-use
@@ -2490,13 +2556,22 @@ async function openTranscriptSearchResult(handle) {
 // the read succeeds on a still-locked meeting, hands back a fresh one on
 // `note.lockToken`. That is what `reopenSelectedMeeting` carries forward, so a
 // refresh inside an open locked meeting does not ask again.
-async function loadSelectedMeeting(row, lockToken = null) {
+async function loadSelectedMeeting(row, lockToken = null, transcriptMatch = null, openEpoch = null) {
+  const stillCurrent = () => openEpoch === null || openEpoch === meetingOpenEpoch;
+  if (!stillCurrent()) return;
   state.transcriptActionStatus = { ...state.transcriptActionStatus, library: "" };
   const note = await invoke("library_open_note", { handle: row.handle, lockToken });
+  if (!stillCurrent()) return;
   const transcript = note.transcriptHandle
     ? await invoke("library_open_transcript", { handle: note.transcriptHandle })
     : null;
+  if (!stillCurrent()) return;
   const pendingRetry = await loadPendingTranscriptRetry(note, transcript);
+  if (!stillCurrent()) return;
+  const matchedTurn = transcriptMatch && transcript?.turns?.some((turn) => (
+    transcriptMatch.transcriptSha256 === transcript.currentTranscriptSha256 && Number(turn?.sourceTurnIndex) === transcriptMatch.sourceTurnIndex
+  )) ? transcriptMatch : null;
+  if (transcriptMatch && !matchedTurn) state.notice = "Transcript changed; search again.";
   const operatorNote = note.operatorNote || { text: "", unreadable: false };
   state.meetingManagementOpen = false;
   state.transcriptQuery = "";
@@ -2509,6 +2584,10 @@ async function loadSelectedMeeting(row, lockToken = null) {
     note,
     transcript,
     transcriptRetry: pendingRetry,
+    // This contains locator metadata only. The UI never reconstructs text
+    // from it, so a withheld turn remains withheld when focused.
+    transcriptMatch: matchedTurn,
+    transcriptMatchFocusPending: Boolean(matchedTurn),
     claimEvidence: {},
     // Design intake D5, depth 2/3: never persists across meetings, and reset
     // here rather than surviving a same-meeting refresh, the same lifecycle
@@ -3162,6 +3241,7 @@ async function flushSelectedNoteSave() {
 }
 
 async function openMeetings() {
+  meetingOpenEpoch += 1;
   await flushSelectedNoteSave();
   if (invoke && state.audioPlayback?.state === "playing") {
     state.audioPlayback = await invoke("library_stop_retained_audio");
@@ -3179,6 +3259,7 @@ async function openMeetings() {
 }
 
 function openTrash() {
+  meetingOpenEpoch += 1;
   state.selected = null;
   state.trashOpen = true;
   state.transcriptSearchResults = null;
@@ -3482,6 +3563,10 @@ function handleClick(event) {
   else if (action === "export-meeting") void exportSelectedMeeting();
   else if (action === "clear-transcript-search") {
     state.transcriptQuery = "";
+    if (state.selected) {
+      state.selected.transcriptMatch = null;
+      state.selected.transcriptMatchFocusPending = false;
+    }
     render();
     queueMicrotask(() => root.querySelector("[data-field='transcript-search']")?.focus());
   }
@@ -3503,10 +3588,16 @@ function handleClick(event) {
 function handleInput(event) {
   if (event.target.dataset.field === "library-search") {
     state.search = event.target.value;
+    meetingOpenEpoch += 1;
+    transcriptSearchEpoch += 1;
     // A changed query invalidates whatever cross-meeting search results are
     // showing -- they answered the previous query, not this one.
     state.transcriptSearchResults = null;
     state.transcriptSearchRows = null;
+    if (state.selected) {
+      state.selected.transcriptMatch = null;
+      state.selected.transcriptMatchFocusPending = false;
+    }
     clearTimeout(state.searchTimer);
     state.searchTimer = setTimeout(() => void runBusy("search", refreshLibrary), 220);
   }
@@ -3531,6 +3622,10 @@ function handleInput(event) {
   }
   if (event.target.dataset.field === "transcript-search") {
     state.transcriptQuery = event.target.value;
+    if (state.selected) {
+      state.selected.transcriptMatch = null;
+      state.selected.transcriptMatchFocusPending = false;
+    }
     render();
   }
   if (event.target.dataset.field === "meeting-title") {

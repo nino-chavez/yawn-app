@@ -286,7 +286,7 @@ export function permissionSummary(permission) {
     return { state: "attention", title: "Microphone access is needed", detail: "Allow Yawn to use the microphone before recording." };
   }
   if (permission.microphone === "authorized" && permission.systemAudio === "unmeasured") {
-    return { state: "setup", title: "Allow system audio", detail: "Microphone access is ready. Let Yawn verify its capture helper before recording." };
+    return { state: "setup", title: "Allow system audio", detail: "Microphone access is ready. Check system-audio access in Settings before recording." };
   }
   if (["unavailable", "unsupported", "unknown"].includes(permission.systemAudio)) {
     return { state: "attention", title: "System audio needs attention", detail: "Open Settings to check system-audio access before recording." };
