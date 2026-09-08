@@ -185,9 +185,9 @@
         results: [{ handle: "slow-search-handle", kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
         message: "",
       };
-      if (normalized === "changed") return {
+      if (["changed", "unavailable"].includes(normalized)) return {
         state: "results",
-        results: [{ handle: "changed-search-handle", kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
+        results: [{ handle: `${normalized}-search-handle`, kind: "transcript", meetingId: "harness-meeting-2", text: "The exact budget decision is recorded here." }],
         message: "",
       };
       return {
@@ -258,7 +258,7 @@
         : { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     }),
-    library_open_transcript: () => (searchMode && openedSearchMeeting ? {
+    library_open_transcript: () => (searchResultHandle === "unavailable-search-handle" ? { state: "unavailable", currentTranscriptSha256: null, turns: [] } : searchMode && openedSearchMeeting ? {
       meetingId: "harness-meeting-2",
       state: "available",
       currentTranscriptSha256: searchResultHandle === "changed-search-handle" && ++searchTranscriptReadCount > 1

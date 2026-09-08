@@ -466,7 +466,24 @@ function focusTranscriptSearchMatch() {
     const target = root.querySelector(`.transcript-workspace .transcript-line[data-turn-index="${targetTurnIndex}"]`);
     if (!target) return;
     target.focus({ preventScroll: true });
-    target.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+    const behavior = prefersReducedMotion() ? "auto" : "smooth";
+    const workspace = target.closest(".transcript-workspace");
+    const documentScroller = target.closest(".doc-main");
+    const transcriptScroller = target.closest(".transcript-scroll");
+    // Scroll the two readers explicitly. scrollIntoView also moves the page
+    // at short window heights, hiding the app toolbar and sidebar context.
+    if (documentScroller && workspace) {
+      documentScroller.scrollTo({
+        top: documentScroller.scrollTop + workspace.getBoundingClientRect().top - documentScroller.getBoundingClientRect().top - 12,
+        behavior,
+      });
+    }
+    if (transcriptScroller) {
+      transcriptScroller.scrollTo({
+        top: transcriptScroller.scrollTop + target.getBoundingClientRect().top - transcriptScroller.getBoundingClientRect().top - (transcriptScroller.clientHeight - target.offsetHeight) / 2,
+        behavior,
+      });
+    }
   });
 }
 
@@ -2515,18 +2532,23 @@ async function openTranscriptSearchResult(handle) {
     return;
   }
   let transcriptMatch = transcriptSearchMatchLocator(response);
-  if (transcriptMatch && response.transcriptHandle) {
+  if (transcriptMatch) {
     try {
+      if (!response.transcriptHandle) throw new Error("Search transcript is unavailable");
       // start/end are scalar offsets, not audio time. This bounded handle
       // provides the digest that owned the locator before the reader refresh.
       const matchedTranscript = await invoke("library_open_transcript", { handle: response.transcriptHandle });
       if (openEpoch !== meetingOpenEpoch || searchEpoch !== transcriptSearchEpoch) return;
+      if (!matchedTranscript?.currentTranscriptSha256 || matchedTranscript.meetingId !== response.meetingId) {
+        throw new Error("Search transcript is unavailable");
+      }
       transcriptMatch = transcriptSearchMatchLocator(response, matchedTranscript.currentTranscriptSha256);
     } catch {
-      transcriptMatch = null;
+      if (openEpoch !== meetingOpenEpoch || searchEpoch !== transcriptSearchEpoch) return;
+      state.notice = "Transcript changed; search again.";
+      render();
+      return;
     }
-  } else {
-    transcriptMatch = null;
   }
   let row = state.transcriptSearchRows?.find((candidate) => candidate.meetingId === response.meetingId)
     || state.library?.rows?.find((candidate) => candidate.meetingId === response.meetingId);

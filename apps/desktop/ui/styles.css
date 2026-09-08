@@ -619,6 +619,13 @@ h3 {
   border-top: 1px solid rgb(228 228 222 / 78%);
 }
 
+.transcript-line-target {
+  margin-inline: calc(-1 * var(--space-8));
+  padding-inline: var(--space-8);
+  background: var(--evidence);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .transcript-line-meta {
   display: grid;
   align-content: start;
@@ -1075,6 +1082,7 @@ h3 {
 
 .transcript-workspace-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-16);
@@ -1083,6 +1091,10 @@ h3 {
 }
 
 .transcript-workspace .transcript-heading {
+  flex: 1 1 240px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
   min-width: 0;
   margin: 0;
 }
@@ -1093,13 +1105,14 @@ h3 {
 }
 
 .transcript-workspace .transcript-actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   margin: 0;
 }
 
 .transcript-workspace-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
   align-items: flex-start;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -2256,6 +2269,10 @@ h3 {
 
   .transcript-heading p {
     text-align: left;
+  }
+
+  .transcript-workspace .transcript-heading {
+    flex-basis: auto;
   }
 
   .meeting-page > .text-button {

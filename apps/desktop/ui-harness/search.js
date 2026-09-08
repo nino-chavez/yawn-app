@@ -60,6 +60,11 @@ changed?.querySelector('[data-action="open-search-result"]')?.click();
 await sleep(120);
 step("a changed transcript digest refuses the old locator", !q(".transcript-line-target") && /Transcript changed; search again\./.test(q("#toast-notice")?.textContent || ""));
 
+const unavailable = await searchCurrentQuery("unavailable");
+unavailable?.querySelector('[data-action="open-search-result"]')?.click();
+await sleep(120);
+step("a refused bound transcript keeps the results and asks for a new search", Boolean(q(".transcript-search-results")) && !q(".transcript-line-target") && /Transcript changed; search again\./.test(q("#toast-notice")?.textContent || ""));
+
 const match = await searchCurrentQuery("budget");
 const openMatch = match?.querySelector('[data-action="open-search-result"]');
 step("cross-meeting retained match is offered", Boolean(openMatch));
