@@ -698,8 +698,40 @@ short public AMI clips, preserved capture bytes, and wrote provenance. Parent
 disconnect stopped the worker. This exercised installed components; it did not
 launch the app interface or assess meeting quality.
 
-The app remains closed. Automated Settings checks await explicit confirmation
-that the operator is away, as required by `scripts/capture-installed-screens.sh`.
-They will check model selection, restart persistence, return to the previous
-model, and independent optional notes. Fresh-account setup, older macOS, Apple
-asset-download recovery, and human meeting-quality acceptance remain open.
+The operator then confirmed being away with the Mac unlocked. The installed
+Settings test found that reopening a saved transcript blocked speech-model
+changes and left Record disabled. Switching to Apple also failed when startup
+tried to restore the already-open transcript. A regression test reproduced that
+exact failure before the fix.
+
+Source commit `3a3d935` corrects transcript restoration, model-change admission,
+and Record admission. Settings now refreshes speech and note availability when
+an engine change finishes. The corrected app and installer were signed,
+notarized, verified, and installed. The installer SHA-256 is
+`e17687eb752326334790e35647334dca317eb0141a8f899874b3238a3725091a`.
+Desktop unit tests, reducer tests, permission contracts, and UI tests passed.
+The corrected signed bundle also transcribed public sample audio with provenance
+and clean worker shutdown.
+
+In the corrected installed app, switching from Apple to the smaller model
+succeeded and the controls became available again. Switching back saved the
+Apple preference; a background accessibility read confirmed the selected state.
+The optional note model remained selected, and its files were unchanged.
+
+The capture guard stopped the next screenshot when Chrome became foreground.
+A subsequent check showed recent input, so no further GUI actions were sent.
+**Apple speech is temporarily selected.** Confirmation that the operator is away
+is pending before the final restart checks and restoration of the smaller model.
+The initial build had preserved Apple selection across a full restart; that
+result does not stand in for the corrected build's pending restart test.
+
+Record now reaches the separate system-audio permission check. Startup reports
+that permission as unmeasured until the operator requests the helper check in
+Settings. The check creates and destroys a tap without reading audio buffers;
+it was not invoked in this pass. No recording or participant attestation was made.
+
+Private screen captures stay outside Git. The content-free installed-test record
+is in `docs/evidence/progressive-setup-2026-09-07.json`; the cold screen review is
+in `docs/evidence/screen-reviews/progressive-installed-2026-09-08-cold.md`.
+Fresh-account setup, older macOS, Apple asset-download recovery, and human
+meeting-quality acceptance remain open. Nothing was pushed or published.

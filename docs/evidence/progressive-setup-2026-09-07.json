@@ -3,7 +3,7 @@
   "date": "2026-09-07",
   "branch": "feature/progressive-setup",
   "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
-  "state": "notarized test build installed; GUI acceptance pending",
+  "state": "corrected notarized test build installed; final GUI restart and prior-selection restoration paused after input activity",
   "direction": {
     "first_run": "Apple speech when ready, otherwise smallest cataloged speech download",
     "later": "other speech models in Settings",
@@ -255,6 +255,132 @@
         "captured_without_queue": 0,
         "unreadable_meeting_receipts": 0
       }
+    },
+    "installed_gui_2026_09_08": {
+      "schema": "yawn-installed-progressive-gui-check/1",
+      "date": "2026-09-08",
+      "source_commit": "3a3d935bdfb5bfa3b45f0b77ceef0d0780a0971d",
+      "target": "/Applications/Yawn.app",
+      "operator_away_confirmed": true,
+      "original_speech_selection": "whisper-large-v3-turbo-q4",
+      "original_engine_preference": "implicit-whisper",
+      "initial_installed_test": {
+        "source_commit": "6659ead",
+        "launch": true,
+        "apple_selection_persisted_after_relaunch": true,
+        "defects_observed": [
+          "Runtime restart rejected restoration of an already-open transcript.",
+          "Downloaded-model activation rejected the same saved-transcript state.",
+          "Record stayed disabled after restoring a saved transcript."
+        ],
+        "additional_regression": "Settings kept stale model availability after an asynchronous engine change."
+      },
+      "source_checks": {
+        "desktop_unit_tests": {
+          "passed": 272,
+          "failed": 0
+        },
+        "reducer_tests": {
+          "passed": 12,
+          "failed": 0
+        },
+        "shell_contract_tests": {
+          "passed": 6,
+          "failed": 0
+        },
+        "ui_tests": "passed"
+      },
+      "corrected_installed_test": {
+        "launch_and_restore_saved_transcript": true,
+        "apple_to_smaller_model": "passed in visible installed Settings; controls became available after restart",
+        "smaller_to_apple": "preference saved; background accessibility shows In Use and no Use Apple speech action",
+        "apple_full_app_restart": "pending",
+        "final_smaller_model_restore_and_restart": "pending",
+        "note_model_optional_separate": "observed in installed Settings",
+        "system_audio_permission": "unmeasured until explicit helper tap check; no buffers recorded by that check; not invoked",
+        "consent_sheet": "not opened",
+        "interruption": {
+          "capture_guard": "frontmost application changed to Chrome",
+          "recent_input_observed": true,
+          "gui_actions_stopped": true,
+          "awaiting_operator_presence_confirmation": true
+        },
+        "current_speech_preference": "apple-native"
+      },
+      "private_captures": "Stored outside Git in the operator research directory; no meeting content included here.",
+      "new_recording_started": false,
+      "meeting_quality_acceptance": false,
+      "published": false,
+      "not_covered": [
+        "Fresh macOS account without existing permissions or assets",
+        "macOS 14.4 or 15 execution",
+        "Apple language-file download or interruption",
+        "New recording or participant attestations",
+        "Human speech and note quality acceptance"
+      ],
+      "corrected_signed_main_sha256": "fb142f9925e5334e9c9dc9d00da1788a7ff92ee25564850a80006264700e3e93",
+      "apple_notarization": {
+        "app": {
+          "submission_id": "bc169a5b-4173-4ef1-ad25-0d8de2764dfa",
+          "status": "Accepted"
+        },
+        "dmg": {
+          "submission_id": "a3671d00-43d6-441e-81d1-62c045d66894",
+          "status": "Accepted"
+        }
+      },
+      "installation": {
+        "schema": "yawn-progressive-installation/1",
+        "source_commit": "3a3d935bdfb5bfa3b45f0b77ceef0d0780a0971d",
+        "dmg_sha256": "e17687eb752326334790e35647334dca317eb0141a8f899874b3238a3725091a",
+        "installed": {
+          "version": "0.6.3",
+          "identifier": "com.ninochavez.local-meeting-notes",
+          "main_sha256": "fb142f9925e5334e9c9dc9d00da1788a7ff92ee25564850a80006264700e3e93",
+          "manifest_sha256": "0e28687669ed113bbabcbd0565d7e90cbdd2e4fc6780b58f63352c6adcb6f884"
+        },
+        "previous": {
+          "version": "0.6.3",
+          "identifier": "com.ninochavez.local-meeting-notes",
+          "main_sha256": "deb31c9db9cc1b80c1ede03cfe078567de3f1bf4745a579608c11a8637810075",
+          "manifest_sha256": "de9de6418f394ac082b0ba558e29aa0fc8a991898bac045a60604e0891ab991e"
+        },
+        "installed_from_verified_dmg": true,
+        "strict_signature": true,
+        "gatekeeper": true,
+        "rollback_bundle_retained": true,
+        "launched": true,
+        "gui_checks": "partially passed; input activity interrupted final restart and restoration",
+        "published": false
+      },
+      "signed_bundle_native_execution": {
+        "synthetic_capture": true,
+        "audio_source": "public AMI ES2004c, twelve seconds at 60s and 120s",
+        "capability": {
+          "asset_identity": "os-managed",
+          "locale": "en-US",
+          "os_version": "Version 26.6.2 (Build 25G83)",
+          "schema": "apple-speech-capability/1",
+          "state": "ready",
+          "reason": null
+        },
+        "transcript_created": true,
+        "turn_count": 1,
+        "capture_unchanged": true,
+        "whisper_model": null,
+        "helper_sha256": "ef63c9ce9487f45de8c4887a63f5c063416ed295422ad3e43fffee71d5b46191",
+        "provenance_written": true,
+        "packaged_modules": true,
+        "packaged_worker_ready": true,
+        "parent_eof_exit": true,
+        "resource_root": "/Users/nino/Workspace/dev/apps/yawn-app/.worktrees/progressive-setup/target/release/bundle/macos/Yawn.app/Contents/Resources"
+      },
+      "note_model_preservation": {
+        "active_pointer_unchanged": true,
+        "all_asset_writes_predate_test": true,
+        "note_download_started": false
+      },
+      "recorded_at": "2026-09-08T13:40:00.178612+00:00"
     }
   },
   "not_verified": [
