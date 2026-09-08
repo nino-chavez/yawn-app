@@ -626,7 +626,8 @@ errors. Human review remains pending.
 The operator authorized Apple speech first, a smaller downloaded model when
 needed, and other models later in Settings. That direction is implemented in
 source on `feature/progressive-setup`. It keeps the macOS 14.4 floor and the
-separate, optional note-model flow. It is not installed or released.
+separate, optional note-model flow. At this stage it was not installed or released;
+the installed checks are recorded below.
 
 The new Apple-only helper uses the native API behind a macOS 26 availability
 check. Startup checks capability without downloading language files. Preparing
@@ -713,22 +714,23 @@ Desktop unit tests, reducer tests, permission contracts, and UI tests passed.
 The corrected signed bundle also transcribed public sample audio with provenance
 and clean worker shutdown.
 
-In the corrected installed app, switching from Apple to the smaller model
-succeeded and the controls became available again. Switching back saved the
-Apple preference; a background accessibility read confirmed the selected state.
-The optional note model remained selected, and its files were unchanged.
+The corrected installed app now passes the existing-account Settings checks.
+Apple speech remained selected after a complete quit and reopen. The smaller
+speech model was then restored and remained selected after another complete
+quit and reopen. Settings controls became available after each engine change.
+The speech-model and note-model selection files match their original hashes.
+The note-model files still predate this test; no note download was started.
 
-The capture guard stopped the next screenshot when Chrome became foreground.
-A subsequent check showed recent input, so no further GUI actions were sent.
-**Apple speech is temporarily selected.** Confirmation that the operator is away
-is pending before the final restart checks and restoration of the smaller model.
-The initial build had preserved Apple selection across a full restart; that
-result does not stand in for the corrected build's pending restart test.
+The capture guard interrupted the first pass when Chrome became foreground and
+the Mac showed recent input. The operator subsequently said go, and the remaining
+checks were completed. **The original smaller speech model is selected.**
 
-Record now reaches the separate system-audio permission check. Startup reports
-that permission as unmeasured until the operator requests the helper check in
-Settings. The check creates and destroys a tap without reading audio buffers;
-it was not invoked in this pass. No recording or participant attestation was made.
+The explicit system-audio check in installed Settings succeeded. Both required
+audio sources showed Authorized. This helper check creates and destroys an audio
+tap without reading buffers. Record then opened the consent sheet with all three
+attestations unchecked and Start recording disabled. Cancel returned to the
+saved meeting. No recording or participant attestation was made, and no active
+capture helper remained after the check.
 
 Private screen captures stay outside Git. The content-free installed-test record
 is in `docs/evidence/progressive-setup-2026-09-07.json`; the cold screen review is

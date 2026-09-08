@@ -3,7 +3,7 @@
   "date": "2026-09-07",
   "branch": "feature/progressive-setup",
   "base_commit": "c9dfcdb3e29c1ce8e48d13df0388ee946f481e2b",
-  "state": "corrected notarized test build installed; final GUI restart and prior-selection restoration paused after input activity",
+  "state": "corrected notarized test build installed; existing-account Settings and restart checks passed; original smaller speech model restored",
   "direction": {
     "first_run": "Apple speech when ready, otherwise smallest cataloged speech download",
     "later": "other speech models in Settings",
@@ -293,19 +293,21 @@
       "corrected_installed_test": {
         "launch_and_restore_saved_transcript": true,
         "apple_to_smaller_model": "passed in visible installed Settings; controls became available after restart",
-        "smaller_to_apple": "preference saved; background accessibility shows In Use and no Use Apple speech action",
-        "apple_full_app_restart": "pending",
-        "final_smaller_model_restore_and_restart": "pending",
+        "smaller_to_apple": "passed; selected in installed Settings after complete app restart",
+        "apple_full_app_restart": "passed; In Use remains selected and controls available",
+        "final_smaller_model_restore_and_restart": "passed; original smaller-model pointer unchanged and In use after complete app restart",
         "note_model_optional_separate": "observed in installed Settings",
-        "system_audio_permission": "unmeasured until explicit helper tap check; no buffers recorded by that check; not invoked",
-        "consent_sheet": "not opened",
+        "system_audio_permission": "explicit installed Settings check passed; both sources show Authorized",
+        "consent_sheet": "Record opened the consent sheet; all attestations unchecked and Start recording disabled; Cancel returned to saved meeting",
         "interruption": {
           "capture_guard": "frontmost application changed to Chrome",
           "recent_input_observed": true,
           "gui_actions_stopped": true,
-          "awaiting_operator_presence_confirmation": true
+          "awaiting_operator_presence_confirmation": false,
+          "resumed_after_operator_go": true,
+          "remaining_checks_completed": true
         },
-        "current_speech_preference": "apple-native"
+        "current_speech_preference": "whisper"
       },
       "private_captures": "Stored outside Git in the operator research directory; no meeting content included here.",
       "new_recording_started": false,
@@ -350,7 +352,7 @@
         "gatekeeper": true,
         "rollback_bundle_retained": true,
         "launched": true,
-        "gui_checks": "partially passed; input activity interrupted final restart and restoration",
+        "gui_checks": "passed for existing-account engine switching, restart persistence, prior-selection restoration and consent-sheet cancellation",
         "published": false
       },
       "signed_bundle_native_execution": {
@@ -380,7 +382,21 @@
         "all_asset_writes_predate_test": true,
         "note_download_started": false
       },
-      "recorded_at": "2026-09-08T13:40:00.178612+00:00"
+      "recorded_at": "2026-09-08T13:51:11.362636+00:00",
+      "final_state": {
+        "speech_preference": "whisper",
+        "models/active-model.json": {
+          "matches_original": true
+        },
+        "models/active-note-model.json": {
+          "matches_original": true
+        },
+        "note_assets_predate_test": true,
+        "installed_main_sha256": "fb142f9925e5334e9c9dc9d00da1788a7ff92ee25564850a80006264700e3e93",
+        "active_capture_helper": false,
+        "worker_count": 2,
+        "recorded_at": "2026-09-08T13:51:11.362636+00:00"
+      }
     }
   },
   "not_verified": [

@@ -8,9 +8,9 @@ design_direction: DIRECTION.md
 reviewer: installed_cold_review, fresh context with images and user jobs only
 kind: cold
 cold: true
-states: saved transcript; Apple selected; smaller speech model selected; optional note model and audio access
+states: saved transcript; Apple selected; smaller speech model selected after restart; optional note model; authorized audio access; consent sheet and cancel
 verdict: core choices are visible; wording follow-ups remain
-not_reviewed: interactions, fresh setup, full restart persistence, permission prompts, downloads, real meeting quality
+not_reviewed: interactions, fresh setup, permission prompts, downloads, real meeting quality
 ---
 # Installed progressive setup screen review
 
@@ -52,3 +52,18 @@ a control works; the installed interaction receipt records those checks separate
 This fix preserves the existing layout. It removes the false finishing-message
 for restored transcripts and the stale disabled state after an engine change.
 It does not introduce another model tier or infer a quality ranking.
+
+## Completion frames
+
+The same independent reviewer opened the final installed frames without source
+or implementation rationale. Both audio sources visibly show Authorized. The
+Record control is available in the saved-meeting view. The consent sheet makes
+retention and acknowledgements prominent, with Start recording disabled while
+the boxes are unchecked. The final frame returns to the saved-meeting view.
+No visible blocker was found in these frames.
+
+The reviewer noted that the headphones and nearby-microphone attestations may
+require thought from users. They are existing capture requirements, and this
+check does not waive or change them. The parent's observed actions, recorded
+separately in the interaction receipt, establish opening and cancellation;
+the images alone do not prove either behavior.
