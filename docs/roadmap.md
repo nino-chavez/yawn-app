@@ -1,25 +1,34 @@
 # Yawn product roadmap — trust before reach
 
-Status: active product direction; release status reconciled on 2026-09-08.
+Status: active product direction; local installation reconciled on 2026-09-09.
 
 This roadmap sequences product work. It does not claim that a listed feature is
 shipped. The current product contract remains [the product brief](product-brief.md).
 
-## Current release and next acceptance work — 2026-09-08
+## Current release and next acceptance work — 2026-09-09
 
-Yawn 0.6.4 is released and installed from source `58e13a2`. It includes
+Yawn 0.6.4 is the recorded public release, from source `58e13a2`. It includes
 progressive Apple/downloaded speech setup, Settings changes, microphone-stall
 handling, layout fixes, and Lavender Haze. The
 [release receipt](distribution-runbook.md#064-release-receipt) records the
 signed artifact and public delivery. Older Preview receipts below are historical;
 they do not describe the current distribution state.
 
+Locally, `/Applications/Yawn.app` now reports version 0.6.5 from `0cbe6dd`, with
+microphone-change finalization, interrupted-startup recovery, and verb-based
+startup copy. Its signed installer and installed bundle passed verification.
+The [local installation receipt](distribution-runbook.md#065-local-installation-receipt--2026-09-09)
+records the evidence and limits. This branch has not been pushed, merged, or
+published.
+
 Transcript-content search remains an experimental, default-off local probe.
 Its matching-passage work is included in source, but is not generally available.
 Semantic source finding remains withheld under Order 5. The public 0.6.4 notes
 were corrected to remove the unqualified search feature claim.
 
-Next: verify the installed 0.6.4 journey through setup, engine switching and
+Next: repeat the phone-call hangup on installed 0.6.5 and confirm saved audio and
+queued transcription. Recheck the original Apple Speech recording refusal;
+readiness probes passed but did not reproduce that failure. Then verify setup, engine switching and
 restart, recording and reopen, speaker correction, transcript retry, and note
 regeneration. Package checks do not close those interaction checks. Then measure
 quiet native system-audio callback behavior before enabling stall detection for

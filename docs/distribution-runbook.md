@@ -1,5 +1,35 @@
 # Yawn distribution runbook
 
+## 0.6.5 local installation receipt — 2026-09-09
+
+**0.6.5 is installed locally; this session did not publish it.** Source commit
+`0cbe6ddae5cb4d5ccd4f6b7e352cfac2430a4f1b` is on
+`fix/recording-recovery-20260909`. The branch has not been pushed or merged.
+The fix saves and queues an established recording when the microphone
+configuration changes. It also prevents restored transcript state from blocking
+startup after an interruption. Startup copy now includes “Getting ready to Yawn.”
+
+The signed installer is `Yawn-0.6.5-macos-arm64.dmg`, with SHA-256
+`ca917e04088681c30c378dd1180e68629605d01c47679d397a2a703d8c38e140`.
+Apple accepted app submission `caa3c4b0-5068-4b52-97bb-2b026354551f` and
+installer submission `8bdeb2d3-e6bc-4b35-a153-c1c47a097cc8`. Both staples,
+Gatekeeper checks, and signed release verification passed.
+
+`/Applications/Yawn.app` was replaced from the mounted notarized installer.
+Installed version 0.6.5, its strict/deep signature, and full bundle verification
+passed, including 200 arm64-compatible Mach-O files. The installed executable,
+runtime manifest, source digest, and capture helper matched the mounted app.
+Apple Speech reported ready; the installed Apple worker emitted `worker.ready`
+and exited cleanly. Microphone permission was authorized. System-audio permission
+was not measured by the status-only probe.
+
+Machine-readable installation evidence and signing logs are in
+`.artifacts/release-0.6.5/` within
+`.worktrees/fix/recording-recovery-20260909`. Preserve that worktree until the fix
+and receipt have been integrated. The real phone-call hangup, installed UI
+interaction, and initial Apple Speech recording refusal remain unverified.
+Ready-state probes do not establish that the original refusal is resolved.
+
 ## 0.6.4 release receipt
 
 **0.6.4 was released on 2026-09-08 with Apple speech setup, clearer Settings,
