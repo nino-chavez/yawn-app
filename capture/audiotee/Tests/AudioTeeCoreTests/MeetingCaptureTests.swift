@@ -8,6 +8,7 @@ private final class FakeMeetingAudioSource: MeetingAudioSource, @unchecked Senda
   let leg: MeetingCaptureLeg
   var onStart: (() -> Void)?
   var stopTail: Data?
+  var onStop: (() -> Void)?
   private let lock = NSLock()
   private var pcm: (@Sendable (Data) -> Void)?
   private var failure: (@Sendable (MeetingCaptureFault) -> Void)?
@@ -33,6 +34,7 @@ private final class FakeMeetingAudioSource: MeetingAudioSource, @unchecked Senda
     let callback = pcm
     lock.unlock()
     if let tail { callback?(tail) }
+    onStop?()
   }
 
   func emit(_ data: Data) {
@@ -122,6 +124,125 @@ final class MeetingCaptureTests: XCTestCase {
     XCTAssertEqual(mic.stopCount, 1)
     XCTAssertEqual(system.stopCount, 1)
     XCTAssertEqual(updates.values.last, .finalized(receipt!))
+  }
+
+  func testMicrophoneConfigurationChangeFinalizesBothRecordedTracks() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let terminal = expectation(description: "terminal")
+    let updates = LockedUpdates()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      updates.append(update)
+      if update == .recording { recording.fulfill() }
+      switch update {
+      case .finalized, .failed, .interrupted: terminal.fulfill()
+      default: break
+      }
+    }
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([1, 0]))
+    system.emit(Data([1, 0]))
+    wait(for: [recording], timeout: 2)
+    mic.emit(Data([1, 0, 2, 0]))
+    system.emit(Data([3, 0]))
+    system.stopTail = Data([4, 0])
+
+    mic.fail(MeetingCaptureFault(
+      code: "microphone_configuration_changed", leg: .mic, detail: "call ended"))
+    wait(for: [terminal], timeout: 2)
+    XCTAssertEqual(coordinator.state, .terminal)
+    XCTAssertEqual(try contents(), ["mic.wav", "system.wav"])
+    guard case .finalized(let receipt) = updates.values.last else {
+      return XCTFail("An audio route change should finalize the recorded pair: \(updates.values)")
+    }
+    XCTAssertEqual(receipt.micSamples, 2)
+    XCTAssertEqual(receipt.systemSamples, 2)
+    XCTAssertEqual(receipt.stopReason, .microphoneConfigurationChanged)
+    try assertWAV("mic.wav", frames: 2)
+    try assertWAV("system.wav", frames: 2)
+    XCTAssertNil(coordinator.stop())
+    coordinator.interrupt()
+    XCTAssertEqual(updates.values.count, 2)
+    XCTAssertEqual(mic.stopCount, 1)
+    XCTAssertEqual(system.stopCount, 1)
+  }
+
+  func testConfigurationChangeWhileArmingStillFailsWithoutPromoting() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let failed = expectation(description: "failed")
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      if case .failed = update { failed.fulfill() }
+    }
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.fail(MeetingCaptureFault(
+      code: "microphone_configuration_changed", leg: .mic, detail: "not ready"))
+    wait(for: [failed], timeout: 2)
+    XCTAssertEqual(coordinator.state, .terminal)
+    XCTAssertEqual(try contents(), [])
+  }
+
+  func testStopRacingConfigurationChangeFinalizesOnceAndKeepsReason() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let updates = LockedUpdates()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      updates.append(update)
+      if update == .recording { recording.fulfill() }
+    }
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([1, 0]))
+    system.emit(Data([1, 0]))
+    wait(for: [recording], timeout: 2)
+    mic.emit(Data([1, 0]))
+    system.emit(Data([1, 0]))
+    let configurationChange = MeetingCaptureFault(
+      code: "microphone_configuration_changed", leg: .mic, detail: "call ended")
+    mic.onStop = { mic.fail(configurationChange) }
+    mic.fail(configurationChange)
+    _ = coordinator.stop()
+    XCTAssertEqual(updates.values.count, 2)
+    XCTAssertEqual(updates.values.last, .finalized(MeetingCaptureReceipt(
+      micSamples: 1, systemSamples: 1, stopReason: .microphoneConfigurationChanged)))
+    XCTAssertEqual(mic.stopCount, 1)
+    XCTAssertEqual(system.stopCount, 1)
+    XCTAssertEqual(try contents(), ["mic.wav", "system.wav"])
+  }
+
+  func testRealFailureDuringConfigurationStopStillRefusesPromotion() throws {
+    let mic = FakeMeetingAudioSource(leg: .mic)
+    let system = FakeMeetingAudioSource(leg: .system)
+    let recording = expectation(description: "recording")
+    let failed = expectation(description: "failed")
+    let updates = LockedUpdates()
+    let coordinator = try MeetingCaptureCoordinator(
+      directoryFD: directoryFD, mic: mic, system: system
+    ) { update in
+      updates.append(update)
+      if update == .recording { recording.fulfill() }
+      if case .failed = update { failed.fulfill() }
+    }
+    activateAndWait(coordinator, mic: mic, system: system)
+    mic.emit(Data([1, 0]))
+    system.emit(Data([1, 0]))
+    wait(for: [recording], timeout: 2)
+    mic.emit(Data([1, 0]))
+    system.emit(Data([1, 0]))
+    system.onStop = { system.fail(MeetingCaptureFault(
+      code: "system_conversion_failed", leg: .system, detail: "invalid tail")) }
+    mic.fail(MeetingCaptureFault(
+      code: "microphone_configuration_changed", leg: .mic, detail: "call ended"))
+    wait(for: [failed], timeout: 2)
+    XCTAssertEqual(try contents(), [".mic.wav.partial", ".system.wav.partial"])
+    XCTAssertEqual(updates.values.count, 2)
   }
 
   func testPauseReleasesBothSourcesAndWritesNothingUntilBothResume() throws {
