@@ -1,5 +1,34 @@
 # Yawn distribution runbook
 
+## 0.6.5 release receipt
+
+**0.6.5 was released on 2026-09-18.** Source commit `f2cf489` (tagged
+`v0.6.5`) unlocks Record without a Settings system-audio detour: one automatic
+process-local probe after launch when the microphone is already authorized, plus
+an Allow control beside Record when that check still needs the operator.
+
+Signed artifact `Yawn-0.6.5-macos-arm64.dmg`, 586,529,144 bytes, SHA-256
+`17e2292a390484d385d2fd7bb3af090de1da3d9bfe9b9e4102fbe2c7b9875483`. Apple
+accepted app submission `c35f0cf3-6dd7-4a0b-9309-624f5848225d` and DMG
+submission `11578a5d-8128-4b2a-b4a2-d40c6861df62`. Both artifacts were stapled.
+Independent signed-release verification passed with 200 arm64-compatible Mach-O
+files under `internal-alpha`. Hosted speech- and note-model objects matched
+their catalog byte counts; full streamed SHA-256 verification also passed.
+
+Public installer:
+https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.5-macos-arm64.dmg
+returned 200 with the recorded byte count, `application/x-apple-diskimage`, and
+immutable cache control. Landing-site commit `7b8b7ab` was pushed and deployed
+as https://9965269c.yawn-site.pages.dev. Production
+https://apps.ninochavez.co/yawn/ and https://yawn-site.pages.dev/ both name
+0.6.5 with the matching checksum. GitHub release:
+https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.5
+
+`/Applications/Yawn.app` was replaced from the signed DMG on 2026-09-18 and
+reports version 0.6.5 with a Notarized Developer ID assessment. No prior public
+installer was deleted in this pass. Real-meeting acceptance remains separate
+from packaging evidence.
+
 ## 0.6.4 release receipt
 
 **0.6.4 was released on 2026-09-08 with Apple speech setup, clearer Settings,
