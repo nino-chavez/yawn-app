@@ -1,0 +1,50 @@
+{
+  "appliedScene": "system-audio-unmeasured",
+  "dark": true,
+  "errors": [],
+  "failures": [],
+  "height": 600,
+  "overflows": [],
+  "pass": true,
+  "provenance": {
+    "sha256": {
+      "apps/desktop/ui-harness/harness.html": "35acd8229bfb4fd51c32511c7b5135f47aac1651426e84a7e6c9421a2607facc",
+      "apps/desktop/ui-harness/layout/cases.json": "5536769ed0a203949ea9979fd77425b954782887e92fb34a3a1a1ab64dc87d13",
+      "apps/desktop/ui-harness/layout/native-scene.js": "97793968af40099d4514fb01e5c6a18ad44200656e05110bbc432aed2db795e2",
+      "apps/desktop/ui-harness/layout/run.py": "8398dc83fe5f37adebb8e35556aed0a9ac2768fda53a319ade758d845ac78d1e",
+      "apps/desktop/ui-harness/layout/scenes.js": "bc0964d6bee646b5a4d3c48d57508e77b61e1db51b817059014813ff0a3aeaa4",
+      "apps/desktop/ui-harness/layout/serve.py": "07dfc5a4355c92b0613ae4b92c84bf8bcafea21ae2e3b48fd91ed1e676226003",
+      "apps/desktop/ui-harness/layout/settings-scenes.js": "6367b77170b2b6ab04bc2a290c39269d019b9ff1cfb3e3c0c579e085e29684f7",
+      "apps/desktop/ui-harness/runner.swift": "8c313a3b637ea29f123be23d720c33912ecaff8838892217d761ab764667eec5",
+      "apps/desktop/ui-harness/tauri-stub.js": "f7ec16b5edc290653131566d22cfcb320350a9a939f4f32e34f83ba1e34b848d",
+      "apps/desktop/ui/dom-patch.mjs": "9f8de323533f76dceb694c777f7f102ad1de3050bebbea879819665c9109902f",
+      "apps/desktop/ui/dom-patch.test.mjs": "b8e19e3f2811a0350cea1a53c37d4dbbc0873ed4989ff6e90ba2069756ed0488",
+      "apps/desktop/ui/error-codes.test.mjs": "d2384bcb48279d02a183e57e19b295483cb55e1c5c746a93b4b814bb70e600ec",
+      "apps/desktop/ui/index.html": "902d308ee2e377fc36c6d287d292334b0127e15add33578efcf021dba09e8d73",
+      "apps/desktop/ui/main.js": "4fbfb2140968de3f9b27c39ee183faa1a5e065f01076d80789fb7d5d685c786c",
+      "apps/desktop/ui/review/harness.js": "5d639f90125b1145504a2129223f30e21fc199815f306e0ba8cc26fe75b22864",
+      "apps/desktop/ui/review/settings-harness.html": "04775799dc496fb3b00d1407008566f83de7e1d28853375bcecdba1d2fce3b9f",
+      "apps/desktop/ui/settings-interaction.test.mjs": "7ad0b1d7291a4304cbcebb7f921e913cc1a75f3616c26507d5c6d64edbf45a9e",
+      "apps/desktop/ui/settings-window.css": "5895e5140485c7d2119fb08463052b53b375b1d94add9df8d39fe15f9f9a2891",
+      "apps/desktop/ui/settings.html": "b6714433c931760f72210c3ac64ca3b7aac1fbc0720ad95dd22bf71e4342c0f3",
+      "apps/desktop/ui/settings.js": "6559e42aefac5aba4d6f73ce764ebdb65ebc6213187fe79e5423f320043386af",
+      "apps/desktop/ui/settings.test.mjs": "828654ba6c01c4218bfe4b3bf96c31cf491528801e9cf523f55c854a53f15861",
+      "apps/desktop/ui/styles.css": "c53df690e334655acc56e51ff47649ec4bdddd4e0e9fc20e465f954e3c0be579",
+      "apps/desktop/ui/tokens.css": "a3d4579840882505aaf4d4ae0845b231e40595aa20b0c2343ce6e77f210cbbb0",
+      "apps/desktop/ui/view-model.mjs": "da927ee4f068c4ce4c2431ac2faf5c9a9ae2eb129134be8c85778b564fc8a191",
+      "apps/desktop/ui/view-model.test.mjs": "50e7358db1b7cb66ca99ab379b2f6f432d4ba936b9bc81ca0a7ce8bf18e65f1b"
+    },
+    "sourceCommit": "2efbf5a3b44d53e3f382ad34ee51551129a193ad",
+    "synthetic": true
+  },
+  "scene": "system-audio-unmeasured",
+  "width": 900,
+  "case": {
+    "scene": "system-audio-unmeasured",
+    "mode": "library",
+    "appearance": "dark",
+    "width": 900,
+    "height": 600
+  },
+  "exit": 0
+}

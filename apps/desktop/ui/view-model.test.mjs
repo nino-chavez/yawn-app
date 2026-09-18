@@ -153,7 +153,7 @@ test("audio setup does not confuse unknown with permission denied", () => {
   assert.equal(permissionSummary({ microphone: "denied", systemAudio: "unmeasured" }).title, "Microphone access is needed");
   const systemAudioSetup = permissionSummary({ microphone: "authorized", systemAudio: "unmeasured" });
   assert.equal(systemAudioSetup.title, "Allow system audio");
-  assert.equal(systemAudioSetup.detail, "Microphone access is ready. Check system-audio access in Settings before recording.");
+  assert.equal(systemAudioSetup.detail, "Microphone access is ready. Allow system audio before recording.");
   assert.equal(permissionSummary({ microphone: "authorized", systemAudio: "authorized" }).state, "ready");
 });
 

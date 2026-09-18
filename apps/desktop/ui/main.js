@@ -1,6 +1,7 @@
 import {
   backgroundTranscriptionPresentation,
   canOpenStart,
+  canStartMeeting,
   contentView,
   captureActivity,
   captureActivityElapsedSeconds,
@@ -151,6 +152,11 @@ let noteSaveTimer;
 let libraryNoteSaveTimer;
 let contextSaveTimer;
 let permissionsRefreshTask;
+// One disposable system-audio tap per process after launch (or after the
+// operator asks again). Focus/visibility status refreshes must not spawn
+// parallel probes; a fresh process still starts unmeasured until this runs.
+let systemAudioAutoProbeAttempted = false;
+let systemAudioAutoProbeTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
 // Every route into a meeting reader gets an epoch. A slower search-result
@@ -680,8 +686,21 @@ function renderToolbarRecordControl() {
   }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
   const reason = startAvailable ? "" : recordUnavailableReason(state.snapshot, state.permissions);
+  // When Record is blocked only by an unmeasured system-audio check, keep the
+  // Allow action here — not only on the empty pane or in Settings — so a
+  // selected meeting still has a next step without a Settings detour.
+  const systemAudioAllow = !startAvailable
+    && state.permissions
+    && !state.permissions.probeUnavailable
+    && state.permissions.microphone === "authorized"
+    && state.permissions.systemAudio === "unmeasured"
+    && canStartMeeting(state.snapshot)
+    ? permissionAction(state.permissions)
+    : null;
+  const probing = state.busyAction === "permission" && systemAudioAllow;
   return `
     <button class="btn record record-idle" type="button" data-action="open-start" title="${escapeHtml(reason || "Record (⌘R)")}" ${startAvailable ? "" : `disabled aria-describedby="record-unavailable-reason"`}>Record</button>
+    ${systemAudioAllow ? `<button class="btn primary" type="button" data-action="${escapeHtml(systemAudioAllow.action)}" ${probing ? "disabled" : ""}>${probing ? "Checking…" : escapeHtml(systemAudioAllow.label)}</button>` : ""}
     ${reason ? `<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">${escapeHtml(reason)}</span>` : ""}
   `;
 }
@@ -2297,9 +2316,37 @@ async function refreshPermissions() {
   }
 }
 
+// macOS has no status API for process taps, so a non-prompting check leaves
+// system audio unmeasured. After launch, run the same disposable-tap probe
+// Settings uses — once per process — when the microphone is already authorized
+// and a meeting could otherwise start. Do not invent a persisted authorized
+// flag; do not auto-request the microphone (that status API exists).
+function shouldAutoProbeSystemAudio() {
+  const permission = state.permissions;
+  if (!invoke || !permission || permission.probeUnavailable) return false;
+  if (permission.microphone !== "authorized") return false;
+  if (permission.systemAudio !== "unmeasured") return false;
+  return canStartMeeting(state.snapshot);
+}
+
+async function maybeAutoProbeSystemAudio() {
+  if (systemAudioAutoProbeAttempted || systemAudioAutoProbeTask) return systemAudioAutoProbeTask;
+  if (!shouldAutoProbeSystemAudio()) return;
+  systemAudioAutoProbeAttempted = true;
+  systemAudioAutoProbeTask = (async () => {
+    await requestPermission("system-audio");
+  })();
+  try {
+    await systemAudioAutoProbeTask;
+  } finally {
+    systemAudioAutoProbeTask = undefined;
+  }
+}
+
 function refreshPermissionsOnReturn() {
   if (!invoke) return;
   void refreshPermissions()
+    .then(maybeAutoProbeSystemAudio)
     .then(render)
     .catch(reportError);
 }
@@ -3828,6 +3875,11 @@ async function initialize() {
   }
   await maybeAutoSelectMeeting();
   render();
+  // After the status refresh is in state, measure system audio once if that is
+  // the only remaining Record gate. Errors stay local to the probe path.
+  void maybeAutoProbeSystemAudio()
+    .then(render)
+    .catch(reportError);
   window.setInterval(() => {
     if (shouldPollSnapshot(state.snapshot)) {
       void refreshSnapshot().then(maybeAutoSelectMeeting).catch(reportError);
@@ -3835,6 +3887,13 @@ async function initialize() {
       void maybeAutoSelectMeeting();
     }
     void refreshRetainedAudioPlayback();
+    // Startup may become ready after the first permission status; probe once
+    // when that is the only remaining Record gate (no-op after attempted).
+    if (shouldAutoProbeSystemAudio()) {
+      void maybeAutoProbeSystemAudio()
+        .then(render)
+        .catch(reportError);
+    }
   }, 900);
 }
 

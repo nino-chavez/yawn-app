@@ -37,6 +37,11 @@ export async function applyScene(s,render){
   s.modal='start';s.startSheetGuided=scene==='start-guided';
   if(scene==='start-denied')s.permissions={microphone:'denied',systemAudio:'unavailable',probeUnavailable:true};
  }
+ if(scene==='system-audio-unmeasured'||scene==='system-audio-unmeasured-empty'){
+  s.permissions={microphone:'authorized',systemAudio:'unmeasured',probeUnavailable:false};
+  if(scene==='system-audio-unmeasured-empty'){s.selected=null;s.library={...s.library,rows:[],total:0,firstRunSheetSeen:true};}
+ }
+
  if(scene==='rename'){s.modal='rename-meeting';s.renameDraft=longTitle;}
  if(scene==='speaker'){s.modal='speaker-correction';s.speakerCorrection={sourceSpeaker:'Them',sourceLabel:'Them',sourceTurnIndex:1};s.speakerCorrectionDraft='Alexandria Montgomery-Worthington';}
  if(['delete-recording','delete-transcript','delete-meeting','lock-meeting','unlock-meeting','lock-unavailable'].includes(scene)){

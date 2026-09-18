@@ -230,5 +230,9 @@
   {"scene":"playback","mode":"library","appearance":"light","width":900,"height":600},
   {"scene":"playback","mode":"library","appearance":"light","width":900,"height":600,"bottom":1},
   {"scene":"playback","mode":"library","appearance":"dark","width":900,"height":600},
-  {"scene":"playback","mode":"library","appearance":"dark","width":900,"height":600,"bottom":1}
+  {"scene":"playback","mode":"library","appearance":"dark","width":900,"height":600,"bottom":1},
+  {"scene":"system-audio-unmeasured","mode":"library","appearance":"light","width":900,"height":600},
+  {"scene":"system-audio-unmeasured","mode":"library","appearance":"dark","width":900,"height":600},
+  {"scene":"system-audio-unmeasured-empty","mode":"library","appearance":"light","width":900,"height":600},
+  {"scene":"system-audio-unmeasured-empty","mode":"library","appearance":"dark","width":900,"height":600}
 ]

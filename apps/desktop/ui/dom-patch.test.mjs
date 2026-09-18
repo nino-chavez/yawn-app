@@ -205,3 +205,24 @@ test("a disabled Record explains itself, associated with the control via aria-de
   assert.match(button, /disabled aria-describedby="record-unavailable-reason"/);
   assert.match(main, /<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">/);
 });
+
+test("disabled Record for unmeasured system audio offers Allow beside the control", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const fn = main.slice(
+    main.indexOf("function renderToolbarRecordControl"),
+    main.indexOf("// -- Sidebar"),
+  );
+  assert.match(fn, /microphone === "authorized"/);
+  assert.match(fn, /systemAudio === "unmeasured"/);
+  assert.match(fn, /permissionAction\(state\.permissions\)/);
+  assert.match(fn, /canStartMeeting\(state\.snapshot\)/);
+  assert.match(fn, /data-action="\$\{escapeHtml\(systemAudioAllow\.action\)\}"/);
+  assert.match(fn, /Checking…/);
+  assert.match(main, /async function maybeAutoProbeSystemAudio/);
+  assert.match(main, /systemAudioAutoProbeAttempted/);
+  assert.match(main, /first_run_request_system_audio/);
+  assert.match(main, /shouldAutoProbeSystemAudio/);
+  // Auto-probe must not invent disk persistence or auto-request the mic.
+  assert.doesNotMatch(main, /localStorage.*systemAudio|systemAudio.*localStorage/);
+  assert.match(main, /permission\.microphone !== "authorized"/);
+});

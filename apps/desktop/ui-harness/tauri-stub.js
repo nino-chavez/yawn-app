@@ -150,7 +150,28 @@
           { id: "whisper-large-v3-turbo", title: "Full model", detail: "The full local Turbo transcription model, using about 1.61 GB.", downloadBytes: 1613977880, installedBytes: 1613977880 },
         ] } }
       : { ...idleSnapshot }),
-    first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
+    first_run_permissions: () => {
+      const scene = new URLSearchParams(location.search).get("scene") || "";
+      const systemAudioUnmeasured = scene === "system-audio-unmeasured" || scene === "system-audio-unmeasured-empty";
+      return {
+        microphone: "authorized",
+        systemAudio: systemAudioUnmeasured ? "unmeasured" : "authorized",
+        probeUnavailable: false,
+      };
+    },
+    first_run_request_microphone: () => ({ microphone: "authorized", systemAudio: "unmeasured", probeUnavailable: false, prompted: true }),
+    first_run_request_system_audio: () => {
+      const scene = new URLSearchParams(location.search).get("scene") || "";
+      const systemAudioUnmeasured = scene === "system-audio-unmeasured" || scene === "system-audio-unmeasured-empty";
+      // Layout scenes that pin the unmeasured Record gate must keep the probe
+      // honest without flipping the fixture to authorized mid-capture.
+      return {
+        microphone: "unmeasured",
+        systemAudio: systemAudioUnmeasured ? "unmeasured" : "authorized",
+        probeUnavailable: false,
+        prompted: true,
+      };
+    },
     library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "summary-failed" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
