@@ -16,6 +16,8 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "get_transcription_engine_settings",
     "select_transcription_engine",
     "install_apple_speech_assets",
+    "nemotron_model_settings",
+    "install_nemotron_model",
     "transcript_model_settings",
     "remove_transcript_model",
     "note_model_settings",
@@ -78,6 +80,7 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "transcript_retry_start",
     "transcript_retry_pending",
     "transcript_retry_decide",
+    "analyze_speakers",
     // Roadmap intake W8-B: the one-week local usage probe for cross-meeting
     // exact search. Registered, but both refuse with a quiet, honest message
     // whenever `search-probe.flag` is absent from the storage root -- see
@@ -150,6 +153,7 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-get-transcription-engine-settings",
     "allow-select-transcription-engine",
     "allow-install-apple-speech-assets",
+    "allow-analyze-speakers",
 ];
 
 fn permissions(source: &str) -> Vec<String> {
@@ -309,6 +313,8 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
             "allow-get-transcription-engine-settings",
             "allow-select-transcription-engine",
             "allow-install-apple-speech-assets",
+            "allow-nemotron-model-settings",
+            "allow-install-nemotron-model",
         ]
     );
 
@@ -326,6 +332,8 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
         "note_model_settings",
         "install_note_model",
         "remove_note_model",
+        "nemotron_model_settings",
+        "install_nemotron_model",
     ] {
         assert!(script.contains(command));
     }

@@ -690,6 +690,22 @@ h3 {
   text-transform: uppercase;
 }
 
+.speaker-suggestion,
+.transcript-suggestion-note {
+  color: var(--ink-faint);
+  font-size: var(--t-caption);
+  line-height: 1.35;
+}
+
+.speaker-suggestion {
+  max-width: 100%;
+}
+
+.transcript-suggestion-note {
+  margin: var(--space-12) 0 0;
+  max-width: var(--measure-reading);
+}
+
 .transcript-line p {
   margin: 0;
   font-size: var(--t-transcript);
@@ -2888,6 +2904,12 @@ html, body, #app {
   line-height: 1.08;
   letter-spacing: -0.038em;
   margin: 0;
+}
+
+/* The inspector takes 320px from the document. Keep the full title and its
+   28–36px scale, but spend less of the remaining reading area on the header. */
+.doc-wrap:has(.inspector) .doc-head h1 {
+  font-size: clamp(28px, 2.6vw, var(--t-large));
 }
 
 .doc-caption {

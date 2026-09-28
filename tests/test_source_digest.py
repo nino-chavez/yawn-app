@@ -69,6 +69,11 @@ class SourceDigestCoverageContract(unittest.TestCase):
             "worker/source_digest.py",
         ):
             self.assertIn(tool, self.covered)
+        self.assertIn("scripts/package_nemotron_diarizer.py", self.covered)
+
+    def test_diarization_worker_is_staged_and_covered(self):
+        self.assertIn("worker/diarization.py", self.covered)
+        self.assertIn('"$REPO/worker/diarization.py"', self.script)
 
 
 class SourceDigestStampTests(unittest.TestCase):
@@ -125,6 +130,20 @@ class SourceDigestStampTests(unittest.TestCase):
             problems[-1], "runtime staging predates source — run worker/build_runtime.sh"
         )
 
+    def test_diarization_edit_is_refused_by_the_freshness_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage = self.stamped_stage(directory)
+            problems = self.rewrite(
+                stage,
+                lambda document: document["files"].__setitem__(
+                    "worker/diarization.py", "0" * 64
+                ),
+            )
+        self.assertIn("source changed since staging: worker/diarization.py", problems)
+        self.assertEqual(
+            problems[-1], "runtime staging predates source — run worker/build_runtime.sh"
+        )
+
     def test_added_and_removed_sources_are_both_stale(self):
         with tempfile.TemporaryDirectory() as directory:
             stage = self.stamped_stage(directory)
@@ -167,6 +186,10 @@ class BundledStampResourceContract(unittest.TestCase):
                 self.assertEqual(
                     resources.get("../runtime/source-digest.json"),
                     "source-digest.json",
+                )
+                self.assertEqual(
+                    resources.get("../runtime/nemotron-diarization"),
+                    "nemotron-diarization",
                 )
 
 

@@ -51,6 +51,13 @@ ENCODER_ONNX_SHA256='1d5e288b1037410fd0c98f618e94523a6b7ca8a99c7069f076efb40aa95
 ENCODER_DEFAULT="$VENDOR/downloads/ecapa-tdnn.onnx"
 ENCODER_SOURCE="${LMN_ENCODER_ONNX_SOURCE:-$ENCODER_DEFAULT}"
 ENCODER_STAGE_RELATIVE='models/speaker-encoder/ecapa-tdnn.onnx'
+# This optional native runtime contains only the Metal diarization executable
+# and its private dylib closure. The GGUF stays outside Yawn.app and is not
+# fetched here. A dedicated mode keeps every existing runtime build unchanged.
+NEMOTRON_SOURCE="${YAWN_NEMO_SOURCE_DIR:-}"
+NEMOTRON_BUILD="$VENDOR/nemotron-diarization-build"
+NEMOTRON_DEPENDENCY_PREFIX="${YAWN_NEMO_DEPENDENCY_PREFIX:-$NEMOTRON_BUILD/deps}"
+NEMOTRON_STAGE_RELATIVE='nemotron-diarization'
 
 if [[ "$(uname -s)-$(uname -m)" != "Darwin-arm64" ]]; then
   echo "boundary runtime build requires macOS arm64" >&2
@@ -73,6 +80,9 @@ verify() {
   [[ -f "$STAGE/note-validator.zip" ]]
   PYTHONPATH="$REPO" python3 -c \
     'import sys; from pathlib import Path; from worker.build_manifest import verify_note_runtime; verify_note_runtime(Path(sys.argv[1]))' \
+    "$STAGE"
+  PYTHONPATH="$REPO" python3 -c \
+    'import sys; from pathlib import Path; from worker.build_manifest import ensure_nemotron_runtime; ensure_nemotron_runtime(Path(sys.argv[1]))' \
     "$STAGE"
   (cd "$STAGE" && "$STAGE/python-runtime/bin/python3.12" -E -s -B -c \
     'import json, numpy; import worker.main; doc=json.load(open("app-runtime.json")); print(doc["admission"], numpy.__version__)' \
@@ -156,15 +166,30 @@ case "$mode" in
     verify
     exit 0
     ;;
-  build|build-alpha|build-alpha-encoder|build-alpha-external) ;;
+  build|build-alpha|build-alpha-encoder|build-alpha-external|build-alpha-diarization|build-alpha-external-diarization) ;;
   *)
-    echo "usage: worker/build_runtime.sh [build|build-alpha|build-alpha-encoder|build-alpha-external|verify]" >&2
+    echo "usage: worker/build_runtime.sh [build|build-alpha|build-alpha-encoder|build-alpha-external|build-alpha-diarization|build-alpha-external-diarization|verify]" >&2
     exit 64
     ;;
 esac
 
+# Fail before the ordinary runtime's network-backed CPython/model setup. This
+# optional lane cannot produce a portable bundle without this Yawn-owned,
+# pinned static dependency tree, so downloading unrelated runtime inputs first
+# only conceals the native packaging hold.
+if [[ "$mode" == "build-alpha-diarization" || "$mode" == "build-alpha-external-diarization" ]]; then
+  for native_dependency in \
+    "$NEMOTRON_DEPENDENCY_PREFIX/sentencepiece/lib/libsentencepiece.a" \
+    "$NEMOTRON_DEPENDENCY_PREFIX/sentencepiece/include/sentencepiece_processor.h"; do
+    [[ -f "$native_dependency" && ! -L "$native_dependency" ]] || {
+      echo "pinned static Nemotron dependency is unavailable: $native_dependency" >&2
+      exit 1
+    }
+  done
+fi
+
 mkdir -p "$DOWNLOADS"
-if [[ "$mode" == "build-alpha-external" ]]; then
+if [[ "$mode" == "build-alpha-external" || "$mode" == "build-alpha-external-diarization" ]]; then
   mkdir -p "$Q4_SOURCE"
   for index in "${!Q4_FILES[@]}"; do
     target="$Q4_SOURCE/${Q4_FILES[$index]}"
@@ -181,7 +206,8 @@ fi
 echo "$PYTHON_SHA256  $ARCHIVE" | shasum -a 256 -c -
 
 rm -rf "$VENDOR/python-runtime" "$STAGE"
-mkdir -p "$STAGE/bin" "$STAGE/worker" "$STAGE/spike" "$STAGE/notes" "$STAGE/models"
+mkdir -p "$STAGE/bin" "$STAGE/worker" "$STAGE/spike" "$STAGE/notes" "$STAGE/models" \
+  "$STAGE/nemotron-diarization"
 tar -xzf "$ARCHIVE" -C "$VENDOR"
 mv "$VENDOR/python" "$VENDOR/python-runtime"
 if [[ "$mode" == build-alpha* ]]; then
@@ -219,7 +245,7 @@ fi
 cp "$REPO/worker/__init__.py" "$REPO/worker/main.py" \
   "$REPO/worker/adapters.py" "$REPO/worker/product_contracts.py" \
   "$REPO/worker/storage.py" "$REPO/worker/fbank.py" \
-  "$REPO/worker/transcription.py" "$REPO/worker/embedding.py" \
+  "$REPO/worker/transcription.py" "$REPO/worker/diarization.py" "$REPO/worker/embedding.py" \
   "$REPO/worker/speech_results.py" "$REPO/worker/apple_speech.py" "$STAGE/worker/"
 cp "$REPO/worker/note_bridge.py" "$STAGE/note-bridge.py"
 cp "$REPO/worker/note_generator_mlx.py" "$STAGE/note-generator-mlx.py"
@@ -237,7 +263,8 @@ cp "$REPO/notes/transcript.py" "$REPO/notes/summarize.py" \
   "$REPO/notes/mlx_minilm.py" "$REPO/notes/candidate_first.py" "$STAGE/notes/"
 
 swift build -c release --product audiotee --package-path "$REPO/capture/audiotee"
-cp "$REPO/capture/audiotee/.build/arm64-apple-macosx/release/audiotee" \
+AUDIOTEE_BIN="$(swift build -c release --package-path "$REPO/capture/audiotee" --show-bin-path)"
+cp "$AUDIOTEE_BIN/audiotee" \
   "$STAGE/bin/audiotee"
 chmod 0755 "$STAGE/bin/audiotee"
 
@@ -247,18 +274,20 @@ chmod 0755 "$STAGE/bin/audiotee"
 # status because they do not package meeting-capture.
 swift build -c release --product permission-probe \
   --package-path "$REPO/capture/permission-probe"
-cp "$REPO/capture/permission-probe/.build/arm64-apple-macosx/release/permission-probe" \
+PROBE_BIN="$(swift build -c release --package-path "$REPO/capture/permission-probe" --show-bin-path)"
+cp "$PROBE_BIN/permission-probe" \
   "$STAGE/bin/permission-probe"
 chmod 0755 "$STAGE/bin/permission-probe"
-if [[ "$mode" == "build-alpha-external" ]]; then
+if [[ "$mode" == "build-alpha-external" || "$mode" == "build-alpha-external-diarization" ]]; then
   swift build -c release --product apple-speech \
     --package-path "$REPO/capture/apple-speech"
-  cp "$REPO/capture/apple-speech/.build/arm64-apple-macosx/release/apple-speech" \
+  APPLE_SPEECH_BIN="$(swift build -c release --package-path "$REPO/capture/apple-speech" --show-bin-path)"
+  cp "$APPLE_SPEECH_BIN/apple-speech" \
     "$STAGE/bin/apple-speech"
   chmod 0755 "$STAGE/bin/apple-speech"
 fi
 if [[ "$mode" == build-alpha* ]]; then
-  if [[ "$mode" != "build-alpha-external" ]]; then
+  if [[ "$mode" != "build-alpha-external" && "$mode" != "build-alpha-external-diarization" ]]; then
     [[ -f "$WHISPER_SOURCE/config.json" && -f "$WHISPER_SOURCE/weights.safetensors" ]] || {
       echo "fixed Whisper snapshot $WHISPER_REVISION is unavailable" >&2
       exit 1
@@ -284,7 +313,7 @@ if [[ "$mode" == build-alpha* ]]; then
     cp -L "$EMBEDDER_SOURCE/$name" "$STAGE/$EMBEDDER_STAGE_RELATIVE/"
   done
   swift build -c release --product meeting-capture --package-path "$REPO/capture/audiotee"
-  cp "$REPO/capture/audiotee/.build/arm64-apple-macosx/release/meeting-capture" \
+  cp "$AUDIOTEE_BIN/meeting-capture" \
     "$STAGE/bin/meeting-capture"
   chmod 0755 "$STAGE/bin/meeting-capture"
 fi
@@ -298,16 +327,26 @@ if [[ "$mode" == "build-alpha-encoder" ]]; then
   mkdir -p "$STAGE/models/speaker-encoder"
   cp -L "$ENCODER_SOURCE" "$STAGE/$ENCODER_STAGE_RELATIVE"
 fi
+if [[ "$mode" == "build-alpha-diarization" || "$mode" == "build-alpha-external-diarization" ]]; then
+  [[ -n "$NEMOTRON_SOURCE" ]] || {
+    echo "YAWN_NEMO_SOURCE_DIR must name a NeMo-Speech.cpp seed checkout at the pinned revision" >&2
+    exit 1
+  }
+  python3 "$REPO/scripts/package_nemotron_diarizer.py" build \
+    --source "$NEMOTRON_SOURCE" --build-dir "$NEMOTRON_BUILD" \
+    --dependency-prefix "$NEMOTRON_DEPENDENCY_PREFIX" \
+    --stage "$STAGE/$NEMOTRON_STAGE_RELATIVE"
+fi
 # The placeholder identity file is a fixed bundle resource in every mode; the
 # manifest's encoder entry, not this file, is what every consumer reads.
 printf '%s\n' 'phase-2-boundary-no-encoder-model' > "$STAGE/encoder-unavailable.identity"
 if [[ "$mode" == "build-alpha-encoder" ]]; then
   python3 "$REPO/worker/build_manifest.py" "$STAGE" --admission internal-alpha \
     --encoder "$ENCODER_STAGE_RELATIVE"
-elif [[ "$mode" == "build-alpha-external" ]]; then
+elif [[ "$mode" == "build-alpha-external" || "$mode" == "build-alpha-external-diarization" ]]; then
   python3 "$REPO/worker/build_manifest.py" "$STAGE" --admission internal-alpha \
     --external-transcript-models --apple-speech
-elif [[ "$mode" == "build-alpha" ]]; then
+elif [[ "$mode" == "build-alpha" || "$mode" == "build-alpha-diarization" ]]; then
   python3 "$REPO/worker/build_manifest.py" "$STAGE" --admission internal-alpha
 else
   python3 "$REPO/worker/build_manifest.py" "$STAGE"

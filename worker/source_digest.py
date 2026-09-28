@@ -41,6 +41,7 @@ COPIED_SOURCES = (
     "worker/storage.py",
     "worker/fbank.py",
     "worker/transcription.py",
+    "worker/diarization.py",
     "worker/speech_results.py",
     "worker/apple_speech.py",
     "worker/embedding.py",
@@ -63,6 +64,7 @@ TOOLING_SOURCES = (
     "worker/build_runtime.sh",
     "worker/build_manifest.py",
     "worker/source_digest.py",
+    "scripts/package_nemotron_diarizer.py",
 )
 
 # Swift packages built into staged binaries (audiotee, meeting-capture,

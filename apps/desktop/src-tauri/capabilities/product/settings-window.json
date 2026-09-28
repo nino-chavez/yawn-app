@@ -20,6 +20,8 @@
     "allow-remove-note-model",
     "allow-get-transcription-engine-settings",
     "allow-select-transcription-engine",
-    "allow-install-apple-speech-assets"
+    "allow-install-apple-speech-assets",
+    "allow-nemotron-model-settings",
+    "allow-install-nemotron-model"
   ]
 }

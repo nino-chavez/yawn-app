@@ -52,7 +52,8 @@ Start at the repository root:
 
 ```sh
 git status --short
-worker/build_runtime.sh build-alpha-external
+YAWN_NEMO_SOURCE_DIR=<pinned-NeMo-Speech.cpp-checkout> \
+  worker/build_runtime.sh build-alpha-external-diarization
 (cd apps/desktop && npm run build)
 scripts/verify-release-bundle.py \
   --admission internal-alpha \

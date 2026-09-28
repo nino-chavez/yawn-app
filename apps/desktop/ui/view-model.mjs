@@ -285,13 +285,16 @@ export function permissionSummary(permission) {
   if (permission.microphone === "denied" || permission.microphone === "restricted") {
     return { state: "attention", title: "Microphone access is needed", detail: "Allow Yawn to use the microphone before recording." };
   }
+  if (permission.microphone === "not-determined") {
+    return { state: "setup", title: "Allow microphone", detail: "System audio may need separate access after this." };
+  }
   if (permission.microphone === "authorized" && permission.systemAudio === "unmeasured") {
     return { state: "setup", title: "Allow system audio", detail: "Microphone access is ready. Allow system audio before recording." };
   }
   if (["unavailable", "unsupported", "unknown"].includes(permission.systemAudio)) {
     return { state: "attention", title: "System audio needs attention", detail: "Open Settings to check system-audio access before recording." };
   }
-  return { state: "setup", title: "Set up audio access", detail: "Allow microphone and system audio before your first recording." };
+  return { state: "setup", title: "Set up audio access", detail: "Allow microphone and system audio before recording." };
 }
 
 export function retentionLabel(days) {
@@ -1039,6 +1042,22 @@ export function transcriptSpeakerLabel(turn) {
   if (turn?.withheld) return null;
   const speaker = typeof turn?.speaker === "string" ? turn.speaker.trim() : "";
   return speaker || "Unattributed";
+}
+
+// Optional diarization stays an anonymous, review-only layer. A suggestion is
+// rendered only when Rust admitted the exact transcript-and-microphone-bound
+// sidecar; names and corrections remain owned by the existing control.
+export function speakerSuggestionPresentation(turn, suggestions) {
+  if (turn?.withheld || turn?.sourceSpeaker !== "Me" || suggestions?.state !== "review-required") return null;
+  const sourceTurnIndex = Number(turn?.sourceTurnIndex);
+  if (!Number.isInteger(sourceTurnIndex) || sourceTurnIndex < 0) return null;
+  const match = suggestions?.suggestion?.turns?.find((candidate) => (
+    Number(candidate?.sourceTurnIndex) === sourceTurnIndex
+  ));
+  if (!match || !Array.isArray(match.clusters) || !match.clusters.length) return null;
+  const clusters = match.clusters.filter((cluster) => /^cluster-[1-8]$/.test(String(cluster)));
+  if (clusters.length !== match.clusters.length) return null;
+  return { clusters, hasOverlap: match.hasOverlap === true };
 }
 
 export function transcriptTurnsForSourceSpeaker(turns, sourceSpeaker) {
