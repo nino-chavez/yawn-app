@@ -1,5 +1,34 @@
 # Yawn distribution runbook
 
+## 0.6.6 release receipt
+
+**0.6.6 was released on 2026-09-28.** PR #75 merged source commit
+`43c6f0e55fc5bb099ff3517752b187d22f4cfb85`; annotated tag `v0.6.6`
+points to that build commit. The merge tree matches the build tree.
+
+Signed artifact `Yawn-0.6.6-macos-arm64.dmg`, 592,895,929 bytes, SHA-256
+`e1d89dc64eac952c3112acc1f3ed79ef26265827ed3d229d4bd75d1bb1b860e6`.
+Apple accepted app submission `dde79c03-7c98-4ba9-a0dc-8ca7cd569366` and DMG
+submission `4d02bbfb-b8fb-4a95-9145-0c56731db6c4`. Both were stapled. An
+independent signed-release check passed for 207 arm64-compatible Mach-O files
+under `internal-alpha`. All four hosted transcript-model files matched their
+catalog byte counts and full streamed SHA-256 digests.
+
+The public installer at
+https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.6-macos-arm64.dmg
+returned 200 with the recorded size, disk-image content type, and immutable
+cache control; a full streamed download matched the artifact SHA-256. Landing
+site commit `14e768b6cf90e0ae28a01ecc4859d38798228f7e` was pushed and
+deployed as https://5a159c49.yawn-site.pages.dev. Both that deployment and
+https://apps.ninochavez.co/yawn/ served the 0.6.6 download, release notes,
+and app card. GitHub release:
+https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.6
+
+`/Applications/Yawn.app` was installed from the signed DMG and reports 0.6.6
+with a strict code signature. The previous 0.6.5 app remains as a local backup.
+No prior public installer was retired. Real-meeting acceptance remains separate
+from packaging evidence.
+
 ## 0.6.5 release receipt
 
 **0.6.5 was released on 2026-09-18.** Source commit `f2cf489` (tagged
