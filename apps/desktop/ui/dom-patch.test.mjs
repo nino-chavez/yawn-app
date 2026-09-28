@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
+import {
+  canOpenStart,
+  canStartMeeting,
+  captureIsInProgress,
+  permissionSummary,
+} from "./view-model.mjs";
 
 // D9 native-text audit, finding 3: rebuilding root.innerHTML wholesale on
 // every 900 ms snapshot tick (and on every transcript-search keystroke)
@@ -206,18 +213,56 @@ test("a disabled Record explains itself, associated with the control via aria-de
   assert.match(main, /<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">/);
 });
 
-test("disabled Record for unmeasured system audio offers Allow beside the control", async () => {
+test("a selected meeting blocked only by permissions offers the matching recovery action beside Record", async () => {
   const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const permissionAction = main.slice(
+    main.indexOf("function permissionAction"),
+    main.indexOf("// DESIGN.md's composition", main.indexOf("function permissionAction")),
+  );
   const fn = main.slice(
     main.indexOf("function renderToolbarRecordControl"),
     main.indexOf("// -- Sidebar"),
   );
-  assert.match(fn, /microphone === "authorized"/);
-  assert.match(fn, /systemAudio === "unmeasured"/);
+  // A selected meeting gets the existing permission action only after the
+  // capture/queue gate clears. The checking state has no actionable result
+  // yet, and the empty pane owns its one recovery action on first run.
+  assert.match(fn, /state\.activeView === "meeting"/);
+  assert.match(fn, /state\.selected/);
   assert.match(fn, /permissionAction\(state\.permissions\)/);
-  assert.match(fn, /canStartMeeting\(state\.snapshot\)/);
-  assert.match(fn, /data-action="\$\{escapeHtml\(systemAudioAllow\.action\)\}"/);
+  assert.match(fn, /canStartMeeting\(snapshot\)/);
+  assert.match(fn, /permissionSummary\(state\.permissions\)\.state !== "checking"/);
+  assert.doesNotMatch(fn, /microphone === "authorized"/);
+  assert.doesNotMatch(fn, /systemAudio === "unmeasured"/);
+  assert.match(fn, /data-action="\$\{escapeHtml\(permissionRecoveryAction\.action\)\}"/);
   assert.match(fn, /Checking…/);
+  const render = (state) => {
+    const context = {
+      state,
+      canOpenStart,
+      canStartMeeting,
+      captureIsInProgress,
+      permissionSummary,
+      captureActivityElapsedSeconds: () => 0,
+      capturePauseControlPresentation: () => null,
+      escapeHtml: (value) => String(value),
+      humanize: (value) => String(value),
+      permissionAction: undefined,
+      recordUnavailableReason: () => "Recording is unavailable.",
+      timeLabel: (value) => String(value),
+    };
+    vm.runInNewContext(`${permissionAction}\n${fn}\nresult = renderToolbarRecordControl();`, context);
+    return context.result;
+  };
+  const readySnapshot = { startup: "ready", capture: "idle", background_transcription_queued_count: 0 };
+  const selected = { activeView: "meeting", selected: {}, snapshot: readySnapshot, busyAction: "" };
+
+  assert.match(render({ ...selected, permissions: { microphone: "not-determined", systemAudio: "unmeasured" } }), /data-action="request-microphone"[^>]*>Allow microphone/);
+  assert.match(render({ ...selected, permissions: { microphone: "authorized", systemAudio: "unmeasured" } }), /data-action="request-system-audio"[^>]*>Allow system audio/);
+  assert.match(render({ ...selected, permissions: { microphone: "denied", systemAudio: "unmeasured" } }), /data-action="open-settings"[^>]*>Open Settings/);
+  assert.match(render({ ...selected, busyAction: "permission", permissions: { microphone: "not-determined", systemAudio: "unmeasured" } }), /data-action="request-microphone" disabled>Checking…/);
+  assert.doesNotMatch(render({ ...selected, permissions: { microphone: "authorized", systemAudio: "authorized" } }), /btn primary/);
+  assert.doesNotMatch(render({ ...selected, snapshot: { ...readySnapshot, background_transcription_queued_count: 2 }, permissions: { microphone: "denied", systemAudio: "unmeasured" } }), /btn primary/);
+  assert.doesNotMatch(render({ activeView: "home", selected: null, snapshot: readySnapshot, busyAction: "", permissions: { microphone: "denied", systemAudio: "unmeasured" } }), /btn primary/);
   assert.match(main, /async function maybeAutoProbeSystemAudio/);
   assert.match(main, /systemAudioAutoProbeAttempted/);
   assert.match(main, /first_run_request_system_audio/);

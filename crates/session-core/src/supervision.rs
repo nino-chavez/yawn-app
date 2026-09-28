@@ -1265,6 +1265,7 @@ pub fn internal_alpha_operations() -> HashSet<Operation> {
         // one step short of the meeting record -- moving in lockstep with
         // `worker/main.py`'s ALPHA_OPERATIONS.
         NoteInspect,
+        SpeakerSuggest,
     ]
     .into_iter()
     .collect()

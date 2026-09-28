@@ -40,6 +40,8 @@ pub enum Operation {
     NoteCreate,
     #[serde(rename = "note.inspect")]
     NoteInspect,
+    #[serde(rename = "speaker.suggest")]
+    SpeakerSuggest,
     /// Window text to vector. Registered in the boundary lane only, because no
     /// lane packages the embedding model yet — this variant exists so a
     /// boundary worker's ready event still parses, not because the app calls it.
@@ -274,7 +276,8 @@ impl RequestTracker {
             Operation::CaptureStart
             | Operation::TranscriptCreate
             | Operation::TranscriptRetry
-            | Operation::NoteCreate => {
+            | Operation::NoteCreate
+            | Operation::SpeakerSuggest => {
                 let value = command
                     .arguments
                     .get("meeting_id")

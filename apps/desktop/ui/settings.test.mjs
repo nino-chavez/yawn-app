@@ -24,6 +24,15 @@ test("a rejection is read for its message before settings.js decides what kind o
   assert.match(fn, /modelBuiltIn = rejection\.includes\(MODEL_BUILT_IN_MARKER\);/);
 });
 
+test("speaker analysis is an explicit optional download with a local-only upstream link", async () => {
+  const settings = await readFile(new URL("./settings.js", import.meta.url), "utf8");
+  const markup = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+  assert.match(settings, /invoke\("nemotron_model_settings"\)/);
+  assert.match(settings, /invoke\("install_nemotron_model"\)/);
+  assert.match(settings, /never names people or changes your transcript/);
+  assert.match(markup, /huggingface\.co\/nvidia\/Nemotron-3-Diarization/);
+});
+
 test("the build-fact branch renders no attention tone and schedules no retry", async () => {
   const source = await readFile(new URL("./settings.js", import.meta.url), "utf8");
   const renderFn = source.slice(source.indexOf("function renderModels"), source.indexOf("function renderNoteModels"));
@@ -77,6 +86,14 @@ test("settings groups follow grouped-list structure: heading outside, rows insid
   // Verify that .settings-group-box elements exist and follow the h2
   assert.match(html, /<h2[^>]*id="[^"]*".*?<\/h2>.*?<div[^>]*class="[^"]*settings-group-box/s,
     "section must have heading outside the box, then .settings-group-box inside");
+});
+
+test("Settings navigation and section order stay in the same five-step sequence", async () => {
+  const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+  const navTargets = [...html.matchAll(/<a href="#([^"]+)">/g)].map(([, id]) => id);
+  const sectionIds = [...html.matchAll(/<section id="([^"]+)" class="settings-group"/g)].map(([, id]) => id);
+  assert.deepEqual(navTargets, ["recording", "transcription", "notes", "speakers", "storage"]);
+  assert.deepEqual(sectionIds, navTargets);
 });
 
 test("button primary actions follow one-per-group rule", async () => {

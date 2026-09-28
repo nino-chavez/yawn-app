@@ -146,7 +146,7 @@ if [[ "$runtime_schema" == "app-runtime/3" ]]; then
 fi
 "$ROOT/worker/build_manifest.py" \
   "$APP/Contents/Resources" --admission "$ADMISSION" \
-  --encoder "$ENCODER_PATH" "${MANIFEST_ARGS[@]}"
+  --encoder "$ENCODER_PATH" --refresh-nemotron-after-sign "${MANIFEST_ARGS[@]}"
 
 echo "== signing app bundle"
 codesign --force --options runtime --timestamp \

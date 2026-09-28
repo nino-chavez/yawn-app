@@ -765,3 +765,219 @@ Git. This completes the longer research replay only. Installed-app retry,
 vocabulary, playback, and human speech/note quality acceptance remain open.
 The existing four-variant human review packet is still unanswered; all six
 unique audio and transcript links were checked and exist.
+
+## Nemotron 3 local diarization trial — 2026-09-28
+
+This was a completed, local research run of NVIDIA NeMo-Speech.cpp built from
+main source commit `97a15afa5caa9bce5baaa86c1184103877af4101`, using the
+`metal-diar` preset on this Apple Silicon Mac. The model GGUF SHA-256 was
+`08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1`.
+The scorer independently rehashed the frozen corpus manifest, all four source
+audio inputs, and all four saved JSON outputs against the content-free run
+receipt. Every hash, output byte count, and zero exit status matched.
+
+| Case | Segments | Estimated speakers | Predicted overlap | Approx. wall time | Audio seconds / wall second | Behavior |
+|---|---:|---:|---:|---:|---:|---|
+| Synthetic silence (10.0 s) | 0 | 0 | 0 intervals, 0.000 s | 0.65 s | 15.38 | No segments |
+| Short private microphone leg (179.8 s) | 13 | 1 | 0 intervals, 0.000 s | 1.09 s | 164.95 | Speech segments present |
+| Short private system leg (180.0 s) | 23 | 1 | 0 intervals, 0.000 s | 1.09 s | 165.14 | Speech segments present |
+| Public AMI meeting (2334.368 s) | 711 | 4 | 295 intervals, 220.620 s | 9.20 s | 253.74 | Speech segments present |
+
+Wall times are receipt-recorded approximations for this one machine and run.
+They are neither real-time performance nor a product latency measurement.
+The silence result is useful control evidence: this saved run produced no
+diarization segments. It does not establish all silence or noise behavior.
+
+### Public AMI attribution proxy
+
+The AMI manual-word and audio time bases were admissible for this proxy: all
+manual word timings were within the frozen audio duration, and the first and
+last diarizer extents were each within 15 seconds of the reference extent.
+That rejects an obvious clock shift; it does not prove sample-clock alignment.
+The global one-to-one mapping, selected once across the full meeting, was
+`P1 -> B`, `P2 -> D`, `P3 -> A`, and `P4 -> C`, where `P1` through `P4` are
+anonymous diarizer channels and `A` through `D` are AMI's anonymous reference
+channels.
+
+The strict midpoint proxy scored 5,691 correct channel assignments out of
+6,151 eligible manual word annotations: **92.52%**. The denominator excludes
+1,699 manual word annotations whose midpoint had simultaneous reference
+speakers. Of the 460 eligible mismatches, 206 had more than one predicted
+speaker at the midpoint and were counted incorrect rather than credited; 229
+had no predicted speaker at the midpoint. The remaining 25 were single-channel
+mapping mismatches. This is a word-midpoint, global-mapping proxy only. It is
+not official diarization error rate, word-attribution accuracy, or an
+acceptance score.
+
+The reusable content-free scorer at
+`spike/speech-engine-comparison/score_diarization.py` refuses the public score
+when the reference is out of audio bounds or its broad time extent is shifted.
+Its synthetic self-check fails for an obviously wrong global mapping, for a
+predicted overlap treated as a single speaker, and for a shifted time base.
+
+### Paired speaker-label probe on saved Apple transcripts
+
+The 2026-09-28 paired check held Apple's saved timed transcript fixed and
+changed only its speaker-label interpretation. No speech or note model was
+rerun. Each Apple output matched the SHA-256 in its saved receipt; the
+frozen AMI and short private audio still matched the corpus manifest.
+Nemotron's saved output came from the same audio. This is an offline label
+probe, not an installed-app A/B or a newly captured meeting.
+
+On public AMI mixed audio, 5,218 of Apple's 5,963 timed units had exactly one
+manual reference speaker at their midpoint. One system-leg `Them` label
+cannot distinguish the four people; even optimistically mapping that one label
+to the most frequent reference person would cover only 1,760/5,218 (33.73%).
+Using one global anonymous mapping for Nemotron's four clusters, 4,921/5,218
+(94.31%) had exactly one predicted cluster matching that reference person.
+Both the single-label choice and the cluster mapping were selected against
+this meeting's manual reference, so these are optimistic retrospective scores.
+The other 297 eligible units had no predicted cluster (151), competing
+predicted clusters (135), or one wrong cluster (11). A further 620 Apple units
+were excluded because manual speakers overlapped at the midpoint; 125 had no
+manual speaker at that point. This compares label resolution at timestamps,
+not word recognition, official diarization error rate, or note quality. The
+single-label number is a deliberately optimistic interpretation of `Them`,
+which is a valid group label in Yawn rather than a claim to identify a person.
+AMI's mixed headset is not Yawn's two-leg capture.
+
+On the consented three-minute Yawn capture, Nemotron found one cluster on the
+microphone leg and one on the system leg. It therefore added no distinction
+to Yawn's `Me`/`Them` labels. Of Apple's 119 timed microphone units, 108 had a
+Nemotron cluster at the midpoint; 281 of 298 system units did. Replacing
+source labels with cluster coverage alone would leave 11 microphone and 17
+system units unlabeled. Source-leg labels would need to remain the fallback.
+These coverage counts have no independent speaker annotation and are not an
+accuracy score. The frozen corpus still lacks a system-leg recording with
+multiple independently annotated remote speakers.
+
+### Retained in-person Yawn recordings — 2026-09-28
+
+The frozen research corpus was not an inventory of the installed app. A later
+check of Yawn's current meeting storage found two complete microphone
+recordings outside that corpus. Nino reports that each contains two consented
+people speaking in person. Yawn's current transcripts label every turn in
+both recordings `Me`, because both voices entered through the microphone.
+The original audio and current transcripts matched the hashes in each saved
+meeting record. The pinned Nemotron model read the original microphone files
+without copying them. Later listening checks made short local audio extracts
+under the ignored research directory; the original app files were not changed.
+
+| In-person recording | Current Yawn turns | Nemotron segments / clusters | Turn midpoints with one cluster | Turn midpoints with overlap / no cluster |
+|---|---:|---:|---:|---:|
+| September 10, 478 s | 90, all `Me` | 112 / 2 | 46 in cluster 1; 33 in cluster 2 | 3 / 8 |
+| September 16, 374 s | 75, all `Me` | 93 / 2 | 38 in cluster 1; 28 in cluster 2 | 4 / 5 |
+
+Nino listened to separate original-audio samples from each recording. He
+identified his voice at 219–226 and 372–379 seconds in the September 10
+recording, both predicted cluster 2, and at 117–123 and 219–226 seconds in
+the September 16 recording, both predicted cluster 1. The second pair of
+samples was selected at different points before he listened. This supports
+cluster consistency at those sampled points; the clips were chosen from
+single-cluster regions, so they cannot measure errors at transitions or
+overlap. If each cluster remains consistent for its whole recording, 33 of
+the September 10 turn midpoints and 38 of the September 16 turn midpoints
+fall in the operator's candidate cluster; 46 and 28 fall in the other
+anonymous cluster. Those are candidate assignments, not human-verified
+speaker labels for every turn. The other voice remains unnamed.
+
+Six previously selected transcript turns near predicted boundaries or overlap
+were then played without model labels. Nino's listening reports and the
+model's broad sequence compare as follows. These turns were deliberately
+selected for difficulty, so the table is a case review, not a random sample
+or an accuracy rate.
+
+| Clip | Nino's listening report | Nemotron's broad sequence | Comparison |
+|---|---|---|---|
+| A, September 10, 27.82–37.50 s | Other person, with a few of Nino's words overlapping | Mostly other, with two short overlap intervals | Supports the mixed-speaker reading |
+| B, September 10, 325.42–332.02 s | Both: Nino, then other | Mainly Nino, then other, with overlap at the change; a 0.26 s other-cluster fragment appears at the start | Main order agrees; initial fragment unresolved |
+| C, September 10, 447.36–455.40 s | Other, then Nino | Other, then Nino | Order agrees |
+| D, September 16, 244.74–251.88 s | Mostly Nino, then other near the end | Nino, then other near the end | Order agrees |
+| E, September 16, 307.80–315.74 s | Nino only | Mostly Nino, but also 1.05 s of other-only and 0.75 s of predicted overlap | Other-speaker detection conflicts with listening report |
+| F, September 16, 350.74–353.76 s | Mostly Nino; presence of the other person not specified | Nino throughout, with predicted overlap for 1.94 s | Overlap remains unverified |
+
+Yawn's current `Me` label misses the other person's speech reported in A–D.
+Nemotron represents both voices and their main order in those four selected
+turns, but E shows why its output cannot be applied blindly. F does not
+resolve whether its predicted overlap is real. The listening reports describe
+whole turns and rough order, not precise word or boundary timestamps; no
+diarization error rate can be calculated from them. The local review clips
+and content-free labels stay in the ignored research directory.
+
+A second, ten-turn listening packet broadened the check on September 28.
+Before hearing Nino's labels, the selection used a fixed seed and picked,
+from each recording, one early and one late turn where Nemotron strongly
+favored the operator, one early and one late turn where it strongly favored
+the other cluster, and one turn with no cluster at its midpoint. The packet
+excluded clips already heard. Nino reported five operator-only turns, four
+other-person-only turns, and one turn with the other person plus a brief
+operator interjection. The scoring rule was also saved before he listened:
+a speaker counts for a turn when the union of that speaker's predicted active
+time reaches the greater of 0.5 seconds or 10% of the turn. Predicted
+overlap counts for both speakers; Yawn's existing label predicts only `Me`.
+
+On these **ten selected turns**, Nemotron's speaker set matched Nino's report
+in **9/10** and Yawn's `Me` label matched in **5/10**. The one Nemotron miss
+was the turn with the brief interjection: it predicted 0.59 seconds of
+operator speech, below the pre-set 0.65-second presence threshold, while
+correctly detecting the other person. This is a check of the selected turns,
+not a whole-meeting accuracy estimate: the packet was stratified by
+Nemotron's own predictions rather than drawn uniformly from all turns.
+Neither packet supplies word-level speaker labels or precise boundaries.
+
+Both predicted clusters recur through the recordings. The model also marked
+20.6 and 16.0 seconds of overlapping clusters, respectively. This paired
+comparison shows where a two-cluster interpretation would change Yawn's
+single `Me` label. It does not establish that the clusters track the two real
+people correctly throughout: the selected listening reports do not provide
+a complete, time-aligned speaker reference, and a turn can cross a speaker
+boundary even when its midpoint has one cluster. Timing is approximate: the
+September 10 transcript's
+last end is 478.580 seconds, 0.582 seconds past its 477.998-second microphone
+WAV, and the capture record has no transcript timing reconciliation. The 11
+and 9 unresolved turn midpoints also rule out simply replacing every `Me`
+label with a cluster ID. A broader turn-level human reference, including
+precise transition and overlap boundaries, is the next accuracy check. The
+content-free input/output receipt stays under the ignored
+`.artifacts/nemotron/yawn-in-person-20260928/` directory.
+
+The installed voice profile was also checked on September 28. Its
+`voiceprint.json` is zero bytes, which Yawn treats as no profile installed,
+and both saved transcripts record `voiceprint: null`. The sample identity
+reports above came from Nino listening; the app has no saved operator-voice
+check to make that identification automatically.
+
+These recordings test two people sharing Yawn's microphone, outside its
+current one-person-near-the-microphone capture contract. They do not fill the
+separate system-leg evidence gap for multiple remote participants.
+
+### Integration boundary and next research step
+
+Yawn currently assigns microphone segments to `Me` and system segments to
+`Them`. Its durable correction sidecar may only project replacements for
+`Me`, `Them`, or unattributed turns, and it is bound to the immutable source
+transcript digest. It cannot safely turn an arbitrary diarizer cluster into a
+person or make multiple system-leg clusters into new product labels.
+
+The narrow next step is one off-sandbox, consented system-leg research run with
+at least two independently annotated anonymous remote speakers. Score it with
+the same frozen-input and explicit-overlap rules, then decide whether a separate
+source-group contract is warranted. Do not map clusters to names or replace the
+current channel attribution yet.
+
+The frozen local corpus has no such Yawn system-leg reference. The short private
+system leg is present, but its manifest has no independent speaker annotation;
+the older ledger system leg is absent at its frozen path. AMI has independent
+annotations, but it is public mixed-headset audio rather than a Yawn two-leg
+capture. The model's estimated speaker count does not fill that reference gap.
+
+The published NeMo-Speech.cpp v0.1.0 binary was not usable for this model on
+either Metal or CPU: it stopped at `sortformer: pre_ln transformer variant is
+not supported`. Main source contains the needed v3 exception. Separately, the
+sandbox could not initialize Metal (`failed to create command queue` / `failed
+to allocate context`), so no inference was run there. These are runtime and
+dispatch constraints, not model-quality findings.
+
+This trial changes no product source, contract, release state, or ASR decision.
+The raw private outputs, audio, transcripts, names, and private input locations
+remain ignored local artifacts and are not reproduced in Git.

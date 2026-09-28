@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .diarization import speaker_suggest
 from .product_contracts import (
     ProductContractRefused,
     transcript_view_digest,
@@ -1860,6 +1861,8 @@ def dispatch(
     apple_speech_helper: Path | None = None,
     apple_speech_helper_sha256: str | None = None,
     apple_speech_os_version: str | None = None,
+    diarizer_executable: Path | None = None,
+    diarizer_model: Path | None = None,
 ) -> dict[str, str]:
     adapters = {
         "profile.inspect": lambda: profile_inspect(root, arguments, encoder_digest),
@@ -1905,6 +1908,12 @@ def dispatch(
         "corpus.embed": lambda: corpus_embed(arguments, embedding_dir),
         "capture.finalize": lambda: capture_finalize(root, arguments),
         "transcript.restore": lambda: transcript_restore(root, arguments),
+        "speaker.suggest": lambda: speaker_suggest(
+            root,
+            arguments,
+            diarizer_executable=diarizer_executable,
+            diarizer_model=diarizer_model,
+        ),
     }
     try:
         return adapters[operation]()

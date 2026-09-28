@@ -97,8 +97,8 @@ header > p:last-child,
 .model-copy p {
   margin: 3px 0 0;
   color: var(--label-2);
-  font-size: var(--t-caption);
-  line-height: 1.45;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 /* Refit R13 (all-surfaces-2765401-installed-cold.md finding 11): grouped-list
@@ -268,8 +268,8 @@ header > p:last-child,
   margin: 0;
   padding: 0 18px 14px;
   color: var(--label-2);
-  font-size: var(--t-caption);
-  line-height: 1.4;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .card-message[data-tone="attention"] { color: var(--attention); }
@@ -314,8 +314,8 @@ button:disabled {
   min-height: 18px;
   margin: 14px 0 0;
   color: var(--label-2);
-  font-size: var(--t-caption);
-  line-height: 1.4;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
 }
 
 .message:empty { display: none; }

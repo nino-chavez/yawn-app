@@ -21,6 +21,8 @@ const transcriptionEngineRoot = document.querySelector("#transcription-engine");
 const modelMessage = document.querySelector("#model-message");
 const noteModelsRoot = document.querySelector("#note-models");
 const noteModelMessage = document.querySelector("#note-model-message");
+const speakerModelRoot = document.querySelector("#speaker-model");
+const speakerModelMessage = document.querySelector("#speaker-model-message");
 const message = document.querySelector("#message");
 
 let permissions = null;
@@ -43,6 +45,8 @@ let modelPoll = null;
 let noteModels = null;
 let noteModelLoadError = "";
 let noteModelPoll = null;
+let speakerModel = null;
+let speakerModelPoll = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -259,6 +263,44 @@ function renderNoteModels() {
   noteModelMessage.dataset.tone = noteModels.error ? "attention" : "neutral";
 }
 
+function renderSpeakerModel() {
+  if (!speakerModel) {
+    speakerModelRoot.innerHTML = row("Checking speaker analysis", "checking", "Yawn is checking the optional local model.");
+    return;
+  }
+  const busy = speakerModel.changeActive;
+  const unavailable = speakerModel.unavailableReason;
+  speakerModelRoot.setAttribute("aria-busy", busy ? "true" : "false");
+  const status = speakerModel.stored ? `<span class="state" data-tone="ready">Ready</span>` : `<span class="model-size">${byteSizeLabel(speakerModel.totalBytes)}</span>`;
+  const action = speakerModel.stored ? "" : `<button class="allow-button" type="button" data-action="install-speaker-model" ${!speakerModel.canChange || busy ? "disabled" : ""}>Download model</button>`;
+  const progress = busy ? `<div class="model-progress"><progress max="${Math.max(1, speakerModel.totalBytes)}" value="${Math.min(speakerModel.totalBytes, speakerModel.downloadedBytes || 0)}"></progress><small>${byteSizeLabel(speakerModel.downloadedBytes || 0)} of ${byteSizeLabel(speakerModel.totalBytes)}</small></div>` : "";
+  speakerModelRoot.innerHTML = `<div class="model-line"><div class="model-copy"><div class="model-title-row"><strong>Anonymous speaker analysis</strong>${status}</div><p>Finds anonymous microphone speaker clusters. It never names people or changes your transcript.</p>${progress}</div><div class="model-actions">${action}</div></div>`;
+  speakerModelMessage.textContent = unavailable || (busy ? "Downloading and checking the speaker-analysis model…" : speakerModel.stored ? "Ready when you choose Analyze speakers for a finished meeting." : speakerModel.state === "download-failed" ? "Download failed. Check your connection and free space, then try again." : "Download this model before analyzing speakers.");
+  speakerModelMessage.dataset.tone = unavailable || speakerModel.state === "download-failed" ? "attention" : "neutral";
+}
+
+function scheduleSpeakerModelPoll() {
+  clearTimeout(speakerModelPoll);
+  if (speakerModel?.changeActive) speakerModelPoll = setTimeout(() => void refreshSpeakerModel(), 500);
+  else if (!speakerModel) speakerModelPoll = setTimeout(() => void refreshSpeakerModel(), 2000);
+}
+
+async function refreshSpeakerModel() {
+  if (!invoke) return;
+  try { speakerModel = await invoke("nemotron_model_settings"); }
+  catch (error) { speakerModel = { unavailableReason: String(error || "Yawn could not check speaker analysis."), changeActive: false, canChange: false, stored: false, totalBytes: 107012128 }; }
+  renderSpeakerModel();
+  scheduleSpeakerModelPoll();
+}
+
+async function installSpeakerModel() {
+  if (!invoke) return;
+  try { speakerModel = await invoke("install_nemotron_model"); }
+  catch (error) { speakerModelMessage.textContent = String(error || "Yawn could not download the speaker-analysis model."); speakerModelMessage.dataset.tone = "attention"; return; }
+  renderSpeakerModel();
+  scheduleSpeakerModelPoll();
+}
+
 // Root cause of the row freezing at "Checking speech model" forever (cold
 // review, all-surfaces-bfa0a80-installed-cold.md): this only rescheduled
 // while a model change was actively downloading. A `transcript_model_settings`
@@ -460,9 +502,11 @@ document.addEventListener("click", (event) => {
   if (action === "remove-model") void removeModel(control.dataset.modelId, control.dataset.modelTitle);
   if (action === "use-note-model") void useNoteModel(control.dataset.modelId);
   if (action === "remove-note-model") void removeNoteModel(control.dataset.modelId, control.dataset.modelTitle);
+  if (action === "install-speaker-model") void installSpeakerModel();
 });
 
 void refresh();
 void refreshModels();
 void refreshTranscriptionEngine();
 void refreshNoteModels();
+void refreshSpeakerModel();

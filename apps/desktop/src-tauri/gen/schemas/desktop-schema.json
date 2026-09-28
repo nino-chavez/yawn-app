@@ -177,6 +177,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the analyze_speakers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-analyze-speakers",
+          "markdownDescription": "Enables the analyze_speakers command without any pre-configured scope."
+        },
+        {
           "description": "Enables the app_snapshot command without any pre-configured scope.",
           "type": "string",
           "const": "allow-app-snapshot",
@@ -253,6 +259,12 @@
           "type": "string",
           "const": "allow-install-apple-speech-assets",
           "markdownDescription": "Enables the install_apple_speech_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the install_nemotron_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-nemotron-model",
+          "markdownDescription": "Enables the install_nemotron_model command without any pre-configured scope."
         },
         {
           "description": "Enables the install_note_model command without any pre-configured scope.",
@@ -391,6 +403,12 @@
           "type": "string",
           "const": "allow-meeting-context",
           "markdownDescription": "Enables the meeting_context command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the nemotron_model_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-nemotron-model-settings",
+          "markdownDescription": "Enables the nemotron_model_settings command without any pre-configured scope."
         },
         {
           "description": "Enables the note_model_settings command without any pre-configured scope.",
@@ -651,6 +669,12 @@
           "markdownDescription": "Enables the unlock_meeting command without any pre-configured scope."
         },
         {
+          "description": "Denies the analyze_speakers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-analyze-speakers",
+          "markdownDescription": "Denies the analyze_speakers command without any pre-configured scope."
+        },
+        {
           "description": "Denies the app_snapshot command without any pre-configured scope.",
           "type": "string",
           "const": "deny-app-snapshot",
@@ -727,6 +751,12 @@
           "type": "string",
           "const": "deny-install-apple-speech-assets",
           "markdownDescription": "Denies the install_apple_speech_assets command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install_nemotron_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-nemotron-model",
+          "markdownDescription": "Denies the install_nemotron_model command without any pre-configured scope."
         },
         {
           "description": "Denies the install_note_model command without any pre-configured scope.",
@@ -865,6 +895,12 @@
           "type": "string",
           "const": "deny-meeting-context",
           "markdownDescription": "Denies the meeting_context command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the nemotron_model_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-nemotron-model-settings",
+          "markdownDescription": "Denies the nemotron_model_settings command without any pre-configured scope."
         },
         {
           "description": "Denies the note_model_settings command without any pre-configured scope.",

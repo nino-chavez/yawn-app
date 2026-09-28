@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -24,6 +25,12 @@ NOTE_GENERATE_MANIFEST = Path("note-runtime-generate.json")
 NOTE_BRIDGE = Path("note-bridge.py")
 NOTE_GENERATOR = Path("note-generator-mlx.py")
 NOTE_VALIDATOR = Path("note-validator.zip")
+NEMOTRON_RUNTIME = Path("nemotron-diarization")
+NEMOTRON_RECEIPT = NEMOTRON_RUNTIME / "runtime.json"
+NEMOTRON_ABSENT = {
+    "schema": "nemotron-diarization-runtime/1",
+    "status": "unavailable",
+}
 # Insertion order is the zip write order, and `verify_note_runtime` compares
 # `archive.namelist()` to this list positionally. Append; do not reorder.
 VALIDATOR_SOURCES = {
@@ -165,6 +172,67 @@ def atomic_write(target: Path, contents: bytes) -> None:
             os.close(directory)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _nemotron_packager():
+    path = REPO / "scripts/package_nemotron_diarizer.py"
+    spec = importlib.util.spec_from_file_location("yawn_nemotron_packager", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_nemotron_runtime(root: Path) -> None:
+    """Write the explicit absent receipt, or validate a staged native closure.
+
+    This receipt is bundled and therefore sealed by the outer app signature.
+    The native form pins every Mach-O resource; the absent form makes ordinary
+    build modes truthful instead of requiring a research checkout or model.
+    """
+    directory = root / NEMOTRON_RUNTIME
+    if not directory.exists():
+        return
+    if directory.is_symlink() or not directory.is_dir():
+        raise SystemExit("Nemotron runtime directory is unsafe")
+    receipt = root / NEMOTRON_RECEIPT
+    if receipt.is_symlink():
+        raise SystemExit("Nemotron runtime receipt is unsafe")
+    if not receipt.exists():
+        if any(directory.iterdir()):
+            raise SystemExit("Nemotron runtime files exist without a receipt")
+        atomic_write(receipt, (json.dumps(NEMOTRON_ABSENT, indent=2) + "\n").encode())
+        return
+    try:
+        document = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Nemotron runtime receipt is unreadable: {exc}") from None
+    if document == NEMOTRON_ABSENT:
+        if set(directory.iterdir()) != {receipt}:
+            raise SystemExit("unavailable Nemotron runtime contains unexpected files")
+        return
+    try:
+        _nemotron_packager().verify_staged_runtime(directory)
+    except ValueError as exc:
+        raise SystemExit(f"Nemotron runtime receipt is invalid: {exc}") from None
+
+
+def refresh_nemotron_runtime(root: Path) -> None:
+    """Refresh the native receipt after nested Mach-O signatures change bytes."""
+    directory = root / NEMOTRON_RUNTIME
+    receipt = root / NEMOTRON_RECEIPT
+    if not directory.exists() or not receipt.exists():
+        return
+    if directory.is_symlink() or not directory.is_dir() or receipt.is_symlink():
+        raise SystemExit("Nemotron runtime directory or receipt is unsafe")
+    document = json.loads(receipt.read_text(encoding="utf-8"))
+    if document == NEMOTRON_ABSENT:
+        ensure_nemotron_runtime(root)
+        return
+    try:
+        _nemotron_packager().refresh_staged_runtime(directory)
+    except ValueError as exc:
+        raise SystemExit(f"Nemotron runtime cannot refresh after signing: {exc}") from None
 
 
 def validator_bundle() -> bytes:
@@ -390,6 +458,11 @@ def main() -> int:
         action="store_true",
         help="bind the Apple speech helper alongside the external-model catalog",
     )
+    parser.add_argument(
+        "--refresh-nemotron-after-sign",
+        action="store_true",
+        help="rebind the optional native receipt after nested Mach-O signing changes its bytes",
+    )
     arguments = parser.parse_args()
     if arguments.apple_speech and not (
         arguments.external_transcript_models and arguments.admission == "internal-alpha"
@@ -409,6 +482,10 @@ def main() -> int:
             root / NOTE_GENERATE_MANIFEST,
             canonical_note_manifest(note_generate_manifest(root, note_model_pins())),
         )
+    if arguments.refresh_nemotron_after_sign:
+        refresh_nemotron_runtime(root)
+    else:
+        ensure_nemotron_runtime(root)
     # Tauri's resource map is intentionally identical in every lane. The
     # catalog is signed into all bundles; app-runtime/2 and /3 authorize models
     # installed outside the bundle.

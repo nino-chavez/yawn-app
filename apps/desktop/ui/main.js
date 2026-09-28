@@ -56,6 +56,7 @@ import {
   transcriptRetryPresentation,
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
+  speakerSuggestionPresentation,
   transcriptionWorkerHeartbeatAgeSeconds,
   trashListPresentation,
   turnCitationPresentation,
@@ -317,6 +318,7 @@ function contextSaveCopy() {
 function permissionAction(permission) {
   if (!permission || permission.probeUnavailable) return { action: "open-settings", label: "Open Settings" };
   if (permission.microphone === "not-determined") return { action: "request-microphone", label: "Allow microphone" };
+  if (permission.microphone !== "authorized") return { action: "open-settings", label: "Open Settings" };
   if (permission.systemAudio === "unmeasured") return { action: "request-system-audio", label: "Allow system audio" };
   return { action: "open-settings", label: "Open Settings" };
 }
@@ -686,21 +688,22 @@ function renderToolbarRecordControl() {
   }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
   const reason = startAvailable ? "" : recordUnavailableReason(state.snapshot, state.permissions);
-  // When Record is blocked only by an unmeasured system-audio check, keep the
-  // Allow action here — not only on the empty pane or in Settings — so a
-  // selected meeting still has a next step without a Settings detour.
-  const systemAudioAllow = !startAvailable
-    && state.permissions
-    && !state.permissions.probeUnavailable
-    && state.permissions.microphone === "authorized"
-    && state.permissions.systemAudio === "unmeasured"
-    && canStartMeeting(state.snapshot)
+  // Keep the selected meeting actionable when permissions, rather than
+  // capture or queued work, block another recording. The empty pane already
+  // owns this recovery action on first run, so it must not be duplicated in
+  // the toolbar there. `canStartMeeting` is the shared capture and queue gate;
+  // its false states retain only their existing disabled explanation.
+  const permissionRecoveryAction = !startAvailable
+    && state.activeView === "meeting"
+    && state.selected
+    && canStartMeeting(snapshot)
+    && permissionSummary(state.permissions).state !== "checking"
     ? permissionAction(state.permissions)
     : null;
-  const probing = state.busyAction === "permission" && systemAudioAllow;
+  const probing = state.busyAction === "permission" && permissionRecoveryAction;
   return `
     <button class="btn record record-idle" type="button" data-action="open-start" title="${escapeHtml(reason || "Record (⌘R)")}" ${startAvailable ? "" : `disabled aria-describedby="record-unavailable-reason"`}>Record</button>
-    ${systemAudioAllow ? `<button class="btn primary" type="button" data-action="${escapeHtml(systemAudioAllow.action)}" ${probing ? "disabled" : ""}>${probing ? "Checking…" : escapeHtml(systemAudioAllow.label)}</button>` : ""}
+    ${permissionRecoveryAction ? `<button class="btn primary" type="button" data-action="${escapeHtml(permissionRecoveryAction.action)}" ${probing ? "disabled" : ""}>${probing ? "Checking…" : escapeHtml(permissionRecoveryAction.label)}</button>` : ""}
     ${reason ? `<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">${escapeHtml(reason)}</span>` : ""}
   `;
 }
@@ -1025,7 +1028,7 @@ function transcriptActionStatus(scope) {
   return state.transcriptActionStatus?.[scope] || "";
 }
 
-function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", exportAction = "", workspace = false, citations = null, targetTurnIndex = null } = {}) {
+function renderTranscript(turns, title, detail = "", { copyAction = "", openFileAction = "", exportAction = "", workspace = false, citations = null, targetTurnIndex = null, speakerSuggestions = null } = {}) {
   const scope = copyAction.includes("library") ? "library" : "current";
   const copyBusy = state.busyAction === copyAction;
   const fileBusy = state.busyAction === openFileAction;
@@ -1054,6 +1057,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
   </div>` : "";
   const transcriptLines = visibleTurns.map((turn) => {
     const speakerLabel = transcriptSpeakerLabel(turn);
+    const speakerSuggestion = speakerSuggestionPresentation(turn, speakerSuggestions);
     const correctionAvailable = workspace && !turn.withheld && Boolean(state.selected?.transcript?.currentTranscriptSha256);
     const restore = workspace
       ? withheldTurnPresentation(turn, {
@@ -1084,6 +1088,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
           ${speakerLabel ? correctionAvailable
             ? `<button class="speaker-label-button" type="button" data-action="open-speaker-correction" data-source-turn-index="${escapeHtml(turn.sourceTurnIndex)}" aria-label="${escapeHtml(correctionLabel)}"><span>${escapeHtml(speakerLabel)}</span>${turn.speakerCorrected ? `<small>Corrected</small>` : ""}</button>`
             : `<span>${escapeHtml(speakerLabel)}</span>` : ""}
+          ${speakerSuggestion ? `<span class="speaker-suggestion">Possible ${escapeHtml(speakerSuggestion.clusters.join(" + "))}${speakerSuggestion.hasOverlap ? " · overlap" : ""}</span>` : ""}
         </div>
         <p>${turn.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn.text)}</p>
         ${restore ? `<button class="button button-quiet button-small" type="button" data-action="restore-withheld-turn" data-source-turn-index="${escapeHtml(restore.sourceTurnIndex)}">${restore.label}</button>` : ""}
@@ -1117,6 +1122,8 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
         <div class="transcript-scroll" tabindex="0" aria-label="Transcript turns">
           ${transcriptLines || `<p class="transcript-empty">${query ? "No retained transcript turn matches that search." : "No transcript turns are available."}</p>`}
         </div>
+        ${speakerSuggestions?.state === "review-required" ? `<p class="transcript-suggestion-note">Anonymous speaker suggestions need review. They do not name anyone.</p>` : ""}
+        ${speakerSuggestions?.state === "unavailable" ? `<p class="transcript-suggestion-note">${escapeHtml(speakerSuggestions.message || "Speaker suggestions are unavailable.")}</p>` : ""}
         ${turns.some((turn) => turn.speakerCorrected) ? `<p class="transcript-correction-note">Speaker names corrected here are a local review layer. The retained transcript file is unchanged.</p>` : ""}
       </section>
     `;
@@ -1212,6 +1219,10 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
   // list uses. <summary> is already the row's whole click target; this
   // changes only what marks that, to a chevron that flips on `[open]`.
   const targetTurnIndex = state.selected?.transcriptMatch?.sourceTurnIndex;
+  const analyzing = state.busyAction === "analyze-speakers";
+  const speakerAction = transcript?.state === "transcript" && state.selected?.row?.meetingId
+    ? `<p class="transcript-suggestion-note"><button class="button button-quiet button-small" type="button" data-action="analyze-speakers" ${analyzing ? "disabled" : ""}>${analyzing ? "Analyzing speakers…" : "Analyze speakers"}</button> Runs locally on the retained microphone recording. It creates anonymous suggestions and never changes this transcript.</p>`
+    : "";
   return `
     <details class="transcript-disclosure" ${Number.isInteger(targetTurnIndex) ? "open" : ""}>
       <summary><span>Full transcript</span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
@@ -1223,7 +1234,9 @@ function renderTranscriptDisclosure(transcript, recovery = null, note = null) {
           workspace: true,
           citations: note ? { turnsCited: note.turnsCited, claims: note.claims } : null,
           targetTurnIndex,
+          speakerSuggestions: transcript?.speakerSuggestions || null,
         }) : `<section class="note-section transcript-unavailable"><p class="message-card">${escapeHtml(transcript.message)}</p></section>`}
+        ${speakerAction}
       </div>
     </details>
   `;
@@ -3479,6 +3492,19 @@ async function exportSelectedMeeting() {
   });
 }
 
+async function analyzeSpeakers() {
+  const selection = state.selected;
+  const meetingId = selection?.row?.meetingId;
+  const sourceTranscriptSha256 = selection?.transcript?.currentTranscriptSha256;
+  if (!meetingId || !sourceTranscriptSha256) throw new Error("Reopen this meeting before analyzing speakers.");
+  await runBusy("analyze-speakers", async () => {
+    const response = await invoke("analyze_speakers", { request: { meetingId, sourceTranscriptSha256 } });
+    if (state.selected !== selection) return;
+    state.notice = response?.message || "Anonymous speaker suggestions are ready for review.";
+    await reopenSelectedMeeting(meetingId);
+  });
+}
+
 // Roadmap intake I5. Locking asks nothing -- it only takes access away -- and
 // the confirmation sheet is the whole ceremony. Afterwards the meeting is
 // reopened, which now lands on the barrier: the reader sees immediately what
@@ -3554,6 +3580,7 @@ function handleClick(event) {
   if (action === "home" || action === "meetings") void openMeetings();
   else if (action === "toggle-sidebar") toggleSidebar();
   else if (action === "open-full-transcript") openFullTranscriptFromInspector();
+  else if (action === "analyze-speakers") void analyzeSpeakers().catch(reportError);
   else if (action === "open-start") openStart();
   else if (action === "open-start-guided") openStart(true);
   else if (action === "dismiss-first-run") void closeFirstRunSheet();

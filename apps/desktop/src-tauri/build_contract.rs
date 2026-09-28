@@ -41,6 +41,8 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "get_transcription_engine_settings",
     "select_transcription_engine",
     "install_apple_speech_assets",
+    "nemotron_model_settings",
+    "install_nemotron_model",
     "transcript_model_settings",
     "remove_transcript_model",
     "note_model_settings",
@@ -85,6 +87,7 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "transcript_retry_start",
     "transcript_retry_pending",
     "transcript_retry_decide",
+    "analyze_speakers",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -225,6 +228,7 @@ fn production_resources() -> Value {
         "../runtime/bin": "bin",
         "../runtime/encoder-unavailable.identity": "encoder-unavailable.identity",
         "../runtime/models": "models",
+        "../runtime/nemotron-diarization": "nemotron-diarization",
         "../runtime/note-bridge.py": "note-bridge.py",
         "../runtime/note-generator-mlx.py": "note-generator-mlx.py",
         "../runtime/note-runtime-generate.json": "note-runtime-generate.json",

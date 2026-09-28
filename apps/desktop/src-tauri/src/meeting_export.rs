@@ -721,6 +721,7 @@ mod tests {
             speaker: speaker.map(str::to_string),
             speaker_corrected: false,
             start: (index as f64) * 10.0,
+            end: (index as f64) * 10.0 + 1.0,
             text: text.to_string(),
             withheld,
         }

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-nemotron-model-settings"
+description = "Enables the nemotron_model_settings command without any pre-configured scope."
+commands.allow = ["nemotron_model_settings"]
+
+[[permission]]
+identifier = "deny-nemotron-model-settings"
+description = "Denies the nemotron_model_settings command without any pre-configured scope."
+commands.deny = ["nemotron_model_settings"]

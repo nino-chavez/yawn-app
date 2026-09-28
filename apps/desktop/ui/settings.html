@@ -17,6 +17,7 @@
           <a href="#recording">Recording</a>
           <a href="#transcription">Transcription</a>
           <a href="#notes">Notes</a>
+          <a href="#speakers">Speakers</a>
           <a href="#storage">Storage</a>
         </nav>
       </header>
@@ -53,6 +54,19 @@
         <div class="settings-group-box">
           <div id="note-models" class="model-list" aria-live="polite"></div>
           <p id="note-model-message" class="card-message" role="status"></p>
+        </div>
+      </section>
+      <section id="speakers" class="settings-group" tabindex="-1" aria-labelledby="speaker-model-title">
+        <div class="settings-group-title">
+          <div>
+            <h2 id="speaker-model-title">Speaker analysis</h2>
+            <p>An optional anonymous speaker-cluster model. It only runs when you choose Analyze speakers for a finished meeting.</p>
+          </div>
+        </div>
+        <div class="settings-group-box">
+          <div id="speaker-model" class="model-list" aria-live="polite"></div>
+          <p id="speaker-model-message" class="card-message" role="status"></p>
+          <p class="card-message">Model: <a href="https://huggingface.co/nvidia/Nemotron-3-Diarization" target="_blank" rel="noreferrer">NVIDIA Nemotron-3-Diarization</a> (openmdw-1.1).</p>
         </div>
       </section>
       <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">

@@ -64,6 +64,7 @@
     "core:event:allow-unlisten",
     "allow-get-transcription-engine-settings",
     "allow-select-transcription-engine",
-    "allow-install-apple-speech-assets"
+    "allow-install-apple-speech-assets",
+    "allow-analyze-speakers"
   ]
 }

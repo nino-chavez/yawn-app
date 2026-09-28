@@ -88,6 +88,23 @@ def verify_note_runtime_resources_present(resources: Path) -> None:
         )
 
 
+def verify_nemotron_runtime(resources: Path) -> None:
+    runtime = resources / "nemotron-diarization"
+    receipt = runtime / "runtime.json"
+    require(runtime.is_dir() and not runtime.is_symlink(), "Nemotron runtime directory is missing or unsafe")
+    require(receipt.is_file() and not receipt.is_symlink(), "Nemotron runtime receipt is missing or unsafe")
+    try:
+        document = json.loads(receipt.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise VerificationError(f"Nemotron runtime receipt is unreadable ({exc})") from None
+    if document == {"schema": "nemotron-diarization-runtime/1", "status": "unavailable"}:
+        require(set(runtime.iterdir()) == {receipt}, "unavailable Nemotron runtime contains files")
+        return
+    verifier = Path(__file__).with_name("package_nemotron_diarizer.py")
+    completed = run(sys.executable, str(verifier), "verify", "--stage", str(runtime))
+    require(completed.returncode == 0, "bundled Nemotron runtime is missing or changed")
+
+
 def load_plist(path: Path) -> dict:
     try:
         value = plistlib.loads(path.read_bytes())
@@ -156,6 +173,7 @@ def verify_runtime(resources: Path, admission: str) -> None:
     else:
         require("apple_speech" not in manifest, "legacy runtime cannot bind Apple speech")
     verify_note_runtime_resources_present(resources)
+    verify_nemotron_runtime(resources)
     require(
         manifest.get("admission") == admission,
         f"runtime admission is not {admission}; refusing this distribution candidate",

@@ -60,7 +60,7 @@ ALPHA_OPERATIONS = frozenset(
     {"capture.finalize", "capture.inspect", "transcript.create", "transcript.retry",
      "sitting.derive", "transcript.restore", "corpus.embed",
      "profile.choices", "profile.build", "profile.inspect", "profile.discard",
-     "note.create", "note.inspect"}
+     "note.create", "note.inspect", "speaker.suggest"}
 )
 BOUNDARY_OPERATIONS = ALPHA_OPERATIONS | frozenset(
     {"profile.adopt"}
@@ -467,6 +467,8 @@ def dispatch_without_protocol_output(
     apple_speech_helper: Path | None = None,
     apple_speech_helper_sha256: str | None = None,
     apple_speech_os_version: str | None = None,
+    diarizer_executable: Path | None = None,
+    diarizer_model: Path | None = None,
 ) -> dict:
     # The worker owns stdout as a newline-delimited JSON protocol. Research
     # adapters and model libraries may print progress on data-dependent paths;
@@ -489,6 +491,8 @@ def dispatch_without_protocol_output(
                 apple_speech_helper=apple_speech_helper,
                 apple_speech_helper_sha256=apple_speech_helper_sha256,
                 apple_speech_os_version=apple_speech_os_version,
+                diarizer_executable=diarizer_executable,
+                diarizer_model=diarizer_model,
             )
 
 
@@ -499,6 +503,9 @@ def run(
     transcript_model_receipt: Path | None = None,
     transcription_engine: str = "whisper",
     speech_locale: str = "en-US",
+    diarizer_executable: Path | None = None,
+    diarizer_model: Path | None = None,
+    speaker_only: bool = False,
 ) -> int:
     # dispatch_without_protocol_output redirects sys.stdout while model adapters
     # run. Capture the actual protocol stream before that redirect so a
@@ -508,18 +515,22 @@ def run(
     manifest = load_manifest(manifest_path)
     if transcription_engine not in {"whisper", "apple-native"}:
         raise ValueError("transcription engine is unsupported")
-    if manifest["schema"] in {"app-runtime/2", "app-runtime/3"} and (transcription_engine == "whisper" or transcript_model_receipt is not None):
+    if speaker_only and (manifest["admission"] != "internal-alpha" or diarizer_executable is None or diarizer_model is None):
+        raise ValueError("speaker-only worker requires the internal alpha diarizer")
+    if speaker_only:
+        model_dir, external_models = None, []
+    elif manifest["schema"] in {"app-runtime/2", "app-runtime/3"} and (transcription_engine == "whisper" or transcript_model_receipt is not None):
         model_dir, external_models = external_transcript_model(
             root, manifest_path, manifest, transcript_model_receipt
         )
     else:
         model_dir = None if transcription_engine == "apple-native" else transcript_model_dir(manifest_path, manifest)
         external_models = []
-    embedding_dir = embedding_model_dir(manifest_path, manifest)
+    embedding_dir = None if speaker_only else embedding_model_dir(manifest_path, manifest)
     apple_helper: Path | None = None
     apple_helper_sha256: str | None = None
     apple_os_version: str | None = None
-    if transcription_engine == "apple-native":
+    if transcription_engine == "apple-native" and not speaker_only:
         if manifest["schema"] != "app-runtime/3":
             raise ValueError("Apple native transcription requires app-runtime/3")
         entry = manifest["apple_speech"]
@@ -533,7 +544,7 @@ def run(
         if capability["state"] != "ready":
             raise ValueError("Apple speech assets are not ready")
         apple_os_version = capability["os_version"]
-    operations = operations_for(manifest["admission"])
+    operations = {"speaker.suggest"} if speaker_only else operations_for(manifest["admission"])
     emit(
         {
             "schema": "worker-event/2",
@@ -594,6 +605,8 @@ def run(
                     apple_speech_helper=apple_helper,
                     apple_speech_helper_sha256=apple_helper_sha256,
                     apple_speech_os_version=apple_os_version,
+                    diarizer_executable=diarizer_executable,
+                    diarizer_model=diarizer_model,
                 )
             finally:
                 if heartbeat is not None:
@@ -640,6 +653,9 @@ def main() -> int:
     parser.add_argument("--transcript-model-receipt", type=Path)
     parser.add_argument("--transcription-engine", choices=["whisper", "apple-native"], default="whisper")
     parser.add_argument("--speech-locale", default="en-US")
+    parser.add_argument("--diarizer-executable", type=Path)
+    parser.add_argument("--diarizer-model", type=Path)
+    parser.add_argument("--speaker-only", action="store_true")
     parser.add_argument("--parent-liveness-fd", type=int)
     arguments = parser.parse_args()
     parent_fd = arguments.parent_liveness_fd
@@ -657,6 +673,9 @@ def main() -> int:
             arguments.transcript_model_receipt,
             arguments.transcription_engine,
             arguments.speech_locale,
+            arguments.diarizer_executable,
+            arguments.diarizer_model,
+            arguments.speaker_only,
         )
     except (OSError, ValueError, StorageRefused, json.JSONDecodeError):
         return 2

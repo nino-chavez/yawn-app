@@ -68,6 +68,7 @@ import {
   transcriptSearchResultSnippet,
   transcriptSpeakerLabel,
   transcriptRetryPresentation,
+  speakerSuggestionPresentation,
   transcriptTurnsForSourceSpeaker,
   transcriptTurnsMatching,
   transcriptionWorkerHeartbeatAgeSeconds,
@@ -151,6 +152,9 @@ test("audio setup does not confuse unknown with permission denied", () => {
   assert.equal(permissionSummary(null).state, "checking");
   assert.equal(permissionSummary({ probeUnavailable: true }).title, "Audio access could not be checked");
   assert.equal(permissionSummary({ microphone: "denied", systemAudio: "unmeasured" }).title, "Microphone access is needed");
+  const microphoneSetup = permissionSummary({ microphone: "not-determined", systemAudio: "unmeasured" });
+  assert.equal(microphoneSetup.title, "Allow microphone");
+  assert.equal(microphoneSetup.detail, "System audio may need separate access after this.");
   const systemAudioSetup = permissionSummary({ microphone: "authorized", systemAudio: "unmeasured" });
   assert.equal(systemAudioSetup.title, "Allow system audio");
   assert.equal(systemAudioSetup.detail, "Microphone access is ready. Allow system audio before recording.");
@@ -309,6 +313,29 @@ test("speaker correction targets only the matching retained source group", () =>
   assert.equal(transcriptTurnsForSourceSpeaker(turns, "Them").length, 2);
   assert.equal(transcriptTurnsForSourceSpeaker(turns, null).length, 1);
   assert.equal(transcriptTurnsForSourceSpeaker(turns, "Me").length, 1);
+});
+
+test("anonymous speaker suggestions stay review-only and never promote an anonymous cluster into a name", () => {
+  const turn = { sourceTurnIndex: 3, sourceSpeaker: "Me", speaker: "Me" };
+  assert.deepEqual(
+    speakerSuggestionPresentation(turn, {
+      state: "review-required",
+      suggestion: { turns: [{ sourceTurnIndex: 3, clusters: ["cluster-1", "cluster-2"], hasOverlap: true }] },
+    }),
+    { clusters: ["cluster-1", "cluster-2"], hasOverlap: true },
+  );
+  assert.equal(speakerSuggestionPresentation({ ...turn, sourceSpeaker: "Them" }, {
+    state: "review-required", suggestion: { turns: [{ sourceTurnIndex: 3, clusters: ["cluster-1"] }] },
+  }), null);
+  assert.equal(speakerSuggestionPresentation(turn, { state: "unavailable" }), null);
+});
+
+test("the transcript action deliberately requests anonymous speaker analysis and refreshes the exact meeting", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /data-action="analyze-speakers"/);
+  assert.match(source, /invoke\("analyze_speakers", \{ request: \{ meetingId, sourceTranscriptSha256 \} \}\)/);
+  assert.match(source, /await reopenSelectedMeeting\(meetingId\)/);
+  assert.match(source, /never changes this transcript/);
 });
 
 test("transcript search only matches retained text", () => {
@@ -539,6 +566,14 @@ test("word-level diff highlighting stays inside the retry comparison and never t
   // diff segmentation in its own render path.
   assert.match(source, /<p>\$\{turn\.withheld \? "This turn was withheld by the voice check\." : escapeHtml\(turn\.text\)\}<\/p>/);
   assert.match(source, /renderRetryDiffLegend\(\)/);
+});
+
+test("the transcript shows anonymous suggestions as possible clusters and keeps the existing name correction control", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /speakerSuggestionPresentation\(turn, speakerSuggestions\)/);
+  assert.match(source, /Possible \$\{escapeHtml\(speakerSuggestion\.clusters\.join\(" \+ "\)\)\}/);
+  assert.match(source, /Anonymous speaker suggestions need review\. They do not name anyone\./);
+  assert.match(source, /data-action="open-speaker-correction"/);
 });
 
 test("retry quality uses closed labels and keeps unknown kinds safe", () => {

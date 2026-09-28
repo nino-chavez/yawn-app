@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-install-nemotron-model"
+description = "Enables the install_nemotron_model command without any pre-configured scope."
+commands.allow = ["install_nemotron_model"]
+
+[[permission]]
+identifier = "deny-install-nemotron-model"
+description = "Denies the install_nemotron_model command without any pre-configured scope."
+commands.deny = ["install_nemotron_model"]

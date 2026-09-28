@@ -26,6 +26,7 @@ mod manual_delete_facade;
 #[allow(dead_code)]
 mod product_facade;
 mod speaker_correction;
+mod speaker_suggestion;
 // First run's permission surface (§ H). Runs the manifest-verified permission
 // probe and parses its output as untrusted input; holds no storage authority and
 // reads no operator content.
@@ -97,7 +98,7 @@ use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -106,7 +107,7 @@ use local_meeting_notes_session_core::diagnostic::write_private_diagnostic;
 use local_meeting_notes_session_core::enrollment_guidance::{
     EnrollmentEvidence, GuidedEnrollmentStatus, evaluate_enrollment_evidence,
 };
-use local_meeting_notes_session_core::meeting::resolve_artifact;
+use local_meeting_notes_session_core::meeting::{resolve_artifact, verify_artifact_ref};
 use local_meeting_notes_session_core::meeting::{
     ArtifactRef, AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts,
     MeetingLifecycle, MeetingRecord, MeetingSchema, artifact_ref, load_meeting, read_private_bytes,
@@ -118,7 +119,8 @@ use local_meeting_notes_session_core::meeting_trash::{
     execute_due_trash_purge, list_trash_entries, reconcile_pending_trash, TrashPurgeOutcome,
 };
 use local_meeting_notes_session_core::model_store::{
-    InstalledTranscriptModel, ModelCatalog, TranscriptModel, activate_model, active_model,
+    DownloadableFile, DownloadableModel, InstalledTranscriptModel, ModelCatalog, ModelStoreError,
+    ModelVerification, TranscriptModel, activate_model, active_model,
     active_note_model, deactivate_note_model, installed_model, model_is_stored,
     note_model_is_stored, remove_inactive_model, remove_inactive_note_model,
 };
@@ -189,6 +191,13 @@ const CAPTURE_PAUSE_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(target_os = "macos")]
 const SITTING_STREAM_MAX_BYTES: u64 = 16_000 * 2 * 60 * 60;
 const WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const SPEAKER_ANALYSIS_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const NEMOTRON_MODEL_ID: &str = "nemotron-3-diarization-q8";
+const NEMOTRON_MODEL_REVISION: &str = "f667ed73aee57d40cc39428eb768b4fd87a0a29e";
+const NEMOTRON_MODEL_FILE: &str = "Nemotron-3-Diarization.q8_0.gguf";
+const NEMOTRON_MODEL_BYTES: u64 = 107_012_128;
+const NEMOTRON_MODEL_SHA256: &str = "08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1";
+const NEMOTRON_MODEL_URL: &str = "https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/f667ed73aee57d40cc39428eb768b4fd87a0a29e/Nemotron-3-Diarization.q8_0.gguf";
 const TRANSCRIPT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const PARTICIPANT_NOTICE_VERSION: &str = "internal-transcript-alpha/1";
 const SETTINGS_WINDOW_LABEL: &str = "settings";
@@ -285,6 +294,10 @@ struct ApplicationState {
     permission_observation: Mutex<Option<first_run::FirstRunPermissions>>,
     model_install_active: AtomicBool,
     note_model_install_active: AtomicBool,
+    nemotron_model_install_active: AtomicBool,
+    nemotron_model_downloaded_bytes: AtomicU64,
+    nemotron_model_install_failed: AtomicBool,
+    speaker_analysis_active: AtomicBool,
     note_model_setup: Mutex<NoteModelSetup>,
     transcription_engine: Mutex<TranscriptionEngineState>,
     preview_library: Mutex<Option<library_reader::LibraryReader>>,
@@ -339,6 +352,10 @@ impl Default for ApplicationState {
             permission_observation: Mutex::new(None),
             model_install_active: AtomicBool::new(false),
             note_model_install_active: AtomicBool::new(false),
+            nemotron_model_install_active: AtomicBool::new(false),
+            nemotron_model_downloaded_bytes: AtomicU64::new(0),
+            nemotron_model_install_failed: AtomicBool::new(false),
+            speaker_analysis_active: AtomicBool::new(false),
             note_model_setup: Mutex::new(NoteModelSetup {
                 state: "idle".into(),
                 ..NoteModelSetup::default()
@@ -935,6 +952,8 @@ struct TranscriptTurn {
     #[serde(rename = "speakerCorrected")]
     speaker_corrected: bool,
     start: f64,
+    #[serde(skip_serializing)]
+    end: f64,
     text: String,
     // Withheld rows are positional only: the gate's decision is visible, the
     // withheld words never leave the artifact, so `text` stays empty.
@@ -1091,6 +1110,7 @@ struct PreviewLibraryTranscript {
     #[serde(rename = "currentTranscriptSha256")]
     current_transcript_sha256: Option<String>,
     turns: Vec<TranscriptTurn>,
+    speaker_suggestions: speaker_suggestion::SuggestionsRead,
     warnings: Vec<String>,
     message: String,
 }
@@ -3330,6 +3350,181 @@ fn note_model_settings(
     state: State<'_, ApplicationState>,
 ) -> Result<NoteModelSettingsSnapshot, String> {
     note_model_settings_for(&state)
+}
+
+/// The optional diarizer is intentionally a separate, single-file model
+/// namespace. It is not a transcription or note model and never becomes an
+/// active engine. The immutable URL and digest are compiled into the signed
+/// desktop binary; installation uses the shared staged-download path.
+#[derive(Clone)]
+struct NemotronModel;
+
+impl NemotronModel {
+    fn directory(storage: &StorageRoot) -> Result<PathBuf, ModelStoreError> {
+        Ok(storage
+            .resolve(
+                &Path::new("models")
+                    .join("diarizer.d")
+                    .join(NEMOTRON_MODEL_ID)
+                    .join(NEMOTRON_MODEL_REVISION),
+            )
+            .map_err(io::Error::other)?)
+    }
+
+    fn file(storage: &StorageRoot) -> Result<PathBuf, ModelStoreError> {
+        Ok(Self::directory(storage)?.join(NEMOTRON_MODEL_FILE))
+    }
+
+    fn verify(storage: &StorageRoot) -> Result<PathBuf, ModelStoreError> {
+        let directory = Self::directory(storage)?;
+        NemotronModel.verify_directory(&directory, ModelVerification::Contents)?;
+        Self::file(storage)
+    }
+}
+
+impl DownloadableModel for NemotronModel {
+    fn id(&self) -> &str { NEMOTRON_MODEL_ID }
+    fn revision(&self) -> &str { NEMOTRON_MODEL_REVISION }
+    fn download_bytes(&self) -> u64 { NEMOTRON_MODEL_BYTES }
+    fn files(&self) -> Vec<DownloadableFile<'_>> {
+        vec![DownloadableFile { name: NEMOTRON_MODEL_FILE, url: NEMOTRON_MODEL_URL, bytes: NEMOTRON_MODEL_BYTES, sha256: NEMOTRON_MODEL_SHA256 }]
+    }
+    fn relative_path(&self) -> PathBuf {
+        Path::new("models").join("diarizer.d").join(NEMOTRON_MODEL_ID).join(NEMOTRON_MODEL_REVISION)
+    }
+    fn receipt_bytes(&self) -> Vec<u8> {
+        let mut bytes = serde_json::to_vec_pretty(&json!({
+            "schema": "yawn-diarizer-model-install/1",
+            "id": NEMOTRON_MODEL_ID,
+            "revision": NEMOTRON_MODEL_REVISION,
+            "files": [{"name": NEMOTRON_MODEL_FILE, "bytes": NEMOTRON_MODEL_BYTES, "sha256": NEMOTRON_MODEL_SHA256}],
+        })).expect("Nemotron model receipt serializes");
+        bytes.push(b'\n');
+        bytes
+    }
+    fn verify_directory(&self, directory: &Path, verification: ModelVerification) -> Result<(), ModelStoreError> {
+        if directory.is_symlink() || !directory.is_dir() { return Err(ModelStoreError::InvalidModel); }
+        let names = fs::read_dir(directory)?.map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned())).collect::<Result<HashSet<_>, _>>()?;
+        if names != HashSet::from([NEMOTRON_MODEL_FILE.to_string(), local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME.to_string()]) { return Err(ModelStoreError::InvalidModel); }
+        let receipt = read_private_bytes(&directory.join(local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME), 32 * 1024).map_err(|_| ModelStoreError::InvalidReceipt)?;
+        let expected = self.receipt_bytes();
+        if receipt != expected { return Err(ModelStoreError::InvalidReceipt); }
+        let file = directory.join(NEMOTRON_MODEL_FILE);
+        if file.is_symlink() || !file.is_file() || file.metadata()?.len() != NEMOTRON_MODEL_BYTES { return Err(ModelStoreError::InvalidModel); }
+        if verification == ModelVerification::Contents && sha256_file(&file).map_err(ModelStoreError::Io)? != NEMOTRON_MODEL_SHA256 { return Err(ModelStoreError::InvalidModel); }
+        Ok(())
+    }
+    fn activate(&self, _storage: &StorageRoot) -> Result<(), ModelStoreError> { Ok(()) }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NemotronModelSettingsSnapshot {
+    state: String,
+    stored: bool,
+    change_active: bool,
+    can_change: bool,
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    unavailable_reason: Option<String>,
+}
+
+fn verified_speaker_analysis_runtime(context: &StorageContext) -> Result<PathBuf, String> {
+    // Startup and the analysis command verify the full manifest. Settings only
+    // needs its admission bit; rehashing bundled models on each poll is costly.
+    let metadata = fs::symlink_metadata(&context.manifest_path)
+        .map_err(|_| "Speaker analysis is unavailable in this build.".to_string())?;
+    if !metadata.file_type().is_file() || metadata.len() > 64 * 1024 {
+        return Err("Speaker analysis is unavailable in this build.".into());
+    }
+    let bytes = fs::read(&context.manifest_path)
+        .map_err(|_| "Speaker analysis is unavailable in this build.".to_string())?;
+    let manifest: RuntimeManifest = serde_json::from_slice(&bytes)
+        .map_err(|_| "Speaker analysis is unavailable in this build.".to_string())?;
+    if !manifest.is_internal_alpha() {
+        return Err("Speaker analysis is unavailable in this build.".into());
+    }
+    verified_nemotron_runtime(&context.resource_root)
+}
+
+fn verified_nemotron_runtime(resource_root: &Path) -> Result<PathBuf, String> {
+    let root = resource_root.join("nemotron-diarization");
+    let receipt = root.join("runtime.json");
+    let bytes = fs::read(&receipt).map_err(|_| "The optional speaker-analysis runtime is unavailable in this build.".to_string())?;
+    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+    let object = value.as_object().ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+    if object.keys().map(String::as_str).collect::<HashSet<_>>() != HashSet::from(["schema", "source", "platform", "command", "dylibs", "assets", "licenses"])
+        || value.get("schema").and_then(Value::as_str) != Some("nemotron-diarization-runtime/2")
+        || value.get("platform") != Some(&json!({"os":"macos","arch":"arm64","backend":"metal"}))
+        || value.pointer("/source/commit").and_then(Value::as_str) != Some("97a15afa5caa9bce5baaa86c1184103877af4101")
+        || value.pointer("/source/tree").and_then(Value::as_str) != Some("afa144fdbda5d04f2fb7bf83335673f15689cb04")
+        || value.pointer("/source/patch_sha256").and_then(Value::as_str) != Some("fd433fc4c3343fcaba3a5c4cbbfc4a4d2bc1f3ddbd1c82ad97a412077985079e")
+        || value.pointer("/command/path").and_then(Value::as_str) != Some("bin/nemo-speech")
+        || value.pointer("/command/argv") != Some(&json!(["diarize", "INPUT", "--model", "MODEL", "--device", "metal", "--preset", "v3-offline", "--format", "json"]))
+        || value.get("assets").and_then(Value::as_array).is_none_or(|items| !items.is_empty())
+        || value.get("dylibs").and_then(Value::as_array).is_none_or(|items| {
+            items.iter().filter_map(|entry| entry.get("path").and_then(Value::as_str)).collect::<HashSet<_>>()
+                != HashSet::from([
+                    "lib/libggml-base.0.dylib",
+                    "lib/libggml-blas.0.dylib",
+                    "lib/libggml-cpu.0.dylib",
+                    "lib/libggml-metal.0.dylib",
+                    "lib/libggml.0.dylib",
+                    "lib/libnemo_speech_asr.dylib",
+                ]) || items.len() != 6
+        }) {
+        return Err("The optional speaker-analysis runtime receipt is unavailable or changed.".into());
+    }
+    let mut entries = vec![value.get("command").cloned().ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?];
+    for section in ["dylibs", "licenses"] {
+        entries.extend(value.get(section).and_then(Value::as_array).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?.iter().cloned());
+    }
+    let mut paths = HashSet::new();
+    for entry in entries {
+        let path = entry.get("path").and_then(Value::as_str).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+        let digest = entry.get("sha256").and_then(Value::as_str).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+        let relative = Path::new(path);
+        if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir)) || !paths.insert(path.to_owned()) { return Err("The optional speaker-analysis runtime receipt is invalid.".into()); }
+        let candidate = root.join(relative);
+        if candidate.is_symlink() || !candidate.is_file() || sha256_file(&candidate).map_err(error_text)? != digest { return Err("The optional speaker-analysis runtime is unavailable or changed.".into()); }
+    }
+    Ok(root.join("bin/nemo-speech"))
+}
+
+fn nemotron_model_settings_for(state: &ApplicationState) -> Result<NemotronModelSettingsSnapshot, String> {
+    let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+    let runtime = verified_speaker_analysis_runtime(&context);
+    let stored = NemotronModel::verify(&context.storage).is_ok();
+    let active = state.nemotron_model_install_active.load(Ordering::SeqCst);
+    let can_change = runtime.is_ok() && model_change_audio_idle(state.model.lock().expect("application model lock").reducer.capture(), sitting_task_active(state)) && !active && !state.speaker_analysis_active.load(Ordering::SeqCst);
+    let failed = state.nemotron_model_install_failed.load(Ordering::SeqCst);
+    Ok(NemotronModelSettingsSnapshot { state: if active { "downloading" } else if stored { "ready" } else if failed { "download-failed" } else { "download-required" }.into(), stored, change_active: active, downloaded_bytes: state.nemotron_model_downloaded_bytes.load(Ordering::SeqCst), total_bytes: NEMOTRON_MODEL_BYTES, can_change, unavailable_reason: runtime.err() })
+}
+
+#[tauri::command]
+fn nemotron_model_settings(state: State<'_, ApplicationState>) -> Result<NemotronModelSettingsSnapshot, String> { nemotron_model_settings_for(&state) }
+
+#[tauri::command]
+fn install_nemotron_model(app: AppHandle) -> Result<NemotronModelSettingsSnapshot, String> {
+    let state = app.state::<ApplicationState>();
+    let _command = state.command_lock.lock().expect("command lock");
+    let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+    verified_speaker_analysis_runtime(&context)?;
+    if !model_change_audio_idle(state.model.lock().expect("application model lock").reducer.capture(), sitting_task_active(&state)) { return Err("Speaker analysis cannot be installed while audio work is active.".into()); }
+    if state.nemotron_model_install_active.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() { return Err("The speaker-analysis model is already downloading.".into()); }
+    state.nemotron_model_downloaded_bytes.store(0, Ordering::SeqCst);
+    state.nemotron_model_install_failed.store(false, Ordering::SeqCst);
+    let task_app = app.clone();
+    if std::thread::Builder::new().name("nemotron-model-download".into()).spawn(move || {
+        let state = task_app.state::<ApplicationState>();
+        let result = model_download::install(&context.storage, &NemotronModel, |downloaded| state.nemotron_model_downloaded_bytes.store(downloaded, Ordering::SeqCst));
+        if let Err(error) = result {
+            let _ = write_private_diagnostic(&context.diagnostics, "nemotron_model_download_failed", &error.to_string());
+            state.nemotron_model_install_failed.store(true, Ordering::SeqCst);
+        }
+        state.nemotron_model_install_active.store(false, Ordering::SeqCst);
+    }).is_err() { state.nemotron_model_install_active.store(false, Ordering::SeqCst); state.nemotron_model_install_failed.store(true, Ordering::SeqCst); return Err("The speaker-analysis model download could not start.".into()); }
+    nemotron_model_settings_for(&state)
 }
 
 #[tauri::command]
@@ -7022,6 +7217,75 @@ fn refuse_locked_meeting(
     Err(library_reader::LOCKED_MESSAGE.into())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpeakerAnalysisRequest {
+    meeting_id: String,
+    source_transcript_sha256: String,
+}
+
+#[derive(Serialize)]
+struct SpeakerAnalysisResponse {
+    message: &'static str,
+}
+
+/// Runs one explicit, local-only analysis request. The normal worker never
+/// receives diarizer paths; this short-lived child is configured only after
+/// every runtime, model, meeting, microphone, and transcript receipt passes.
+#[tauri::command(async)]
+fn analyze_speakers(
+    request: SpeakerAnalysisRequest,
+    state: State<'_, ApplicationState>,
+) -> Result<SpeakerAnalysisResponse, String> {
+    if state.speaker_analysis_active.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("Speaker analysis is already running for another meeting.".into());
+    }
+    let result = (|| {
+        let _command = state.command_lock.lock().expect("command lock");
+        let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+        let diarizer_executable = verified_speaker_analysis_runtime(&context)?;
+        let diarizer_model = NemotronModel::verify(&context.storage).map_err(|_| "Download and verify the speaker-analysis model in Settings before analyzing speakers.".to_string())?;
+        let directory = meeting_dir(&context.storage, &request.meeting_id).map_err(error_text)?;
+        if meeting_lock::read(&directory).locked { return Err("This meeting is locked. Unlock it before analyzing speakers.".into()); }
+        let meeting = load_meeting(&directory).map_err(error_text)?;
+        if !matches!(meeting.lifecycle, MeetingLifecycle::TranscriptReady | MeetingLifecycle::Ready | MeetingLifecycle::SummaryFailed) { return Err("Finish this meeting before analyzing speakers.".into()); }
+        let transcript = meeting.artifacts.current_transcript.as_ref().ok_or_else(|| "This meeting has no completed transcript to analyze.".to_string())?;
+        if transcript.sha256 != request.source_transcript_sha256 { return Err("The transcript changed. Reopen this meeting before analyzing speakers.".into()); }
+        let microphone = meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "This meeting has no retained microphone recording for speaker analysis.".to_string())?;
+        if meeting.retention.state != AudioState::Retained { return Err("The microphone recording is no longer retained for this meeting.".into()); }
+        verify_artifact_ref(&directory, transcript).map_err(|_| "The transcript changed. Reopen this meeting before analyzing speakers.".to_string())?;
+        verify_artifact_ref(&directory, microphone).map_err(|_| "The retained microphone recording changed and cannot be analyzed.".to_string())?;
+        let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).map_err(error_text)?;
+        if !manifest.is_internal_alpha() { return Err("Speaker analysis is unavailable in this build.".into()); }
+        let worker_path = context.resource_root.join(&manifest.runtime.path);
+        let mut command = Command::new(&worker_path);
+        command.args(["-E", "-s", "-B", "-m", "worker.main"])
+            .arg("--app-data-root").arg(context.storage.path())
+            .arg("--runtime-manifest").arg(&context.manifest_path)
+            .arg("--speaker-only")
+            .args(["--diarizer-executable"]).arg(&diarizer_executable)
+            .args(["--diarizer-model"]).arg(&diarizer_model)
+            .current_dir(&context.resource_root);
+        let worker = OwnedChild::spawn(&mut command).map_err(|_| "The local speaker-analysis runtime could not start.".to_string())?;
+        let temporary = Arc::new(Mutex::new(Some(worker)));
+        let ready = temporary.lock().expect("temporary worker lock").as_mut().ok_or_else(|| "The local speaker-analysis runtime could not start.".to_string())?.wait_ready(Duration::from_secs(10), &HashSet::from([Operation::SpeakerSuggest])).map_err(|_| "The local speaker-analysis runtime is unavailable.".to_string())?;
+        if !manifest.matches_ready(&ready) { return Err("The local speaker-analysis worker does not match this app build.".into()); }
+        let reply = request_worker_on(temporary.clone(), Operation::SpeakerSuggest, json!({
+            "meeting_id": request.meeting_id,
+            "source_transcript_sha256": transcript.sha256,
+            "microphone_audio_sha256": microphone.sha256,
+        }), SPEAKER_ANALYSIS_TIMEOUT, |_| Err(ProtocolError::InvalidEvent));
+        let _ = temporary.lock().ok().and_then(|mut slot| slot.take()).map(|mut worker| worker.stop_and_wait(Duration::from_millis(750)));
+        let reply = reply.map_err(|_| "Speaker analysis did not complete. The transcript and recording were left unchanged.".to_string())?;
+        if reply.get("status").map(String::as_str) != Some("suggestions-ready") { return Err(reply.get("reason").cloned().unwrap_or_else(|| "Speaker analysis could not complete.".into())); }
+        let current = load_meeting(&directory).map_err(error_text)?;
+        if current.artifacts.current_transcript.as_ref() != Some(transcript) || current.artifacts.microphone_audio.as_ref() != Some(microphone) { return Err("The meeting changed while speaker analysis ran. Reopen it and try again.".into()); }
+        Ok(SpeakerAnalysisResponse { message: "Anonymous speaker suggestions are ready for review." })
+    })();
+    state.speaker_analysis_active.store(false, Ordering::SeqCst);
+    result
+}
+
 /// Opens the exact transcript artifact selected by a fresh Library handle. The
 /// handle is spent before the file is checked and launched, so this does not
 /// turn Library into generic filesystem access.
@@ -7160,6 +7424,7 @@ fn library_open_transcript(
             transcript_file_handle: None,
             current_transcript_sha256: None,
             turns: Vec::new(),
+            speaker_suggestions: speaker_suggestion::SuggestionsRead::None,
             warnings: Vec::new(),
             message: "The local Preview library is unavailable. Reopen the app and try again."
                 .into(),
@@ -7175,7 +7440,7 @@ fn library_open_transcript(
                 )
             },
         ) {
-            Ok((meeting_id, transcript_sha256, Ok((turns, warnings)))) => {
+            Ok((meeting_id, transcript_sha256, Ok((turns, warnings, speaker_suggestions)))) => {
                 let transcript_file_handle = reader.retain_transcript_handle(&meeting_id);
                 PreviewLibraryTranscript {
                     state: "transcript",
@@ -7183,6 +7448,7 @@ fn library_open_transcript(
                     transcript_file_handle,
                     current_transcript_sha256: Some(transcript_sha256),
                     turns,
+                    speaker_suggestions,
                     warnings,
                     message: "Retained transcript from this Preview meeting.".into(),
                 }
@@ -7193,6 +7459,7 @@ fn library_open_transcript(
                 transcript_file_handle: None,
                 current_transcript_sha256: None,
                 turns: Vec::new(),
+                speaker_suggestions: speaker_suggestion::SuggestionsRead::None,
                 warnings: Vec::new(),
                 message: "That transcript is no longer available. Reopen Library and try again."
                     .into(),
@@ -7203,6 +7470,7 @@ fn library_open_transcript(
                 transcript_file_handle: None,
                 current_transcript_sha256: None,
                 turns: Vec::new(),
+                speaker_suggestions: speaker_suggestion::SuggestionsRead::None,
                 warnings: Vec::new(),
                 message: opened.message,
             },
@@ -7214,7 +7482,11 @@ fn load_bound_preview_transcript_projection(
     storage: &StorageRoot,
     meeting_id: &str,
     expected: &ArtifactRef,
-) -> Result<(Vec<TranscriptTurn>, Vec<String>), String> {
+) -> Result<(
+    Vec<TranscriptTurn>,
+    Vec<String>,
+    speaker_suggestion::SuggestionsRead,
+), String> {
     let directory = meeting_dir(storage, meeting_id).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     if meeting.artifacts.current_transcript.as_ref() != Some(expected) {
@@ -7227,6 +7499,33 @@ fn load_bound_preview_transcript_projection(
     }
     let (turns, mut warnings) =
         project_current_transcript(&directory, meeting_id, expected, &bytes, true)?;
+    let speaker_suggestions = match meeting.artifacts.microphone_audio.as_ref() {
+        None => speaker_suggestion::SuggestionsRead::None,
+        Some(_) if meeting.retention.state != AudioState::Retained => speaker_suggestion::SuggestionsRead::None,
+        Some(microphone) if meeting.retention.state == AudioState::Retained
+            && verify_artifact_ref(&directory, microphone).is_err() => {
+                speaker_suggestion::SuggestionsRead::Unavailable {
+                    message: "Speaker suggestions are unavailable because the retained microphone recording changed.".into(),
+                }
+            }
+        Some(microphone) => {
+            let mic_turns = turns
+                .iter()
+                .map(|turn| speaker_suggestion::TranscriptMicTurn {
+                    source_turn_index: turn.source_turn_index,
+                    start: turn.start,
+                    end: turn.end,
+                    is_microphone_turn: turn.source_speaker.as_deref() == Some("Me"),
+                })
+                .collect::<Vec<_>>();
+            speaker_suggestion::read_current(
+                &directory,
+                &expected.sha256,
+                &microphone.sha256,
+                &mic_turns,
+            )
+        }
+    };
     let current = load_meeting(&directory).map_err(error_text)?;
     if current.artifacts.current_transcript.as_ref() != Some(expected)
         || artifact_ref(&directory, &expected.relative_path).map_err(error_text)? != *expected
@@ -7239,7 +7538,7 @@ fn load_bound_preview_transcript_projection(
                 .into(),
         );
     }
-    Ok((turns, warnings))
+    Ok((turns, warnings, speaker_suggestions))
 }
 
 #[derive(Debug, Serialize)]
@@ -7983,6 +8282,8 @@ fn main() {
             note_model_settings,
             install_note_model,
             remove_note_model,
+            nemotron_model_settings,
+            install_nemotron_model,
             first_run_permissions,
             first_run_request_microphone,
             first_run_request_system_audio,
@@ -8002,6 +8303,7 @@ fn main() {
             library_retained_audio_playback_status,
             library_stop_retained_audio,
             library_open_transcript,
+            analyze_speakers,
             library_open_transcript_file,
             library_export_meeting,
             // Roadmap intake I5: the per-meeting local-access barrier and its
@@ -10716,6 +11018,7 @@ fn parse_transcript_projection_with(
                 speaker: None,
                 speaker_corrected: false,
                 start: turn.start,
+                end: turn.end,
                 text: String::new(),
                 withheld: true,
             });
@@ -10728,6 +11031,7 @@ fn parse_transcript_projection_with(
             source_speaker,
             speaker_corrected: false,
             start: turn.start,
+            end: turn.end,
             text: turn.text,
             withheld: false,
         });
@@ -14534,6 +14838,7 @@ mod tests {
                     speaker: Some("Me".into()),
                     speaker_corrected: false,
                     start: 0.0,
+                    end: 1.0,
                     text: "words".into(),
                     withheld: false,
                 }],
@@ -14768,6 +15073,7 @@ mod tests {
                     speaker: Some("Me".into()),
                     speaker_corrected: false,
                     start: 0.0,
+                    end: 1.0,
                     text: "visible".into(),
                     withheld: false,
                 }],
@@ -14956,7 +15262,7 @@ mod tests {
         let directory = meeting_dir(&storage, &meeting_id).unwrap();
         let mut meeting = load_meeting(&directory).unwrap();
         let expected = meeting.artifacts.current_transcript.clone().unwrap();
-        let (turns, _) =
+        let (turns, _, _) =
             load_bound_preview_transcript_projection(&storage, &meeting_id, &expected).unwrap();
         assert_eq!(turns[0].text, "stable synthetic words");
 
@@ -15009,5 +15315,56 @@ mod tests {
         assert!(
             load_bound_preview_transcript_projection(&storage, &meeting_id, &expected).is_err()
         );
+    }
+
+    #[test]
+    fn nemotron_runtime_accepts_embedded_metal_and_rejects_changed_bytes() {
+        let temporary = TempDir::new().unwrap();
+        let root = temporary.path().join("nemotron-diarization");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("lib")).unwrap();
+        fs::create_dir_all(root.join("licenses")).unwrap();
+        let command = "bin/nemo-speech";
+        let dylib_names = [
+            "lib/libggml-base.0.dylib",
+            "lib/libggml-blas.0.dylib",
+            "lib/libggml-cpu.0.dylib",
+            "lib/libggml-metal.0.dylib",
+            "lib/libggml.0.dylib",
+            "lib/libnemo_speech_asr.dylib",
+        ];
+        for path in [command, "licenses/LICENSE"].into_iter().chain(dylib_names) {
+            fs::write(root.join(path), path.as_bytes()).unwrap();
+        }
+        let entry = |path: &str| json!({"path": path, "sha256": sha256_file(&root.join(path)).unwrap()});
+        let receipt = json!({
+            "schema": "nemotron-diarization-runtime/2",
+            "source": {"commit": "97a15afa5caa9bce5baaa86c1184103877af4101", "tree": "afa144fdbda5d04f2fb7bf83335673f15689cb04", "patch_sha256": "fd433fc4c3343fcaba3a5c4cbbfc4a4d2bc1f3ddbd1c82ad97a412077985079e"},
+            "platform": {"os":"macos","arch":"arm64","backend":"metal"},
+            "command": {"path": command, "sha256": sha256_file(&root.join(command)).unwrap(), "argv": ["diarize", "INPUT", "--model", "MODEL", "--device", "metal", "--preset", "v3-offline", "--format", "json"]},
+            "dylibs": dylib_names.iter().map(|path| entry(path)).collect::<Vec<_>>(),
+            "assets": [],
+            "licenses": [entry("licenses/LICENSE")],
+        });
+        fs::write(root.join("runtime.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
+        assert_eq!(verified_nemotron_runtime(temporary.path()).unwrap(), root.join(command));
+        fs::write(root.join(dylib_names[0]), b"changed").unwrap();
+        assert!(verified_nemotron_runtime(temporary.path()).is_err());
+    }
+
+    #[test]
+    fn nemotron_model_requires_the_exact_private_receipt_and_digest() {
+        let (_temporary, storage) = test_storage();
+        let directory = NemotronModel::directory(&storage).unwrap();
+        create_private_dir(&directory).unwrap();
+        assert!(NemotronModel::verify(&storage).is_err(), "a missing model must not be admitted");
+
+        durable_create_new(&directory.join(NEMOTRON_MODEL_FILE), b"tampered").unwrap();
+        durable_create_new(
+            &directory.join(local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME),
+            &NemotronModel.receipt_bytes(),
+        )
+        .unwrap();
+        assert!(NemotronModel::verify(&storage).is_err(), "a wrong-sized or tampered model must not be admitted");
     }
 }

@@ -324,6 +324,10 @@ class WorkerProtocolTests(unittest.TestCase):
                 # The coordinator re-inspects every published note before the
                 # meeting record advances in every admitted lane.
                 "note.inspect",
+                # The one-shot desktop child supplies verified local paths;
+                # without them the adapter returns an explicit unavailable
+                # result and no analysis is performed.
+                "speaker.suggest",
             }
             if self.admission != "internal-alpha":
                 expected_operations |= {
@@ -2548,6 +2552,11 @@ class SittingDerivationTests(unittest.TestCase):
         self.assertIn("profile.discard", operations_for("internal-alpha"))
         self.assertNotIn("profile.adopt", operations_for("internal-alpha"))
         self.assertIn("note.inspect", operations_for("internal-alpha"))
+        # The operation is advertised in the ordinary worker contract so the
+        # desktop can supervise its one-shot local child. The adapter still
+        # refuses unless that child was launched with a verified runtime and
+        # model path.
+        self.assertIn("speaker.suggest", operations_for("internal-alpha"))
         self.assertIn("profile.adopt", operations_for("boundary-test"))
 
 
