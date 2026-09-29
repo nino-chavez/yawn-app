@@ -25,6 +25,7 @@
     turns: [],
     warnings: [],
   };
+  let stopStatusSnapshot = { ...captureSnapshot };
   const idleSnapshot = { startup: "ready", capture: "idle", meeting_id: "", turns: [], warnings: [] };
   const libraryRow = {
     handle: "row-handle-1",
@@ -132,6 +133,7 @@
     // no speech model installed yet. Both render surfaces the other modes
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
+      : mode === "stop-status" ? { ...stopStatusSnapshot }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
@@ -187,6 +189,23 @@
     save_operator_note: () => ({ unreadable: false }),
     save_meeting_context: () => ({ unreadable: false }),
     start_meeting: () => ({ ...captureSnapshot }),
+    stop_meeting: () => {
+      stopStatusSnapshot = {
+        ...captureSnapshot,
+        capture: "stopping",
+        capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000),
+      };
+      if (mode === "stop-status") {
+        setTimeout(() => {
+          stopStatusSnapshot = {
+            ...stopStatusSnapshot,
+            capture: "transcribing",
+            capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000),
+          };
+        }, 500);
+      }
+      return { ...stopStatusSnapshot };
+    },
     preview_library_search: ({ query }) => {
       const normalized = String(query || "").trim().toLowerCase();
       if (normalized === "noresult") return { state: "no-results", results: [], message: "No retained transcript, title, or folder matched that search." };

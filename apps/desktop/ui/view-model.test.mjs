@@ -13,6 +13,7 @@ import {
   capturePresentation,
   capturePauseControlPresentation,
   capturePausePresentation,
+  captureTransportPresentation,
   durationLabel,
   errorRecoveryPresentation,
   evidencePopoverPresentation,
@@ -673,6 +674,25 @@ test("a paused recording states plainly that nothing is being captured", () => {
   // operator resumed.
   assert.equal(captureIsInProgress({ capture: "paused" }), true);
   assert.equal(shouldPollSnapshot({ startup: "ready", capture: "paused" }), true);
+});
+
+test("Stop is offered only while the recorder can accept it", () => {
+  assert.deepEqual(captureTransportPresentation({ capture: "recording" }), {
+    state: "recording", label: "Recording locally", canStop: true,
+  });
+  assert.deepEqual(captureTransportPresentation({ capture: "paused" }), {
+    state: "paused", label: "Paused", canStop: true,
+  });
+  for (const capture of ["arming", "stopping", "captured", "transcribing", "summarizing"]) {
+    const presentation = captureTransportPresentation({ capture });
+    assert.equal(presentation.state, "processing", capture);
+    assert.equal(presentation.canStop, false, capture);
+    assert.notEqual(presentation.label, "Recording locally", capture);
+  }
+  assert.equal(captureTransportPresentation({ capture: "transcript-ready" }).state, "idle");
+  for (const capture of ["captured", "transcribing", "summarizing"]) {
+    assert.match(capturePresentation({ capture }).detail, /Recording stopped\./, capture);
+  }
 });
 
 test("the pause control never claims a state the capture helper has not confirmed", () => {
@@ -1586,10 +1606,13 @@ test("renderSidebarRow renders a needs-attention dot and duration from the row's
   assert.match(fn, /if \(meta\.duration\) captionParts\.push\(meta\.duration\);/);
 });
 
-test("toolbarTitlePresentation: recording beats a selection, else the title or Yawn", () => {
-  assert.equal(toolbarTitlePresentation({ capturing: true, selectedTitle: "Kickoff" }), "New Recording");
-  assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "Kickoff" }), "Kickoff");
-  assert.equal(toolbarTitlePresentation({ capturing: false, selectedTitle: "" }), "Yawn");
+test("toolbarTitlePresentation names recording and processing before a selection", () => {
+  assert.equal(toolbarTitlePresentation({ capture: "recording", selectedTitle: "Kickoff" }), "New Recording");
+  assert.equal(toolbarTitlePresentation({ capture: "paused", selectedTitle: "Kickoff" }), "New Recording");
+  assert.equal(toolbarTitlePresentation({ capture: "stopping", selectedTitle: "Kickoff" }), "Stopping recording");
+  assert.equal(toolbarTitlePresentation({ capture: "transcribing", selectedTitle: "Kickoff" }), "Transcribing on this Mac");
+  assert.equal(toolbarTitlePresentation({ capture: "idle", selectedTitle: "Kickoff" }), "Kickoff");
+  assert.equal(toolbarTitlePresentation({ capture: "idle", selectedTitle: "" }), "Yawn");
   assert.equal(toolbarTitlePresentation(), "Yawn");
 });
 

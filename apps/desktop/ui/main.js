@@ -8,7 +8,6 @@ import {
   captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
-  humanize,
   libraryEmptyStatePresentation,
   libraryLoadingPresentation,
   libraryRecoveryPresentation,
@@ -34,6 +33,7 @@ import {
   recordingDevicePresentation,
   capturePauseControlPresentation,
   capturePausePresentation,
+  captureTransportPresentation,
   evidencePopoverPresentation,
   firstRunSheetVisible,
   nextEscapeTarget,
@@ -376,7 +376,7 @@ function render() {
   const selectedTitle = view === "meeting" && state.selected && !selectedBlocked
     ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
     : "";
-  const title = toolbarTitlePresentation({ capturing, selectedTitle });
+  const title = toolbarTitlePresentation({ capture: state.snapshot?.capture, selectedTitle });
   const collapsed = state.sidebarCollapsed || currentWindowWidth() < SIDEBAR_COLLAPSE_WIDTH;
 
   let paneContent;
@@ -655,12 +655,9 @@ function recordUnavailableReason(snapshot, permission) {
   return permissionSummary(permission).detail;
 }
 
-// DESIGN.md's Record control: idle ("Record"), live (elapsed + Pause/Resume
-// + Stop). Every non-idle capture state shows the live badge -- only
-// recording/paused get Pause or Resume (`capturePauseControlPresentation`
-// returns null for arming/stopping/captured/transcribing/summarizing, which
-// still show elapsed time and Stop, matching the toolbar title's "New
-// Recording" for the same states).
+// The recording controls belong only to a recorder that can accept Stop.
+// Once Stop is accepted, the toolbar reports the processing phase instead of
+// continuing to show a live recording badge and an inert Stop button.
 //
 // A disabled Record used to carry no explanation at all -- greyed out, same
 // static "Record (⌘R)" title whether or not the shortcut actually worked.
@@ -672,19 +669,22 @@ function recordUnavailableReason(snapshot, permission) {
 // is not discoverable to keyboard or screen-reader users.
 function renderToolbarRecordControl() {
   const snapshot = state.snapshot;
-  if (captureIsInProgress(snapshot)) {
-    const capture = snapshot?.capture;
+  const transport = captureTransportPresentation(snapshot);
+  if (transport.canStop) {
     const elapsed = captureActivityElapsedSeconds(snapshot);
-    const elapsedLabel = elapsed === null ? humanize(capture) : timeLabel(elapsed);
-    const badgeLabel = capture === "paused" ? `Paused ${elapsedLabel}` : elapsedLabel;
+    const elapsedLabel = elapsed === null ? transport.label : timeLabel(elapsed);
+    const badgeLabel = transport.state === "paused" ? `Paused ${elapsedLabel}` : elapsedLabel;
     const pauseControl = capturePauseControlPresentation(snapshot);
     const stopping = state.busyAction === "stop";
     const changing = state.busyAction === "pause" || state.busyAction === "resume";
     return `
-      <span class="btn record live record-live-badge" aria-label="${escapeHtml(humanize(capture))}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
+      <span class="btn${transport.state === "recording" ? " record live record-live-badge" : ""}" aria-label="${escapeHtml(transport.label)}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
       ${pauseControl ? `<button class="btn" type="button" data-action="${pauseControl.action}" ${pauseControl.disabled || changing || stopping ? "disabled" : ""}>${escapeHtml(pauseControl.label)}</button>` : ""}
       <button class="btn" type="button" data-action="stop-recording" title="Stop (⌘.)" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button>
     `;
+  }
+  if (transport.state === "processing") {
+    return `<span class="caption" role="status">${escapeHtml(transport.label)}</span>`;
   }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
   const reason = startAvailable ? "" : recordUnavailableReason(state.snapshot, state.permissions);
@@ -746,12 +746,14 @@ function renderSidebarGroups(rows, selectedHandle) {
   `).join("");
 }
 
-function renderRecordingNowRow() {
+function renderCaptureStatusRow() {
+  const transport = captureTransportPresentation(state.snapshot);
   const elapsed = captureActivityElapsedSeconds(state.snapshot);
-  const label = elapsed === null ? humanize(state.snapshot?.capture) : timeLabel(elapsed);
+  const label = elapsed === null ? "" : timeLabel(elapsed);
+  const title = transport.state === "recording" ? "Recording now" : transport.label;
   return `
-    <div class="row recording-now" aria-current="true">
-      <span class="row-title">Recording now</span>
+    <div class="row${transport.state === "recording" ? " recording-now" : ""}" aria-current="true">
+      <span class="row-title">${escapeHtml(title)}</span>
       <span class="row-caption caption">${escapeHtml(label)}</span>
     </div>`;
 }
@@ -774,18 +776,18 @@ function renderSidebar() {
       <button class="button button-quiet button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button>`;
   } else {
     const empty = libraryEmptyStatePresentation(library);
-    body = empty
+    body = empty && !capturing
       ? `
         <p class="quiet-copy sidebar-message">${escapeHtml(empty.message)}</p>
         ${empty.showGuidedInvite ? `<button class="button button-quiet button-small" type="button" data-action="open-start-guided" ${canOpenStart(state.snapshot, state.permissions) ? "" : "disabled"}>Try it: record a 30-second note to yourself.</button>` : ""}`
-      : renderSidebarGroups(library.rows, selectedHandle);
+      : empty ? "" : renderSidebarGroups(library.rows, selectedHandle);
     body += renderTranscriptSearchAffordance(library);
     body += renderTranscriptSearchResults();
   }
 
   return `
     <div class="sidebar-scroll">
-      ${capturing ? renderRecordingNowRow() : ""}
+      ${capturing ? renderCaptureStatusRow() : ""}
       ${body}
     </div>
     <button class="trash-row${state.trashOpen ? " selected" : ""}" type="button" data-action="open-trash" aria-current="${state.trashOpen ? "true" : "false"}">
@@ -966,7 +968,7 @@ function renderActivityMonitor(snapshot) {
       <span>${escapeHtml(activity.label)} · ${escapeHtml(activity.detail)}</span>
       <span class="activity-timing">
         <strong data-activity-elapsed data-activity-started-at="${Number.isFinite(startedAt) ? startedAt : ""}">${elapsed === null ? "Working" : timeLabel(elapsed)}</strong>
-        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for a confirmation on this Mac" : `Last confirmed on this Mac ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
+        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for transcription status" : `Transcription last confirmed ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
       </span>
     </div>
   `;
@@ -985,7 +987,7 @@ function updateActivityClock() {
     if (!rawHeartbeatAt) continue;
     const heartbeatAt = Number(rawHeartbeatAt);
     if (!Number.isFinite(heartbeatAt)) continue;
-    target.textContent = `Last confirmed on this Mac ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
+    target.textContent = `Transcription last confirmed ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
   }
 }
 

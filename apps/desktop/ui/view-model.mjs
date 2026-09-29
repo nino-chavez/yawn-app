@@ -32,19 +32,19 @@ const CAPTURE_COPY = Object.freeze({
   captured: {
     eyebrow: "Audio saved locally",
     title: "Making your transcript.",
-    detail: "Your recording is safe while Yawn prepares the written record.",
+    detail: "Recording stopped. Audio saved on this Mac. Yawn is checking it before transcription.",
     tone: "working",
   },
   transcribing: {
     eyebrow: "Transcribing on this Mac",
     title: "Making your transcript.",
-    detail: "This can take a moment. Your own notes remain available below.",
+    detail: "Recording stopped. Audio saved on this Mac. Your notes remain available while Yawn makes the transcript.",
     tone: "working",
   },
   summarizing: {
     eyebrow: "Preparing your note on this Mac",
     title: "Finishing your meeting note.",
-    detail: "Yawn is preparing a local note from the completed transcript.",
+    detail: "Recording stopped. The transcript is ready. Yawn is preparing your note on this Mac.",
     tone: "working",
   },
   "transcript-ready": {
@@ -225,6 +225,20 @@ export function mergePermissions(previous, received) {
 
 export function captureIsInProgress(snapshot) {
   return ["arming", "recording", "paused", "stopping", "captured", "transcribing", "summarizing"].includes(snapshot?.capture);
+}
+
+// Capture remains in progress while saved audio is being processed, but Stop
+// only has a recorder to control in the recording and paused states.
+export function captureTransportPresentation(snapshot) {
+  const capture = snapshot?.capture;
+  const label = captureActivity(snapshot)?.label || "";
+  if (capture === "recording" || capture === "paused") {
+    return { state: capture, label, canStop: true };
+  }
+  if (captureIsInProgress(snapshot)) {
+    return { state: "processing", label, canStop: false };
+  }
+  return { state: "idle", label: "", canStop: false };
 }
 
 export function shouldPollSnapshot(snapshot) {
@@ -983,12 +997,12 @@ export function sidebarGroups(rows, nowEpochSeconds = Date.now() / 1000) {
   return order.map((label) => ({ label, rows: byLabel.get(label) }));
 }
 
-// The toolbar's title area (DESIGN.md: "Yawn" / the selected meeting's title
-// / "New Recording"). Recording (in-progress capture) always wins -- the
-// title must say what the window is doing right now, not what was last
-// selected underneath it.
-export function toolbarTitlePresentation({ capturing = false, selectedTitle = "" } = {}) {
-  if (capturing) return "New Recording";
+// The title names the current recording or processing step before a selected
+// meeting, so ending capture never leaves "New Recording" over saved audio.
+export function toolbarTitlePresentation({ capture = "idle", selectedTitle = "" } = {}) {
+  const transport = captureTransportPresentation({ capture });
+  if (transport.canStop) return "New Recording";
+  if (transport.state === "processing") return transport.label;
   const title = typeof selectedTitle === "string" ? selectedTitle.trim() : "";
   return title || "Yawn";
 }
