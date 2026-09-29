@@ -112,6 +112,13 @@ pub fn scan_and_recover(
                 continue;
             }
         };
+        // Finder may create this metadata file when the operator opens the
+        // meetings folder. It is not a meeting and must not block recovery.
+        // Keep refusing every other unexpected entry, including a symlink
+        // with this name.
+        if id == ".DS_Store" && file_type.is_file() {
+            continue;
+        }
         if !file_type.is_dir() {
             report.blocks_capture = true;
             report.meetings.push(RecoveredMeeting {
@@ -588,6 +595,71 @@ mod tests {
 
     fn private_wav(marker: u8) -> Vec<u8> {
         vec![marker; 44]
+    }
+
+    #[test]
+    fn finder_metadata_does_not_block_a_valid_meeting() {
+        let (_temp, storage) = make_storage();
+        let directory = write_incomplete(
+            &storage,
+            "valid",
+            Some(ownership(identity(44, 10))),
+        );
+        let finder_file = storage.resolve(Path::new("meetings/.DS_Store")).unwrap();
+        fs::write(&finder_file, b"finder metadata").unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            10,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(!report.blocks_capture);
+        assert_eq!(report.meetings.len(), 1);
+        assert_eq!(report.meetings[0].meeting_id, "valid");
+        assert!(directory.join("meeting.json").exists());
+        assert_eq!(fs::read(&finder_file).unwrap(), b"finder metadata");
+    }
+
+    #[test]
+    fn other_unexpected_files_still_block_recovery() {
+        let (_temp, storage) = make_storage();
+        fs::write(storage.resolve(Path::new("meetings/unexpected")).unwrap(), b"unknown").unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            10,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(report.blocks_capture);
+        assert_eq!(report.meetings.len(), 1);
+        assert_eq!(report.meetings[0].meeting_id, "unexpected");
+    }
+
+    #[test]
+    fn symlink_named_finder_metadata_still_blocks_recovery() {
+        let (_temp, storage) = make_storage();
+        let finder_file = storage.resolve(Path::new("meetings/.DS_Store")).unwrap();
+        symlink("missing-target", &finder_file).unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            10,
+            &FakeInspector(HashMap::new()),
+            &FakeSignaler(Cell::new(0)),
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(report.blocks_capture);
+        assert_eq!(report.meetings[0].meeting_id, ".DS_Store");
     }
 
     #[test]
