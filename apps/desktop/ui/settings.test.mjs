@@ -88,11 +88,11 @@ test("settings groups follow grouped-list structure: heading outside, rows insid
     "section must have heading outside the box, then .settings-group-box inside");
 });
 
-test("Settings navigation and section order stay in the same five-step sequence", async () => {
+test("Settings omits retired notes setup and keeps the remaining navigation aligned", async () => {
   const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
   const navTargets = [...html.matchAll(/<a href="#([^"]+)">/g)].map(([, id]) => id);
   const sectionIds = [...html.matchAll(/<section id="([^"]+)" class="settings-group"/g)].map(([, id]) => id);
-  assert.deepEqual(navTargets, ["recording", "transcription", "notes", "speakers", "storage"]);
+  assert.deepEqual(navTargets, ["recording", "transcription", "speakers", "storage"]);
   assert.deepEqual(sectionIds, navTargets);
 });
 
@@ -101,14 +101,16 @@ test("button primary actions follow one-per-group rule", async () => {
   // Permission rows: primary. Model rows: only the unstored option is primary.
   const source = await readFile(new URL("./settings.js", import.meta.url), "utf8");
 
-  // Check that model/note-model buttons apply the "primary" class (allow-button)
+  // Check that transcription model buttons apply the primary class only when
+  // the option is not stored. Retired note-model setup has no Settings path.
   // only when the option is not stored.
-  const renderModels = source.slice(source.indexOf("function renderModels"), source.indexOf("function renderNoteModels"));
+  const renderModels = source.slice(source.indexOf("function renderModels"), source.indexOf("function renderSpeakerModel"));
   assert.match(
     renderModels,
     /const isPrimaryUseAction = !option\.stored;/,
     "must determine primary action per option, based on stored status"
   );
+  assert.doesNotMatch(source, /note_model_settings|install_note_model|remove_note_model|use-note-model/);
   assert.match(
     renderModels,
     /class="\$\{isPrimaryUseAction \? "allow-button" : "quiet-button"\}"/,

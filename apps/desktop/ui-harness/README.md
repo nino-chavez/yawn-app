@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|library|smoke|sheets|fidelity|all]
+    ./run.sh [capture|stop-status|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON
@@ -33,7 +33,7 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   `detailsOpenAfterKeystroke` true, both keystrokes present in `valueTyped`,
   and undo reverting.
 - `smoke` — walks interactive flows (start-sheet attestations and retention
-  select, meeting note autosave, rename and vocabulary sheets, view
+  select, personal-note autosave, rename and retired-vocabulary absence, view
   switches) and reports per-step booleans plus any page errors collected by
   the stub. Healthy: every step `ok`, `errors` empty.
 - `sheets` — W9-B's motion vocabulary: opens the start sheet, counts
@@ -46,13 +46,27 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   production frontend in a 1080 × 900 WKWebView, selects a transcript-only
   meeting with no generated note, and compares browser-computed geometry to
   `tonal-ledger-canvas.contract.json`. The fixture intentionally includes the
-  Generate note control, personal-note editor, disclosure, and two sidebar
-  groups so a release cannot approve only the already-generated-note frame.
+  retirement fact, personal-note editor, disclosure, and two sidebar groups.
+  The September 30 contract amendment removes generation controls and the
+  absolute vertical positions that depended on them.
   Run it with `npm run test:visual-fidelity` from `apps/desktop/`. Healthy:
   every check passes. Do not copy values into the scenario; the contract is
   the sole expected-value source and is derived from the selected
   `visual-treatments/tonal-ledger-refined/` reference.
-- `all` — the four in sequence.
+- `note-retirement` — checks transcript-only, saved AI draft, historical failed
+  draft and Settings. Saves personal notes through the stub, opens and exports
+  transcripts through the stub, and opens the saved draft’s source inspector.
+- `note-retirement-negative` — injects a known generation button. Expected
+  result: exit 1. This proves the absence check can detect its defect.
+- `all` — the four editor-preservation modes in sequence.
+
+Capture options for `note-retirement`:
+
+- `HARNESS_CAPTURE_DIR` — saves native PNG snapshots to this directory.
+- `HARNESS_APPEARANCE` — `dark` (default) or `light`.
+- `HARNESS_PORT` — loopback server port; defaults to 8749.
+
+Snapshots contain synthetic data and do not prove installed-app behavior.
 
 ## Files
 

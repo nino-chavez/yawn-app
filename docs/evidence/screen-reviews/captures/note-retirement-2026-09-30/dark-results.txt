@@ -1,0 +1,98 @@
+{
+  "errors" : [
+
+  ],
+  "hasHistoricalFact" : true,
+  "hasSavedDraft" : false,
+  "mode" : "transcript-retirement",
+  "noGenerationControl" : true,
+  "notesPresent" : true,
+  "pass" : true,
+  "steps" : [
+    {
+      "name" : "personal note saved",
+      "ok" : true
+    },
+    {
+      "name" : "open-library-transcript-file",
+      "ok" : true
+    },
+    {
+      "name" : "export-meeting",
+      "ok" : true
+    }
+  ],
+  "transcriptPresent" : true
+}
+{
+  "errors" : [
+
+  ],
+  "hasHistoricalFact" : false,
+  "hasSavedDraft" : true,
+  "mode" : "saved-draft",
+  "noGenerationControl" : true,
+  "notesPresent" : true,
+  "pass" : true,
+  "steps" : [
+    {
+      "name" : "personal note saved",
+      "ok" : true
+    },
+    {
+      "name" : "open-library-transcript-file",
+      "ok" : true
+    },
+    {
+      "name" : "export-meeting",
+      "ok" : true
+    },
+    {
+      "name" : "saved draft source link",
+      "ok" : true
+    }
+  ],
+  "transcriptPresent" : true
+}
+{
+  "errors" : [
+
+  ],
+  "hasHistoricalFact" : true,
+  "hasSavedDraft" : false,
+  "mode" : "summary-failed",
+  "noGenerationControl" : true,
+  "notesPresent" : true,
+  "pass" : true,
+  "steps" : [
+    {
+      "name" : "personal note saved",
+      "ok" : true
+    },
+    {
+      "name" : "open-library-transcript-file",
+      "ok" : true
+    },
+    {
+      "name" : "export-meeting",
+      "ok" : true
+    }
+  ],
+  "transcriptPresent" : true
+}
+{
+  "mode" : "settings-retirement",
+  "navigation" : [
+    "#recording",
+    "#transcription",
+    "#speakers",
+    "#storage"
+  ],
+  "noNoteSetup" : true,
+  "noNotesNavigation" : true,
+  "noteCalls" : [
+
+  ],
+  "pass" : true,
+  "settingsPresent" : true
+}

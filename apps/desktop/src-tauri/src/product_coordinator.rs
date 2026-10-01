@@ -35,10 +35,6 @@ use local_meeting_notes_session_core::note_generation::{
     NoteGenerationCoordinatorError, NoteGenerationWorker, NoteGenerationWorkerError,
     NoteWorkerResult,
 };
-use local_meeting_notes_session_core::note_projector_process::{
-    GENERATE_MANIFEST_FILE, GenerateNoteRequest, NoteGenerationChildOutcome, ProcessNoteGenerator,
-    admit_note_generator, parse_note_generation_result,
-};
 use local_meeting_notes_session_core::operations::{
     NoteCreateWorkerArgs, NoteCreateWorkerFailure, NoteCreateWorkerFailureCode,
     TranscriptRestoreWorkerArgs, TranscriptRetryUiArgs,
@@ -201,27 +197,10 @@ impl TranscriptRestoreWorker for WorkerProcessRestoreBridge {
 /// `NoteGenerationWorker` seam: admit and run the sandboxed generate child,
 /// then hand its validated points to the worker's `note.create` assembler.
 ///
-/// Admission happens per call, from live storage state -- the same rule as
-/// the projector cache's source: a model installed or removed since startup
-/// must change the answer.
+/// Compatibility seam: new generation always refuses before runtime or storage I/O.
 pub(crate) struct WorkerProcessNoteGenerationBridge {
     port: Arc<dyn WorkerPort>,
     storage: Arc<Mutex<Option<StorageContext>>>,
-}
-
-const NOTE_UNAVAILABLE_BUILD: &str = "This build cannot generate notes.";
-const NOTE_UNAVAILABLE_NO_MODEL: &str = "Download a note model in Settings first.";
-
-/// `model_stored` is None when the build cannot even answer the question
-/// (no manifest, no catalog, unreadable store): that is a build fact, not a
-/// download prompt. A stored model that still fails admission is also a
-/// build fact. Only a readable store with no active model earns the prompt.
-fn note_generation_admission(model_stored: Option<bool>, admitted: bool) -> (bool, Option<String>) {
-    match (model_stored, admitted) {
-        (Some(true), true) => (true, None),
-        (Some(false), _) => (false, Some(NOTE_UNAVAILABLE_NO_MODEL.into())),
-        _ => (false, Some(NOTE_UNAVAILABLE_BUILD.into())),
-    }
 }
 
 impl WorkerProcessNoteGenerationBridge {
@@ -232,145 +211,22 @@ impl WorkerProcessNoteGenerationBridge {
         Self { port, storage }
     }
 
-    /// Whether a note generator is admitted right now, and if not, the one
-    /// fact the reader can act on. Roadmap D-NOTE-STAGE: the control used
-    /// to be offered blind and the failure copy said "try again" for a
-    /// condition retrying cannot change.
+    /// New generation is unavailable regardless of cached model state.
     pub(crate) fn admission_check(&self) -> (bool, Option<String>) {
-        let Some(context) = self.storage.lock().ok().and_then(|s| s.clone()) else {
-            return note_generation_admission(None, false);
-        };
-        let Ok(manifest) = RuntimeManifest::load_and_verify(&context.manifest_path) else {
-            return note_generation_admission(None, false);
-        };
-        let Ok(Some(catalog)) = crate::verified_model_catalog(&context.manifest_path, &manifest)
-        else {
-            return note_generation_admission(None, false);
-        };
-        let model_stored = local_meeting_notes_session_core::model_store::active_note_model(
-            &context.storage,
-            &catalog,
-        )
-        .map(|active| active.is_some())
-        .ok();
-        // Metadata, not Contents: this answers whether the control is
-        // offered, and it runs inside `library_open_note` -- every meeting
-        // open. Proving the weights here read the whole 8 GB note model on
-        // the main thread, about 5 s of frozen window per click (D-OPENFREEZE).
-        // The generate path below still passes Contents before it spawns.
-        let admitted = model_stored == Some(true)
-            && admit_note_generator(
-                &context.storage,
-                &catalog,
-                &context.resource_root.join(GENERATE_MANIFEST_FILE),
-                local_meeting_notes_session_core::model_store::ModelVerification::Metadata,
-            )
-            .is_some_and(|generator| generator.admission_satisfiable());
-        note_generation_admission(model_stored, admitted)
-    }
-
-    fn admitted_generator(&self) -> Option<ProcessNoteGenerator> {
-        let context = self.storage.lock().ok()?.clone()?;
-        let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).ok()?;
-        let catalog = crate::verified_model_catalog(&context.manifest_path, &manifest).ok()??;
-        // Contents: this generator is about to run, so every weight is
-        // proved against its receipt before the child is spawned.
-        admit_note_generator(
-            &context.storage,
-            &catalog,
-            &context.resource_root.join(GENERATE_MANIFEST_FILE),
-            local_meeting_notes_session_core::model_store::ModelVerification::Contents,
-        )
+        // Do not inspect the manifest or installed weights for a retired
+        // operation. It is unavailable regardless of local model state.
+        (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
     }
 }
 
 impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
     fn create(
         &self,
-        arguments: &NoteCreateWorkerArgs,
+        _arguments: &NoteCreateWorkerArgs,
     ) -> Result<NoteWorkerResult, NoteGenerationWorkerError> {
-        let generator = self.admitted_generator().ok_or_else(|| {
-            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                eprintln!("[note-trace] no generator admitted (manifest, catalog, model, or admission file)");
-            }
-            NoteGenerationWorkerError::Unavailable
-        })?;
-        let request = GenerateNoteRequest {
-            request_id: Uuid::new_v4(),
-            meeting_id: arguments.meeting_id.to_string(),
-            transcript_sha256: arguments.source_transcript_sha256.clone(),
-            speaker_label_overrides: arguments.speaker_label_overrides.clone(),
-            vocabulary_replacements: arguments.vocabulary_replacements.clone(),
-            pre_meeting_context: arguments.pre_meeting_context.clone(),
-        };
-        let frame = generator
-            .generate(&request)
-            .map_err(|_| NoteGenerationWorkerError::Unavailable)?;
-        if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-            eprintln!("[note-trace] generate child returned a {} byte frame", frame.len());
-        }
-        let generation = match parse_note_generation_result(&frame, &request)
-            .map_err(|_| {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    let head = String::from_utf8_lossy(&frame[..frame.len().min(512)]);
-                    eprintln!("[note-trace] child frame rejected by the envelope parse: {head}");
-                }
-                NoteGenerationWorkerError::Unavailable
-            })?
-        {
-            NoteGenerationChildOutcome::Generated(generation) => {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    eprintln!("[note-trace] child outcome: generated; handing to note.create");
-                }
-                generation
-            }
-            NoteGenerationChildOutcome::TranscriptOnly { code, recoverable } => {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    eprintln!("[note-trace] child outcome: transcript-only code={code} recoverable={recoverable}");
-                }
-                // The child's failure codes are content-free by design; the
-                // durable receipt records the one product fact -- no note,
-                // transcript stands -- plus whether a retry could differ.
-                return Ok(NoteWorkerResult::Rejected(NoteCreateWorkerFailure {
-                    code: NoteCreateWorkerFailureCode::NoteRejected,
-                    recoverable,
-                    artifact_digests: HashMap::new(),
-                }));
-            }
-        };
-        let mut create_arguments =
-            serde_json::to_value(arguments).map_err(|_| NoteGenerationWorkerError::Unavailable)?;
-        let Some(fields) = create_arguments.as_object_mut() else {
-            return Err(NoteGenerationWorkerError::Unavailable);
-        };
-        fields.insert("generation".into(), generation);
-        let result = self
-            .port
-            .request(
-                Operation::NoteCreate,
-                create_arguments,
-                WORKER_REQUEST_TIMEOUT,
-            )
-            .map_err(|error| {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    eprintln!("[note-trace] note.create transport failure: {error:?}");
-                }
-                NoteGenerationWorkerError::Unavailable
-            })?;
-        if result.ok {
-            Ok(NoteWorkerResult::Accepted(result.artifact_digests))
-        } else {
-            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                eprintln!(
-                    "[note-trace] note.create refused: code={:?} recoverable={:?}",
-                    result.code, result.recoverable
-                );
-            }
-            // The generate child already validated these points against the
-            // same retained transcript, so an assembler refusal is a local
-            // contract break, not a model outcome.
-            Err(NoteGenerationWorkerError::Refused)
-        }
+        // Defensive production seam: no admission, child process, or
+        // note.create request is permitted after retirement.
+        Err(NoteGenerationWorkerError::Unavailable)
     }
 }
 
@@ -657,74 +513,11 @@ impl ProductOperationCoordinator for DesktopProductCoordinator {
 
     fn accept_regeneration(
         &self,
-        args: &local_meeting_notes_session_core::operations::RegenerateNoteUiArgs,
+        _args: &local_meeting_notes_session_core::operations::RegenerateNoteUiArgs,
     ) -> Result<Uuid, CoordinatorError> {
-        let storage = self.storage_root()?;
-        self.generation_coordinator()?
-            // The Tauri command derives this overlay from the local correction
-            // sidecar. Re-derive it under the core coordinator's meeting lease
-            // so a stale, malformed, or caller-supplied value cannot replace
-            // the current note.
-            .regenerate_note_with(args, |meeting_dir| {
-                let current_overrides = crate::speaker_correction::current_label_overrides(
-                    meeting_dir,
-                    args.meeting_id,
-                    &args.source_transcript_sha256,
-                )
-                .map_err(|_| {
-                    NoteGenerationCoordinatorError::Ambiguous("speaker corrections are invalid")
-                })?;
-                if current_overrides != args.speaker_label_overrides {
-                    return Err(NoteGenerationCoordinatorError::Ambiguous(
-                        "speaker corrections changed",
-                    ));
-                }
-                let current_vocabulary = crate::current_vocabulary_replacements(
-                    &storage,
-                    meeting_dir,
-                    args.meeting_id,
-                    &args.source_transcript_sha256,
-                )
-                .map_err(|_| {
-                    NoteGenerationCoordinatorError::Ambiguous("local vocabulary is invalid")
-                })?;
-                if current_vocabulary != args.vocabulary_replacements {
-                    return Err(NoteGenerationCoordinatorError::Ambiguous(
-                        "local vocabulary changed",
-                    ));
-                }
-                // Same re-attestation shape as the two overlays above, for the
-                // operator's pre-meeting context sidecar: the Tauri command
-                // derived `args.pre_meeting_context` from `meeting-context.json`
-                // before this call, and a fresh read under the lease must still
-                // agree with it before the worker sees it.
-                let current_context = crate::meeting_context::read(meeting_dir);
-                if current_context.unreadable {
-                    return Err(NoteGenerationCoordinatorError::Ambiguous(
-                        "meeting context could not be read",
-                    ));
-                }
-                let current_context_value =
-                    (!current_context.text.is_empty()).then_some(current_context.text);
-                if current_context_value != args.pre_meeting_context {
-                    return Err(NoteGenerationCoordinatorError::Ambiguous(
-                        "meeting context changed",
-                    ));
-                }
-                Ok(())
-            })
-            .map_err(|error| {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    eprintln!("[note-trace] regeneration coordinator error: {error:?}");
-                }
-                match error {
-                NoteGenerationCoordinatorError::Worker(NoteGenerationWorkerError::Unavailable)
-                | NoteGenerationCoordinatorError::StorageUnavailable => {
-                    CoordinatorError::Unavailable
-                }
-                _ => CoordinatorError::Refused,
-                }
-            })
+        // This is intentionally before storage, leases, durable receipts, or
+        // worker construction so a stale caller cannot start retired work.
+        Err(CoordinatorError::Unavailable)
     }
 
     fn start_transcript_retry(
@@ -992,6 +785,24 @@ mod tests {
             absent.restore(&restore_args(Uuid::new_v4(), &"e".repeat(64), 0)),
             Err(TranscriptRestoreWorkerError::Unavailable)
         );
+    }
+
+    #[test]
+    fn retired_generation_bridge_never_sends_a_worker_request() {
+        let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
+        let bridge = WorkerProcessNoteGenerationBridge::new(
+            port.clone(),
+            Arc::new(Mutex::new(None)),
+        );
+        let result = bridge.create(&NoteCreateWorkerArgs {
+            meeting_id: Uuid::new_v4(),
+            source_transcript_sha256: "a".repeat(64),
+            speaker_label_overrides: Vec::new(),
+            vocabulary_replacements: Vec::new(),
+            pre_meeting_context: None,
+        });
+        assert_eq!(result, Err(NoteGenerationWorkerError::Unavailable));
+        assert!(port.requests.lock().unwrap().is_empty());
     }
 
     fn empty_runtime_coordinator() -> DesktopProductCoordinator {
@@ -1398,13 +1209,16 @@ mod tests {
     }
 
     #[test]
-    fn regeneration_without_an_installed_note_model_is_unavailable_before_the_worker() {
-        // Admission is the gate now, not a stub: the fixture runtime has no
-        // verified note-model install, so the generate child is never
-        // launched and the worker port is never touched.
+    fn retired_regeneration_refuses_with_preserved_storage_and_no_worker_request() {
         let fixture = runtime_fixture(gated_turns());
         let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
         let coordinator = coordinator_for(&fixture, port.clone());
+        let storage = fixture.state.storage.lock().unwrap().as_ref().unwrap().storage.clone();
+        let meeting_path = storage
+            .resolve(&Path::new("meetings").join(fixture.meeting_id.to_string()))
+            .unwrap()
+            .join("meeting.json");
+        let before = std::fs::read(&meeting_path).unwrap();
         assert_eq!(
             coordinator.accept_regeneration(&RegenerateNoteUiArgs {
                 meeting_id: fixture.meeting_id,
@@ -1416,6 +1230,7 @@ mod tests {
             Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
+        assert_eq!(std::fs::read(meeting_path).unwrap(), before);
     }
 
     #[test]
@@ -1435,7 +1250,7 @@ mod tests {
                 vocabulary_replacements: Vec::new(),
                 pre_meeting_context: None,
             }),
-            Err(CoordinatorError::Refused)
+            Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
     }
@@ -1475,7 +1290,7 @@ mod tests {
                 vocabulary_replacements: Vec::new(),
                 pre_meeting_context: None,
             }),
-            Err(CoordinatorError::Refused)
+            Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
     }
@@ -1509,7 +1324,7 @@ mod tests {
                 vocabulary_replacements: Vec::new(),
                 pre_meeting_context: None,
             }),
-            Err(CoordinatorError::Refused)
+            Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
     }
@@ -1544,43 +1359,29 @@ mod tests {
                 vocabulary_replacements: Vec::new(),
                 pre_meeting_context: Some("a stale value the caller still believes".into()),
             }),
-            Err(CoordinatorError::Refused)
+            Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
     }
 
     #[test]
-    fn note_generation_admission_names_the_one_actionable_fact() {
-        assert_eq!(note_generation_admission(Some(true), true), (true, None));
-        assert_eq!(
-            note_generation_admission(Some(false), false),
-            (false, Some(NOTE_UNAVAILABLE_NO_MODEL.into()))
-        );
-        // A stored model the build still cannot run is a build fact.
-        assert_eq!(
-            note_generation_admission(Some(true), false),
-            (false, Some(NOTE_UNAVAILABLE_BUILD.into()))
-        );
-        // No manifest or catalog: nothing to download would help.
-        assert_eq!(
-            note_generation_admission(None, false),
-            (false, Some(NOTE_UNAVAILABLE_BUILD.into()))
-        );
-    }
-
-    #[test]
-    fn note_generation_admission_check_is_a_build_fact_without_a_runtime() {
+    fn note_generation_admission_is_retired_without_runtime_or_model_checks() {
         let bridge = WorkerProcessNoteGenerationBridge::new(
             Arc::new(FakePort::new(FakeOutcome::Refuse)),
             Arc::new(Mutex::new(None)),
         );
-        assert_eq!(bridge.admission_check(), (false, Some(NOTE_UNAVAILABLE_BUILD.into())));
+        assert_eq!(
+            bridge.admission_check(),
+            (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+        );
         let fixture = runtime_fixture(gated_turns());
         let bridge = WorkerProcessNoteGenerationBridge::new(
             Arc::new(FakePort::new(FakeOutcome::Refuse)),
             fixture.state.storage.clone(),
         );
-        // The fixture's manifest path does not exist: no runtime, no prompt.
-        assert_eq!(bridge.admission_check(), (false, Some(NOTE_UNAVAILABLE_BUILD.into())));
+        assert_eq!(
+            bridge.admission_check(),
+            (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+        );
     }
 }

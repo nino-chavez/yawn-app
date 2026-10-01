@@ -1,0 +1,41 @@
+{
+  "provenance": "Synthetic data; production frontend rendered in native WKWebView. Not an installed application or real meeting.",
+  "viewport_css": [
+    1080,
+    900
+  ],
+  "pixel_dimensions": [
+    2160,
+    1800
+  ],
+  "appearance": [
+    "dark",
+    "light"
+  ],
+  "port": 8874,
+  "source_sha256": {
+    "apps/desktop/ui/main.js": "168011caefcf8127d2706770399aa520fdd1356181b547338f1e14dd42bb4915",
+    "apps/desktop/ui/view-model.mjs": "7627b3981ae7274b1d36439b37cb6a2f12e7064485f14a0b298117cc68d97e55",
+    "apps/desktop/ui/styles.css": "f576d23168a3905abe6cdfae0a0b64a237ec5cc53074c126b626f9e2514afb72",
+    "apps/desktop/ui/settings.js": "f1f7a74c06dc8082e6e087c155abc42382d98cf3302e0c30aa4d4dead71bdd47",
+    "apps/desktop/ui/settings.html": "86fa20e45066baa68c5bbb6d268cbb66494e8a096c61beac6f0af9bca504548d",
+    "apps/desktop/ui-harness/run.sh": "5fea543259458084aeecf8b564cc8107d100b721e9eb967867cc80e945536370",
+    "apps/desktop/ui-harness/runner.swift": "8c313a3b637ea29f123be23d720c33912ecaff8838892217d761ab764667eec5",
+    "apps/desktop/ui-harness/tauri-stub.js": "e58afc666bf01a9fcfb326579e7a57bf816ac84afd65274822b9e150cf91f064",
+    "apps/desktop/ui-harness/note-retirement.js": "8ec5d1e07d3b968c69f438675d8f931d9e0e3fbb0982cfe41168d566b97c51f7",
+    "apps/desktop/ui-harness/settings-retirement.js": "0db1794eebd2f77b88ff25fbaf7da31ae7bbb5fc40cd448a1206e6a3ca6fcfe2"
+  },
+  "captures": {
+    "saved-draft-light.png": "7905f0bb1f2ead25c7efdf6d1ec3dd3050ddc64f495e09b9b0faf2e38b6c70a4",
+    "transcript-retirement-dark.png": "fcb6a7837b9972aa9a4e8056f9d3155f2a91e53c4f6ced084693a9c42ee6c817",
+    "settings-light.png": "03608b55db308ceb168c0cfac6b8f5c4a988a4562cbdcd67d651d4a1d7839b12",
+    "saved-draft-dark.png": "d849f9cf35ce177230873cafdf260b4e212ff18f75ef3289ec4196db8ec3c21a",
+    "transcript-retirement-light.png": "cc77d78d2567014f432570037bc5a513548d7b2eaae594087ead61820e6198b2",
+    "summary-failed-dark.png": "686eddd946d5f7eb12bd6110d9fdb9a8a2fbfad8c6e6a0de3a3c5807252d1765",
+    "summary-failed-light.png": "067a0555a986178a1d696a09a4e4970abb8cc2285e076d1b6da76d0b0be43642",
+    "settings-dark.png": "52a805ec9cfae76f5b4ed49b2539f5bbc968a86d10dd98623541f6109b9c7bad"
+  },
+  "interaction_observation": "Personal notes saved through stub; transcript open/export invoked through stub; saved AI claim opened real source inspector. No real filesystem export or audio capture.",
+  "negative_control": "Known injected generation button caused exit 1 and noGenerationControl false; see negative-control.txt.",
+  "capture_revision": "Final copy fixes after initial cold review. Earlier manifest retained privately; earlier PNGs were replaced during recapture."
+}

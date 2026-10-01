@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-test("Settings switches both ways, preserves optional notes, and shows a rejected change", async () => {
+test("Settings switches speech options and does not invoke retired note setup", async () => {
   const nodes = new Map();
   const handlers = {};
   const calls = [];
@@ -31,7 +31,6 @@ test("Settings switches both ways, preserves optional notes, and shows a rejecte
       }
       if (command === "install_transcript_model") { selected = "whisper"; return {}; }
       if (command === "transcript_model_settings") return { ...structuredClone(models), canChange: !restarting, unavailableReason: restarting ? "Startup pending" : null };
-      if (command === "note_model_settings") return { canChange: true, options: [], changeActive: false, unavailableReason: "No note model is installed." };
       if (command === "first_run_permissions") return { microphone: "authorized", systemAudio: "authorized" };
       throw new Error(`Unexpected command ${command}`);
     } } }, confirm: () => true },

@@ -2765,10 +2765,10 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
 /// A verified `RuntimeManifest`, reused across calls instead of re-reading
 /// and re-hashing every declared runtime resource from disk each time.
 ///
-/// Root cause of the Settings row freezing at "Checking speech model" for
+/// Root cause of the transcription Settings row freezing at "Checking speech model" for
 /// over a minute in the installed preview, both appearances (cold review:
 /// docs/evidence/screen-reviews/all-surfaces-bfa0a80-installed-cold.md):
-/// `transcript_model_settings` and `note_model_settings` each called
+/// `transcript_model_settings` and the former note-model Settings path each called
 /// `RuntimeManifest::load_and_verify` fresh on every invocation — every time
 /// the Settings window opened, and again on every 500ms poll while a change
 /// was active. `load_and_verify` SHA-256-hashes every resource the manifest
@@ -2786,8 +2786,8 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
 /// The manifest is a bundled resource nothing in this process rewrites at
 /// runtime, so verifying it once per distinct path and trusting that result
 /// for the rest of the process's life is correct, not merely fast. This
-/// cache is deliberately used only by the two read-only Settings snapshot
-/// functions below (`transcript_model_settings_for`, `note_model_settings_for`)
+/// cache is deliberately used only by the read-only Settings snapshot helpers
+/// below. The retired note-model command never reaches it.
 /// — every call site that gates spawning a privileged process or installing
 /// a model still calls `RuntimeManifest::load_and_verify` directly, unchanged,
 /// so nothing here weakens verification immediately before a security-
@@ -2810,25 +2810,6 @@ fn cached_verified_manifest(
 
 type NoteGenerationAdmission = (bool, Option<String>);
 
-/// Reuses the note-generation availability answer within one app session.
-/// The generate path performs its own full model and runtime admission before
-/// spawning, so this cache only keeps an expensive presentation fact off the
-/// meeting-navigation path; it cannot authorize a generation run.
-fn cached_note_generation_admission(
-    cache: &Mutex<Option<NoteGenerationAdmission>>,
-    derive: impl FnOnce() -> NoteGenerationAdmission,
-) -> NoteGenerationAdmission {
-    let Ok(mut cached) = cache.lock() else {
-        return derive();
-    };
-    if let Some(admission) = cached.as_ref() {
-        return admission.clone();
-    }
-    let admission = derive();
-    *cached = Some(admission.clone());
-    admission
-}
-
 fn invalidate_note_generation_admission(cache: &Mutex<Option<NoteGenerationAdmission>>) {
     if let Ok(mut cached) = cache.lock() {
         *cached = None;
@@ -2836,15 +2817,10 @@ fn invalidate_note_generation_admission(cache: &Mutex<Option<NoteGenerationAdmis
 }
 
 fn note_generation_admission_for(state: &ApplicationState) -> NoteGenerationAdmission {
-    cached_note_generation_admission(&state.note_generation_admission, || {
-        let bridge = product_coordinator::WorkerProcessNoteGenerationBridge::new(
-            Arc::new(product_coordinator::ProcessWorkerPort::new(
-                state.worker.clone(),
-            )),
-            state.storage.clone(),
-        );
-        bridge.admission_check()
-    })
+    let _ = state;
+    // New generation is retired independent of manifests, model receipts, or
+    // stale selection state. Do not turn opening a meeting into model I/O.
+    (false, Some(product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
 }
 
 fn verified_model_catalog(
@@ -3347,9 +3323,12 @@ fn note_model_settings_for(state: &ApplicationState) -> Result<NoteModelSettings
 
 #[tauri::command]
 fn note_model_settings(
-    state: State<'_, ApplicationState>,
+    _state: State<'_, ApplicationState>,
 ) -> Result<NoteModelSettingsSnapshot, String> {
-    note_model_settings_for(&state)
+    // Older Settings webviews can still ask for this snapshot. Do not inspect
+    // manifests, stored weights, or selection state just to answer a retired
+    // feature request.
+    Err(product_facade::NOTE_GENERATION_RETIRED_COPY.into())
 }
 
 /// The optional diarizer is intentionally a separate, single-file model
@@ -3529,135 +3508,13 @@ fn install_nemotron_model(app: AppHandle) -> Result<NemotronModelSettingsSnapsho
 
 #[tauri::command]
 fn install_note_model(
-    app: AppHandle,
+    _app: AppHandle,
     model_id: String,
 ) -> Result<NoteModelSettingsSnapshot, String> {
-    let state = app.state::<ApplicationState>();
-    let _command = state.command_lock.lock().expect("command lock");
-    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    let capture = state.model.lock().expect("application model lock").reducer.capture();
-    if !model_change_audio_idle(capture, sitting_task_active(&state)) {
-        return Err("The note model cannot be installed while audio work is active.".into());
-    }
-    if state.model_install_active.load(Ordering::SeqCst) {
-        return Err("Wait for the speech model change to finish.".into());
-    }
-    if state
-        .note_model_install_active
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err("The note model is already downloading.".into());
-    }
-    let preparation = (|| {
-        let storage_context = state
-            .storage
-            .lock()
-            .map_err(|_| "the private workspace is unavailable".to_string())?
-            .clone()
-            .ok_or_else(|| "the private workspace is unavailable".to_string())?;
-        let manifest =
-            RuntimeManifest::load_and_verify(&storage_context.manifest_path).map_err(error_text)?;
-        let catalog = verified_model_catalog(&storage_context.manifest_path, &manifest)?
-            .ok_or_else(|| "this build does not use downloadable note models".to_string())?;
-        let selected = catalog.note_model(&model_id).map_err(error_text)?.clone();
-        {
-            let mut setup = state
-                .note_model_setup
-                .lock()
-                .expect("note model setup lock");
-            *setup = NoteModelSetup {
-                state: "downloading".into(),
-                selected_model_id: Some(selected.id.clone()),
-                downloaded_bytes: 0,
-                total_bytes: selected.download_bytes,
-                error: None,
-            };
-        }
-        Ok::<_, String>((storage_context, selected))
-    })();
-    let (storage_context, selected) = match preparation {
-        Ok(prepared) => prepared,
-        Err(error) => {
-            state
-                .note_model_install_active
-                .store(false, Ordering::SeqCst);
-            return Err(error);
-        }
-    };
-    let task_app = app.clone();
-    let spawned = std::thread::Builder::new()
-        .name("note-model-download".into())
-        .spawn(move || {
-            let _operation = operation;
-            let install_result = model_download::install(
-                &storage_context.storage,
-                &selected,
-                |downloaded_bytes| {
-                    let state = task_app.state::<ApplicationState>();
-                    let mut setup = state.note_model_setup.lock().expect("note model setup lock");
-                    if setup.selected_model_id.as_deref() == Some(selected.id.as_str()) {
-                        setup.downloaded_bytes = downloaded_bytes;
-                    }
-                },
-            );
-            let state = task_app.state::<ApplicationState>();
-            match install_result {
-                Ok(()) => {
-                    {
-                        let mut setup =
-                            state.note_model_setup.lock().expect("note model setup lock");
-                        *setup = NoteModelSetup {
-                            state: "idle".into(),
-                            ..NoteModelSetup::default()
-                        };
-                    }
-                    // The next library read must rebuild: admission caches
-                    // only success, so a rebuild against the newly installed
-                    // model admits the projector without a restart.
-                    if let Ok(mut library) = state.preview_library.lock() {
-                        *library = None;
-                    }
-                    invalidate_note_generation_admission(&state.note_generation_admission);
-                    state.note_model_install_active.store(false, Ordering::SeqCst);
-                }
-                Err(error) => {
-                    state.note_model_install_active.store(false, Ordering::SeqCst);
-                    let detail = error.to_string();
-                    let _ = write_private_diagnostic(
-                        &storage_context.diagnostics,
-                        "note_model_download_failed",
-                        &detail,
-                    );
-                    let mut setup = state.note_model_setup.lock().expect("note model setup lock");
-                    setup.state = "failed".into();
-                    setup.error = Some(
-                        "The note model could not be downloaded and verified. Choose it again to retry."
-                            .into(),
-                    );
-                }
-            }
-        });
-    if let Err(error) = spawned {
-        state
-            .note_model_install_active
-            .store(false, Ordering::SeqCst);
-        {
-            let mut setup = state
-                .note_model_setup
-                .lock()
-                .expect("note model setup lock");
-            setup.state = "failed".into();
-            setup.error = Some("The note model download could not start.".into());
-        }
-        write_diagnostic(
-            &state,
-            "note_model_download_spawn_failed",
-            &error.to_string(),
-        );
-        return Err("The note model download could not start.".into());
-    }
-    note_model_settings_for(&state)
+    // Compatibility command for older Settings webviews. Existing receipts
+    // and files stay untouched; retirement refuses before selection or I/O.
+    let _ = model_id;
+    Err(product_facade::NOTE_GENERATION_RETIRED_COPY.into())
 }
 
 #[tauri::command]
@@ -5997,9 +5854,8 @@ fn library_open_note_for(
     // rides the note response and what it may and may not decide.
     response.can_confirm_operator = state.confirmation.available();
 
-    // This presentation fact is cached for navigation. Model changes and a
-    // replaced storage context invalidate it; the actual generate path still
-    // performs full runtime and model admission immediately before spawning.
+    // This is a fixed retirement fact. Opening a meeting never verifies a
+    // model or runtime merely to decorate a saved-note response.
     let (available, reason) = note_generation_admission_for(state);
     response.note_generation_available = available;
     response.note_generation_unavailable_reason = reason;
@@ -8177,7 +8033,7 @@ fn retry_decision_response(
         }),
         TranscriptRetryOutcome::CandidatePromoted => Ok(RetryDecisionResponse {
             outcome: "candidate-promoted",
-            message: "The retry transcript is now current. Generate a new note when you're ready.",
+            message: "The retry transcript is now current. Existing AI drafts are no longer current; your notes and transcript remain available.",
         }),
         TranscriptRetryOutcome::CandidateAvailableForComparison => {
             Err("The retry candidate is still awaiting a decision.".into())
@@ -11602,46 +11458,7 @@ mod tests {
     }
 
     #[test]
-    fn repeated_meeting_opens_reuse_note_generation_admission() {
-        let cache = Mutex::new(None);
-        let checks = Mutex::new(0_u32);
-
-        let first = cached_note_generation_admission(&cache, || {
-            *checks.lock().unwrap() += 1;
-            (true, None)
-        });
-        let second = cached_note_generation_admission(&cache, || {
-            *checks.lock().unwrap() += 1;
-            (true, None)
-        });
-
-        assert_eq!(first, (true, None));
-        assert_eq!(second, first);
-        assert_eq!(*checks.lock().unwrap(), 1);
-    }
-
-    #[test]
-    fn note_model_change_invalidates_cached_generation_admission() {
-        let cache = Mutex::new(None);
-        let checks = Mutex::new(0_u32);
-
-        let unavailable = cached_note_generation_admission(&cache, || {
-            *checks.lock().unwrap() += 1;
-            (false, Some("Download a note model in Settings first.".into()))
-        });
-        invalidate_note_generation_admission(&cache);
-        let available = cached_note_generation_admission(&cache, || {
-            *checks.lock().unwrap() += 1;
-            (true, None)
-        });
-
-        assert!(!unavailable.0);
-        assert_eq!(available, (true, None));
-        assert_eq!(*checks.lock().unwrap(), 2);
-    }
-
-    #[test]
-    fn meeting_open_uses_cached_generation_admission() {
+    fn meeting_open_rejects_stale_cached_generation_admission() {
         let (_temporary, storage) = test_storage();
         write_transcript_fixture(
             &storage,
@@ -11663,8 +11480,8 @@ mod tests {
 
         let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
 
-        assert!(opened.note_generation_available);
-        assert_eq!(opened.note_generation_unavailable_reason, None);
+        assert!(!opened.note_generation_available);
+        assert_eq!(opened.note_generation_unavailable_reason.as_deref(), Some(product_facade::NOTE_GENERATION_RETIRED_COPY));
     }
 
     #[test]
@@ -15138,10 +14955,9 @@ mod tests {
         let response = retry_decision_response(TranscriptRetryOutcome::CandidatePromoted).unwrap();
 
         assert_eq!(response.outcome, "candidate-promoted");
-        assert_eq!(
-            response.message,
-            "The retry transcript is now current. Generate a new note when you're ready."
-        );
+        assert!(response.message.contains("transcript is now current"));
+        assert!(response.message.contains("AI drafts are no longer current"));
+        assert!(!response.message.contains("Generate"));
         assert!(!response.message.contains("cleared"));
         assert!(!response.message.contains("previous note"));
     }

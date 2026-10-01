@@ -14,6 +14,35 @@ const waitFor = async (selector, tries = 60) => {
 };
 const result = { mode };
 
+if (mode === "stop-status") {
+  const stop = await waitFor('.record-control [data-action="stop-recording"]');
+  if (!stop) return { ...result, error: "live Stop control never appeared" };
+  result.liveShowsStop = !!q('.record-control .record.live')
+    && q('.sidebar-scroll [aria-current="true"] .row-title')?.textContent === "Recording now";
+  stop.click();
+  await sleep(100);
+  result.stoppingShowsPhase = q('.record-control [role="status"]')?.textContent === "Stopping recording"
+    && q('.toolbar-title')?.textContent === "Stopping recording"
+    && q('.sidebar-scroll [aria-current="true"] .row-title')?.textContent === "Stopping recording";
+  result.stoppingHasNoLiveControls = !q('.record-control .record.live')
+    && !q('.record-control [data-action="stop-recording"]');
+  await sleep(1100); // past one 900 ms snapshot poll after the stub advances
+  result.transcribingShowsPhase = q('.record-control [role="status"]')?.textContent === "Transcribing on this Mac"
+    && q('.toolbar-title')?.textContent === "Transcribing on this Mac"
+    && q('.sidebar-scroll [aria-current="true"] .row-title')?.textContent === "Transcribing on this Mac";
+  result.noNewRecordingPrompt = !document.querySelector('.sidebar-scroll')?.textContent?.includes("Press Record");
+  result.transcribingHasNoLiveControls = !q('.record-control .record.live')
+    && !q('.record-control [data-action="stop-recording"]');
+  result.savedAudioIsExplicit = document.querySelector('.canvas-caption')?.textContent?.includes("Recording stopped. Audio saved on this Mac.");
+  result.errors = window.__errors || [];
+  result.pass = result.liveShowsStop && result.stoppingShowsPhase
+    && result.stoppingHasNoLiveControls && result.transcribingShowsPhase
+    && result.transcribingHasNoLiveControls && result.savedAudioIsExplicit
+    && result.noNewRecordingPrompt
+    && result.errors.length === 0;
+  return result;
+}
+
 if (mode === "capture") {
   const field = '[data-field="operator-note"]';
   const el = await waitFor(field);

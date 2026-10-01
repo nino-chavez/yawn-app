@@ -741,9 +741,8 @@ h3 {
   font-weight: 520;
 }
 
-/* Header actions are the reference treatment's secondary controls. They are
-   deliberately smaller than the primary Generate note action but retain a
-   full 17px line box and 3px vertical inset. */
+/* Header actions are secondary controls with a full 17px line box and 3px
+   vertical inset. */
 .doc-head-actions > .btn,
 .doc-head-actions > .meeting-manage-control > .btn {
   min-height: var(--control-h-secondary);
@@ -781,9 +780,8 @@ h3 {
   justify-content: flex-start;
 }
 
-/* Every note-section (generate-note, retry action, retained audio, meeting
-   context, your notes) gets the same plain top divider -- document flow,
-   not a stack of tinted cards. */
+/* Every note section (retry action, retained audio, meeting context, and
+   personal notes) stays in document flow, not a stack of tinted cards. */
 .note-section {
   max-width: var(--measure);
   margin-top: var(--space-24);
@@ -2957,10 +2955,8 @@ html, body, #app {
   margin: var(--space-16) 0 0;
 }
 
-/* The selected no-note frame treats the empty fact, action, and help as one
-   compact document section. The production DOM keeps the fact and action in
-   separate semantic sections, so these adjacent rules reproduce that exact
-   rhythm without changing the generation behavior. */
+/* The selected no-note frame keeps its quiet fact compact without turning a
+   transcript-only meeting into an empty result. */
 .meeting-note-unavailable.no-note-state {
   max-width: var(--measure);
   margin: 0;
@@ -2972,14 +2968,6 @@ html, body, #app {
   font-size: var(--t-body);
   font-weight: 680;
   line-height: 18px;
-}
-
-.no-note-state + .generate-note-section {
-  margin: 9px 0 25px;
-}
-
-.no-note-state + .generate-note-section .note-help {
-  margin: 9px 0 13px;
 }
 
 .doc-wrap > .trash-pane {

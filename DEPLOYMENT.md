@@ -24,10 +24,16 @@ own.
 
 ## Scope and stop conditions
 
-Yawn's distributable lane is `internal-alpha`. It includes the reviewable local
-meeting note, but that generated note remains a draft with source links and an
-explicit incomplete-output fallback. Do not change its runtime admission to
+Yawn's distributable lane is `internal-alpha`. Saved AI drafts remain readable
+with source links and an explicit incomplete-output fallback. The September 30
+product amendment retires new note generation and note-model downloads; it
+does not itself change an installed release. Do not change runtime admission to
 `product` as a packaging shortcut.
+
+Retain the saved-note projection runtime and its install-receipt compatibility.
+That reader still checks the existing note-model inventory, even though it does
+not execute the model. Removing those files as part of deprecation would break
+saved-draft and source-link access. Do not auto-delete them.
 
 Stop and report the blocker instead of improvising when any of these is true:
 

@@ -8,7 +8,6 @@ import {
   captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
-  humanize,
   libraryEmptyStatePresentation,
   libraryLoadingPresentation,
   libraryRecoveryPresentation,
@@ -29,11 +28,11 @@ import {
   meetingNotePresentation,
   mergePermissions,
   noteCaptureFocusSelection,
-  noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
   capturePauseControlPresentation,
   capturePausePresentation,
+  captureTransportPresentation,
   evidencePopoverPresentation,
   firstRunSheetVisible,
   nextEscapeTarget,
@@ -91,7 +90,6 @@ const state = {
   // render tick; only `armLibraryStallTimer`/`disarmLibraryStallTimer` write
   // it, so the escalation is state-driven, never derived from the DOM.
   libraryStalled: false,
-  generatingMeetingId: "",
   meetingManagementOpen: false,
   modal: "",
   notice: "",
@@ -376,7 +374,7 @@ function render() {
   const selectedTitle = view === "meeting" && state.selected && !selectedBlocked
     ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
     : "";
-  const title = toolbarTitlePresentation({ capturing, selectedTitle });
+  const title = toolbarTitlePresentation({ capture: state.snapshot?.capture, selectedTitle });
   const collapsed = state.sidebarCollapsed || currentWindowWidth() < SIDEBAR_COLLAPSE_WIDTH;
 
   let paneContent;
@@ -626,7 +624,7 @@ function renderModelSetup() {
           `).join("") : ""}
         </div>
         ${modelOptions.length > 1 ? `<p class="model-setup-secondary"><button class="button button-secondary" type="button" data-action="open-settings">Choose another speech model in Settings</button></p>` : ""}
-        <p class="model-privacy">Meeting audio stays on this Mac. You can add optional meeting notes later in Settings.</p>
+        <p class="model-privacy">Meeting audio and transcripts stay on this Mac.</p>
       `}
     </section>
   `;
@@ -643,7 +641,6 @@ function renderModelSetup() {
 // another meeting, so only queue capacity or permissions can block it here.
 const RECORD_BLOCKED_CAPTURE_REASON = {
   "transcription-failed": "Your last meeting's transcript needs attention before Yawn can record again.",
-  "summary-failed": "Your last meeting's note needs attention before Yawn can record again.",
 };
 
 function recordUnavailableReason(snapshot, permission) {
@@ -655,12 +652,9 @@ function recordUnavailableReason(snapshot, permission) {
   return permissionSummary(permission).detail;
 }
 
-// DESIGN.md's Record control: idle ("Record"), live (elapsed + Pause/Resume
-// + Stop). Every non-idle capture state shows the live badge -- only
-// recording/paused get Pause or Resume (`capturePauseControlPresentation`
-// returns null for arming/stopping/captured/transcribing/summarizing, which
-// still show elapsed time and Stop, matching the toolbar title's "New
-// Recording" for the same states).
+// The recording controls belong only to a recorder that can accept Stop.
+// Once Stop is accepted, the toolbar reports the processing phase instead of
+// continuing to show a live recording badge and an inert Stop button.
 //
 // A disabled Record used to carry no explanation at all -- greyed out, same
 // static "Record (⌘R)" title whether or not the shortcut actually worked.
@@ -672,19 +666,22 @@ function recordUnavailableReason(snapshot, permission) {
 // is not discoverable to keyboard or screen-reader users.
 function renderToolbarRecordControl() {
   const snapshot = state.snapshot;
-  if (captureIsInProgress(snapshot)) {
-    const capture = snapshot?.capture;
+  const transport = captureTransportPresentation(snapshot);
+  if (transport.canStop) {
     const elapsed = captureActivityElapsedSeconds(snapshot);
-    const elapsedLabel = elapsed === null ? humanize(capture) : timeLabel(elapsed);
-    const badgeLabel = capture === "paused" ? `Paused ${elapsedLabel}` : elapsedLabel;
+    const elapsedLabel = elapsed === null ? transport.label : timeLabel(elapsed);
+    const badgeLabel = transport.state === "paused" ? `Paused ${elapsedLabel}` : elapsedLabel;
     const pauseControl = capturePauseControlPresentation(snapshot);
     const stopping = state.busyAction === "stop";
     const changing = state.busyAction === "pause" || state.busyAction === "resume";
     return `
-      <span class="btn record live record-live-badge" aria-label="${escapeHtml(humanize(capture))}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
+      <span class="btn${transport.state === "recording" ? " record live record-live-badge" : ""}" aria-label="${escapeHtml(transport.label)}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
       ${pauseControl ? `<button class="btn" type="button" data-action="${pauseControl.action}" ${pauseControl.disabled || changing || stopping ? "disabled" : ""}>${escapeHtml(pauseControl.label)}</button>` : ""}
       <button class="btn" type="button" data-action="stop-recording" title="Stop (⌘.)" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button>
     `;
+  }
+  if (transport.state === "processing") {
+    return `<span class="caption" role="status">${escapeHtml(transport.label)}</span>`;
   }
   const startAvailable = canOpenStart(state.snapshot, state.permissions);
   const reason = startAvailable ? "" : recordUnavailableReason(state.snapshot, state.permissions);
@@ -746,12 +743,14 @@ function renderSidebarGroups(rows, selectedHandle) {
   `).join("");
 }
 
-function renderRecordingNowRow() {
+function renderCaptureStatusRow() {
+  const transport = captureTransportPresentation(state.snapshot);
   const elapsed = captureActivityElapsedSeconds(state.snapshot);
-  const label = elapsed === null ? humanize(state.snapshot?.capture) : timeLabel(elapsed);
+  const label = elapsed === null ? "" : timeLabel(elapsed);
+  const title = transport.state === "recording" ? "Recording now" : transport.label;
   return `
-    <div class="row recording-now" aria-current="true">
-      <span class="row-title">Recording now</span>
+    <div class="row${transport.state === "recording" ? " recording-now" : ""}" aria-current="true">
+      <span class="row-title">${escapeHtml(title)}</span>
       <span class="row-caption caption">${escapeHtml(label)}</span>
     </div>`;
 }
@@ -774,18 +773,18 @@ function renderSidebar() {
       <button class="button button-quiet button-small" type="button" data-action="${recovery.action.action}">${escapeHtml(recovery.action.label)}</button>`;
   } else {
     const empty = libraryEmptyStatePresentation(library);
-    body = empty
+    body = empty && !capturing
       ? `
         <p class="quiet-copy sidebar-message">${escapeHtml(empty.message)}</p>
         ${empty.showGuidedInvite ? `<button class="button button-quiet button-small" type="button" data-action="open-start-guided" ${canOpenStart(state.snapshot, state.permissions) ? "" : "disabled"}>Try it: record a 30-second note to yourself.</button>` : ""}`
-      : renderSidebarGroups(library.rows, selectedHandle);
+      : empty ? "" : renderSidebarGroups(library.rows, selectedHandle);
     body += renderTranscriptSearchAffordance(library);
     body += renderTranscriptSearchResults();
   }
 
   return `
     <div class="sidebar-scroll">
-      ${capturing ? renderRecordingNowRow() : ""}
+      ${capturing ? renderCaptureStatusRow() : ""}
       ${body}
     </div>
     <button class="trash-row${state.trashOpen ? " selected" : ""}" type="button" data-action="open-trash" aria-current="${state.trashOpen ? "true" : "false"}">
@@ -950,7 +949,7 @@ function renderCapturePane() {
 // caption above already states what's happening -- a third restatement here
 // is exactly the "same status stated three times" the cold review flagged
 // (finding 3). This line earns its place only for the transitional steps
-// (arming, stopping, captured, transcribing, summarizing), where the elapsed-
+// (arming, stopping, captured, transcribing), where the elapsed-
 // in-this-step timer and transcription heartbeat are information the reader
 // cannot get anywhere else on screen.
 function renderActivityMonitor(snapshot) {
@@ -966,7 +965,7 @@ function renderActivityMonitor(snapshot) {
       <span>${escapeHtml(activity.label)} · ${escapeHtml(activity.detail)}</span>
       <span class="activity-timing">
         <strong data-activity-elapsed data-activity-started-at="${Number.isFinite(startedAt) ? startedAt : ""}">${elapsed === null ? "Working" : timeLabel(elapsed)}</strong>
-        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for a confirmation on this Mac" : `Last confirmed on this Mac ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
+        ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for transcription status" : `Transcription last confirmed ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
       </span>
     </div>
   `;
@@ -985,7 +984,7 @@ function updateActivityClock() {
     if (!rawHeartbeatAt) continue;
     const heartbeatAt = Number(rawHeartbeatAt);
     if (!Number.isFinite(heartbeatAt)) continue;
-    target.textContent = `Last confirmed on this Mac ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
+    target.textContent = `Transcription last confirmed ${elapsedAgoLabel(Date.now() / 1000 - heartbeatAt)}`;
   }
 }
 
@@ -1041,14 +1040,7 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
   const citationSummary = citations
     ? transcriptCitationSummary(citations.turnsCited, turns.length)
     : null;
-  const vocabulary = workspace
-    ? localVocabularyPresentation({
-      meetingId: state.selected?.row?.meetingId,
-      transcriptMeetingId: state.selected?.transcript?.meetingId,
-      transcriptSha256: state.selected?.transcript?.currentTranscriptSha256,
-      capture: state.snapshot?.capture,
-    })
-    : null;
+  // Saved vocabulary remains stored; new note generation no longer consumes it.
   const actions = copyAction || openFileAction || exportAction ? `<div class="transcript-actions" aria-label="Transcript actions">
     ${copyAction ? `<button class="button button-quiet button-small" type="button" data-action="${copyAction}" ${copyBusy ? "disabled" : ""}>${copyBusy ? "Copying…" : "Copy transcript"}</button>` : ""}
     ${openFileAction ? `<button class="button button-quiet button-small" type="button" data-action="${openFileAction}" ${fileBusy ? "disabled" : ""}>${fileBusy ? "Opening…" : "Open transcript file"}</button>` : ""}
@@ -1109,7 +1101,6 @@ function renderTranscript(turns, title, detail = "", { copyAction = "", openFile
         <div class="transcript-workspace-toolbar">
           <div class="transcript-heading"><h3 id="transcript-heading">${escapeHtml(title)}</h3>${detail ? `<p>${escapeHtml(detail)}</p>` : ""}${citationSummary ? `<p class="transcript-citation-summary">${escapeHtml(citationSummary)}</p>` : ""}</div>
           <div class="transcript-workspace-actions">
-            ${vocabulary ? `<button class="button button-quiet button-small" type="button" data-action="${vocabulary.action}">${vocabulary.label}</button>` : ""}
             ${actions}
           </div>
         </div>
@@ -1151,7 +1142,7 @@ function renderMeetingNoteItems(claims, claimEvidence) {
 // presentation (view-model.mjs) already names both states; before this the
 // document dropped them because they are non-blocking (the transcript is
 // still readable) and the note area only knew "transcript-only".
-const INLINE_NOTE_RECOVERY_STATES = ["generating", "summary-failed", "summary-failed-no-source"];
+const INLINE_NOTE_RECOVERY_STATES = ["summary-failed"];
 
 function renderMeetingNote(note, claimEvidence, recovery = null) {
   const presentation = meetingNotePresentation(note);
@@ -1167,7 +1158,7 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
     if (note?.state !== "transcript-only") return "";
     return `
       <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading">
-        <p id="meeting-note-heading" class="empty-note-state">No meeting note yet.</p>
+        <p id="meeting-note-heading" class="doc-fact">Automatic note generation is no longer available. Your notes and transcript remain available.</p>
       </section>
     `;
   }
@@ -1249,7 +1240,7 @@ function transcriptRetryContext(note, transcript, pending = null) {
     sourceTranscriptSha256: transcript?.currentTranscriptSha256 || "",
     audioRetentionState: note?.audioRetention?.state || "",
     capture: state.snapshot?.capture || "",
-    recovery: meetingRecoveryPresentation(note, transcript, state.generatingMeetingId),
+    recovery: meetingRecoveryPresentation(note, transcript),
     pending,
   });
 }
@@ -1329,7 +1320,7 @@ function renderMeetingPane() {
   // stay fully readable; only retranscription is gone. It renders as a
   // caption inside the ordinary content below, the same way the prior
   // version kept the workspace visible under that one warning.
-  const recovery = meetingRecoveryPresentation(note, transcript, state.generatingMeetingId);
+  const recovery = meetingRecoveryPresentation(note, transcript);
   // A recovery presentation replaces the whole pane only when nothing about
   // the meeting is readable. A recovered-interrupted meeting with retained
   // audio, or any meeting with transcript turns or the operator's own notes,
@@ -1343,7 +1334,7 @@ function renderMeetingPane() {
   // handle at all is the genuinely unreadable case. `meetingBlockingRecovery`
   // (view-model.mjs) is this same check, shared with render()'s toolbar-title
   // computation so the two can never disagree (refit R9).
-  const blockingRecovery = meetingBlockingRecovery(note, transcript, state.generatingMeetingId);
+  const blockingRecovery = meetingBlockingRecovery(note, transcript);
   if (blockingRecovery) {
     const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
     // Destructive: never the accent fill, even when it is the only action
@@ -1439,7 +1430,6 @@ function renderMeetingPane() {
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderMeetingNote(note, claimEvidence, recovery)}
-        ${renderGenerateNote(note, recovery)}
         ${renderTranscriptRetryAction(note, transcript, recovery)}
         ${renderRetainedAudioPlayback(playback)}
         ${renderMeetingContextSection(note)}
@@ -1475,7 +1465,7 @@ function renderMeetingContextSection(note) {
         ? `<p class="doc-fact">Yawn could not read this meeting’s pre-meeting context.</p>`
         : presentation.state === "present"
           ? `<p class="meeting-context-text">${escapeHtml(presentation.text)}</p>
-             <p class="doc-fact">What the operator said this meeting was for, used to guide the generated note. Not a transcript.</p>`
+             <p class="doc-fact">The purpose you saved before recording. Kept separately from the transcript.</p>`
           : ""}
     </section>
   `;
@@ -1516,23 +1506,6 @@ function renderRetainedAudioPlayback(playback) {
         ${playback.isPlaying ? `<button class="btn" type="button" data-action="stop-retained-audio">Stop</button>` : ""}
       </div>
       <p class="doc-fact" aria-live="polite">${escapeHtml(playingLabel)}</p>
-    </section>
-  `;
-}
-
-// The control stays on screen through a failed attempt (it is the retry) and
-// through a running one (disabled, "Generating note…"); it leaves only when
-// the document itself is replaced by a needs-attention pane (refit R23).
-const GENERATE_CONTROL_RECOVERY_STATES = ["audio-released", "summary-failed", "generating"];
-
-function renderGenerateNote(note, recovery = meetingRecoveryPresentation(note, state.selected?.transcript, state.generatingMeetingId)) {
-  if (recovery && !GENERATE_CONTROL_RECOVERY_STATES.includes(recovery.state)) return "";
-  const control = noteGenerationPresentation(note, state.generatingMeetingId);
-  if (!control) return "";
-  return `
-    <section class="note-section generate-note-section" aria-label="Generate a meeting note">
-      <button class="btn primary" type="button" data-action="${control.action}" ${control.disabled ? "disabled" : ""}>${escapeHtml(control.label)}</button>
-      <p class="note-help">${escapeHtml(control.help)}</p>
     </section>
   `;
 }
@@ -1681,7 +1654,7 @@ function renderFirstRunSheet() {
         <div class="sheet-head">
           <div>
             <h2 id="first-run-sheet-title">Yawn records meetings on this Mac.</h2>
-            <p>Nothing leaves it. Next, allow system audio so Yawn can hear the call. Record then asks for consent and headphones before it starts, and afterward you can generate a note whose claims point back to the transcript.</p>
+            <p>Nothing leaves it. Next, allow system audio so Yawn can hear the call. Record then asks for consent and headphones before it starts. Your notes and transcript remain available afterward.</p>
           </div>
         </div>
         <div class="sheet-actions">
@@ -1894,7 +1867,7 @@ function renderVocabularySheet() {
     <div class="modal-backdrop" role="presentation">
       <section class="start-sheet vocabulary-sheet" role="dialog" aria-modal="true" aria-labelledby="vocabulary-sheet-title">
         <div class="sheet-head">
-          <div><h2 id="vocabulary-sheet-title">Keep exact words consistent.</h2><p>These local Before → After replacements apply to future note regenerations. They do not rewrite this transcript, change the words shown here, or regenerate a note.</p></div>
+          <div><h2 id="vocabulary-sheet-title">Keep exact words consistent.</h2><p>These local Before → After replacements are kept with this meeting. They do not rewrite this transcript or change the words shown here.</p></div>
           <button class="icon-button" type="button" data-action="close-modal" aria-label="Close vocabulary">×</button>
         </div>
         <section class="vocabulary-ledger" aria-labelledby="vocabulary-ledger-title">
@@ -2018,7 +1991,7 @@ function renderTranscriptRetrySheet() {
   const deciding = state.busyAction === "decide-transcript-retry";
   // The warning is about losing a generated note, so it is only true when one
   // exists. "transcript-only" is the same signal the note card reads to say
-  // "No meeting note yet." An unknown or still-loading note state keeps the
+  // a retired-generation fact. An unknown or still-loading note state keeps the
   // warning, because warning is the fail-safe direction.
   const hasNoGeneratedNote = state.selected?.note?.state === "transcript-only";
   return `
@@ -2036,7 +2009,7 @@ function renderTranscriptRetrySheet() {
           ${renderRetryComparisonTurns(retry.current?.turns, "current")}
           ${renderRetryComparisonTurns(retry.candidate?.turns, "candidate")}
         </div>
-        ${hasNoGeneratedNote ? "" : `<section class="retry-use-warning" aria-labelledby="retry-use-warning-heading"><h3 id="retry-use-warning-heading">Using this retry clears the current generated note.</h3><p>You will need to regenerate the note from the selected retry. Yawn will not regenerate it automatically.</p></section>`}
+        ${hasNoGeneratedNote ? "" : `<section class="retry-use-warning" aria-labelledby="retry-use-warning-heading"><h3 id="retry-use-warning-heading">Using this retry clears the current generated note.</h3><p>Automatic note generation is no longer available. Your notes and the selected transcript remain available.</p></section>`}
         <div class="sheet-actions retry-sheet-actions">
           <button class="button button-quiet" type="button" data-action="decide-retry-later" ${deciding ? "disabled" : ""}>Decide later</button>
           <button class="button button-secondary" type="button" data-action="keep-current-transcript" ${deciding ? "disabled" : ""}>${deciding ? "Saving decision…" : "Keep current"}</button>
@@ -2756,7 +2729,7 @@ async function loadPendingTranscriptRetry(note, transcript) {
       sourceTranscriptSha256: retry.sourceTranscriptSha256,
       audioRetentionState: note?.audioRetention?.state,
       capture: state.snapshot?.capture,
-      recovery: meetingRecoveryPresentation(note, transcript, state.generatingMeetingId),
+      recovery: meetingRecoveryPresentation(note, transcript),
       pending,
     })?.pending || null;
   } catch {
@@ -2816,7 +2789,7 @@ async function decideTranscriptRetry(decision) {
     state.modal = "";
     state.transcriptRetry = null;
     state.notice = response.message || (decision === "use-retry"
-      ? "The retry is now the selected transcript. Regenerate the meeting note when you are ready."
+      ? "The retry is now the selected transcript. Automatic note generation is no longer available."
       : "The retained transcript remains selected.");
     await reopenSelectedMeeting(selection.row.meetingId);
   });
@@ -2837,35 +2810,6 @@ async function reopenSelectedMeeting(meetingId) {
     return;
   }
   await loadSelectedMeeting(row, carried);
-}
-
-async function generateSelectedNote() {
-  const note = state.selected?.note;
-  const control = noteGenerationPresentation(note, state.generatingMeetingId);
-  if (!control || control.disabled || state.generatingMeetingId) return;
-  const meetingId = note.meetingId;
-  state.generatingMeetingId = meetingId;
-  render();
-  try {
-    await invoke("regenerate_note", {
-      meetingId,
-      sourceTranscriptSha256: note.regenerationSourceSha256,
-    });
-  } catch (error) {
-    reportError(error);
-  } finally {
-    state.generatingMeetingId = "";
-    try {
-      if (state.activeView === "meeting" && state.selected?.note?.meetingId === meetingId) {
-        await reopenSelectedMeeting(meetingId);
-      } else {
-        await refreshLibrary();
-      }
-    } catch {
-      // The refreshed view is a convenience; the durable receipt is not.
-    }
-    render();
-  }
 }
 
 async function restoreSelectedWithheldTurn(sourceTurnIndex) {
@@ -3639,7 +3583,6 @@ function handleClick(event) {
     state.meetingManagementOpen = !state.meetingManagementOpen;
     render();
   }
-  else if (action === "generate-note") void generateSelectedNote();
   else if (action === "play-retained-audio") void playRetainedAudio(control.dataset.source);
   else if (action === "stop-retained-audio") void stopRetainedAudio();
   else if (action === "rename-meeting") openMeetingRename();

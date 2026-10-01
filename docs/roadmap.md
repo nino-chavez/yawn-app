@@ -5,6 +5,16 @@ Status: active product direction; release status reconciled on 2026-09-08.
 This roadmap sequences product work. It does not claim that a listed feature is
 shipped. The current product contract remains [the product brief](product-brief.md).
 
+## Current source amendment — 2026-09-30
+
+New automatic note generation and note-model downloads are retired in source.
+Saved AI drafts, source links, personal notes, recording, transcription and
+transcript export remain. Native/UI tests, synthetic native-WebKit interaction
+checks and the revised cold screen review passed. No installation or release
+ran. The older release and evaluation entries below describe their dated states.
+
+See [the implementation verification](note-runtime-decision.md#implementation-verification--2026-09-30).
+
 ## Current release and next acceptance work — 2026-09-08
 
 Yawn 0.6.4 is released and installed from source `58e13a2`. It includes
@@ -1726,3 +1736,115 @@ this repository.
   [`capture_health.py`](../apps/desktop/runtime/spike/capture_health.py).
 
 External URLs were resolved and checked against the cited claims on 2026-08-16.
+
+
+## 2026-09-30 — no tested local note replacement meets acceptance
+
+**Implementation approved.** The operator asked to plan and implement the
+deprecation through dispatch. The source change blocks new generation and
+note-model installs, removes their controls, and preserves saved drafts,
+personal notes, recording, transcription and transcript export. Work is isolated
+from the evaluation checkout. Native/UI checks and a separate cold screen
+review passed before closeout. Installation and release remain separate work.
+
+The operator authorized continued local-note viability testing on September 30.
+Gemma native reasoning was refused before note generation because its thought
+channel was empty. A distinct Qwen3.5 35B A3B candidate produced a complete note
+in 101.7 seconds, but reversed the tax explanation and invented assignments.
+Both experiments are closed; their unused attempts are closed too. The final
+dense Qwen3.5 27B candidate used fuller general accuracy instructions and no
+reasoning, but hit the 300-second child deadline without a complete note. Its
+saved partial draft prematurely settles the historical-order decision. This
+experiment and its unused trials are closed too. No candidate has cleared
+acceptance. Recommend deprecating the current generator until a replacement
+passes; recording, transcription and transcript export remain useful. During these experiments, no app
+change or release ran. The original frontier reference notes also have omissions or
+unsupported claims; they are not a perfect gold standard. Source-based review
+and the current decision are in
+[the runtime decision](note-runtime-decision.md#current-decision--no-tested-local-solution-meets-yawns-requirements-2026-09-30).
+
+This closes the current viability evaluation with no accepted solution on this
+Mac under the registered accuracy, completion and 120-second requirements.
+It does not rule out every local model, slower draft workflows or other hardware.
+No additional inference follows from the failed experiments. Private receipts,
+native outputs, frozen inputs and source-based reviews are retained. Research
+source and decision changes are local and uncommitted; the installed app is
+unchanged.
+
+### Follow-up — full-transcript candidate not adopted
+
+The separately authorized section-reference trial completed both calls in
+97.7 seconds, with normal stops and valid JSON. Inventory section references
+passed, but six declared topics lacked the required final citation overlap.
+Independent review of the complete raw note also rejects it: an invented
+calendar date, an answered question reopened, missing customer/credit/returns/
+security/ownership material and lost assignments. Its two unused attempts are
+closed. Keep this Gemma 4 candidate out of the app. Further evaluation must
+address semantic accuracy and coverage; formatting-only revisions are no longer
+supported by the evidence. The result does not rule out other local models.
+Private raw responses, full diagnostic review and exact run source are preserved;
+the installed app is unchanged.
+
+The separately authorized compact-reference trial is closed after its first
+failure. The migration inventory completed with 1,727 tokens and a normal stop,
+but 19 references were assigned to the wrong source sections. The validator
+refused it before note generation. The full failed run took 84.1 seconds;
+complete-note speed and quality remain unmeasured. Its two unused attempts are
+closed. The next design change to evaluate is section-specific reference sets
+in the decoder, preserving the independent validator and complete transcript.
+No retry or app integration follows from this closed allowance. Private raw
+evidence and exact run source are preserved; the installed app is unchanged.
+
+The separately authorized inventory-then-note trial is closed after its first
+failure on September 30. The source inventory hit its 4,096-token limit while
+listing transcript references. No note call ran. The full failed run took
+128.7 seconds against the 120-second target. Note quality remains unassessed;
+the two unused attempts are closed. This representation needs compact, bounded
+evidence references before another separately authorized trial. Keep it out of
+the app. Private raw evidence and exact run source are preserved; the installed
+app is unchanged.
+
+The separately authorized constrained-output follow-up is also closed after its
+first failure. Both calls produced valid JSON and stopped normally, but source
+quotations failed exact binding and the run took 157.5 seconds against the
+120-second target. Independent draft review also found material omissions and
+an answered question incorrectly left open. The two remaining attempts were
+not run because the registered rule stops on the first failure. Keep the
+candidate out of the app. Raw evidence for this follow-up is preserved privately;
+the installed app is unchanged. See the latest result in
+[the note runtime decision](note-runtime-decision.md).
+
+The later six-attempt Gemma 4 source-check evaluation is closed. One run
+stopped at the disk reserve before generating a draft. Five reached real
+inference, but none produced both a schema-valid draft and a valid source
+check. Their elapsed times were 86.6–187.4 seconds; only two met the
+120-second target, and all five times belong to failed runs. Content quality
+remains unassessed because there is no accepted note. Do not integrate this
+candidate. This result rejects this protocol for adoption; it does not establish
+that local models cannot produce useful notes. The app remains unchanged.
+
+See the current source-check decision at the top of
+[the note runtime decision](note-runtime-decision.md). The registered model-run
+allowance is exhausted.
+
+The bounded comparison is complete. Gemma 4 produced much fuller notes in
+41.7 and 60.3 seconds of model loading plus inference on two retained meetings.
+Both still need material corrections. Qwen 27B produced the strongest local
+migration draft, but its second run stopped at the disk reserve; that meeting's
+quality remains unassessed. No local candidate passed the fixed draft standard
+on both meetings. The supplied OpenAI reference performed best on the migration
+transcript; frontier prompts and runtimes were not controlled.
+
+At the end of that earlier comparison, the proposed retirement was withdrawn.
+No model replacement, package, or installation had occurred. The installed
+feature remained available. The September 30 source amendment above supersedes
+that product decision.
+The next engineering direction is full-transcript generation with a separate
+source check for decisions, conditions, and supported owners. It needs a new
+bounded evaluation before adoption; the eight-attempt experiment is closed.
+The older small-model classifier experiment also remains closed.
+
+See [the note runtime decision](note-runtime-decision.md) for operating results,
+source-review findings, private evidence provenance, and the limits of the
+comparison. The newly downloaded research weights were removed with permission;
+installed and preexisting models remain intact.

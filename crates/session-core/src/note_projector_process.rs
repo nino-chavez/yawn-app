@@ -860,19 +860,17 @@ unsafe extern "C" {
     ) -> libc::c_int;
 }
 
-const SANDBOX_NAMED: u64 = 0x0001;
-
 /// Kernel-enforced network denial for the interpreter child, called between
-/// fork and exec.  The named `no-network` profile denies every socket while
-/// leaving file, pipe, and GPU access alone (mlx compute verified under it),
-/// and because the sandbox survives exec the pinned interpreter path is
-/// unchanged — the code-signing admission chain never sees a wrapper binary.
+/// fork and exec.  The explicit profile denies network operations while
+/// leaving file, pipe, and GPU access alone. macOS 27 kills a child applying
+/// the named `no-network` profile, even though this equivalent rule succeeds.
+/// The sandbox survives exec, so the pinned interpreter path is unchanged.
 /// Fail-closed: if the profile cannot be applied the child must not launch.
 fn deny_network_in_child() -> io::Result<()> {
-    let profile = c"no-network";
+    let profile = c"(version 1)(allow default)(deny network*)";
     let mut error: *mut libc::c_char = std::ptr::null_mut();
-    if unsafe { sandbox_init(profile.as_ptr(), SANDBOX_NAMED, &mut error) } != 0 {
-        return Err(io::Error::other("sandbox_init(no-network) failed"));
+    if unsafe { sandbox_init(profile.as_ptr(), 0, &mut error) } != 0 {
+        return Err(io::Error::other("sandbox_init(network denial) failed"));
     }
     Ok(())
 }

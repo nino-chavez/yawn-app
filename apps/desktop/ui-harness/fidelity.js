@@ -15,8 +15,11 @@ const waitFor = async (selector, tries = 80) => {
 const row = await waitFor('[data-action="open-meeting"]');
 if (!row) return { state: "transcript-only / no meeting note", error: "meeting row never appeared" };
 row.click();
-if (!await waitFor(".generate-note-section .btn")) {
-  return { state: "transcript-only / no meeting note", error: "transcript-only fixture did not render Generate note" };
+if (!await waitFor(".no-note-state")) {
+  return { state: "transcript-only / no meeting note", error: "transcript-only fixture did not render the retained-note state" };
+}
+if (q("[data-action='generate-note']") || document.body.textContent.includes("Generate note")) {
+  return { state: "transcript-only / no meeting note", error: "retired generation control rendered" };
 }
 
 const contract = await fetch("tonal-ledger-canvas.contract.json").then((response) => response.json());

@@ -59,21 +59,8 @@ await sleep(50);
 step("rename modal closes", !q('[data-field="meeting-title"]'));
 step("details still open after modal churn", q("details.transcript-disclosure")?.open === true);
 
-// 3. Vocabulary sheet over the transcript workspace.
-const vocabularyButton = q('[data-action="open-vocabulary"]');
-if (vocabularyButton) {
-  vocabularyButton.click();
-  await sleep(150);
-  const before = q('[data-field="vocabulary-before"]');
-  step("vocabulary sheet opens", Boolean(before));
-  before?.focus();
-  document.execCommand("insertText", false, "Kibbel");
-  step("vocabulary input accepts typing", before?.value === "Kibbel");
-  q('[data-action="close-modal"]')?.click();
-  await sleep(50);
-} else {
-  step("vocabulary control present", false, "open-vocabulary button missing");
-}
+// 3. Generation-only vocabulary is no longer offered in the transcript.
+step("retired vocabulary control absent", !q('[data-action="open-vocabulary"]'));
 
 // 4. The Tonal Ledger shell keeps the library beside the document instead of
 // navigating back to a separate meetings screen. Prove that persistent list,

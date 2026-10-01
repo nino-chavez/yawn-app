@@ -27,3 +27,9 @@ thiserror = "2"
 icu_normalizer = "=2.2.0"
 unicode-segmentation = "=1.13.3"
 uuid = { version = "1", features = ["serde", "v4"] }
+
+# The pinned Rust toolchain strips proc-macro dylibs into a LINKEDIT layout
+# that macOS 27 rejects. Keep compiler helpers loadable without changing
+# release optimization. See rust-lang/rust#157750.
+[profile.release]
+strip = "none"

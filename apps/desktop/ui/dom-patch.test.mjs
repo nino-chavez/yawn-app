@@ -6,6 +6,7 @@ import {
   canOpenStart,
   canStartMeeting,
   captureIsInProgress,
+  captureTransportPresentation,
   permissionSummary,
 } from "./view-model.mjs";
 
@@ -197,7 +198,7 @@ test("a disabled Record explains itself, associated with the control via aria-de
   // A restored transcript reaches queue and permission checks; failed work
   // retains its own explanation rather than inviting another recording.
   assert.match(fn, /capture !== "idle" && capture !== "transcript-ready"/);
-  for (const capture of ["transcription-failed", "summary-failed"]) {
+  for (const capture of ["transcription-failed"]) {
     assert.match(main, new RegExp(`"${capture}":\\s*"[^"]+"`));
   }
   assert.doesNotMatch(main, /RECORD_BLOCKED_CAPTURE_REASON\s*=\s*\{[^}]*"transcript-ready"/s);
@@ -241,6 +242,7 @@ test("a selected meeting blocked only by permissions offers the matching recover
       canOpenStart,
       canStartMeeting,
       captureIsInProgress,
+      captureTransportPresentation,
       permissionSummary,
       captureActivityElapsedSeconds: () => 0,
       capturePauseControlPresentation: () => null,
@@ -255,6 +257,14 @@ test("a selected meeting blocked only by permissions offers the matching recover
   };
   const readySnapshot = { startup: "ready", capture: "idle", background_transcription_queued_count: 0 };
   const selected = { activeView: "meeting", selected: {}, snapshot: readySnapshot, busyAction: "" };
+
+  const live = render({ ...selected, snapshot: { ...readySnapshot, capture: "recording" } });
+  assert.match(live, /data-action="stop-recording"/);
+  for (const capture of ["stopping", "captured", "transcribing"]) {
+    const processing = render({ ...selected, snapshot: { ...readySnapshot, capture } });
+    assert.doesNotMatch(processing, /data-action="stop-recording"|record live/);
+    assert.match(processing, /role="status"/);
+  }
 
   assert.match(render({ ...selected, permissions: { microphone: "not-determined", systemAudio: "unmeasured" } }), /data-action="request-microphone"[^>]*>Allow microphone/);
   assert.match(render({ ...selected, permissions: { microphone: "authorized", systemAudio: "unmeasured" } }), /data-action="request-system-audio"[^>]*>Allow system audio/);

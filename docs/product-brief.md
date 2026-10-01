@@ -1,6 +1,7 @@
 # Product brief — Yawn
 
-Status: reset on 2026-08-10.
+Status: reset on 2026-08-10; automatic note generation retired from the product
+contract on 2026-09-30. Implementation and release are separate states.
 
 Future sequencing lives in the [product roadmap](roadmap.md). The roadmap may
 propose work, but this brief remains the current product contract until amended.
@@ -22,9 +23,11 @@ routing, speech models, library handles, or internal product history.
 - Recording starts only after the operator confirms participant consent,
   headphones, and that they are the one person near the microphone.
 - Audio retention is chosen explicitly: 1, 7, or 30 days.
-- The operator's own notes are distinct from generated meeting-note claims.
-  A generated claim keeps its evidence state. A withheld turn never becomes
-  invented transcript text.
+- The operator's own notes are distinct from previously saved AI drafts.
+  Saved claims keep their evidence state and source links. A withheld turn
+  never becomes invented transcript text.
+- New AI note generation and note-model downloads are unavailable. This does
+  not delete saved notes, transcripts, audio or installed model files.
 - An interrupted or failed run is stated plainly. It is never presented as a
   completed meeting.
 
@@ -40,15 +43,14 @@ between two nearby ideas. A tidy summary must never look like a complete record.
 
 - During a meeting, the operator needs an unconstrained place to write their
   own reminders before a detail disappears.
-- After a meeting, the generated note starts with a short overview, then
-  separates decisions, follow-ups, and open questions. It saves the operator
-  from rereading the transcript to reconstruct what happened.
-- Every generated decision, follow-up, and open question needs a clear path
-  back to the retained source text. The note remains reviewable AI output, not
-  a final or complete account.
-- Selected transcript excerpts are supporting evidence, not a meeting note. If
-  Yawn cannot produce a summary, it says so and labels the excerpts **Transcript
-  highlights** instead of presenting them as a draft note.
+- After a meeting, the operator can edit their own notes and read, search,
+  copy, open or export the retained transcript. Yawn does not offer generation
+  or regeneration as the next step.
+- Previously saved AI decisions, follow-ups and open questions keep a clear
+  path back to their retained source text. These drafts remain reviewable AI
+  output, never a final or complete account.
+- Selected transcript excerpts remain supporting evidence. Label them
+  **Transcript highlights** and do not imply a new summary was generated.
 - The full transcript stays available in the same meeting view. It is the
   record for checking a decision, owner, or follow-up that matters.
 - The library remains organized around individual meetings. It does not become
@@ -71,8 +73,9 @@ There are three moments that matter:
 3. After a meeting: a readable note with the transcript available when needed,
    then a simple list of past meetings.
 
-The finished note is the destination. The list exists to reopen finished notes;
-it is not the home-screen subject. Settings remain a small auxiliary window.
+The operator's notes and retained transcript are the destination. The list
+exists to reopen meetings; it is not the home-screen subject. Settings remain
+a small auxiliary window.
 
 ## Interface rules
 
@@ -81,20 +84,21 @@ it is not the home-screen subject. Settings remain a small auxiliary window.
   diagnostics, folders, templates, or planned features.
 - Give the operator a plain place to type during capture. Their notes guide what
   they need to remember; they are not a form to complete.
-- Make the generated meeting note the first readable result after capture. Lead
-  with the overview and outcomes. Keep source excerpts one click away and the
-  full transcript available without placing it in the main reading path.
+- Make personal notes and the retained transcript useful after capture. Keep
+  saved AI drafts readable with their source links. Do not hide or relabel a
+  saved draft as the operator's own writing.
 - Keep the status language concrete: recording, preparing, finishing,
   transcript ready, or needs attention.
 - Start with Apple speech when it is ready on a fresh setup. Otherwise offer
   the smallest cataloged speech download. Keep other models in Settings and
   preserve an existing selection. Prepare Apple language files only through
   an explicit action; the operating system manages those files.
-- Keep Settings focused on audio access, speech selection, and optional note
-  models. Show which engine is in use. Allow switching only when capture and
+- Keep Settings focused on audio access, speech selection, optional speaker
+  analysis and storage. Show which speech engine is in use. Allow switching only when capture and
   queued transcription are idle, and never remove the active downloaded model.
-- Keep recording and transcript access usable without a note model. Offer note
-  generation separately; do not imply that a larger model is more accurate.
+- Keep recording, personal notes and transcript access usable without a note
+  model. Remove note-model setup and generation controls. A stale command must
+  refuse before a download, generation job or meeting change starts.
 - Use a short, quiet Mac-native surface: generous reading width, one main
   content column, light chrome, and color only for recording or attention.
 - Never use fake counts, placeholder meetings, promised automation, or a
