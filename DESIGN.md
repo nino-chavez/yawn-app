@@ -31,8 +31,8 @@ they are not alternate product themes. Evidence and limits:
 
 - Concept A's persistent meeting list, document pane, and conditional source
   inspector.
-- The note-before-transcript reading order and the separation between operator
-  notes and generated claims.
+- The separation between personal notes and previously saved AI claims. New
+  generation is retired by the September 30 product-brief amendment.
 - The semantic jobs of record, attention, and evidence color.
 - Copy truth, keyboard paths, focus order, ARIA, and reduced-motion behavior.
 
@@ -61,8 +61,9 @@ they are not alternate product themes. Evidence and limits:
   bottom inset; the reading column has 25px/14px/42px internal padding. The
   title, caption, and generated-note sections share that left edge. The empty
   selection is one centered caption. The transcript-only capture has the
-  released-audio fact, “No meeting note yet.”, Generate note and its local-only
-  explanation, personal notes, then a collapsed Full transcript disclosure.
+  released-audio fact when applicable, a quiet generation-retirement fact,
+  personal notes, then a Full transcript disclosure. Generation and model-setup
+  controls are absent. Saved AI drafts retain their content and evidence links.
 - Inspector 264pt, slides in from the right when a claim is opened: the cited
   turn highlighted, neighbours dimmed, "Open full transcript" at its foot.
 - The selected static reference is fixed to a 900px minimum width. Its capture

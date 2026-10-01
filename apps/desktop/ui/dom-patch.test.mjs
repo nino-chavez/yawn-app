@@ -198,7 +198,7 @@ test("a disabled Record explains itself, associated with the control via aria-de
   // A restored transcript reaches queue and permission checks; failed work
   // retains its own explanation rather than inviting another recording.
   assert.match(fn, /capture !== "idle" && capture !== "transcript-ready"/);
-  for (const capture of ["transcription-failed", "summary-failed"]) {
+  for (const capture of ["transcription-failed"]) {
     assert.match(main, new RegExp(`"${capture}":\\s*"[^"]+"`));
   }
   assert.doesNotMatch(main, /RECORD_BLOCKED_CAPTURE_REASON\s*=\s*\{[^}]*"transcript-ready"/s);

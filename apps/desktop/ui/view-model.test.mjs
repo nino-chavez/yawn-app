@@ -52,7 +52,6 @@ import {
   sidebarRowTitle,
   sortLibraryRows,
   toolbarTitlePresentation,
-  noteGenerationPresentation,
   permissionSummary,
   recordingDevicePresentation,
   retainedAudioPlaybackPresentation,
@@ -87,6 +86,7 @@ test("capture states lead with the actual next condition", () => {
   assert.equal(capturePresentation({ capture: "not-a-state" }).tone, "attention");
   assert.equal(captureIsInProgress({ capture: "transcribing" }), true);
   assert.equal(captureIsInProgress({ capture: "transcript-ready" }), false);
+  assert.equal(captureIsInProgress({ capture: "summarizing" }), false);
 });
 
 test("activity reports a real phase duration without inventing progress", () => {
@@ -105,6 +105,7 @@ test("activity reports a real phase duration without inventing progress", () => 
 test("recording starts from idle or a restored transcript", () => {
   assert.equal(canStartMeeting({ startup: "ready", capture: "idle" }), true);
   assert.equal(canStartMeeting({ startup: "ready", capture: "transcript-ready" }), true);
+  assert.equal(canStartMeeting({ startup: "ready", capture: "summarizing" }), false);
   assert.equal(canStartMeeting({ startup: "retrying", capture: "transcript-ready" }), false);
   assert.equal(canStartMeeting({ startup: "ready", capture: "transcript-ready", background_transcription_queued_count: 2 }), false);
   assert.equal(canStartMeeting({ startup: "checking", capture: "idle" }), false);
@@ -620,7 +621,7 @@ test("retry comparison UI keeps the decision explicit and uses exact backend com
   assert.match(source, /data-action="decide-retry-later"/);
   assert.match(source, /else if \(action === "decide-retry-later"\) \{\s*closeModal\(\);\s*render\(\);\s*\}/);
   assert.match(source, /The retained transcript stays as it is unless you explicitly use this retry\./);
-  assert.match(source, /current generated note\.\s*<\/h3><p>You will need to regenerate the note/);
+  assert.match(source, /current generated note\.\s*<\/h3><p>Automatic note generation is no longer available/);
   // The "clears the current generated note" warning must not render on a
   // meeting that has no note. It is guarded by the same "transcript-only"
   // signal the note card reads, compared strictly so an unknown or loading
@@ -644,7 +645,7 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // neighbour, not the full workspace transcript). Operator notes and
   // meeting context are sections of the document flow, not a separate
   // right-hand pane -- the inspector occupies that space when open.
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
   // The selected Tonal Ledger reference keeps the disclosure inside `.read`
   // and aligned to the same document measure as the note.
   assert.match(source, /<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>\s*<\/article>/);
@@ -683,16 +684,20 @@ test("Stop is offered only while the recorder can accept it", () => {
   assert.deepEqual(captureTransportPresentation({ capture: "paused" }), {
     state: "paused", label: "Paused", canStop: true,
   });
-  for (const capture of ["arming", "stopping", "captured", "transcribing", "summarizing"]) {
+  for (const capture of ["arming", "stopping", "captured", "transcribing"]) {
     const presentation = captureTransportPresentation({ capture });
     assert.equal(presentation.state, "processing", capture);
     assert.equal(presentation.canStop, false, capture);
     assert.notEqual(presentation.label, "Recording locally", capture);
   }
+  assert.deepEqual(captureTransportPresentation({ capture: "summarizing" }), {
+    state: "idle", label: "", canStop: false,
+  });
   assert.equal(captureTransportPresentation({ capture: "transcript-ready" }).state, "idle");
-  for (const capture of ["captured", "transcribing", "summarizing"]) {
+  for (const capture of ["captured", "transcribing"]) {
     assert.match(capturePresentation({ capture }).detail, /Recording stopped\./, capture);
   }
+  assert.match(capturePresentation({ capture: "summarizing" }).detail, /no longer available/);
 });
 
 test("the pause control never claims a state the capture helper has not confirmed", () => {
@@ -839,7 +844,7 @@ test("the transcript-search affordance is available with the flag on, a query, a
 });
 
 test("the transcript-search affordance states unavailability with the brief's exact sentence while capture is in progress", () => {
-  for (const capture of ["arming", "recording", "paused", "stopping", "captured", "transcribing", "summarizing"]) {
+  for (const capture of ["arming", "recording", "paused", "stopping", "captured", "transcribing"]) {
     const presentation = transcriptSearchAffordancePresentation({
       library: { searchProbeEnabled: true },
       query: "budget",
@@ -848,6 +853,14 @@ test("the transcript-search affordance states unavailability with the brief's ex
     assert.equal(presentation.state, "unavailable", `capture=${capture}`);
     assert.equal(presentation.message, "Search across meetings is unavailable while recording.");
   }
+  assert.deepEqual(
+    transcriptSearchAffordancePresentation({
+      library: { searchProbeEnabled: true },
+      query: "budget",
+      snapshot: { capture: "summarizing" },
+    }),
+    { state: "available", query: "budget" },
+  );
   // transcript-ready is not in captureIsInProgress's own list (recording and
   // transcribing are both finished by then), so the affordance stays
   // available rather than unavailable in that state.
@@ -871,31 +884,10 @@ test("a cross-meeting search hit renders an honest per-kind snippet, never blank
   assert.equal(transcriptSearchResultSnippet({ kind: "claim", text: null }), "");
 });
 
-test("the generate control follows the backend's eligibility signal alone", () => {
-  const eligible = { meetingId: "m-1", regenerationSourceSha256: "a".repeat(64) };
-  const idle = noteGenerationPresentation(eligible, "");
-  assert.equal(idle.action, "generate-note");
-  assert.equal(idle.disabled, false);
-  assert.equal(idle.label, "Generate note");
-  assert.match(idle.help, /on this Mac/);
-  assert.match(idle.help, /minutes/);
-
-  const busy = noteGenerationPresentation(eligible, "m-1");
-  assert.equal(busy.disabled, true);
-  assert.equal(busy.label, "Generating note…");
-  assert.match(busy.help, /keep using Yawn/);
-
-  // Another meeting generating does not disable this one's control.
-  assert.equal(noteGenerationPresentation(eligible, "m-2").disabled, false);
-
-  const replacement = noteGenerationPresentation({ ...eligible, claims: [{ ordinal: 0 }] }, "");
-  assert.equal(replacement.label, "Regenerate note");
-  assert.match(replacement.help, /current note stays in place/);
-
-  // No source pin — a ready note, a stale view, a deleted transcript — no control.
-  assert.equal(noteGenerationPresentation({ meetingId: "m-1" }, ""), null);
-  assert.equal(noteGenerationPresentation({ regenerationSourceSha256: "x" }, ""), null);
-  assert.equal(noteGenerationPresentation(null, ""), null);
+test("retired generation leaves no UI control or browser invocation", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /generate-note|regenerate_note|noteGenerationPresentation/);
+  assert.match(source, /Automatic note generation is no longer available/);
 });
 
 test("a loaded library needs no loading presentation at all", () => {
@@ -972,10 +964,7 @@ test("the teaching empty state renders only when the library is genuinely empty,
   assert.equal(genuinelyEmpty.title, "No meetings yet");
   assert.match(genuinelyEmpty.message, /Press Record to start a private meeting/);
   assert.match(genuinelyEmpty.message, /on this Mac/);
-  // The note is generated on request (`generate-note`/`generateSelectedNote`
-  // in main.js), not produced automatically the moment a meeting finishes --
-  // the teaching copy must not claim otherwise.
-  assert.match(genuinelyEmpty.message, /you can generate a note/);
+  assert.doesNotMatch(genuinelyEmpty.message, /generate a note/i);
   assert.equal(genuinelyEmpty.showGuidedInvite, true);
 
   // A non-empty library (total > 0) with zero rows is a filter that matched
@@ -1131,7 +1120,7 @@ test("meeting refresh action reopens only the selected meeting", async () => {
   assert.match(source, /else if \(action === "refresh-selected-meeting"\) void refreshSelectedMeetingFromRecovery\(\);/);
 });
 
-test("summary failure keeps the transcript and offers regeneration when its source is pinned", () => {
+test("summary failure keeps the transcript without offering regeneration", () => {
   const recovery = meetingRecoveryPresentation({
     state: "summary-failed",
     meetingId: "m-1",
@@ -1139,38 +1128,33 @@ test("summary failure keeps the transcript and offers regeneration when its sour
     claims: [],
   }, { state: "transcript", turns: [{ text: "kept" }] });
   assert.equal(recovery.state, "summary-failed");
-  assert.equal(recovery.action.action, "generate-note");
+  assert.equal(recovery.action, null);
   assert.match(recovery.detail, /transcript/);
-  // This meeting has no note (claims: []), so the detail says the
-  // transcript is unchanged rather than promising a surviving note, and
-  // the action reads as a first attempt. The note-bearing case is covered
-  // by its own test below.
-  assert.equal(recovery.action.label, "Generate note");
+  assert.match(recovery.detail, /no longer available/);
   assert.doesNotMatch(recovery.detail, /current note/);
 });
 
-test("summary failure without a source explains that retry is unavailable", () => {
+test("summary failure has the same plain retired state without a source", () => {
   const recovery = meetingRecoveryPresentation({
     state: "summary-failed",
     meetingId: "m-1",
     claims: [],
   });
-  assert.equal(recovery.state, "summary-failed-no-source");
+  assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action, null);
-  assert.match(recovery.detail, /cannot retry/);
-  assert.match(recovery.detail, /stays unchanged/);
+  assert.match(recovery.detail, /notes and transcript remain available/);
 });
 
-test("active generation says what remains without offering a second retry", () => {
+test("historical generation state remains plain instead of showing a spinner", () => {
   const recovery = meetingRecoveryPresentation({
     state: "summary-failed",
     meetingId: "m-1",
     regenerationSourceSha256: "a".repeat(64),
     claims: [{ claimType: "summary", claim: "The current note." }],
-  }, { state: "transcript" }, "m-1");
-  assert.equal(recovery.state, "generating");
+  }, { state: "transcript" });
+  assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action, null);
-  assert.match(recovery.detail, /current note stays in place/);
+  assert.match(recovery.detail, /no longer available/);
 });
 
 test("stale transcript routes back to meetings instead of inventing a transcript retry", () => {
@@ -1183,15 +1167,15 @@ test("stale transcript routes back to meetings instead of inventing a transcript
   assert.equal(recovery.detail, "That transcript is no longer available.");
 });
 
-test("an empty transcript-only note remains explicit and only receives a generate control from its source pin", async () => {
+test("an empty transcript-only note remains explicit without a generate control", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // R14: the empty state is one sentence at reading size carrying the
   // heading id, not an h2 plus the reader's generic message repeated.
   assert.match(source, /<p id="meeting-note-heading" class="empty-note-state">/);
   assert.match(source, /if \(note\?\.state !== "transcript-only"\) return "";/);
   assert.doesNotMatch(source, /note\?\.message && !claims\.length/);
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderGenerateNote\(note, recovery\)\}/);
-  assert.match(source, /function renderGenerateNote[\s\S]*noteGenerationPresentation\(note, state\.generatingMeetingId\)/);
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}/);
+  assert.doesNotMatch(source, /renderGenerateNote|generate-note/);
 });
 
 test("released audio says retranscription is unavailable while preserving the note and transcript", () => {
@@ -2002,90 +1986,6 @@ test("R20: a destructive needs-attention action never takes the primary style", 
   assert.match(source, /action\.destructive \? "btn" : "btn primary"/);
 });
 
-test("note generation presentation: returns null when no regeneration source", () => {
-  assert.equal(noteGenerationPresentation(null, ""), null);
-  assert.equal(noteGenerationPresentation({}, ""), null);
-  assert.equal(noteGenerationPresentation({ regenerationSourceSha256: "" }, ""), null);
-  assert.equal(
-    noteGenerationPresentation({ regenerationSourceSha256: "abc" }, ""),
-    null
-  );
-  assert.equal(
-    noteGenerationPresentation({ regenerationSourceSha256: "abc", meetingId: "" }, ""),
-    null
-  );
-});
-
-test("note generation presentation: disables with reason when not available", () => {
-  const note = {
-    regenerationSourceSha256: "abc123",
-    meetingId: "meeting-1",
-    noteGenerationAvailable: false,
-    noteGenerationUnavailableReason: "Download a note model in Settings first.",
-    claims: [],
-  };
-  const result = noteGenerationPresentation(note, "");
-  assert.equal(result.action, "generate-note");
-  assert.equal(result.label, "Generate note");
-  assert.equal(result.disabled, true);
-  assert.equal(result.help, "Download a note model in Settings first.");
-});
-
-test("note generation presentation: handles build error reason", () => {
-  const note = {
-    regenerationSourceSha256: "abc123",
-    meetingId: "meeting-1",
-    noteGenerationAvailable: false,
-    noteGenerationUnavailableReason: "This build cannot generate notes.",
-    claims: [],
-  };
-  const result = noteGenerationPresentation(note, "");
-  assert.equal(result.disabled, true);
-  assert.equal(result.help, "This build cannot generate notes.");
-});
-
-test("note generation presentation: available when generation is possible and not generating", () => {
-  const note = {
-    regenerationSourceSha256: "abc123",
-    meetingId: "meeting-1",
-    noteGenerationAvailable: true,
-    noteGenerationUnavailableReason: null,
-    claims: [],
-  };
-  const result = noteGenerationPresentation(note, "other-meeting");
-  assert.equal(result.action, "generate-note");
-  assert.equal(result.label, "Generate note");
-  assert.equal(result.disabled, false);
-  assert.match(result.help, /downloaded note model/);
-});
-
-test("note generation presentation: shows regenerate label when there are claims", () => {
-  const note = {
-    regenerationSourceSha256: "abc123",
-    meetingId: "meeting-1",
-    noteGenerationAvailable: true,
-    noteGenerationUnavailableReason: null,
-    claims: [{ ordinal: 1 }],
-  };
-  const result = noteGenerationPresentation(note, "other-meeting");
-  assert.equal(result.label, "Regenerate note");
-  assert.match(result.help, /again/);
-});
-
-test("note generation presentation: shows generating state when matching meeting id", () => {
-  const note = {
-    regenerationSourceSha256: "abc123",
-    meetingId: "meeting-1",
-    noteGenerationAvailable: true,
-    noteGenerationUnavailableReason: null,
-    claims: [],
-  };
-  const result = noteGenerationPresentation(note, "meeting-1");
-  assert.equal(result.label, "Generating note…");
-  assert.equal(result.disabled, true);
-  assert.match(result.help, /several minutes/);
-});
-
 test("the released-audio fact is a caption independent of the recovery state (R23)", () => {
   const released = { state: "summary-failed", meetingId: "m1", regenerationSourceSha256: "a".repeat(64), audioRetention: { state: "released" } };
   // No note exists in this state, so the fact must not claim one.
@@ -2095,7 +1995,7 @@ test("the released-audio fact is a caption independent of the recovery state (R2
   // summary-failed displaces the audio-released recovery slot; the fact must survive that.
   const recovery = meetingRecoveryPresentation(released, { state: "available", turns: [{}] });
   assert.equal(recovery.state, "summary-failed");
-  assert.equal(recovery.action.action, "generate-note");
+  assert.equal(recovery.action, null);
   assert.equal(meetingRecoveryPresentation({ ...released, state: "note", claims: [{ claim: "a", claimType: "summary" }] }, { state: "available", turns: [{}] }).detail, AUDIO_RELEASED_DETAIL);
 });
 
@@ -2119,17 +2019,16 @@ test("the document caption never shows a raw lifecycle enum (R24)", () => {
   assert.equal(meetingStateCaption(""), "Loading note");
 });
 
-test("a first failed generation does not promise a note that was never created (R24)", () => {
+test("a retired failed generation preserves the transcript and an existing draft", () => {
   const base = { state: "summary-failed", meetingId: "m1", regenerationSourceSha256: "a".repeat(64) };
   const transcript = { state: "available", turns: [{}] };
   const first = meetingRecoveryPresentation(base, transcript);
   assert.equal(first.state, "summary-failed");
   assert.doesNotMatch(first.detail, /current note/);
-  assert.equal(first.action.action, "generate-note");
+  assert.equal(first.action, null);
   const replacing = meetingRecoveryPresentation({ ...base, claims: [{ claimType: "summary", claim: "kept" }] }, transcript);
-  assert.match(replacing.detail, /current note remain unchanged/);
-  assert.equal(replacing.action.action, "generate-note");
-  assert.equal(replacing.action.label, "Regenerate note");
+  assert.match(replacing.title, /earlier AI draft remains available/);
+  assert.equal(replacing.action, null);
 });
 
 test("model setup recommends the smallest download and shows one primary (R22)", () => {

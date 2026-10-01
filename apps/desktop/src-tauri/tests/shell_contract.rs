@@ -90,7 +90,8 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "preview_library_open_search_result",
 ];
 
-const NATIVE_ONLY_COMMANDS: &[&str] = &[];
+// Compatibility-only note commands remain native, never called by current UI.
+const NATIVE_ONLY_COMMANDS: &[&str] = &["regenerate_note", "note_model_settings", "install_note_model", "remove_note_model"];
 
 const MAIN_PERMISSIONS: &[&str] = &[
     "core:window:allow-start-dragging",
@@ -329,13 +330,13 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
         "get_transcription_engine_settings",
         "select_transcription_engine",
         "install_apple_speech_assets",
-        "note_model_settings",
-        "install_note_model",
-        "remove_note_model",
         "nemotron_model_settings",
         "install_nemotron_model",
     ] {
         assert!(script.contains(command));
+    }
+    for command in ["note_model_settings", "install_note_model", "remove_note_model"] {
+        assert!(!script.contains(command));
     }
     assert!(!script.contains("preview_"));
     assert!(!script.contains("operator_note"));

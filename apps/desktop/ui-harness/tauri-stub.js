@@ -80,8 +80,8 @@
     meetingId: "harness-meeting-1",
     state: hasNote ? "note" : "transcript-only",
     claims: hasNote ? [
-      { ordinal: 1, claimType: "decision", claim: "Launch on Friday.", handle: "claim-handle-1" },
-      { ordinal: 2, claimType: "action", claim: "Send the pricing note to finance.", handle: "claim-handle-2" },
+      { ordinal: 1, claimType: "decision", claim: "Launch on Friday.", handle: "claim-handle-1", locatorCount: 1, spans: [{ sourceTurnIndex: 0, start: 0, end: 30, text: currentTurns[0].text }] },
+      { ordinal: 2, claimType: "action", claim: "Send the pricing note to finance.", handle: "claim-handle-2", locatorCount: 1, spans: [{ sourceTurnIndex: 1, start: 30, end: 60, text: currentTurns[1].text }] },
     ] : [],
     turnsCited: hasNote ? [
       { turn: 0, claimOrdinals: [1] },
@@ -129,6 +129,10 @@
         },
   };
   const responses = {
+    first_run_permissions: () => ({ microphone: "authorized", systemAudio: "authorized", probeUnavailable: false }),
+    transcript_model_settings: () => ({ state: "idle", options: [], activeModelId: null, selectedModelId: null, downloadedBytes: 0, totalBytes: 0, error: null, changeActive: false, canChange: true, unavailableReason: null }),
+    get_transcription_engine_settings: () => ({ selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } }),
+    nemotron_model_settings: () => ({ state: "ready", stored: true, totalBytes: 107012128, downloadedBytes: 107012128, changeActive: false, canChange: true, unavailableReason: null }),
     // mode=startup: the local startup check still running; mode=model-setup:
     // no speech model installed yet. Both render surfaces the other modes
     // never reach, so the harness can show them without a packaged build.
@@ -174,7 +178,7 @@
         prompted: true,
       };
     },
-    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "summary-failed" || sheetMode || searchMode
+    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
           handle: "row-handle-2",
@@ -273,12 +277,23 @@
       transcriptHandle: "transcript-handle-2",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
-    } : sheetMode ? { ...sheetNote } : mode === "summary-failed" ? {
+    } : sheetMode ? { ...sheetNote } : mode === "saved-draft" ? {
+      meetingId: "harness-meeting-1",
+      state: "note",
+      claims: [
+        { ordinal: 1, claimType: "decision", claim: "Launch on Friday.", handle: "claim-handle-1", locatorCount: 1, spans: [{ sourceTurnIndex: 0, start: 0, end: 30, text: currentTurns[0].text }] },
+        { ordinal: 2, claimType: "action", claim: "Send the pricing note to finance.", handle: "claim-handle-2", locatorCount: 1, spans: [{ sourceTurnIndex: 1, start: 30, end: 60, text: currentTurns[1].text }] },
+      ],
+      turnsCited: [{ turn: 0, claimOrdinals: [1] }, { turn: 1, claimOrdinals: [2] }],
+      operatorNote: { text: "Confirm the final owner.", unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: "transcript-handle-1",
+      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      capturePauses: null,
+    } : mode === "summary-failed" ? {
       meetingId: "harness-meeting-1",
       state: "summary-failed",
       claims: [],
-      regenerationSourceSha256: "0000000000000000000000000000000000000000000000000000000000000000",
-      noteGenerationAvailable: true,
       operatorNote: { text: "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
       transcriptHandle: "transcript-handle-1",
@@ -322,6 +337,8 @@
       operatorNote: { text: args?.text || "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
     }),
+    library_open_transcript_file: () => ({ state: "opened", transcriptFileHandle: "transcript-file-handle-1", message: "Synthetic file opened." }),
+    library_export_meeting: () => ({ state: "exported", transcriptFileHandle: "transcript-file-handle-1", withheld: [], message: "Synthetic meeting exported." }),
     library_retained_audio_playback_status: () => ({ state: "idle", source: null, message: "" }),
   };
   // Synthetic transitions exercise the real click handlers; no downloads run.
@@ -329,6 +346,7 @@
   const initialSnapshot = responses.app_snapshot;
   responses.app_snapshot = () => setupOverride || initialSnapshot();
   window.__setupCalls = [];
+  window.__harnessCalls = [];
   responses.install_apple_speech_assets = () => {
     window.__setupCalls.push("install_apple_speech_assets");
     const initial = initialSnapshot();
@@ -353,6 +371,7 @@
   window.__TAURI__ = {
     core: {
       invoke: (command, args) => {
+        window.__harnessCalls.push(command);
         const handler = responses[command];
         if (!handler) return Promise.reject(new Error(`harness: unstubbed command ${command}`));
         return Promise.resolve(handler(args));

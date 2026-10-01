@@ -1,0 +1,26 @@
+{
+  "errors" : [
+
+  ],
+  "hasHistoricalFact" : true,
+  "hasSavedDraft" : false,
+  "mode" : "transcript-retirement",
+  "noGenerationControl" : false,
+  "notesPresent" : true,
+  "pass" : false,
+  "steps" : [
+    {
+      "name" : "personal note saved",
+      "ok" : true
+    },
+    {
+      "name" : "open-library-transcript-file",
+      "ok" : true
+    },
+    {
+      "name" : "export-meeting",
+      "ok" : true
+    }
+  ],
+  "transcriptPresent" : true
+}

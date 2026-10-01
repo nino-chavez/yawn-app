@@ -1,18 +1,12 @@
-//! Internal command boundary for the frozen correction and note-regeneration shapes.
+//! Internal command boundary for correction shapes and the retired note command.
 //!
 //! `restore_withheld_turn` was registered on 2026-08-04 by the operator's
 //! correction-surface (J4) decision, with `DesktopProductCoordinator` as the
 //! storage-backed owner.
 //!
-//! `regenerate_note` is registered in `tauri::generate_handler!` and, as of
-//! the generation invocation chain landing (docs/note-runtime-decision.md,
-//! slices 1–4), runs the real path: `DesktopProductCoordinator::
-//! accept_regeneration` drives the sandboxed generate child and the worker's
-//! `note.create` to a terminal receipt. Without an installed note model the
-//! coordinator still refuses `Unavailable` before touching the worker (see
-//! `regeneration_without_an_installed_note_model_is_unavailable_before_the_worker`
-//! in `product_coordinator.rs`), so the rendered control degrades to the
-//! facade's generic copy rather than claiming the single-operation slot.
+//! `regenerate_note` remains registered only to give stale webviews a quiet,
+//! local refusal. It never reserves the single-operation slot, reads source
+//! state, writes a receipt, or reaches a coordinator.
 
 use std::sync::{Arc, Mutex};
 
@@ -28,6 +22,10 @@ use uuid::Uuid;
 const SOURCE_CHANGED_COPY: &str = "The transcript changed. Refresh the meeting and try again.";
 const OPERATION_UNAVAILABLE_COPY: &str = "This action is not available right now. Try again.";
 const OPERATION_ACTIVE_COPY: &str = "Another meeting action is already in progress.";
+/// The single product policy for new local AI-note work. Existing AI drafts
+/// remain readable evidence; this only closes admission for new generation.
+pub(crate) const NOTE_GENERATION_RETIRED_COPY: &str =
+    "Automatic note generation is no longer available.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MeetingOperationSource {
@@ -98,6 +96,7 @@ pub(crate) enum ProductOperationFacadeError {
     SourceChanged,
     OperationUnavailable,
     OperationAlreadyActive,
+    NoteGenerationRetired,
 }
 
 impl ProductOperationFacadeError {
@@ -106,6 +105,7 @@ impl ProductOperationFacadeError {
             Self::SourceChanged => SOURCE_CHANGED_COPY,
             Self::OperationUnavailable => OPERATION_UNAVAILABLE_COPY,
             Self::OperationAlreadyActive => OPERATION_ACTIVE_COPY,
+            Self::NoteGenerationRetired => NOTE_GENERATION_RETIRED_COPY,
         }
     }
 }
@@ -222,27 +222,11 @@ impl ProductOperationFacade {
 
     pub(crate) fn regenerate_note(
         &self,
-        args: RegenerateNoteUiArgs,
+        _args: RegenerateNoteUiArgs,
     ) -> Result<UiOperationAccepted, ProductOperationFacadeError> {
-        args.validate()
-            .map_err(|_| ProductOperationFacadeError::SourceChanged)?;
-        self.accept(
-            args.meeting_id,
-            &args.source_transcript_sha256,
-            ProductOperationKind::GenerateNote,
-            UiOperationState::Summarizing,
-            |source| {
-                matches!(
-                    (source.lifecycle, source.has_current_note),
-                    (MeetingLifecycle::Ready, true)
-                        | (
-                            MeetingLifecycle::TranscriptReady | MeetingLifecycle::SummaryFailed,
-                            false
-                        )
-                )
-            },
-            || self.coordinator.accept_regeneration(&args),
-        )
+        // Refuse before source reads, operation reservation, durable receipts,
+        // or coordinator work. This must stay true even for stale UI state.
+        Err(ProductOperationFacadeError::NoteGenerationRetired)
     }
 
     pub(crate) fn start_transcript_retry(
@@ -440,72 +424,24 @@ pub(crate) fn restore_withheld_turn(
     Ok(accepted)
 }
 
-/// Registered generation command. Like restoration, the storage-backed
-/// coordinator runs to a terminal receipt before returning — but the middle
-/// of this one is the sandboxed generate child, so the call legitimately
-/// lasts minutes.
-///
-/// `async` in the attribute is load-bearing, and its absence was a real
-/// freeze. Tauri v2 runs a command without it **on the main thread**
-/// ("Commands without the async keyword are executed on the main thread
-/// unless defined with `#[tauri::command(async)]`", v2.tauri.app/develop/
-/// calling-rust, tauri 2.11.5), so this call held the UI for the whole
-/// generation: no repaint, no snapshot poll, and the help text under the
-/// button promising "you can keep using Yawn" was false. Written in the
-/// attribute rather than as an `async fn` because the signature takes
-/// `State<'_, _>`, which an async command cannot borrow.
-///
-/// The rest of the design already assumed this: the UI's snapshot polling
-/// continues meanwhile, and the facade's single-operation slot keeps a
-/// second product operation from starting underneath it. A rejected note is
-/// still a terminal receipt: the command returns the accepted operation and
-/// the meeting's summary-failed state carries the product answer.
+/// Compatibility command for older webviews. It always refuses locally and
+/// does not claim an operation, read source state, or start a worker.
 #[tauri::command(async, rename_all = "camelCase")]
 pub(crate) fn regenerate_note(
     meeting_id: Uuid,
     source_transcript_sha256: String,
-    facade: State<'_, ProductOperationFacade>,
-    app: State<'_, crate::ApplicationState>,
+    _facade: State<'_, ProductOperationFacade>,
+    _app: State<'_, crate::ApplicationState>,
 ) -> Result<UiOperationAccepted, String> {
-    // Same writer-lock contention rule as restoration: an active setup
-    // recording holds the app-data writer lock this generation's
-    // coordination handle would queue behind.
-    if crate::sitting_task_active(&app) {
-        return Err("Finish the setup recording first.".into());
-    }
-    let accepted = facade
-        .regenerate_note(RegenerateNoteUiArgs {
-            meeting_id,
-            speaker_label_overrides: crate::speaker_label_overrides_for(
-                meeting_id,
-                &source_transcript_sha256,
-                &app,
-            )?,
-            vocabulary_replacements: crate::vocabulary_replacements_for(
-                meeting_id,
-                &source_transcript_sha256,
-                &app,
-            )?,
-            pre_meeting_context: crate::pre_meeting_context_for(meeting_id, &app)?,
-            source_transcript_sha256,
-        })
-        .map_err(|error| {
-            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                eprintln!("[note-trace] regenerate_note command refused: {error:?}");
-            }
-            error
-        })
-        .map_err(ProductOperationFacadeError::safe_copy)
-        .map_err(str::to_owned)?;
-    facade.finish(accepted.operation_id);
-    Ok(accepted)
+    // Keep the command as a compatibility boundary for stale webviews, but
+    // do not accept an operation or inspect any generation inputs.
+    let _ = (meeting_id, source_transcript_sha256);
+    Err(NOTE_GENERATION_RETIRED_COPY.into())
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use std::time::Duration;
-
     use serde::de::DeserializeOwned;
     use serde_json::Value;
 
@@ -515,6 +451,7 @@ mod tests {
         source: Mutex<Result<MeetingOperationSource, CoordinatorError>>,
         restore_result: Mutex<Result<Uuid, CoordinatorError>>,
         regeneration_result: Mutex<Result<Uuid, CoordinatorError>>,
+        source_calls: Mutex<u32>,
         restore_calls: Mutex<u32>,
         regeneration_calls: Mutex<u32>,
     }
@@ -529,6 +466,7 @@ mod tests {
                 source: Mutex::new(Ok(source)),
                 restore_result: Mutex::new(Ok(restore_id)),
                 regeneration_result: Mutex::new(Ok(regeneration_id)),
+                source_calls: Mutex::new(0),
                 restore_calls: Mutex::new(0),
                 regeneration_calls: Mutex::new(0),
             }
@@ -537,6 +475,7 @@ mod tests {
 
     impl ProductOperationCoordinator for FakeCoordinator {
         fn source_for(&self, _: Uuid) -> Result<MeetingOperationSource, CoordinatorError> {
+            *self.source_calls.lock().unwrap() += 1;
             self.source.lock().unwrap().clone()
         }
 
@@ -584,68 +523,27 @@ mod tests {
     }
 
     #[test]
-    fn shared_fixture_freezes_the_accepted_facade_states() {
+    fn retired_generation_refuses_before_the_facade_reads_or_claims() {
         let fixture = fixture();
-
-        let restore_args: RestoreWithheldTurnUiArgs =
-            parse(&fixture, &["restoration", "ui_arguments"]);
-        let restore_expected: UiOperationAccepted =
-            parse(&fixture, &["restoration", "ui_response"]);
-        let restore_coordinator = Arc::new(FakeCoordinator::accepting(
+        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
+        let coordinator = Arc::new(FakeCoordinator::accepting(
             source_for(
-                restore_args.meeting_id,
-                restore_args.source_transcript_sha256.clone(),
-                MeetingLifecycle::Ready,
-                true,
-            ),
-            restore_expected.operation_id,
-            Uuid::nil(),
-        ));
-        let restore_facade = ProductOperationFacade::new(restore_coordinator.clone());
-        assert_eq!(
-            restore_facade.restore_withheld_turn(restore_args).unwrap(),
-            restore_expected
-        );
-        assert_eq!(*restore_coordinator.restore_calls.lock().unwrap(), 1);
-
-        let note_args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let note_expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
-        let note_coordinator = Arc::new(FakeCoordinator::accepting(
-            source_for(
-                note_args.meeting_id,
-                note_args.source_transcript_sha256.clone(),
+                args.meeting_id,
+                args.source_transcript_sha256.clone(),
                 MeetingLifecycle::TranscriptReady,
                 false,
             ),
             Uuid::nil(),
-            note_expected.operation_id,
+            Uuid::new_v4(),
         ));
-        let note_facade = ProductOperationFacade::new(note_coordinator.clone());
+        let facade = ProductOperationFacade::new(coordinator.clone());
         assert_eq!(
-            note_facade.regenerate_note(note_args.clone()).unwrap(),
-            note_expected
+            facade.regenerate_note(args),
+            Err(ProductOperationFacadeError::NoteGenerationRetired)
         );
-        assert_eq!(*note_coordinator.regeneration_calls.lock().unwrap(), 1);
-
-        let replacement_coordinator = Arc::new(FakeCoordinator::accepting(
-            source_for(
-                note_args.meeting_id,
-                note_args.source_transcript_sha256.clone(),
-                MeetingLifecycle::Ready,
-                true,
-            ),
-            Uuid::nil(),
-            note_expected.operation_id,
-        ));
-        let replacement_facade = ProductOperationFacade::new(replacement_coordinator.clone());
-        assert_eq!(
-            replacement_facade.regenerate_note(note_args).unwrap(),
-            note_expected
-        );
-        assert_eq!(
-            *replacement_coordinator.regeneration_calls.lock().unwrap(),
-            1
-        );
+        assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 0);
+        assert_eq!(*coordinator.source_calls.lock().unwrap(), 0);
+        assert!(facade.claim_runtime_change().is_ok());
     }
 
     #[test]
@@ -714,207 +612,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn runtime_changes_and_meeting_actions_exclude_each_other() {
-        let fixture = fixture();
-        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
-        let facade = ProductOperationFacade::new(Arc::new(FakeCoordinator::accepting(
-            source_for(args.meeting_id, args.source_transcript_sha256.clone(),
-                MeetingLifecycle::TranscriptReady, false),
-            Uuid::nil(), expected.operation_id,
-        )));
-        let change = facade.claim_runtime_change().unwrap();
-        assert!(facade.is_active());
-        assert_eq!(facade.regenerate_note(args.clone()),
-            Err(ProductOperationFacadeError::OperationAlreadyActive));
-        assert!(facade.claim_runtime_change().is_err());
-        // An unrelated completion cannot clear the runtime reservation.
-        facade.finish(expected.operation_id);
-        assert!(facade.is_active());
-        // The background task owns the claim, including its error exit.
-        std::thread::spawn(move || drop(change)).join().unwrap();
-        assert!(!facade.is_active());
-        let accepted = facade.regenerate_note(args).unwrap();
-        assert!(facade.claim_runtime_change().is_err());
-        facade.finish(accepted.operation_id);
-        assert!(!facade.is_active());
-        assert!(facade.claim_runtime_change().is_ok());
-    }
-
-    #[test]
-    fn a_second_operation_is_refused_until_the_first_reaches_a_terminal_receipt() {
-        let fixture = fixture();
-        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
-        let coordinator = Arc::new(FakeCoordinator::accepting(
-            source_for(
-                args.meeting_id,
-                args.source_transcript_sha256.clone(),
-                MeetingLifecycle::TranscriptReady,
-                false,
-            ),
-            Uuid::nil(),
-            expected.operation_id,
-        ));
-        let facade = ProductOperationFacade::new(coordinator.clone());
-        let accepted = facade.regenerate_note(args.clone()).unwrap();
-        assert_eq!(
-            facade.regenerate_note(args.clone()),
-            Err(ProductOperationFacadeError::OperationAlreadyActive)
-        );
-        assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 1);
-
-        facade.finish(accepted.operation_id);
-        assert_eq!(facade.regenerate_note(args).unwrap(), expected);
-        assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 2);
-    }
-
-    /// A coordinator that parks inside `accept_regeneration`, so a test can
-    /// ask the facade a question while an operation is genuinely in flight.
-    struct ParkingCoordinator {
-        source: MeetingOperationSource,
-        operation_id: Uuid,
-        entered: std::sync::mpsc::SyncSender<()>,
-        release: Mutex<std::sync::mpsc::Receiver<()>>,
-    }
-
-    impl ProductOperationCoordinator for ParkingCoordinator {
-        fn source_for(&self, _: Uuid) -> Result<MeetingOperationSource, CoordinatorError> {
-            Ok(self.source.clone())
-        }
-        fn accept_restore(&self, _: &RestoreWithheldTurnUiArgs) -> Result<Uuid, CoordinatorError> {
-            Err(CoordinatorError::Unavailable)
-        }
-        fn accept_regeneration(
-            &self,
-            _: &RegenerateNoteUiArgs,
-        ) -> Result<Uuid, CoordinatorError> {
-            self.entered.send(()).expect("the test is listening");
-            self.release
-                .lock()
-                .expect("release receiver")
-                .recv()
-                .expect("the test releases this operation");
-            Ok(self.operation_id)
-        }
-    }
-
-    #[test]
-    fn a_second_operation_is_refused_while_the_first_is_still_running_not_queued_behind_it() {
-        // D-FREEZE made operations able to overlap for the first time, which
-        // exposed that the slot's mutex was held across the coordinator call:
-        // a second attempt blocked for the length of the first instead of
-        // being refused. Without a released lock this test does not fail, it
-        // hangs, so the refusal is asserted from a thread with a deadline.
-        let fixture = fixture();
-        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
-        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
-        let facade = Arc::new(ProductOperationFacade::new(Arc::new(ParkingCoordinator {
-            source: source_for(
-                args.meeting_id,
-                args.source_transcript_sha256.clone(),
-                MeetingLifecycle::TranscriptReady,
-                false,
-            ),
-            operation_id: expected.operation_id,
-            entered: entered_tx,
-            release: Mutex::new(release_rx),
-        })));
-
-        let running = std::thread::spawn({
-            let facade = facade.clone();
-            let args = args.clone();
-            move || facade.regenerate_note(args)
-        });
-        entered_rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("the first operation reached the coordinator");
-
-        // The first operation is parked inside the coordinator right now.
-        let (refused_tx, refused_rx) = std::sync::mpsc::channel();
-        std::thread::spawn({
-            let facade = facade.clone();
-            let args = args.clone();
-            move || {
-                let _ = refused_tx.send(facade.regenerate_note(args));
-            }
-        });
-        let refused = refused_rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("the second attempt answered instead of queueing behind the first");
-        assert_eq!(refused, Err(ProductOperationFacadeError::OperationAlreadyActive));
-        assert!(facade.claim_runtime_change().is_err());
-
-        release_tx.send(()).expect("the parked operation is waiting");
-        assert_eq!(running.join().expect("the first operation finished"), Ok(expected.clone()));
-
-        // The slot is settled, so it still takes a terminal receipt to clear.
-        assert_eq!(
-            facade.regenerate_note(args.clone()),
-            Err(ProductOperationFacadeError::OperationAlreadyActive)
-        );
-        facade.finish(expected.operation_id);
-    }
-
-    #[test]
-    fn a_refused_start_releases_the_slot_it_reserved() {
-        // The claim is RAII: an early return between reserving the slot and
-        // settling it must not strand the facade as permanently busy.
-        let fixture = fixture();
-        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let expected: UiOperationAccepted = parse(&fixture, &["accepted_note", "ui_response"]);
-        let coordinator = Arc::new(FakeCoordinator::accepting(
-            source_for(
-                args.meeting_id,
-                args.source_transcript_sha256.clone(),
-                // Wrong lifecycle: `accept` returns SourceChanged after the
-                // claim is taken and before it is settled.
-                MeetingLifecycle::Captured,
-                false,
-            ),
-            Uuid::nil(),
-            expected.operation_id,
-        ));
-        let facade = ProductOperationFacade::new(coordinator.clone());
-        assert_eq!(
-            facade.regenerate_note(args.clone()),
-            Err(ProductOperationFacadeError::SourceChanged)
-        );
-        assert_eq!(*coordinator.regeneration_calls.lock().unwrap(), 0);
-
-        // The slot is free again, so an eligible source is accepted.
-        *coordinator.source.lock().unwrap() = Ok(source_for(
-            args.meeting_id,
-            args.source_transcript_sha256.clone(),
-            MeetingLifecycle::TranscriptReady,
-            false,
-        ));
-        assert_eq!(facade.regenerate_note(args).unwrap(), expected);
-    }
-
-    #[test]
-    fn coordinator_failures_have_generic_safe_copy() {
-        let fixture = fixture();
-        let args: RegenerateNoteUiArgs = parse(&fixture, &["accepted_note", "ui_arguments"]);
-        let coordinator = Arc::new(FakeCoordinator::accepting(
-            source_for(
-                args.meeting_id,
-                args.source_transcript_sha256.clone(),
-                MeetingLifecycle::TranscriptReady,
-                false,
-            ),
-            Uuid::nil(),
-            Uuid::nil(),
-        ));
-        *coordinator.source.lock().unwrap() = Err(CoordinatorError::Unavailable);
-        let facade = ProductOperationFacade::new(coordinator);
-
-        assert_eq!(
-            facade.regenerate_note(args).unwrap_err().safe_copy(),
-            OPERATION_UNAVAILABLE_COPY
-        );
-    }
 }

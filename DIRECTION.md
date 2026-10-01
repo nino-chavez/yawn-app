@@ -22,8 +22,8 @@ brief wins and this file is stale.
 
 ## Thesis
 
-A private meeting notepad with a recorder attached. The finished note is the
-destination; the list exists to reopen finished notes. It is not a workspace,
+A private meeting notepad with a recorder attached. Personal notes and the
+retained transcript are the destination; the list exists to reopen meetings. It is not a workspace,
 dashboard, task manager, CRM, team wiki, or calendar.
 
 ## Character
@@ -57,10 +57,10 @@ did not produce (brief amendment, 2026-09-01).
 
 | Object | Owner | Valid actions | States | Reverse action |
 |---|---|---|---|---|
-| Meeting | Operator | record, name, open, lock/unlock, export, move to Trash, restore | idle -> arming -> recording <-> paused -> stopping -> captured -> transcribing -> transcript-ready -> summarizing -> ready; recovered-interrupted; locked; trashed | Trash <-> restore (30-day window); lock <-> unlock; pause <-> resume. Purge past the window is irreversible and says so |
+| Meeting | Operator | record, name, open, lock/unlock, export, move to Trash, restore | idle -> arming -> recording <-> paused -> stopping -> captured -> transcribing -> transcript-ready; ready with an existing saved draft; historical summarizing/summary-failed records remain readable; recovered-interrupted; locked; trashed | Trash <-> restore (30-day window); lock <-> unlock; pause <-> resume. Purge past the window is irreversible and says so |
 | Recording (retained audio) | Operator, bounded by the retention choice | play (verified handle), release | retained (1/7/30 days) -> deleted-under-retention | None -- retention deletion is the privacy promise and is never reversible or deferred (runs even in Trash, even locked) |
 | Transcript turn | The retained transcript (immutable) | read, search within meeting, restore-if-withheld (source-bound), see citing claims | attributed; speaker-corrected (projection, source untouched); **withheld -- rendered as withheld, never as missing or invented** | Speaker correction is a separate local operation, never a rewrite; withheld restore is source-bound |
-| Generated note | Generated; reviewable AI output, never a final account | generate, regenerate (from current transcript), read, follow claim -> source | draft with overview/decisions/follow-ups/open-questions; transcript-highlights fallback when no summary is possible; stale after transcript promotion | Regeneration replaces a note only through the explicit path; keep-or-promote never silently regenerates |
+| Saved AI draft | Previously generated; reviewable AI output, never a final account | read, follow claim -> source | existing draft with overview/decisions/follow-ups/open-questions; transcript highlights remain explicitly labeled; stale after transcript promotion | Promoting a transcript retry still invalidates a draft tied to the old source; new generation is unavailable |
 | Claim + source | The evidence chain (claim and its transcript span are one unit) | show source (exact span, highlighted), hover-preview, open split view | evidenced (locators verify against the retained transcript) -- a claim without transcript evidence does not exist | Reverse: a turn shows its citing claims; absence of citation is visible, not hidden |
 | Past-meetings list | Operator's library | open, title-search, transcript-search (probe flag only), open Trash | populated; genuinely empty (teaches); filtered-empty ("no matching"); loading -> honest stall after 10 s | Row preview comes only from an admitted note; absent means absent |
 | Speech model (Settings) | Operator | choose, download, switch (between meetings only), remove (never the active one) | required (first run, calm glyph); downloading; verifying; active; error | Switching is reversible between meetings; the active model is never removable |
@@ -71,7 +71,7 @@ did not produce (brief amendment, 2026-09-01).
 2. Home, first run -- sheet dismissed, teaching empty state with guided invitation
 3. Home with meetings -- rows with note previews
 4. During capture -- canvas, recording state, pause control
-5. After -- the note with overview and outcomes, source excerpt one click away
+5. After -- personal notes and retained transcript; saved AI drafts keep source links
 6. A withheld transcript turn
 7. Needs-attention (a real failure state)
 8. Settings with the active model
@@ -94,6 +94,7 @@ did not produce (brief amendment, 2026-09-01).
 
 | Date | Surface | Strings | Verdict |
 |---|---|---|---|
+| 2026-09-30 | Generation retirement, transcript-only and historical generation states | "Automatic note generation is no longer available. Your notes and transcript remain available." | Parent-selected implementation copy following the operator's approved deprecation. Revised cold screen review accepted; this is not operator wording acceptance. |
 | 2026-09-01 | W10 first-run sheet, teaching empty state, guided hint | All W10 user-facing strings, verbatim in the packet report | Approved as-is by the operator; x-close retained |
 | 2026-09-02 | Meeting document state caption (R24) and the two note-state sentences (R23, R24b) | Caption: "Meeting note" / "Transcript" / "Note not created" / "Interrupted" / "Locked" / "Details only". Released audio, no note: "The audio was already deleted. The transcript remains available, but this meeting cannot be retranscribed." First failed generation: "Yawn could not create a note. Your transcript is unchanged and you can try again." | Proposed; not yet read by the operator. Tests assert the mapping and the no-note invariant, not this wording |
 | 2026-09-03 | Toolbar Record's disabled-state explanation (`recordUnavailableReason`) -- a visible caption beside the button, also its `title` and `aria-describedby` target, for the three capture states where the button is disabled but the meeting's own "Back to Meetings" / "Record another meeting" detail text would contradict a disabled Record if reused verbatim | "Yawn is finishing your last meeting. Recording will be available again shortly." (capture: transcript-ready) / "Your last meeting's transcript needs attention before Yawn can record again." (transcription-failed) / "Your last meeting's note needs attention before Yawn can record again." (summary-failed). The audio-permission and background-transcription-queue reasons reuse existing shipped copy (`permissionSummary`, `backgroundTranscriptionPresentation` in view-model.mjs) verbatim in this same location, so they are not new strings | Proposed; not yet read by the operator. Tests assert the mapping (state to which reason fires) and the aria-describedby association, not this wording |

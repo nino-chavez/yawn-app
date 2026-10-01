@@ -42,10 +42,10 @@ const CAPTURE_COPY = Object.freeze({
     tone: "working",
   },
   summarizing: {
-    eyebrow: "Preparing your note on this Mac",
-    title: "Finishing your meeting note.",
-    detail: "Recording stopped. The transcript is ready. Yawn is preparing your note on this Mac.",
-    tone: "working",
+    eyebrow: "Transcript ready",
+    title: "Your meeting is ready to read.",
+    detail: "Automatic note generation is no longer available. Your notes and transcript remain available.",
+    tone: "complete",
   },
   "transcript-ready": {
     eyebrow: "Transcript ready",
@@ -102,11 +102,6 @@ const CAPTURE_ACTIVITY_COPY = Object.freeze({
   transcribing: {
     label: "Transcribing on this Mac",
     detail: "The captured audio is saved. Yawn is making the transcript on this Mac.",
-    tone: "working",
-  },
-  summarizing: {
-    label: "Preparing your note on this Mac",
-    detail: "The transcript is ready. Yawn is preparing the local meeting note.",
     tone: "working",
   },
 });
@@ -175,7 +170,7 @@ export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpe
   if (startup !== "ready") return "startup-attention";
   if (captureIsInProgress(snapshot)) return "capture";
   if (hasSelected) return "meeting";
-  if (snapshot.capture !== "idle") return "capture";
+  if (!["idle", "summarizing"].includes(snapshot.capture)) return "capture";
   if (trashOpen) return "trash";
   return "home";
 }
@@ -224,7 +219,7 @@ export function mergePermissions(previous, received) {
 }
 
 export function captureIsInProgress(snapshot) {
-  return ["arming", "recording", "paused", "stopping", "captured", "transcribing", "summarizing"].includes(snapshot?.capture);
+  return ["arming", "recording", "paused", "stopping", "captured", "transcribing"].includes(snapshot?.capture);
 }
 
 // Capture remains in progress while saved audio is being processed, but Stop
@@ -423,11 +418,10 @@ export function transcriptionEnginePresentation(engine = null) {
 // a lifecycle, and it maps rather than transforms: an unmapped state falls
 // back to `humanize` so a new state reads awkwardly instead of vanishing.
 const MEETING_STATE_CAPTIONS = Object.freeze({
-  "note": "Meeting note",
-  // Just "Transcript": the note area says "No meeting note yet." one line
-  // below, and a caption that repeats it is two lines of one fact.
+  "note": "Saved AI draft",
+  // The note area separately explains that automatic generation is retired.
   "transcript-only": "Transcript",
-  "summary-failed": "Note not created",
+  "summary-failed": "AI draft not created",
   "recovered-interrupted": "Interrupted",
   "locked": "Locked",
   "metadata-only": "Details only",
@@ -544,7 +538,7 @@ export function libraryEmptyStatePresentation(library) {
   return {
     variant: "no-meetings",
     title: "No meetings yet",
-    message: "Press Record to start a private meeting. Yawn saves your notes and the transcript on this Mac as it finishes, and you can generate a note from them. It all appears right here.",
+    message: "Press Record to start a private meeting. Yawn saves your notes and the transcript on this Mac as it finishes. It all appears right here.",
     showGuidedInvite: true,
   };
 }
@@ -1380,39 +1374,8 @@ export function transcriptRetryQualityKindLabel(kind) {
   return labels[kind] || "Observation";
 }
 
-// The generate control renders only from the note response's own eligibility
-// signal — the backend includes the source pin exactly when the facade would
-// admit the operation, so the browser never re-derives lifecycle rules. The
-// copy states the honest costs: it runs locally, and it takes minutes.
-export function noteGenerationPresentation(note, generatingMeetingId) {
-  if (!note?.regenerationSourceSha256 || !note?.meetingId) return null;
-
-  // Check note generation availability. If explicitly unavailable, show the reason and disable.
-  if (note?.noteGenerationAvailable === false) {
-    return {
-      action: "generate-note",
-      label: "Generate note",
-      disabled: true,
-      help: note?.noteGenerationUnavailableReason || "Note generation is not available.",
-    };
-  }
-
-  const generating = generatingMeetingId === note.meetingId;
-  const replacing = Array.isArray(note?.claims) && note.claims.length > 0;
-  return {
-    action: "generate-note",
-    label: generating ? "Generating note…" : replacing ? "Regenerate note" : "Generate note",
-    disabled: generating,
-    help: generating
-      ? "The note model is reading this transcript on your Mac. This can take several minutes — you can keep using Yawn."
-      : replacing
-        ? "Runs the downloaded note model again on this Mac. Your current note stays in place unless a replacement passes every check."
-      : "Runs the downloaded note model on this Mac. It usually takes several minutes, longer for long meetings. Nothing leaves your computer.",
-  };
-}
-
 // The released-audio fact is a caption on every readable document, not a
-// recovery state: a summary-failed or generating meeting still has released
+// recovery state: a summary-failed meeting can still have released
 // audio, and meetingRecoveryPresentation can carry only one state at a time
 // (refit R23, where the fact vanished under summary-failed). One owner for
 // the sentence; the recovery branch below reads it from here.
@@ -1428,31 +1391,13 @@ export function audioReleasedFact(note) {
 }
 
 // Keep recovery copy at the same evidence boundary as the library response.
-// A source pin is the only browser-visible proof that note regeneration can
-// run. Transcript and audio states are read-only facts: do not invent a retry
-// control for either one.
-export function meetingRecoveryPresentation(note, transcript, generatingMeetingId = "") {
+// Transcript and audio states are read-only facts; neither creates a new note
+// generation or recovery control.
+export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
-  const meetingId = note?.meetingId || "";
-  const hasSource = typeof note?.regenerationSourceSha256 === "string"
-    && note.regenerationSourceSha256.trim().length > 0
-    && Boolean(meetingId);
   const transcriptState = transcript?.state || "";
   const transcriptUnavailable = ["stale", "unavailable"].includes(transcriptState);
-  const generating = Boolean(meetingId) && generatingMeetingId === meetingId;
   const hasUsableNote = Array.isArray(note?.claims) && note.claims.length > 0;
-
-  if (generating) {
-    return {
-      state: "generating",
-      tone: "working",
-      title: "Preparing your meeting note.",
-      detail: hasUsableNote
-        ? "Yawn is trying again. Your current note stays in place until a replacement passes every check."
-        : "Yawn is trying again. Your transcript stays available while the note is prepared.",
-      action: null,
-    };
-  }
 
   if (transcriptUnavailable) {
     return {
@@ -1471,26 +1416,11 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
   }
 
   if (noteState === "summary-failed") {
-    if (hasSource) {
-      return {
-        state: "summary-failed",
-        tone: "attention",
-        title: "Your meeting note needs another try.",
-        // Same split the generating branch above already makes: a failed
-        // first attempt has no note to leave unchanged, and saying it does
-        // promises the reader something that is not on the page (R24
-        // read-back of the summary-failed document).
-        detail: hasUsableNote
-          ? "Yawn could not create a note. Your transcript and current note remain unchanged."
-          : "Yawn could not create a note. Your transcript is unchanged and you can try again.",
-        action: { action: "generate-note", label: hasUsableNote ? "Regenerate note" : "Generate note" },
-      };
-    }
     return {
-      state: "summary-failed-no-source",
-      tone: "attention",
-      title: "Your meeting note could not be created.",
-      detail: "No usable transcript source remains, so Yawn cannot retry. Any note or transcript already shown stays unchanged.",
+      state: "summary-failed",
+      tone: "neutral",
+      title: hasUsableNote ? "An earlier AI draft remains available." : "No AI draft was created.",
+      detail: "Automatic note generation is no longer available. Your notes and transcript remain available.",
       action: null,
     };
   }
@@ -1564,8 +1494,8 @@ export function meetingRecoveryPresentation(note, transcript, generatingMeetingI
 // a recovered-interrupted meeting with retained audio, or any meeting with
 // transcript turns or the operator's own notes, is content plus a fact (the
 // workspace renders with a caption), not a full-pane replacement.
-export function meetingBlockingRecovery(note, transcript, generatingMeetingId = "") {
-  const recovery = meetingRecoveryPresentation(note, transcript, generatingMeetingId);
+export function meetingBlockingRecovery(note, transcript) {
+  const recovery = meetingRecoveryPresentation(note, transcript);
   if (!recovery || recovery.state === "audio-released") return null;
   // Nothing kept means nothing to render behind the pane; the deletion
   // handle alone does not make a meeting readable.
