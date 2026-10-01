@@ -1,5 +1,49 @@
 # Yawn distribution runbook
 
+## 0.6.8 release receipt
+
+**0.6.8 was released on 2026-09-30.** PR #77 merged build source
+`c7dd2934776c9c1e713bae9716586f5e7b9be292`; annotated tag `v0.6.8`
+points to that exact commit. Main merge `a64af614047282146abe4dce6e20430525eb1e67`
+has the same tree as the build source. New AI note generation and note-model
+downloads are retired. Personal notes, saved AI drafts, source links,
+transcripts, recording, and optional speaker analysis remain available.
+
+Signed artifact `Yawn-0.6.8-macos-arm64.dmg`, 597,647,753 bytes,
+SHA-256 `7cc509ddfe26919917b4db193f08dbf6ab730ce90ab00d900d3c2bb43c60be69`.
+Apple accepted app submission `55e16ce2-56fe-491e-81df-9f14ef55b286` and DMG
+submission `b7db7663-f14f-44ed-bcbc-de173e1a32db`. Both were stapled.
+The independent signed-release verifier and Gatekeeper passed for the frozen
+app and DMG, with 207 arm64-compatible Mach-O files under `internal-alpha`.
+The fresh runtime build, native desktop tests, session-core tests, and UI tests
+passed. All four hosted transcript-model objects matched their catalog sizes
+and full streamed SHA-256 digests.
+
+The public installer at
+https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.8-macos-arm64.dmg
+returned 200 with the recorded size, disk-image content type, and immutable
+cache control. Its byte-range request returned 206; its public checksum
+sidecar matched the final artifact digest. No full public DMG re-download was
+performed. GitHub release:
+https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.8
+
+Site source `6c5d471d82a2e34ae7fc394b4ed078990d23662d` merged through PR #5 into
+`51284dbca258622f356f69e66037a4b13b40ae62` and deployed as
+https://f0f12d95.yawn-site.pages.dev.
+The deployment URL, `https://yawn-site.pages.dev/`, and
+`https://apps.ninochavez.co/yawn/` served the 0.6.8 download and checksum.
+Their release-notes links resolved to the 0.6.8 notes, and their app cards
+matched the generated artifact. Prior release entries were preserved.
+
+`/Applications/Yawn.app` was installed from the signed DMG and reports 0.6.8
+with a strict code signature and Notarized Developer ID assessment. It was
+launched and its process remained running during final delivery checks. The
+previous 0.6.7 bundle is preserved in this release worktree's ignored
+`.artifacts/release-0.6.8/Yawn-0.6.7-backup.app`.
+No previous public installer, meeting data, or downloaded model was removed.
+Research-only edits remain in their original worktrees. Real-meeting acceptance
+remains separate from packaging and launch evidence.
+
 ## 0.6.6 release receipt
 
 **0.6.6 was released on 2026-09-28.** PR #75 merged source commit
