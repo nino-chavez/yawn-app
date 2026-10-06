@@ -13597,6 +13597,78 @@ mod tests {
         );
     }
 
+    struct FailingProjector;
+
+    impl NoteProjector for FailingProjector {
+        fn project(
+            &self,
+            _: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+        ) -> Result<
+            Vec<u8>,
+            local_meeting_notes_session_core::note_projection::ProjectTransportError,
+        > {
+            Err(local_meeting_notes_session_core::note_projection::ProjectTransportError::Unavailable)
+        }
+    }
+
+    fn meetings_directory(storage: &StorageRoot) -> PathBuf {
+        storage.resolve(Path::new("meetings")).unwrap()
+    }
+
+    // Field report, 2026-10-06 (0.6.9): a meeting folder moved back into
+    // `meetings/` while Yawn ran did not appear until a restart. The cached
+    // reader's revalidation is a full rescan compared with the cached rows,
+    // so a new directory does stale it. This pins that, Finder metadata
+    // included. It passed before any change: it guards behavior, it does
+    // not reproduce the report.
+    #[test]
+    fn a_meeting_moved_into_the_library_appears_on_the_next_snapshot() {
+        let (_temporary, storage) = test_storage();
+        let (_elsewhere, elsewhere) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        assert_eq!(library_snapshot_for(&state).rows.len(), 1);
+
+        let moved = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&elsewhere, &moved);
+        let source = meetings_directory(&elsewhere).join(&moved);
+        std::fs::write(source.join(".DS_Store"), b"finder").unwrap();
+        std::fs::write(meetings_directory(&storage).join(".DS_Store"), b"finder").unwrap();
+        std::fs::rename(&source, meetings_directory(&storage).join(&moved)).unwrap();
+
+        let snapshot = library_snapshot_for(&state);
+        assert_eq!(snapshot.state, "populated");
+        assert!(snapshot.rows.iter().any(|row| row.meeting_id == moved));
+    }
+
+    // Field report, 2026-10-06 (0.6.8): after a meeting whose saved draft
+    // could not be projected was moved out, "Check again" still answered
+    // unavailable. An unavailable answer caches no reader, so the next call
+    // rebuilds from disk. Passed before any change, like the test above.
+    #[test]
+    fn removing_an_unprojectable_meeting_recovers_the_next_snapshot() {
+        let (_temporary, storage) = test_storage();
+        let (_elsewhere, elsewhere) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        let unprojectable = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&storage, &unprojectable);
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+
+        std::fs::rename(
+            meetings_directory(&storage).join(&unprojectable),
+            meetings_directory(&elsewhere).join(&unprojectable),
+        )
+        .unwrap();
+        let snapshot = library_snapshot_for(&state);
+        assert_eq!(snapshot.state, "populated");
+        assert_eq!(snapshot.rows.len(), 1);
+    }
+
     #[test]
     fn library_snapshot_runs_off_the_macos_event_loop() {
         let source = include_str!("main.rs");
@@ -15199,4 +15271,5 @@ mod tests {
         .unwrap();
         assert!(NemotronModel::verify(&storage).is_err(), "a wrong-sized or tampered model must not be admitted");
     }
+
 }
