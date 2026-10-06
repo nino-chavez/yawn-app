@@ -779,6 +779,7 @@ impl LibraryReader {
             excluded_meeting_ids,
             std::sync::Arc::new(UnavailableProjector),
         )
+        .map_err(|_| ())
     }
 
     /// The same rebuild through an admitted `note.project` transport.  The
@@ -789,14 +790,13 @@ impl LibraryReader {
         storage: StorageRoot,
         excluded_meeting_ids: &HashSet<String>,
         projector: std::sync::Arc<dyn NoteProjector>,
-    ) -> Result<Self, ()> {
+    ) -> Result<Self, LibraryReadError> {
         let projection = LibraryProjection::rebuild_with_projector_excluding(
             &storage,
             ReadLimits::default(),
             projector,
             excluded_meeting_ids,
-        )
-        .map_err(|_| ())?;
+        )?;
         sync_corpus_index(&storage, &projection);
         Ok(Self::new_excluding(
             storage,

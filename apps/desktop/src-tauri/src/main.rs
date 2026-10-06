@@ -4100,9 +4100,10 @@ struct LibrarySnapshotResponse {
 #[tauri::command(async)]
 fn library_snapshot(
     filter: Option<library_reader::LibraryFilterArgs>,
+    rebuild: Option<bool>,
     state: State<'_, ApplicationState>,
 ) -> LibrarySnapshotResponse {
-    library_snapshot_response_for(filter.unwrap_or_default(), &state)
+    library_snapshot_response_for(filter.unwrap_or_default(), rebuild.unwrap_or(false), &state)
 }
 
 // Split out from the `#[tauri::command]` wrapper so a test can call it with a
@@ -4111,9 +4112,10 @@ fn library_snapshot(
 // `tauri::State<'_, T>` cannot be constructed outside a running Tauri app.
 fn library_snapshot_response_for(
     filter: library_reader::LibraryFilterArgs,
+    rebuild: bool,
     state: &ApplicationState,
 ) -> LibrarySnapshotResponse {
-    let library = library_snapshot_with(filter, state);
+    let library = library_snapshot_with(filter, rebuild, state);
     let search_probe_enabled = preview_storage_clone(state)
         .map(|storage| search_probe::enabled(&storage))
         .unwrap_or(false);
@@ -4144,52 +4146,211 @@ fn dismiss_first_run_sheet_for(state: &ApplicationState) {
 }
 
 fn library_snapshot_for(state: &ApplicationState) -> library_reader::LibrarySnapshot {
-    library_snapshot_with(library_reader::LibraryFilterArgs::default(), state)
+    library_snapshot_with(library_reader::LibraryFilterArgs::default(), false, state)
+}
+
+/// Where the panic hook writes. Set once, when the storage context is built;
+/// a panic before then is reported only on stderr, as before.
+static PANIC_DIAGNOSTICS_DIRECTORY: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Records every panic as a `panic` diagnostic, after the default hook has
+/// printed it. A panic while a lock is held poisons that lock silently, and
+/// until this hook the app left no trace of one. Only the thread name and the
+/// source file, line and column are recorded. The panic message is not: it
+/// can carry a path, a meeting id or transcript text from whatever value was
+/// being unwrapped.
+fn install_panic_diagnostics() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+        if let Some(directory) = PANIC_DIAGNOSTICS_DIRECTORY.get() {
+            write_panic_diagnostic(directory, info);
+        }
+    }));
+}
+
+fn write_panic_diagnostic(directory: &Path, info: &std::panic::PanicHookInfo<'_>) {
+    let thread: String = std::thread::current()
+        .name()
+        .unwrap_or("unnamed")
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':' | '.'))
+        .take(64)
+        .collect();
+    // The basename only: the full path is a build-machine path, and the
+    // diagnostic writer redacts any word containing a slash anyway.
+    let location = info.location().map_or_else(
+        || "an unknown location".to_owned(),
+        |location| {
+            let file = location.file().rsplit(['/', '\\']).next().unwrap_or("unknown");
+            format!("{file} line {} column {}", location.line(), location.column())
+        },
+    );
+    let _ = write_private_diagnostic(directory, "panic", &format!("thread {thread} at {location}"));
+}
+
+/// Why a library snapshot answered unavailable (or, for `RebuiltStale`, why a
+/// fresh reader answered stale). Each variant is one early return below, so a
+/// recorded diagnostic names the branch that fired. Before these existed every
+/// branch collapsed into the same "The local library is unavailable" sentence,
+/// and a field report could not say which one it was.
+#[derive(Debug, PartialEq, Eq)]
+enum LibraryUnavailable {
+    StorageLockPoisoned,
+    StorageNotReady,
+    WriterLockPoisoned,
+    WriterLockMissing,
+    SequenceLockPoisoned,
+    ActiveMeetingsLockPoisoned,
+    CacheLockPoisoned,
+    Rebuild(local_meeting_notes_session_core::library_read::LibraryReadError),
+    CacheReinstallLockPoisoned,
+    ReaderRefused,
+    RebuiltStale,
+}
+
+impl LibraryUnavailable {
+    /// Content-free by construction: fixed words only, never a path, meeting
+    /// id, title or transcript text.
+    fn detail(&self) -> &'static str {
+        match self {
+            Self::StorageLockPoisoned => "storage-lock-poisoned",
+            Self::StorageNotReady => "storage-not-ready",
+            Self::WriterLockPoisoned => "writer-lock-poisoned",
+            Self::WriterLockMissing => "writer-lock-missing",
+            Self::SequenceLockPoisoned => "sequence-lock-poisoned",
+            Self::ActiveMeetingsLockPoisoned => "active-meetings-lock-poisoned",
+            Self::CacheLockPoisoned => "cache-lock-poisoned",
+            Self::Rebuild(local_meeting_notes_session_core::library_read::LibraryReadError::CapacityExceeded) => "rebuild-capacity-exceeded",
+            Self::Rebuild(local_meeting_notes_session_core::library_read::LibraryReadError::SnapshotStale) => "rebuild-snapshot-stale",
+            Self::Rebuild(local_meeting_notes_session_core::library_read::LibraryReadError::InvalidRequest) => "rebuild-invalid-request",
+            Self::Rebuild(local_meeting_notes_session_core::library_read::LibraryReadError::ArtifactUnavailable) => "rebuild-artifact-unavailable",
+            Self::CacheReinstallLockPoisoned => "cache-reinstall-lock-poisoned",
+            Self::ReaderRefused => "reader-refused",
+            Self::RebuiltStale => "rebuilt-snapshot-stale",
+        }
+    }
+}
+
+/// `library_snapshot_with` must not panic while reporting a poisoned lock, so
+/// this reads the diagnostics path through poison (it is only a path) and
+/// skips the unconfigured empty path tests use. `write_diagnostic` cannot be
+/// used here: it `expect`s the storage lock.
+fn record_library_unavailable(state: &ApplicationState, reason: LibraryUnavailable, rebuild: bool) {
+    let directory = state
+        .storage
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .map(|context| context.diagnostics.clone());
+    let Some(directory) = directory.filter(|directory| !directory.as_os_str().is_empty()) else {
+        return;
+    };
+    let refresh = if rebuild { "explicit-refresh" } else { "ordinary-refresh" };
+    let _ = write_private_diagnostic(
+        &directory,
+        "library_unavailable",
+        &format!("{} {refresh}", reason.detail()),
+    );
 }
 
 fn library_snapshot_with(
     filter: library_reader::LibraryFilterArgs,
+    rebuild: bool,
     state: &ApplicationState,
 ) -> library_reader::LibrarySnapshot {
-    let Ok(storage) = preview_storage_clone(state) else {
-        return library_reader::LibraryReader::unavailable_snapshot();
-    };
-    let coordination = match state.meeting_storage_coordination() {
-        Ok(coordination) => coordination,
-        Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
-    };
-    with_meeting_storage_sequence(&coordination, |active_meeting_ids| {
-        let filter = filter.to_filter();
-        let mut library = match state.preview_library.lock() {
-            Ok(library) => library,
-            Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
-        };
-        if let Some(reader) = library.as_mut() {
-            let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
-            if snapshot.state != "stale" {
-                return snapshot;
-            }
-            *library = None;
-        }
-        drop(library);
-
-        let projector = admitted_note_projector(state);
-        let mut reader = match library_reader::LibraryReader::rebuild_with_projector(
-            storage,
-            active_meeting_ids,
-            projector,
-        ) {
-            Ok(reader) => reader,
-            Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
-        };
-        let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
-        let Ok(mut library) = state.preview_library.lock() else {
+    let snapshot = match library_snapshot_attempt(filter, rebuild, state) {
+        Ok(snapshot) => snapshot,
+        Err(reason) => {
+            record_library_unavailable(state, reason, rebuild);
             return library_reader::LibraryReader::unavailable_snapshot();
-        };
-        *library = Some(reader);
-        snapshot
-    })
-    .unwrap_or_else(|_| library_reader::LibraryReader::unavailable_snapshot())
+        }
+    };
+    // A cached reader that answers stale is replaced before the attempt
+    // returns, so a stale answer here always came from a fresh rebuild.
+    match snapshot.state {
+        "unavailable" => record_library_unavailable(state, LibraryUnavailable::ReaderRefused, rebuild),
+        "stale" => record_library_unavailable(state, LibraryUnavailable::RebuiltStale, rebuild),
+        _ => {}
+    }
+    snapshot
+}
+
+/// `rebuild` is the operator's explicit "Check again". It discards the cached
+/// reader and rebuilds from disk under the same storage sequence, exclusions
+/// and projector as any cold snapshot, so every fail-closed check still runs.
+/// The cache holds no authority of its own, which is also why that refresh may
+/// take back a cache a panic poisoned; an ordinary refresh keeps refusing it.
+/// The storage sequence and active-meeting locks gate writers and are never
+/// recovered here.
+///
+/// The writer-lock and sequence steps repeat `meeting_storage_coordination`
+/// and `with_meeting_storage_sequence` inline only so each refusal keeps its
+/// own reason; the locks taken and their order are the same.
+fn library_snapshot_attempt(
+    filter: library_reader::LibraryFilterArgs,
+    rebuild: bool,
+    state: &ApplicationState,
+) -> Result<library_reader::LibrarySnapshot, LibraryUnavailable> {
+    let storage = match state.storage.lock() {
+        Ok(context) => match context.as_ref() {
+            Some(context) => context.storage.clone(),
+            None => return Err(LibraryUnavailable::StorageNotReady),
+        },
+        Err(_) => return Err(LibraryUnavailable::StorageLockPoisoned),
+    };
+    let coordination = match state.app_data_writer_lock.lock() {
+        Ok(writer) => match writer.as_ref() {
+            Some(writer) => writer.coordination(),
+            None => return Err(LibraryUnavailable::WriterLockMissing),
+        },
+        Err(_) => return Err(LibraryUnavailable::WriterLockPoisoned),
+    };
+    let Ok(sequence) = coordination.lock_sequence() else {
+        return Err(LibraryUnavailable::SequenceLockPoisoned);
+    };
+    let Ok(active_meeting_ids) = sequence.active_meeting_ids() else {
+        return Err(LibraryUnavailable::ActiveMeetingsLockPoisoned);
+    };
+    let active_meeting_ids = &active_meeting_ids;
+    let filter = filter.to_filter();
+    let mut library = match state.preview_library.lock() {
+        Ok(library) => library,
+        Err(poisoned) if rebuild => {
+            state.preview_library.clear_poison();
+            poisoned.into_inner()
+        }
+        Err(_) => return Err(LibraryUnavailable::CacheLockPoisoned),
+    };
+    if rebuild {
+        *library = None;
+    }
+    if let Some(reader) = library.as_mut() {
+        let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
+        if snapshot.state != "stale" {
+            return Ok(snapshot);
+        }
+        *library = None;
+    }
+    drop(library);
+
+    let projector = admitted_note_projector(state);
+    let mut reader = match library_reader::LibraryReader::rebuild_with_projector(
+        storage,
+        active_meeting_ids,
+        projector,
+    ) {
+        Ok(reader) => reader,
+        Err(error) => return Err(LibraryUnavailable::Rebuild(error)),
+    };
+    let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
+    let Ok(mut library) = state.preview_library.lock() else {
+        return Err(LibraryUnavailable::CacheReinstallLockPoisoned);
+    };
+    *library = Some(reader);
+    drop(library);
+    drop(sequence);
+    Ok(snapshot)
 }
 
 /// One §K retention row: content-free retention facts joined to the rendered
@@ -8090,6 +8251,7 @@ fn transcript_retry_decide(
 }
 
 fn main() {
+    install_panic_diagnostics();
     let state = ApplicationState::default();
     // Managed now so registering the facade commands later is one move; the
     // commands themselves stay out of the handler until the operator's
@@ -9075,9 +9237,11 @@ fn create_storage_context(app: &AppHandle) -> Result<StorageContext, String> {
     #[cfg(not(debug_assertions))]
     let protected_root = resource_root.clone();
     let storage = StorageRoot::create(&app_data, &protected_root).map_err(error_text)?;
+    let diagnostics = storage.path().join("diagnostics");
+    let _ = PANIC_DIAGNOSTICS_DIRECTORY.set(diagnostics.clone());
     Ok(StorageContext {
         manifest_path: resource_root.join("app-runtime.json"),
-        diagnostics: storage.path().join("diagnostics"),
+        diagnostics,
         storage,
         resource_root,
     })
@@ -13528,7 +13692,7 @@ mod tests {
         let state = vocabulary_command_state(&storage);
         // Deliberately no `first-run-seen.flag` written.
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert_eq!(response.library.total, 0);
         assert!(!response.first_run_sheet_seen);
     }
@@ -13546,7 +13710,7 @@ mod tests {
         write_transcript_fixture(&storage, &meeting_id, 3, AudioState::Retained, "an existing meeting");
         let state = vocabulary_command_state(&storage);
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert_eq!(response.library.total, 1);
         // No flag was ever written for this operator -- the point is that
         // `total` alone is enough to suppress the sheet regardless.
@@ -13597,6 +13761,242 @@ mod tests {
         );
     }
 
+    struct FailingProjector;
+
+    impl NoteProjector for FailingProjector {
+        fn project(
+            &self,
+            _: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+        ) -> Result<
+            Vec<u8>,
+            local_meeting_notes_session_core::note_projection::ProjectTransportError,
+        > {
+            Err(local_meeting_notes_session_core::note_projection::ProjectTransportError::Unavailable)
+        }
+    }
+
+    fn meetings_directory(storage: &StorageRoot) -> PathBuf {
+        storage.resolve(Path::new("meetings")).unwrap()
+    }
+
+    // Field report, 2026-10-06 (0.6.9): a meeting folder moved back into
+    // `meetings/` while Yawn ran did not appear until a restart. The cached
+    // reader's revalidation is a full rescan compared with the cached rows,
+    // so a new directory does stale it. This pins that, Finder metadata
+    // included. It passed before any change: it guards behavior, it does
+    // not reproduce the report.
+    #[test]
+    fn a_meeting_moved_into_the_library_appears_on_the_next_snapshot() {
+        let (_temporary, storage) = test_storage();
+        let (_elsewhere, elsewhere) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        assert_eq!(library_snapshot_for(&state).rows.len(), 1);
+
+        let moved = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&elsewhere, &moved);
+        let source = meetings_directory(&elsewhere).join(&moved);
+        std::fs::write(source.join(".DS_Store"), b"finder").unwrap();
+        std::fs::write(meetings_directory(&storage).join(".DS_Store"), b"finder").unwrap();
+        std::fs::rename(&source, meetings_directory(&storage).join(&moved)).unwrap();
+
+        let snapshot = library_snapshot_for(&state);
+        assert_eq!(snapshot.state, "populated");
+        assert!(snapshot.rows.iter().any(|row| row.meeting_id == moved));
+    }
+
+    // Field report, 2026-10-06 (0.6.8): after a meeting whose saved draft
+    // could not be projected was moved out, "Check again" still answered
+    // unavailable. An unavailable answer caches no reader, so the next call
+    // rebuilds from disk. Passed before any change, like the test above.
+    #[test]
+    fn removing_an_unprojectable_meeting_recovers_the_next_snapshot() {
+        let (_temporary, storage) = test_storage();
+        let (_elsewhere, elsewhere) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        let unprojectable = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&storage, &unprojectable);
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+
+        std::fs::rename(
+            meetings_directory(&storage).join(&unprojectable),
+            meetings_directory(&elsewhere).join(&unprojectable),
+        )
+        .unwrap();
+        let snapshot = library_snapshot_for(&state);
+        assert_eq!(snapshot.state, "populated");
+        assert_eq!(snapshot.rows.len(), 1);
+    }
+
+    fn explicit_refresh(state: &ApplicationState) -> library_reader::LibrarySnapshot {
+        library_snapshot_with(library_reader::LibraryFilterArgs::default(), true, state)
+    }
+
+    // A panic while the cached reader's lock is held poisons it, and every
+    // later snapshot answers unavailable until Yawn restarts -- the shape of
+    // the 0.6.8 field report. The cache holds no authority of its own, so an
+    // explicit refresh may discard it and rebuild from disk.
+    #[test]
+    fn an_explicit_refresh_recovers_a_poisoned_library_cache() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = state.preview_library.lock().unwrap();
+            panic!("synthetic panic while the library cache is held");
+        }));
+        assert!(state.preview_library.is_poisoned());
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+
+        assert_eq!(explicit_refresh(&state).state, "populated");
+        assert_eq!(
+            library_snapshot_for(&state).state,
+            "populated",
+            "the recovered cache must serve ordinary refreshes again"
+        );
+    }
+
+    #[test]
+    fn an_explicit_refresh_rebuilds_instead_of_reusing_the_cached_projection() {
+        let (_temporary, storage) = test_storage();
+        write_ready_note_fixture(&storage, &Uuid::new_v4().to_string());
+        let state = vocabulary_command_state(&storage);
+        let projections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        *state.note_projector.lock().unwrap() = Some(Arc::new(CountingProjector(
+            Arc::clone(&projections),
+        )));
+
+        library_snapshot_for(&state);
+        library_snapshot_for(&state);
+        assert_eq!(projections.load(Ordering::SeqCst), 1);
+
+        assert_eq!(explicit_refresh(&state).state, "populated");
+        assert_eq!(projections.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn an_explicit_refresh_still_fails_closed_on_an_unprojectable_meeting() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        write_ready_note_fixture(&storage, &Uuid::new_v4().to_string());
+        let snapshot = explicit_refresh(&state);
+        assert_eq!(snapshot.state, "unavailable");
+        assert!(snapshot.rows.is_empty());
+    }
+
+    #[test]
+    fn an_explicit_refresh_still_excludes_a_meeting_a_writer_holds() {
+        let (_temporary, storage) = test_storage();
+        let held = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(&storage, &held, 4, AudioState::Retained, "held");
+        let state = vocabulary_command_state(&storage);
+        let coordination = state.meeting_storage_coordination().unwrap();
+        let _lease = coordination.acquire(&held).unwrap();
+
+        let snapshot = explicit_refresh(&state);
+        assert_eq!(snapshot.rows.len(), 1);
+        assert!(snapshot.rows.iter().all(|row| row.meeting_id != held));
+    }
+
+    fn diagnostics_with_code(directory: &Path, code: &str) -> Vec<String> {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return Vec::new();
+        };
+        entries
+            .map(Result::unwrap)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(&format!("{code}-"))
+            })
+            .map(|entry| std::fs::read_to_string(entry.path()).unwrap())
+            .collect()
+    }
+
+    fn state_recording_diagnostics(storage: &StorageRoot, directory: &Path) -> ApplicationState {
+        let state = vocabulary_command_state(storage);
+        state.storage.lock().unwrap().as_mut().unwrap().diagnostics = directory.to_path_buf();
+        state
+    }
+
+    #[test]
+    fn an_unavailable_library_records_which_branch_refused() {
+        let (_temporary, storage) = test_storage();
+        let diagnostics = TempDir::new().unwrap();
+        let meeting_id = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &meeting_id, 3, AudioState::Retained, "kept");
+        let state = state_recording_diagnostics(&storage, diagnostics.path());
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+        assert!(diagnostics_with_code(diagnostics.path(), "library_unavailable").is_empty());
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = state.preview_library.lock().unwrap();
+            panic!("synthetic panic while the library cache is held");
+        }));
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+
+        let recorded = diagnostics_with_code(diagnostics.path(), "library_unavailable");
+        assert_eq!(recorded.len(), 1, "a repeat counts in the same file");
+        assert!(recorded[0].contains("detail=cache-lock-poisoned ordinary-refresh\n"));
+        assert!(recorded[0].contains("count=2\n"));
+        assert!(!recorded[0].contains(&meeting_id));
+    }
+
+    #[test]
+    fn a_failed_rebuild_records_the_read_error_kind() {
+        let (_temporary, storage) = test_storage();
+        let diagnostics = TempDir::new().unwrap();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = state_recording_diagnostics(&storage, diagnostics.path());
+        *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
+        let unprojectable = Uuid::new_v4().to_string();
+        write_ready_note_fixture(&storage, &unprojectable);
+
+        assert_eq!(explicit_refresh(&state).state, "unavailable");
+
+        let recorded = diagnostics_with_code(diagnostics.path(), "library_unavailable");
+        assert_eq!(recorded.len(), 1);
+        assert!(recorded[0].contains("detail=rebuild-artifact-unavailable explicit-refresh\n"));
+        assert!(!recorded[0].contains(&unprojectable));
+    }
+
+    #[test]
+    fn a_panic_records_where_it_happened_but_never_its_message() {
+        let diagnostics = TempDir::new().unwrap();
+        let directory = diagnostics.path().to_path_buf();
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| write_panic_diagnostic(&directory, info)));
+        let line = line!() + 2;
+        let _ = std::thread::Builder::new().name("library-probe".into()).spawn(|| {
+            panic!("meeting title Quarterly secrets at /Users/someone/meetings");
+        }).unwrap().join();
+        std::panic::set_hook(previous);
+
+        let recorded = diagnostics_with_code(diagnostics.path(), "panic");
+        let ours: Vec<_> = recorded
+            .iter()
+            .filter(|body| body.contains("thread library-probe "))
+            .collect();
+        assert_eq!(ours.len(), 1, "recorded: {recorded:?}");
+        assert!(ours[0].contains(&format!("detail=thread library-probe at main.rs line {line} column ")));
+        assert!(!ours[0].contains("Quarterly"));
+        assert!(!ours[0].contains("someone"));
+    }
+
     #[test]
     fn library_snapshot_runs_off_the_macos_event_loop() {
         let source = include_str!("main.rs");
@@ -13618,12 +14018,12 @@ mod tests {
         let (_temporary, storage) = test_storage();
         let state = vocabulary_command_state(&storage);
 
-        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert!(!before.first_run_sheet_seen);
 
         dismiss_first_run_sheet_for(&state);
 
-        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert!(after.first_run_sheet_seen, "dismissal must persist across a fresh snapshot call, not just in-memory");
     }
 
@@ -15199,4 +15599,5 @@ mod tests {
         .unwrap();
         assert!(NemotronModel::verify(&storage).is_err(), "a wrong-sized or tampered model must not be admitted");
     }
+
 }
