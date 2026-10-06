@@ -481,12 +481,16 @@ impl LibraryProjection {
         require_private_directory(&meetings_path)
             .map_err(|_| LibraryReadError::ArtifactUnavailable)?;
         let mut directories = Vec::new();
+        // Every name under `meetings/`, of any type. A metadata row whose
+        // meeting has no entry here at all names nothing that could be hidden.
+        let mut present_entries = HashSet::new();
         for entry in
             fs::read_dir(&meetings_path).map_err(|_| LibraryReadError::ArtifactUnavailable)?
         {
             let entry = entry.map_err(|_| LibraryReadError::ArtifactUnavailable)?;
             let name = entry.file_name();
             let Some(name) = name.to_str() else { continue };
+            present_entries.insert(name.to_owned());
             if valid_opaque_id(name)
                 && !excluded_meeting_ids.contains(name)
                 && entry
@@ -527,8 +531,14 @@ impl LibraryProjection {
         if let Some(document) = metadata.document() {
             // Metadata gains authority only when every row targets a safely
             // projected meeting.  A sparse record may omit any meeting.
+            // A row for a meeting with no entry under `meetings/` is a
+            // leftover from a meeting that is gone; it hides nothing, so it is
+            // ignored rather than costing every label (and Rename) its
+            // authority. A row naming an entry that exists but did not project
+            // safely still fails closed.
             if document.meetings.iter().all(|row| {
                 excluded_meeting_ids.contains(&row.meeting_id)
+                    || !present_entries.contains(&row.meeting_id)
                     || rows
                         .iter()
                         .any(|meeting| meeting.meeting_id == row.meeting_id)
@@ -3077,6 +3087,39 @@ mod tests {
     }
 
     #[test]
+    fn a_row_for_a_meeting_that_is_gone_keeps_label_authority() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 10, &[("transcript token", false)]);
+        fixture.metadata(
+            br#"{"schema":"library-metadata/1","revision":4,"folders":[],"meetings":[{"meeting_id":"gone","title":"Old","folder_id":null},{"meeting_id":"meeting-a","title":"Kept","folder_id":null}]}"#,
+        );
+
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.metadata_revision(), Some(4));
+        assert_eq!(projection.rows()[0].title(), Some("Kept"));
+    }
+
+    #[test]
+    fn a_row_for_a_meeting_that_exists_but_is_quarantined_still_fails_closed() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 10, &[("transcript token", false)]);
+        let bad = fixture.meeting("meeting-b", 9, &[("tampered token", false)]);
+        fs::write(bad.join("attempt.json"), b"not a receipt").unwrap();
+        fixture.metadata(
+            br#"{"schema":"library-metadata/1","revision":4,"folders":[],"meetings":[{"meeting_id":"meeting-a","title":"Kept","folder_id":null},{"meeting_id":"meeting-b","title":"Hidden","folder_id":null}]}"#,
+        );
+
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.quarantined_meetings(), 1);
+        assert_eq!(projection.metadata_revision(), None);
+        assert_eq!(projection.rows()[0].title(), None);
+    }
+
+    #[test]
     fn malformed_metadata_loses_only_label_authority() {
         let cases: &[&[u8]] = &[
             br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[],"extra":true}"#,
@@ -3091,7 +3134,6 @@ mod tests {
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"11111111-1111-4111-8111-111111111111"},{"meeting_id":"meeting-a","title":null,"folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"11111111-1111-4111-8111-111111111111"},{"meeting_id":"meeting-a","title":null,"folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"22222222-2222-4222-8222-222222222222"}]}"#,
-            br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[{"meeting_id":"unknown","title":"x","folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[{"meeting_id":"meeting-a","title":"x/y","folder_id":null}]}"#,
         ];
         for bytes in cases {
