@@ -1156,6 +1156,13 @@ test("a withheld saved draft is its own non-blocking state, never 'no draft'", (
   // The audio is unaffected by the withheld draft.
   const playback = retainedAudioPlaybackPresentation(note, null);
   assert.ok(playback);
+  // The headline never claims audio the meeting no longer has.
+  const released = meetingRecoveryPresentation(
+    { ...note, audioRetention: { state: "released" }, microphonePlaybackHandle: null, systemPlaybackHandle: null },
+    transcript,
+  );
+  assert.equal(released.state, "saved-note-unreadable");
+  assert.notEqual(released.title, recovery.title);
 });
 
 test("summary failure has the same plain retired state without a source", () => {

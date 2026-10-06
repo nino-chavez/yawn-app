@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 const STALE_MESSAGE: &str = "That view is no longer current. Reopen it and try again.";
 const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the app and try again.";
-const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "Yawn no longer includes AI notes, so it can't show this meeting's saved AI draft. The draft is still saved on this Mac. Your transcript, audio, and notes are all here. Nothing is needed from you.";
+const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "Yawn no longer includes AI notes, so it can't show this meeting's saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 /// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
 /// and deliberately not a security claim: the meeting is behind a local
 /// barrier that a confirmation lifts, and the sentence says exactly that.

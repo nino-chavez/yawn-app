@@ -1396,8 +1396,11 @@ export function audioReleasedFact(note) {
 // Keep recovery copy at the same evidence boundary as the library response.
 // Transcript and audio states are read-only facts; neither creates a new note
 // generation or recovery control.
-export const SAVED_NOTE_UNREADABLE_TITLE = "Yawn no longer includes AI notes, so it can’t show this meeting’s saved AI draft.";
-export const SAVED_NOTE_UNREADABLE_DETAIL = "The draft is still saved on this Mac. Your transcript, audio, and notes are all here. Nothing is needed from you.";
+// Operator decision 2026-10-06: lead with what the meeting has, then the
+// withheld draft. The headline names audio only while it is retained.
+export const SAVED_NOTE_UNREADABLE_TITLE = "Your transcript, audio, and notes are all here.";
+export const SAVED_NOTE_UNREADABLE_TITLE_AUDIO_RELEASED = "Your transcript and notes are all here.";
+export const SAVED_NOTE_UNREADABLE_DETAIL = "Yawn no longer includes AI notes, so it can’t show this meeting’s saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
   const transcriptState = transcript?.state || "";
@@ -1427,7 +1430,9 @@ export function meetingRecoveryPresentation(note, transcript) {
     return {
       state: "saved-note-unreadable",
       tone: "neutral",
-      title: SAVED_NOTE_UNREADABLE_TITLE,
+      title: note?.audioRetention?.state === "retained"
+        ? SAVED_NOTE_UNREADABLE_TITLE
+        : SAVED_NOTE_UNREADABLE_TITLE_AUDIO_RELEASED,
       detail: SAVED_NOTE_UNREADABLE_DETAIL,
       action: null,
     };
