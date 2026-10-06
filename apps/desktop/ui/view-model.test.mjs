@@ -2011,6 +2011,15 @@ test("opening a meeting from the list takes a fresh library snapshot before spen
   assert.match(body, /candidate\.meetingId === known\.meetingId/);
 });
 
+test("only the explicit Check again action asks the library to rebuild", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const start = source.indexOf("async function refreshLibraryFromRecovery(");
+  const body = source.slice(start, source.indexOf("\n}\n", start));
+  assert.match(body, /refreshLibrary\(\{ rebuild: true \}\)/);
+  assert.equal(source.match(/rebuild: true/g)?.length, 1, "no other refresh forces a rebuild");
+  assert.match(source, /invoke\("library_snapshot", \{ filter: title \? \{ title \} : null, rebuild \}\)/);
+});
+
 test("R20: a destructive needs-attention action never takes the primary style", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   assert.match(source, /label: "Move to Trash…", destructive: true/);

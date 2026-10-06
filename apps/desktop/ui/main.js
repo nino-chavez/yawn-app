@@ -2277,14 +2277,17 @@ async function loadCurrentContext(meetingId) {
   }
 }
 
-async function refreshLibrary() {
+// `rebuild` is set only by the operator's explicit "Check again": the backend
+// then discards its cached reader instead of revalidating it. Every other
+// refresh (search, row clicks, background updates) keeps the cheap path.
+async function refreshLibrary({ rebuild = false } = {}) {
   const title = state.search.trim();
   // Only the load that hasn't yet succeeded once needs the stall timer --
   // once `state.library` is set it is never nulled out again, so a search
   // or a background refresh never re-arms it.
   if (!state.library) armLibraryStallTimer();
   try {
-    state.library = await invoke("library_snapshot", { filter: title ? { title } : null });
+    state.library = await invoke("library_snapshot", { filter: title ? { title } : null, rebuild });
   } finally {
     disarmLibraryStallTimer();
   }
@@ -3337,7 +3340,7 @@ async function refreshLibraryQuietly() {
 
 async function refreshLibraryFromRecovery() {
   if (!invoke) return;
-  await runBusy("refresh-library", refreshLibrary);
+  await runBusy("refresh-library", () => refreshLibrary({ rebuild: true }));
 }
 
 async function refreshSelectedMeetingFromRecovery() {

@@ -4100,9 +4100,10 @@ struct LibrarySnapshotResponse {
 #[tauri::command(async)]
 fn library_snapshot(
     filter: Option<library_reader::LibraryFilterArgs>,
+    rebuild: Option<bool>,
     state: State<'_, ApplicationState>,
 ) -> LibrarySnapshotResponse {
-    library_snapshot_response_for(filter.unwrap_or_default(), &state)
+    library_snapshot_response_for(filter.unwrap_or_default(), rebuild.unwrap_or(false), &state)
 }
 
 // Split out from the `#[tauri::command]` wrapper so a test can call it with a
@@ -4111,9 +4112,10 @@ fn library_snapshot(
 // `tauri::State<'_, T>` cannot be constructed outside a running Tauri app.
 fn library_snapshot_response_for(
     filter: library_reader::LibraryFilterArgs,
+    rebuild: bool,
     state: &ApplicationState,
 ) -> LibrarySnapshotResponse {
-    let library = library_snapshot_with(filter, state);
+    let library = library_snapshot_with(filter, rebuild, state);
     let search_probe_enabled = preview_storage_clone(state)
         .map(|storage| search_probe::enabled(&storage))
         .unwrap_or(false);
@@ -4144,11 +4146,19 @@ fn dismiss_first_run_sheet_for(state: &ApplicationState) {
 }
 
 fn library_snapshot_for(state: &ApplicationState) -> library_reader::LibrarySnapshot {
-    library_snapshot_with(library_reader::LibraryFilterArgs::default(), state)
+    library_snapshot_with(library_reader::LibraryFilterArgs::default(), false, state)
 }
 
+/// `rebuild` is the operator's explicit "Check again". It discards the cached
+/// reader and rebuilds from disk under the same storage sequence, exclusions
+/// and projector as any cold snapshot, so every fail-closed check still runs.
+/// The cache holds no authority of its own, which is also why that refresh may
+/// take back a cache a panic poisoned; an ordinary refresh keeps refusing it.
+/// The storage sequence and active-meeting locks gate writers and are never
+/// recovered here.
 fn library_snapshot_with(
     filter: library_reader::LibraryFilterArgs,
+    rebuild: bool,
     state: &ApplicationState,
 ) -> library_reader::LibrarySnapshot {
     let Ok(storage) = preview_storage_clone(state) else {
@@ -4162,8 +4172,15 @@ fn library_snapshot_with(
         let filter = filter.to_filter();
         let mut library = match state.preview_library.lock() {
             Ok(library) => library,
+            Err(poisoned) if rebuild => {
+                state.preview_library.clear_poison();
+                poisoned.into_inner()
+            }
             Err(_) => return library_reader::LibraryReader::unavailable_snapshot(),
         };
+        if rebuild {
+            *library = None;
+        }
         if let Some(reader) = library.as_mut() {
             let snapshot = reader.snapshot_filtered(active_meeting_ids, &filter);
             if snapshot.state != "stale" {
@@ -13528,7 +13545,7 @@ mod tests {
         let state = vocabulary_command_state(&storage);
         // Deliberately no `first-run-seen.flag` written.
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert_eq!(response.library.total, 0);
         assert!(!response.first_run_sheet_seen);
     }
@@ -13546,7 +13563,7 @@ mod tests {
         write_transcript_fixture(&storage, &meeting_id, 3, AudioState::Retained, "an existing meeting");
         let state = vocabulary_command_state(&storage);
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert_eq!(response.library.total, 1);
         // No flag was ever written for this operator -- the point is that
         // `total` alone is enough to suppress the sheet regardless.
@@ -13669,6 +13686,68 @@ mod tests {
         assert_eq!(snapshot.rows.len(), 1);
     }
 
+    fn explicit_refresh(state: &ApplicationState) -> library_reader::LibrarySnapshot {
+        library_snapshot_with(library_reader::LibraryFilterArgs::default(), true, state)
+    }
+
+    // A panic while the cached reader's lock is held poisons it, and every
+    // later snapshot answers unavailable until Yawn restarts -- the shape of
+    // the 0.6.8 field report. The cache holds no authority of its own, so an
+    // explicit refresh may discard it and rebuild from disk.
+    #[test]
+    fn an_explicit_refresh_recovers_a_poisoned_library_cache() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = state.preview_library.lock().unwrap();
+            panic!("synthetic panic while the library cache is held");
+        }));
+        assert!(state.preview_library.is_poisoned());
+        assert_eq!(library_snapshot_for(&state).state, "unavailable");
+
+        assert_eq!(explicit_refresh(&state).state, "populated");
+        assert_eq!(
+            library_snapshot_for(&state).state,
+            "populated",
+            "the recovered cache must serve ordinary refreshes again"
+        );
+    }
+
+    #[test]
+    fn an_explicit_refresh_rebuilds_instead_of_reusing_the_cached_projection() {
+        let (_temporary, storage) = test_storage();
+        write_ready_note_fixture(&storage, &Uuid::new_v4().to_string());
+        let state = vocabulary_command_state(&storage);
+        let projections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        *state.note_projector.lock().unwrap() = Some(Arc::new(CountingProjector(
+            Arc::clone(&projections),
+        )));
+
+        library_snapshot_for(&state);
+        library_snapshot_for(&state);
+        assert_eq!(projections.load(Ordering::SeqCst), 1);
+
+        assert_eq!(explicit_refresh(&state).state, "populated");
+        assert_eq!(projections.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn an_explicit_refresh_still_fails_closed_on_an_unprojectable_meeting() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        let state = vocabulary_command_state(&storage);
+        *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
+        assert_eq!(library_snapshot_for(&state).state, "populated");
+
+        write_ready_note_fixture(&storage, &Uuid::new_v4().to_string());
+        let snapshot = explicit_refresh(&state);
+        assert_eq!(snapshot.state, "unavailable");
+        assert!(snapshot.rows.is_empty());
+    }
+
     #[test]
     fn library_snapshot_runs_off_the_macos_event_loop() {
         let source = include_str!("main.rs");
@@ -13690,12 +13769,12 @@ mod tests {
         let (_temporary, storage) = test_storage();
         let state = vocabulary_command_state(&storage);
 
-        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert!(!before.first_run_sheet_seen);
 
         dismiss_first_run_sheet_for(&state);
 
-        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), &state);
+        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
         assert!(after.first_run_sheet_seen, "dismissal must persist across a fresh snapshot call, not just in-memory");
     }
 
