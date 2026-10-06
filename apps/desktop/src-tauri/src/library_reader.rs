@@ -2029,7 +2029,7 @@ impl LibraryReader {
         &mut self,
         handle: &str,
         active_meeting_ids: &HashSet<String>,
-        run: impl FnOnce(&StorageRoot, &str, Option<&str>, u64, &[ExportClaim]) -> T,
+        run: impl FnOnce(&StorageRoot, &str, Option<&str>, u64, &[ExportClaim], bool) -> T,
     ) -> Result<T, LibraryExportAccess> {
         if !self.revalidate(active_meeting_ids) {
             return Err(Self::stale_export());
@@ -2060,6 +2060,7 @@ impl LibraryReader {
         };
         let label = row.title().map(str::to_owned).or_else(|| row.derived_title());
         let created_at_epoch_seconds = row.created_at_epoch_seconds;
+        let saved_note_unreadable = row.saved_note_unreadable();
         let claims = match self.export_claims(&meeting_id) {
             Ok(claims) => claims,
             Err(()) => return Err(Self::stale_export()),
@@ -2070,6 +2071,7 @@ impl LibraryReader {
             label.as_deref(),
             created_at_epoch_seconds,
             &claims,
+            saved_note_unreadable,
         ))
     }
 
@@ -3268,6 +3270,21 @@ mod tests {
         assert!(note.claims.is_empty());
         assert!(note.transcript_handle.is_some());
         assert!(note.operator_note_handle.is_some());
+    }
+
+    #[test]
+    fn export_is_told_a_saved_draft_is_withheld_not_absent() {
+        let fixture = claims_fixture();
+        let mut reader = LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
+
+        let seen = reader
+            .open_export_bound(&handle, &HashSet::new(), |_, _, _, _, claims, unreadable| {
+                (claims.len(), unreadable)
+            })
+            .ok();
+
+        assert_eq!(seen, Some((0, true)));
     }
 
     #[test]

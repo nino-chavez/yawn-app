@@ -7236,7 +7236,7 @@ fn library_export_meeting(
         |reader, active| match reader.open_export_bound(
             &handle,
             active,
-            |storage, meeting_id, label, created_at_epoch_seconds, claims| {
+            |storage, meeting_id, label, created_at_epoch_seconds, claims, saved_note_unreadable| {
                 // Roadmap intake I5, checked before a single file is written.
                 let outcome = refuse_locked_meeting(storage, meeting_id, unlocked.as_deref())
                     .and_then(|()| {
@@ -7246,6 +7246,7 @@ fn library_export_meeting(
                             label,
                             created_at_epoch_seconds,
                             claims,
+                            saved_note_unreadable,
                         )
                     });
                 (meeting_id.to_owned(), outcome)
