@@ -13749,6 +13749,21 @@ mod tests {
     }
 
     #[test]
+    fn an_explicit_refresh_still_excludes_a_meeting_a_writer_holds() {
+        let (_temporary, storage) = test_storage();
+        let held = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(&storage, &held, 4, AudioState::Retained, "held");
+        let state = vocabulary_command_state(&storage);
+        let coordination = state.meeting_storage_coordination().unwrap();
+        let _lease = coordination.acquire(&held).unwrap();
+
+        let snapshot = explicit_refresh(&state);
+        assert_eq!(snapshot.rows.len(), 1);
+        assert!(snapshot.rows.iter().all(|row| row.meeting_id != held));
+    }
+
+    #[test]
     fn library_snapshot_runs_off_the_macos_event_loop() {
         let source = include_str!("main.rs");
         let command = source.find("fn library_snapshot(").unwrap();
