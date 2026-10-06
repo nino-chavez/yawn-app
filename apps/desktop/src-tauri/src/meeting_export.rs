@@ -89,7 +89,7 @@ pub(crate) fn export_meeting(
         files.push(("note.md".to_string(), note_markdown(claims).into_bytes()));
     } else if saved_note_unreadable && meeting.artifacts.current_note.is_some() {
         withheld.push(
-            "note.md was not included: this meeting has a saved AI draft that this version of Yawn can't read. The draft is still saved on this Mac."
+            "note.md was not included: Yawn no longer includes AI notes, so it can't read this meeting's saved AI draft. The draft is still saved on this Mac."
                 .to_string(),
         );
     } else if meeting.artifacts.current_note.is_some() {

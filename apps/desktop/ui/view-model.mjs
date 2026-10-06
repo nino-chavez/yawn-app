@@ -422,8 +422,9 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
   // The note area separately explains that automatic generation is retired.
   "transcript-only": "Transcript",
   "summary-failed": "AI draft not created",
-  // A saved draft exists but this install cannot show it. Still a saved draft.
-  "saved-note-unreadable": "Saved AI draft",
+  // The note area explains the withheld saved draft; the caption names
+  // what is readable, like transcript-only.
+  "saved-note-unreadable": "Transcript",
   "recovered-interrupted": "Interrupted",
   "locked": "Locked",
   "metadata-only": "Details only",
@@ -1395,8 +1396,8 @@ export function audioReleasedFact(note) {
 // Keep recovery copy at the same evidence boundary as the library response.
 // Transcript and audio states are read-only facts; neither creates a new note
 // generation or recovery control.
-export const SAVED_NOTE_UNREADABLE_TITLE = "This meeting has a saved AI draft that this version of Yawn can’t show.";
-export const SAVED_NOTE_UNREADABLE_DETAIL = "The draft is still saved on this Mac. The transcript and your notes remain available.";
+export const SAVED_NOTE_UNREADABLE_TITLE = "Yawn no longer includes AI notes, so it can’t show this meeting’s saved AI draft.";
+export const SAVED_NOTE_UNREADABLE_DETAIL = "The draft is still saved on this Mac. Your transcript, audio, and notes are all here. Nothing is needed from you.";
 export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
   const transcriptState = transcript?.state || "";
