@@ -165,7 +165,7 @@ use local_meeting_notes_session_core::transcript_retry_diff::{
     DiffTurnInput, TranscriptRetryDiffState, diff_transcript_turns,
 };
 use local_meeting_notes_session_core::transcription_queue::{
-    TranscriptionProducer, TranscriptionQueue, TranscriptionRequest,
+    TranscriptionProducer, TranscriptionQueue, TranscriptionQueueError, TranscriptionRequest,
 };
 use error_codes::CommandError;
 use serde::{Deserialize, Serialize};
@@ -10321,12 +10321,15 @@ fn start_transcription_queue_executor(
                 ),
             };
             if !producer_matches {
-                let _ = queue.fail(
+                let failed = queue.fail(
                     item.request.request_id,
                     local_meeting_notes_session_core::transcription_queue::TranscriptionTerminalKind::Failed,
                     now_epoch_seconds(),
                 );
                 write_diagnostic(&state, "transcription_queue_producer_mismatch", "queued transcription producer no longer matches the verified engine");
+                if failed.is_err() {
+                    std::thread::sleep(Duration::from_millis(250));
+                }
                 continue;
             }
             let request_id = item.request.request_id;
@@ -10334,6 +10337,18 @@ fn start_transcription_queue_executor(
                 Ok(item) => item.claim,
                 Err(error) => {
                     write_diagnostic(&state, "transcription_queue_claim_failed", &error.to_string());
+                    // A duplicate request whose meeting another request
+                    // already transcribed can never be claimed. Close it, or
+                    // it stays pending forever and holds the Record and
+                    // model-change gates shut.
+                    if matches!(error, TranscriptionQueueError::IneligibleMeeting) {
+                        let _ = queue.fail(
+                            request_id,
+                            local_meeting_notes_session_core::transcription_queue::TranscriptionTerminalKind::Failed,
+                            now_epoch_seconds(),
+                        );
+                    }
+                    std::thread::sleep(Duration::from_millis(250));
                     continue;
                 }
             };

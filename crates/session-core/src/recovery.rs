@@ -114,9 +114,7 @@ pub fn scan_and_recover(
         };
         // Finder may create this metadata file when the operator opens the
         // meetings folder. It is not a meeting and must not block recovery.
-        // Keep refusing every other unexpected entry, including a symlink
-        // with this name.
-        if id == ".DS_Store" && file_type.is_file() {
+        if crate::storage::is_finder_metadata(&entry.file_name(), &file_type) {
             continue;
         }
         if !file_type.is_dir() {

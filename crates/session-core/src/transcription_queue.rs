@@ -275,7 +275,11 @@ impl<'a> TranscriptionQueue<'a> {
         let mut meeting_entries = fs::read_dir(meetings)?.collect::<Result<Vec<_>, _>>()?;
         meeting_entries.sort_by_key(|entry| entry.file_name());
         for entry in meeting_entries {
-            if !entry.file_type()?.is_dir() {
+            let file_type = entry.file_type()?;
+            if crate::storage::is_finder_metadata(&entry.file_name(), &file_type) {
+                continue;
+            }
+            if !file_type.is_dir() {
                 return Err(TranscriptionQueueError::InvalidPrivateStorage);
             }
             let id = entry.file_name().to_string_lossy().into_owned();
@@ -295,7 +299,11 @@ impl<'a> TranscriptionQueue<'a> {
             let mut queue_entries = fs::read_dir(queue_dir)?.collect::<Result<Vec<_>, _>>()?;
             queue_entries.sort_by_key(|entry| entry.file_name());
             for item in queue_entries {
-                if !item.file_type()?.is_dir() {
+                let file_type = item.file_type()?;
+                if crate::storage::is_finder_metadata(&item.file_name(), &file_type) {
+                    continue;
+                }
+                if !file_type.is_dir() {
                     return Err(TranscriptionQueueError::InvalidPrivateStorage);
                 }
                 let request_id = Uuid::parse_str(&item.file_name().to_string_lossy())
@@ -510,7 +518,12 @@ impl<'a> TranscriptionQueue<'a> {
     ) -> Result<TranscriptionQueueItem, TranscriptionQueueError> {
         let (dir, meeting_dir) = self.locate(request_id)?;
         let item = self.load_item(&dir, request_id)?;
-        let meeting = self.load_source(&meeting_dir, &item.request)?;
+        // A terminal receipt only closes the request; it never reads or
+        // changes audio. So it must not require the meeting to still be
+        // `Captured`: a duplicate request whose sibling already made the
+        // meeting `Ready` would otherwise stay open forever and hold every
+        // "transcription pending" gate shut. The source must still match.
+        let meeting = load_meeting(&meeting_dir)?;
         verify_source(&meeting_dir, &meeting, &item.request)?;
         if item.commit.is_some() {
             return Err(TranscriptionQueueError::MissingResult);
@@ -668,7 +681,11 @@ fn load_live_claim(
     let mut live = None;
     for entry in fs::read_dir(claims_dir)? {
         let entry = entry?;
-        if !entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if crate::storage::is_finder_metadata(&entry.file_name(), &file_type) {
+            continue;
+        }
+        if !file_type.is_dir() {
             return Err(TranscriptionQueueError::InvalidPrivateStorage);
         }
         let claim_dir = entry.path();
@@ -914,6 +931,83 @@ mod tests {
         let first = queue.enqueue(request.clone()).unwrap();
         let second = queue.enqueue(request).unwrap();
         assert_eq!(first.request, second.request);
+    }
+
+    #[test]
+    fn finder_metadata_does_not_block_queue_discovery() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request.clone()).unwrap();
+        queue.claim(request.request_id, "worker/a".into(), 2).unwrap();
+        let item_dir = format!("meetings/meeting-a/{QUEUE_DIRECTORY}/{}", request.request_id);
+        for folder in [
+            "meetings".to_string(),
+            format!("meetings/meeting-a/{QUEUE_DIRECTORY}"),
+            format!("{item_dir}/{CLAIMS_DIRECTORY}"),
+        ] {
+            fs::write(storage.path().join(folder).join(".DS_Store"), b"finder").unwrap();
+        }
+
+        let discovery = queue.discover().unwrap();
+
+        assert_eq!(discovery.items.len(), 1);
+        assert!(discovery.items[0].claim.is_some());
+    }
+
+    #[test]
+    fn other_unexpected_queue_entries_still_block_discovery() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request).unwrap();
+        let meetings = storage.path().join("meetings");
+
+        fs::write(meetings.join("unexpected"), b"unknown").unwrap();
+        assert!(matches!(
+            queue.discover(),
+            Err(TranscriptionQueueError::InvalidPrivateStorage)
+        ));
+        fs::remove_file(meetings.join("unexpected")).unwrap();
+
+        std::os::unix::fs::symlink(meetings.join("meeting-a/meeting.json"), meetings.join(".DS_Store"))
+            .unwrap();
+        assert!(matches!(
+            queue.discover(),
+            Err(TranscriptionQueueError::InvalidPrivateStorage)
+        ));
+    }
+
+    #[test]
+    fn a_duplicate_request_can_fail_after_its_meeting_moves_on() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request.clone()).unwrap();
+        let duplicate = TranscriptionRequest {
+            request_id: Uuid::new_v4(),
+            ..request
+        };
+        queue.enqueue(duplicate.clone()).unwrap();
+        let meeting_path = storage.path().join("meetings/meeting-a/meeting.json");
+        let mut meeting: MeetingRecord =
+            serde_json::from_slice(&fs::read(&meeting_path).unwrap()).unwrap();
+        let meeting_dir = storage.path().join("meetings/meeting-a");
+        create_private_dir(&meeting_dir.join("transcript")).unwrap();
+        // Transcript artifacts are content-addressed: transcript/<sha256>.json.
+        durable_create_new(&meeting_dir.join("transcript/staged"), b"transcript").unwrap();
+        let sha256 = artifact_ref(&meeting_dir, "transcript/staged").unwrap().sha256;
+        let transcript = format!("transcript/{sha256}.json");
+        fs::rename(meeting_dir.join("transcript/staged"), meeting_dir.join(&transcript)).unwrap();
+        meeting.artifacts.current_transcript = Some(artifact_ref(&meeting_dir, &transcript).unwrap());
+        meeting.lifecycle = MeetingLifecycle::TranscriptReady;
+        durable_replace(&meeting_path, &serde_json::to_vec_pretty(&meeting).unwrap()).unwrap();
+
+        let failed = queue
+            .fail(duplicate.request_id, TranscriptionTerminalKind::Failed, 5)
+            .unwrap();
+
+        assert_eq!(failed.terminal.unwrap().kind, TranscriptionTerminalKind::Failed);
+        assert!(queue
+            .claim(duplicate.request_id, "worker/a".into(), 6)
+            .is_err());
     }
 
     #[test]
