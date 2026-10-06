@@ -31,6 +31,8 @@ const noGenerationControl = !q('[data-action="generate-note"]')
   && !document.body.textContent.includes("Regenerate note");
 const hasSavedDraft = Boolean(q(".meeting-note-list"));
 const hasHistoricalFact = document.body.textContent.includes("Automatic note generation is no longer available.");
+const hasWithheldDraft = Boolean(q('[data-note-recovery="saved-note-unreadable"]'));
+const hasPlayback = Boolean(q('[data-action="play-retained-audio"]'));
 const steps = [];
 if (notes && transcript) {
   const original = notes.value;
@@ -65,10 +67,11 @@ if (notes && transcript) {
 }
 return {
   mode: fixtureMode, notesPresent: Boolean(notes), transcriptPresent: Boolean(transcript),
-  noGenerationControl, hasSavedDraft, hasHistoricalFact, steps,
+  noGenerationControl, hasSavedDraft, hasHistoricalFact, hasWithheldDraft, hasPlayback, steps,
   errors: window.__errors || [],
   pass: Boolean(notes) && Boolean(transcript) && noGenerationControl
     && steps.every((step) => step.ok) && !(window.__errors || []).length
     && (fixtureMode === "saved-draft" ? hasSavedDraft : true)
-    && (fixtureMode === "summary-failed" ? hasHistoricalFact : true),
+    && (fixtureMode === "summary-failed" ? hasHistoricalFact : true)
+    && (fixtureMode === "saved-draft-unreadable" ? hasWithheldDraft && !hasSavedDraft && hasPlayback : true),
 };

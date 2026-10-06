@@ -1396,7 +1396,7 @@ export function audioReleasedFact(note) {
 // Transcript and audio states are read-only facts; neither creates a new note
 // generation or recovery control.
 export const SAVED_NOTE_UNREADABLE_TITLE = "This meeting has a saved AI draft that this version of Yawn can’t show.";
-export const SAVED_NOTE_UNREADABLE_DETAIL = "The transcript and your notes remain available.";
+export const SAVED_NOTE_UNREADABLE_DETAIL = "The draft is still saved on this Mac. The transcript and your notes remain available.";
 export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
   const transcriptState = transcript?.state || "";
