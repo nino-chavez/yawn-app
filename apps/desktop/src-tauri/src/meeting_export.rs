@@ -58,6 +58,7 @@ pub(crate) fn export_meeting(
     label: Option<&str>,
     created_at_epoch_seconds: u64,
     claims: &[ExportClaim],
+    saved_note_unreadable: bool,
 ) -> Result<ExportOutcome, String> {
     let directory = meeting_dir(storage, meeting_id)
         .map_err(|_| "This meeting could not be found on this Mac.".to_string())?;
@@ -86,6 +87,11 @@ pub(crate) fn export_meeting(
 
     if !claims.is_empty() {
         files.push(("note.md".to_string(), note_markdown(claims).into_bytes()));
+    } else if saved_note_unreadable && meeting.artifacts.current_note.is_some() {
+        withheld.push(
+            "note.md was not included: Yawn no longer includes AI notes, so it can't read this meeting's saved AI draft. The draft is still saved on this Mac."
+                .to_string(),
+        );
     } else if meeting.artifacts.current_note.is_some() {
         withheld.push(
             "note.md was not included: this meeting's generated note has no located claims."
@@ -556,7 +562,7 @@ mod tests {
         )
         .unwrap();
 
-        let outcome = export_meeting(&fixture.storage, MEETING_ID, None, 0, &[]).unwrap();
+        let outcome = export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();
 
         assert!(outcome.withheld.iter().any(|line| line
             .contains("transcript.md was not included: the retained transcript failed verification.")));
@@ -569,7 +575,7 @@ mod tests {
     #[test]
     fn re_export_replaces_the_export_folder_wholesale() {
         let fixture = fixture();
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims()).unwrap();
+        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims(), false).unwrap();
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
         assert!(export_dir.join("note.md").exists());
 
@@ -579,7 +585,7 @@ mod tests {
         fs::write(export_dir.join("stray.txt"), b"leftover").unwrap();
         assert!(export_dir.join("stray.txt").exists());
 
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims()).unwrap();
+        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims(), false).unwrap();
         assert!(!export_dir.join("stray.txt").exists());
         assert!(export_dir.join("note.md").exists());
     }
@@ -587,7 +593,7 @@ mod tests {
     #[test]
     fn export_zip_contains_exactly_the_written_folder_files() {
         let fixture = fixture();
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff Call"), 0, &sample_claims()).unwrap();
+        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff Call"), 0, &sample_claims(), false).unwrap();
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
 
         let zip_path = export_dir.join("kickoff-call.zip");
@@ -628,14 +634,14 @@ mod tests {
     #[test]
     fn operator_authored_files_export_only_when_present_with_provenance_headers() {
         let fixture = fixture();
-        export_meeting(&fixture.storage, MEETING_ID, None, 0, &[]).unwrap();
+        export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
         assert!(!export_dir.join("your-notes.txt").exists());
         assert!(!export_dir.join("context.txt").exists());
 
         crate::operator_note::write(&fixture.directory, "remember the follow-up").unwrap();
         crate::meeting_context::write(&fixture.directory, "client is evaluating two vendors").unwrap();
-        export_meeting(&fixture.storage, MEETING_ID, None, 0, &[]).unwrap();
+        export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();
 
         let your_notes = fs::read_to_string(export_dir.join("your-notes.txt")).unwrap();
         assert!(your_notes.starts_with("Written by the operator; not generated."));

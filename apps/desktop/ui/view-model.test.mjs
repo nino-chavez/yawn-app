@@ -1150,11 +1150,19 @@ test("a withheld saved draft is its own non-blocking state, never 'no draft'", (
   assert.equal(recovery.action, null);
   assert.notEqual(recovery.state, "summary-failed");
   assert.equal(meetingBlockingRecovery(note, transcript), null);
-  // Still a saved draft: the caption matches an ordinary saved draft's.
-  assert.equal(meetingStateCaption("saved-note-unreadable"), meetingStateCaption("note"));
+  // Its own caption: neither a readable saved draft nor a draft never created.
+  assert.notEqual(meetingStateCaption("saved-note-unreadable"), meetingStateCaption("note"));
+  assert.notEqual(meetingStateCaption("saved-note-unreadable"), meetingStateCaption("summary-failed"));
   // The audio is unaffected by the withheld draft.
   const playback = retainedAudioPlaybackPresentation(note, null);
   assert.ok(playback);
+  // The headline never claims audio the meeting no longer has.
+  const released = meetingRecoveryPresentation(
+    { ...note, audioRetention: { state: "released" }, microphonePlaybackHandle: null, systemPlaybackHandle: null },
+    transcript,
+  );
+  assert.equal(released.state, "saved-note-unreadable");
+  assert.notEqual(released.title, recovery.title);
 });
 
 test("summary failure has the same plain retired state without a source", () => {
