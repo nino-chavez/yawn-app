@@ -194,6 +194,29 @@ mod tests {
     }
 
     #[test]
+    fn a_repeat_keeps_the_first_seen_time() {
+        let temp = TempDir::new().unwrap();
+        let path = write_private_diagnostic(temp.path(), "worker_failed", "exit 1").unwrap();
+        let body = fs::read_to_string(&path).unwrap();
+        let backdated: String = body
+            .lines()
+            .map(|line| {
+                if line.starts_with("first_seen_epoch_seconds=") {
+                    "first_seen_epoch_seconds=1\n".to_string()
+                } else {
+                    format!("{line}\n")
+                }
+            })
+            .collect();
+        fs::write(&path, backdated).unwrap();
+
+        write_private_diagnostic(temp.path(), "worker_failed", "exit 1").unwrap();
+        let body = fs::read_to_string(&path).unwrap();
+        assert!(body.lines().any(|line| line == "first_seen_epoch_seconds=1"), "{body}");
+        assert!(body.lines().any(|line| line == "count=2"), "{body}");
+    }
+
+    #[test]
     fn an_oversized_detail_keeps_its_count_inside_the_byte_cap() {
         let temp = TempDir::new().unwrap();
         let detail = "é".repeat(MAX_DIAGNOSTIC_BYTES);
