@@ -32,6 +32,7 @@ use uuid::Uuid;
 
 const STALE_MESSAGE: &str = "That view is no longer current. Reopen it and try again.";
 const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the app and try again.";
+const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "This meeting has a saved AI draft that this version of Yawn can't show. The transcript and your notes remain available.";
 /// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
 /// and deliberately not a security claim: the meeting is behind a local
 /// barrier that a confirmation lifts, and the sentence says exactly that.
@@ -427,7 +428,9 @@ pub(crate) struct LibrarySearchOpenResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryNoteResponse {
     /// `"note"`, `"summary-failed"`, `"transcript-only"`, `"locked"`,
-    /// `"stale"`, or `"unavailable"` -- plus `"recovered-interrupted"` (D-READ):
+    /// `"stale"`, or `"unavailable"` -- plus `"saved-note-unreadable"` (a
+    /// ready meeting whose saved draft this install cannot project; `claims`
+    /// is empty because the draft is withheld) and `"recovered-interrupted"` (D-READ):
     /// a meeting salvaged from a crash or quit-during-finalize capture, whose
     /// retained audio (canonical or partial) is the entirety of what it has.
     /// It never produced a transcript and never will, which is what
@@ -1360,12 +1363,18 @@ impl LibraryReader {
                 message: "This meeting is locked on this Mac.".into(),
             };
         }
-        let Some((lifecycle, row_transcript_sha256)) = self
+        let Some((lifecycle, row_transcript_sha256, saved_note_unreadable)) = self
             .projection
             .rows()
             .iter()
             .find(|row| row.meeting_id == meeting_id)
-            .map(|row| (row.lifecycle(), row.transcript_sha256.clone()))
+            .map(|row| {
+                (
+                    row.lifecycle(),
+                    row.transcript_sha256.clone(),
+                    row.saved_note_unreadable(),
+                )
+            })
         else {
             return Self::stale_note(&meeting_id);
         };
@@ -1480,6 +1489,35 @@ impl LibraryReader {
                     lock_token: None,
                     can_confirm_operator: false,
                     message: message.into(),
+                };
+            }
+            // The meeting has a saved AI draft, but this install admits no
+            // projector to read its claims. Withheld, not absent: the state
+            // says so, and the transcript stays reachable.
+            MeetingLifecycle::Ready if saved_note_unreadable => {
+                return LibraryNoteResponse {
+                    state: "saved-note-unreadable",
+                    transcript_handle: self.retain_transcript_handle(&meeting_id),
+                    operator_note_handle,
+                    audio_deletion_handle,
+                    microphone_playback_handle,
+                    system_playback_handle,
+                    transcript_deletion_handle,
+                    meeting_deletion_handle,
+                    meeting_id: meeting_id.clone(),
+                    regeneration_source_sha256: None,
+                    note_generation_available: false,
+                    note_generation_unavailable_reason: None,
+                    claims: Vec::new(),
+                    audio_retention,
+                    capture_pauses: capture_pauses.clone(),
+                    operator_note,
+                    meeting_context: meeting_context.clone(),
+                    turns_cited: Vec::new(),
+                    lock,
+                    lock_token: None,
+                    can_confirm_operator: false,
+                    message: SAVED_NOTE_UNREADABLE_MESSAGE.into(),
                 };
             }
             MeetingLifecycle::Ready => {}
@@ -3214,6 +3252,25 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_draft_this_install_cannot_project_is_withheld_not_hidden() {
+        let fixture = claims_fixture();
+        // `rebuild` admits no projector, as on an install whose note-model
+        // inventory is gone.
+        let mut reader = LibraryReader::rebuild(fixture.storage.clone(), &HashSet::new()).unwrap();
+        let snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.state, "populated");
+        assert_eq!(snapshot.rows.len(), 1);
+        let handle = snapshot.rows[0].handle.clone();
+
+        let note = reader.open_note(&handle, &HashSet::new(), None);
+
+        assert_eq!(note.state, "saved-note-unreadable");
+        assert!(note.claims.is_empty());
+        assert!(note.transcript_handle.is_some());
+        assert!(note.operator_note_handle.is_some());
+    }
+
+    #[test]
     fn reverse_index_folds_claims_by_the_real_turn_not_the_projection_ordinal() {
         let fixture = claims_fixture();
         let projection = LibraryProjection::rebuild_with_projector(
@@ -3440,13 +3497,41 @@ mod tests {
     /// preview. It fails the whole rebuild instead.
     #[test]
     fn a_readys_meeting_note_that_cannot_be_verified_fails_the_whole_rebuild() {
-        let fixture = claims_fixture();
-        // The default projector (`UnavailableProjector`) always fails to
-        // transport, the same shape a broken or refused verification takes.
-        match LibraryProjection::rebuild(&fixture.storage, Default::default()) {
-            Err(error) => assert_eq!(error, LibraryReadError::ArtifactUnavailable),
-            Ok(_) => panic!("an unavailable projector must not silently produce an empty note"),
+        struct FailingProjector;
+        impl NoteProjector for FailingProjector {
+            fn project(
+                &self,
+                _: &local_meeting_notes_session_core::note_projection::ProjectRequest,
+            ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
+            {
+                Err(local_meeting_notes_session_core::note_projection::ProjectTransportError::Unavailable)
+            }
         }
+        let fixture = claims_fixture();
+        // An admitted projector that fails to transport, the same shape a
+        // broken or refused verification takes.
+        match LibraryProjection::rebuild_with_projector(
+            &fixture.storage,
+            Default::default(),
+            std::sync::Arc::new(FailingProjector),
+        ) {
+            Err(error) => assert_eq!(error, LibraryReadError::ArtifactUnavailable),
+            Ok(_) => panic!("a failing projector must not silently produce an empty note"),
+        }
+    }
+
+    /// The other side of the same rule. When this install admits no
+    /// projector at all, the saved note is withheld for that meeting: the
+    /// row lists, says so through `saved_note_unreadable`, and still carries
+    /// no preview -- never a blank or guessed one.
+    #[test]
+    fn an_install_with_no_admitted_projector_lists_the_meeting_without_a_preview() {
+        let fixture = claims_fixture();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        assert!(projection.rows()[0].saved_note_unreadable());
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let row = reader.snapshot(&HashSet::new()).rows.remove(0);
+        assert_eq!(row.note_preview, None);
     }
 
     /// `note_preview_for` fails closed on a lookup it cannot resolve against

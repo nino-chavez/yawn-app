@@ -1142,7 +1142,7 @@ function renderMeetingNoteItems(claims, claimEvidence) {
 // presentation (view-model.mjs) already names both states; before this the
 // document dropped them because they are non-blocking (the transcript is
 // still readable) and the note area only knew "transcript-only".
-const INLINE_NOTE_RECOVERY_STATES = ["summary-failed"];
+const INLINE_NOTE_RECOVERY_STATES = ["summary-failed", "saved-note-unreadable"];
 
 function renderMeetingNote(note, claimEvidence, recovery = null) {
   const presentation = meetingNotePresentation(note);
@@ -1392,7 +1392,13 @@ function renderMeetingPane() {
   const canLock = lock?.state === "unlocked";
   const canUnlock = Boolean(note?.lock?.locked);
   const canManage = canDeleteRecording || canDeleteTranscript || canDeleteMeeting || canLock || canUnlock;
-  const playback = retainedAudioPlaybackPresentation(note, recovery, state.audioPlayback);
+  // A withheld saved draft is a fact about the note only; the retained audio
+  // stays playable.
+  const playback = retainedAudioPlaybackPresentation(
+    note,
+    recovery?.state === "saved-note-unreadable" ? null : recovery,
+    state.audioPlayback,
+  );
   const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
   const inspectorOpen = Boolean(evidenceSplit.open && transcript?.turns?.length);
 

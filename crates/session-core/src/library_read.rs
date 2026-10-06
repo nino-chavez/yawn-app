@@ -156,6 +156,10 @@ pub struct LibraryRow {
     note_json_sha256: Option<String>,
     note_markdown_sha256: Option<String>,
     claims: Vec<StoredClaim>,
+    /// The meeting has a saved note, but its claims could not be projected.
+    /// `claims` is empty because the note is withheld, not because there is
+    /// none.
+    saved_note_unreadable: bool,
     attempt_sha256: String,
     title: Option<String>,
     folder: Option<String>,
@@ -173,6 +177,12 @@ impl LibraryRow {
     /// a transcript that remains readable after a note-generation refusal.
     pub fn lifecycle(&self) -> MeetingLifecycle {
         self.lifecycle
+    }
+
+    /// True when this meeting has a saved note whose claims could not be
+    /// projected for this snapshot. The note is withheld, not absent.
+    pub fn saved_note_unreadable(&self) -> bool {
+        self.saved_note_unreadable
     }
 
     /// Metadata is already part of this projection's exact-search authority.
@@ -1434,7 +1444,8 @@ fn inspect_meeting(
         // transcript bytes or transcript search authority are inferred.
         (None, None, Vec::new(), None)
     };
-    let (note_json_sha256, note_markdown_sha256, claims) = if meeting.lifecycle
+    let (note_json_sha256, note_markdown_sha256, claims, saved_note_unreadable) = if meeting
+        .lifecycle
         == MeetingLifecycle::Ready
     {
         let note = meeting
@@ -1451,7 +1462,7 @@ fn inspect_meeting(
                 .clone()
                 .ok_or(MeetingInspectionError::Quarantine)?,
         };
-        let claims = match claim_source {
+        let (claims, saved_note_unreadable) = match claim_source {
             ClaimSource::Accepted(rows) => rows
                 .iter()
                 .find(|row| {
@@ -1463,15 +1474,23 @@ fn inspect_meeting(
                         && row.transcript_sha256.as_deref()
                             == Some(request.transcript_sha256.as_str())
                 })
-                .map(|row| row.claims.clone())
+                .map(|row| (row.claims.clone(), row.saved_note_unreadable))
                 .ok_or(MeetingInspectionError::Unavailable)?,
+            // No projector is admitted on this install (the note-model
+            // inventory the reader checks is gone). That is not a projection
+            // failure, so it must not take the whole library down: the row
+            // keeps its note fingerprints and lists with its transcript,
+            // marked unreadable, so the reader can say the saved draft is
+            // withheld instead of pretending there is none. A real projector
+            // that fails still aborts the rebuild, as below.
+            ClaimSource::Projector(projector) if !projector.admitted() => (Vec::new(), true),
             ClaimSource::Projector(projector) => {
                 let transcript_text: Vec<_> = turns
                     .iter()
                     .filter(|turn| !turn.gated)
                     .map(|turn| turn.text.clone())
                     .collect();
-                project_claims(projector, &request, &transcript_text)
+                let claims = project_claims(projector, &request, &transcript_text)
                     .map_err(|error| match error {
                         ProjectionError::ArtifactMissing
                         | ProjectionError::ArtifactInvalid
@@ -1506,16 +1525,18 @@ fn inspect_meeting(
                             locators,
                         })
                     })
-                    .collect::<Result<Vec<_>, MeetingInspectionError>>()?
+                    .collect::<Result<Vec<_>, MeetingInspectionError>>()?;
+                (claims, false)
             }
         };
         (
             Some(note.json.sha256.clone()),
             Some(note.markdown.sha256.clone()),
             claims,
+            saved_note_unreadable,
         )
     } else {
-        (None, None, Vec::new())
+        (None, None, Vec::new(), false)
     };
     // Re-read the pointers after inspection before allowing this candidate into a snapshot.
     let again = load_meeting(directory).map_err(|_| MeetingInspectionError::Quarantine)?;
@@ -1553,6 +1574,7 @@ fn inspect_meeting(
         note_json_sha256,
         note_markdown_sha256,
         claims,
+        saved_note_unreadable,
         attempt_sha256: attempt.sha256,
         title: None,
         folder: None,
@@ -2489,6 +2511,34 @@ mod tests {
             same_location.iter().map(hit_key).collect::<Vec<_>>(),
             vec!["c-a-1", "c-a-2", "c-b-2", "t-a", "t-b"]
         );
+    }
+
+    #[test]
+    fn an_install_with_no_admitted_projector_withholds_saved_notes_per_meeting() {
+        let fixture = Fixture::new();
+        fixture.ready_meeting("meeting-a", 10);
+        fixture.meeting("meeting-b", 9, &[("plain transcript", false)]);
+
+        // `rebuild` uses the not-admitted stand-in projector.
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.rows().len(), 2);
+        let ready = projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == "meeting-a")
+            .unwrap();
+        assert!(ready.saved_note_unreadable());
+        assert!(ready.note_json_sha256.is_some());
+        assert!(ready.claims.is_empty());
+        let plain = projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == "meeting-b")
+            .unwrap();
+        assert!(!plain.saved_note_unreadable());
+        assert_eq!(projection.validate_snapshot(&fixture.storage), Ok(()));
     }
 
     #[test]
