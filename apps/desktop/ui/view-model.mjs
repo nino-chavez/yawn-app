@@ -1398,8 +1398,8 @@ export function audioReleasedFact(note) {
 // generation or recovery control.
 // Operator decision 2026-10-06: lead with what the meeting has, then the
 // withheld draft. The headline names audio only while it is retained.
-export const SAVED_NOTE_UNREADABLE_TITLE = "Your transcript, audio, and notes are all here.";
-export const SAVED_NOTE_UNREADABLE_TITLE_AUDIO_RELEASED = "Your transcript and notes are all here.";
+export const SAVED_NOTE_UNREADABLE_TITLE = "Your transcript, audio, and notes are here.";
+export const SAVED_NOTE_UNREADABLE_TITLE_AUDIO_RELEASED = "Your transcript and notes are here.";
 export const SAVED_NOTE_UNREADABLE_DETAIL = "Yawn no longer includes AI notes, so it can’t show this meeting’s saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
