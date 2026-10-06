@@ -1,5 +1,60 @@
 # Yawn distribution runbook
 
+## 0.6.9 release receipt
+
+**0.6.9 was released on 2026-10-06.** PR #81 merged build source
+`aef6d2fa3e022f41f362fe1f847a6cd4ea305492`; annotated tag `v0.6.9`
+points to that exact commit. Main merge `11b06eb1d27f0bfe70f811619a37883279b3fd0c`
+has the same tree as the build source (`a4ddd986558d9c690c74ef3e028cb292ad3b8be0`).
+This release unblocks Record and speech-model changes when Finder metadata or a
+stale duplicate transcription request made the queue unreadable or pending,
+keeps meeting names usable after a named meeting is gone, lists a meeting whose
+saved AI draft cannot be projected (no note projector admitted) in a
+`saved-note-unreadable` state instead of failing the whole library, and counts
+repeated identical diagnostics in one file.
+
+Signed artifact `Yawn-0.6.9-macos-arm64.dmg`, 598,635,572 bytes,
+SHA-256 `b5c33df76be1b90e0e575f0a4a355aed64ec5019d1ab7a0a3b5c59f13ce8b844`.
+Apple accepted app submission `416c40a4-b102-4369-92e5-94b502ab04e3` and DMG
+submission `934a58a4-18c6-4ae4-858d-82f59726138f`. Both were stapled.
+The independent signed-release verifier passed for the frozen app and DMG,
+with 207 arm64-compatible Mach-O files under `internal-alpha`; Gatekeeper
+assessed the installed app as Notarized Developer ID. The fresh runtime build,
+native desktop tests (275), session-core tests (533), and UI tests (156) passed.
+All four hosted transcript-model objects matched their catalog sizes and full
+streamed SHA-256 digests, and the sealed catalog lists the same four.
+
+The runtime build needed `YAWN_NEMO_DEPENDENCY_PREFIX` pointed at the pinned
+static Nemotron dependency tree in the `feature/nemotron-runtime-install`
+worktree; a fresh worktree has no `apps/desktop/vendor` build of it. The pinned
+NeMo-Speech.cpp seed is `.worktrees/research/nemotron-diarization/.artifacts/nemotron/NeMo-Speech.cpp`.
+`python3 urllib` is refused (403) by the public R2 host; the model check used curl.
+
+The public installer at
+https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.9-macos-arm64.dmg
+returned 200 with the recorded size, disk-image content type, and immutable
+cache control. Its byte-range request returned 206; its public checksum
+sidecar (bare filename, no local path) matched the final artifact digest. No
+full public DMG re-download was performed. GitHub release:
+https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.9
+
+Site source `0731d2b09bae6baa8d3bdd8d1eedb215647230ab` merged through PR #6 into
+`e9dc4922b97b848df416c99ab5fdd3a6582abfac` and deployed as
+https://275e45ef.yawn-site.pages.dev.
+The deployment URL, `https://yawn-site.pages.dev/`, and
+`https://apps.ninochavez.co/yawn/` served the 0.6.9 download and checksum.
+Their release-notes pages carry the 0.6.9 entry, the app card reports 0.6.9,
+and prior release entries were preserved.
+
+`/Applications/Yawn.app` was installed from the signed DMG and reports 0.6.9
+with a strict code signature and Notarized Developer ID assessment. It was
+launched and listed both retained meetings, including one in the
+`saved-note-unreadable` state. The previous 0.6.8 bundle is preserved in the
+release worktree's ignored `.artifacts/release-0.6.9/Yawn-0.6.8-backup.app`.
+No previous public installer, meeting data, or downloaded model was removed.
+The merge, R2 upload, install swap, and site deploy were run by the operator.
+Real-meeting acceptance remains separate from packaging and launch evidence.
+
 ## 0.6.8 release receipt
 
 **0.6.8 was released on 2026-09-30.** PR #77 merged build source
