@@ -21,6 +21,15 @@ pub const MAX_PROJECTION_FRAME_BYTES: usize = 64 * 1024;
 pub trait NoteProjector: Send + Sync {
     fn project(&self, request: &ProjectRequest) -> Result<Vec<u8>, ProjectTransportError>;
 
+    /// False only for the stand-in used when this install admits no
+    /// projector at all (for example, the note-model inventory the reader
+    /// checks is gone). That is a fact about the install, not a failure of a
+    /// projection, so the library withholds saved notes per meeting instead of
+    /// failing whole. Every real projector keeps the default.
+    fn admitted(&self) -> bool {
+        true
+    }
+
     fn project_with_cancellation(
         &self,
         request: &ProjectRequest,
@@ -62,6 +71,10 @@ pub struct UnavailableProjector;
 impl NoteProjector for UnavailableProjector {
     fn project(&self, _: &ProjectRequest) -> Result<Vec<u8>, ProjectTransportError> {
         Err(ProjectTransportError::Unavailable)
+    }
+
+    fn admitted(&self) -> bool {
+        false
     }
 }
 

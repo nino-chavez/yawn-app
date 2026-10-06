@@ -1057,7 +1057,11 @@ pub fn execute_due_retention_excluding(
             outcomes.push(RetentionOutcome::DeferredActive(id));
             continue;
         }
-        if !entry.file_type()?.is_dir() {
+        let file_type = entry.file_type()?;
+        if crate::storage::is_finder_metadata(&entry.file_name(), &file_type) {
+            continue;
+        }
+        if !file_type.is_dir() {
             outcomes.push(RetentionOutcome::Quarantined(id));
             continue;
         }

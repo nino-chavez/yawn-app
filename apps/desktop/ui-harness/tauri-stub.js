@@ -178,7 +178,7 @@
         prompted: true,
       };
     },
-    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || sheetMode || searchMode
+    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
           handle: "row-handle-2",
@@ -288,6 +288,20 @@
       operatorNote: { text: "Confirm the final owner.", unreadable: false },
       operatorNoteHandle: "note-handle-1",
       transcriptHandle: "transcript-handle-1",
+      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      capturePauses: null,
+    } : mode === "saved-draft-unreadable" ? {
+      // A ready meeting whose saved AI draft this install cannot project
+      // (no note projector admitted). Audio retained, personal note present.
+      meetingId: "harness-meeting-1",
+      state: "saved-note-unreadable",
+      claims: [],
+      operatorNote: { text: "Confirm the final owner.", unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: "transcript-handle-1",
+      microphonePlaybackHandle: "mic-playback-1",
+      systemPlaybackHandle: "system-playback-1",
+      meetingDeletionHandle: "deletion-handle-1",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     } : mode === "summary-failed" ? {

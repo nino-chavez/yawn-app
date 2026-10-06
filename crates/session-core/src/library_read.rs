@@ -156,6 +156,10 @@ pub struct LibraryRow {
     note_json_sha256: Option<String>,
     note_markdown_sha256: Option<String>,
     claims: Vec<StoredClaim>,
+    /// The meeting has a saved note, but its claims could not be projected.
+    /// `claims` is empty because the note is withheld, not because there is
+    /// none.
+    saved_note_unreadable: bool,
     attempt_sha256: String,
     title: Option<String>,
     folder: Option<String>,
@@ -173,6 +177,12 @@ impl LibraryRow {
     /// a transcript that remains readable after a note-generation refusal.
     pub fn lifecycle(&self) -> MeetingLifecycle {
         self.lifecycle
+    }
+
+    /// True when this meeting has a saved note whose claims could not be
+    /// projected for this snapshot. The note is withheld, not absent.
+    pub fn saved_note_unreadable(&self) -> bool {
+        self.saved_note_unreadable
     }
 
     /// Metadata is already part of this projection's exact-search authority.
@@ -481,12 +491,16 @@ impl LibraryProjection {
         require_private_directory(&meetings_path)
             .map_err(|_| LibraryReadError::ArtifactUnavailable)?;
         let mut directories = Vec::new();
+        // Every name under `meetings/`, of any type. A metadata row whose
+        // meeting has no entry here at all names nothing that could be hidden.
+        let mut present_entries = HashSet::new();
         for entry in
             fs::read_dir(&meetings_path).map_err(|_| LibraryReadError::ArtifactUnavailable)?
         {
             let entry = entry.map_err(|_| LibraryReadError::ArtifactUnavailable)?;
             let name = entry.file_name();
             let Some(name) = name.to_str() else { continue };
+            present_entries.insert(name.to_owned());
             if valid_opaque_id(name)
                 && !excluded_meeting_ids.contains(name)
                 && entry
@@ -527,8 +541,14 @@ impl LibraryProjection {
         if let Some(document) = metadata.document() {
             // Metadata gains authority only when every row targets a safely
             // projected meeting.  A sparse record may omit any meeting.
+            // A row for a meeting with no entry under `meetings/` is a
+            // leftover from a meeting that is gone; it hides nothing, so it is
+            // ignored rather than costing every label (and Rename) its
+            // authority. A row naming an entry that exists but did not project
+            // safely still fails closed.
             if document.meetings.iter().all(|row| {
                 excluded_meeting_ids.contains(&row.meeting_id)
+                    || !present_entries.contains(&row.meeting_id)
                     || rows
                         .iter()
                         .any(|meeting| meeting.meeting_id == row.meeting_id)
@@ -1424,7 +1444,8 @@ fn inspect_meeting(
         // transcript bytes or transcript search authority are inferred.
         (None, None, Vec::new(), None)
     };
-    let (note_json_sha256, note_markdown_sha256, claims) = if meeting.lifecycle
+    let (note_json_sha256, note_markdown_sha256, claims, saved_note_unreadable) = if meeting
+        .lifecycle
         == MeetingLifecycle::Ready
     {
         let note = meeting
@@ -1441,7 +1462,7 @@ fn inspect_meeting(
                 .clone()
                 .ok_or(MeetingInspectionError::Quarantine)?,
         };
-        let claims = match claim_source {
+        let (claims, saved_note_unreadable) = match claim_source {
             ClaimSource::Accepted(rows) => rows
                 .iter()
                 .find(|row| {
@@ -1453,15 +1474,23 @@ fn inspect_meeting(
                         && row.transcript_sha256.as_deref()
                             == Some(request.transcript_sha256.as_str())
                 })
-                .map(|row| row.claims.clone())
+                .map(|row| (row.claims.clone(), row.saved_note_unreadable))
                 .ok_or(MeetingInspectionError::Unavailable)?,
+            // No projector is admitted on this install (the note-model
+            // inventory the reader checks is gone). That is not a projection
+            // failure, so it must not take the whole library down: the row
+            // keeps its note fingerprints and lists with its transcript,
+            // marked unreadable, so the reader can say the saved draft is
+            // withheld instead of pretending there is none. A real projector
+            // that fails still aborts the rebuild, as below.
+            ClaimSource::Projector(projector) if !projector.admitted() => (Vec::new(), true),
             ClaimSource::Projector(projector) => {
                 let transcript_text: Vec<_> = turns
                     .iter()
                     .filter(|turn| !turn.gated)
                     .map(|turn| turn.text.clone())
                     .collect();
-                project_claims(projector, &request, &transcript_text)
+                let claims = project_claims(projector, &request, &transcript_text)
                     .map_err(|error| match error {
                         ProjectionError::ArtifactMissing
                         | ProjectionError::ArtifactInvalid
@@ -1496,16 +1525,18 @@ fn inspect_meeting(
                             locators,
                         })
                     })
-                    .collect::<Result<Vec<_>, MeetingInspectionError>>()?
+                    .collect::<Result<Vec<_>, MeetingInspectionError>>()?;
+                (claims, false)
             }
         };
         (
             Some(note.json.sha256.clone()),
             Some(note.markdown.sha256.clone()),
             claims,
+            saved_note_unreadable,
         )
     } else {
-        (None, None, Vec::new())
+        (None, None, Vec::new(), false)
     };
     // Re-read the pointers after inspection before allowing this candidate into a snapshot.
     let again = load_meeting(directory).map_err(|_| MeetingInspectionError::Quarantine)?;
@@ -1543,6 +1574,7 @@ fn inspect_meeting(
         note_json_sha256,
         note_markdown_sha256,
         claims,
+        saved_note_unreadable,
         attempt_sha256: attempt.sha256,
         title: None,
         folder: None,
@@ -2482,6 +2514,34 @@ mod tests {
     }
 
     #[test]
+    fn an_install_with_no_admitted_projector_withholds_saved_notes_per_meeting() {
+        let fixture = Fixture::new();
+        fixture.ready_meeting("meeting-a", 10);
+        fixture.meeting("meeting-b", 9, &[("plain transcript", false)]);
+
+        // `rebuild` uses the not-admitted stand-in projector.
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.rows().len(), 2);
+        let ready = projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == "meeting-a")
+            .unwrap();
+        assert!(ready.saved_note_unreadable());
+        assert!(ready.note_json_sha256.is_some());
+        assert!(ready.claims.is_empty());
+        let plain = projection
+            .rows()
+            .iter()
+            .find(|row| row.meeting_id == "meeting-b")
+            .unwrap();
+        assert!(!plain.saved_note_unreadable());
+        assert_eq!(projection.validate_snapshot(&fixture.storage), Ok(()));
+    }
+
+    #[test]
     fn projection_failures_never_publish_partial_ready_meetings() {
         for (mode, expected) in [
             (
@@ -3077,6 +3137,39 @@ mod tests {
     }
 
     #[test]
+    fn a_row_for_a_meeting_that_is_gone_keeps_label_authority() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 10, &[("transcript token", false)]);
+        fixture.metadata(
+            br#"{"schema":"library-metadata/1","revision":4,"folders":[],"meetings":[{"meeting_id":"gone","title":"Old","folder_id":null},{"meeting_id":"meeting-a","title":"Kept","folder_id":null}]}"#,
+        );
+
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.metadata_revision(), Some(4));
+        assert_eq!(projection.rows()[0].title(), Some("Kept"));
+    }
+
+    #[test]
+    fn a_row_for_a_meeting_that_exists_but_is_quarantined_still_fails_closed() {
+        let fixture = Fixture::new();
+        fixture.meeting("meeting-a", 10, &[("transcript token", false)]);
+        let bad = fixture.meeting("meeting-b", 9, &[("tampered token", false)]);
+        fs::write(bad.join("attempt.json"), b"not a receipt").unwrap();
+        fixture.metadata(
+            br#"{"schema":"library-metadata/1","revision":4,"folders":[],"meetings":[{"meeting_id":"meeting-a","title":"Kept","folder_id":null},{"meeting_id":"meeting-b","title":"Hidden","folder_id":null}]}"#,
+        );
+
+        let projection =
+            LibraryProjection::rebuild(&fixture.storage, ReadLimits::default()).unwrap();
+
+        assert_eq!(projection.quarantined_meetings(), 1);
+        assert_eq!(projection.metadata_revision(), None);
+        assert_eq!(projection.rows()[0].title(), None);
+    }
+
+    #[test]
     fn malformed_metadata_loses_only_label_authority() {
         let cases: &[&[u8]] = &[
             br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[],"extra":true}"#,
@@ -3091,7 +3184,6 @@ mod tests {
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"11111111-1111-4111-8111-111111111111"},{"meeting_id":"meeting-a","title":null,"folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"11111111-1111-4111-8111-111111111111"},{"meeting_id":"meeting-a","title":null,"folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[{"id":"11111111-1111-4111-8111-111111111111","name":"a"}],"meetings":[{"meeting_id":"meeting-a","title":null,"folder_id":"22222222-2222-4222-8222-222222222222"}]}"#,
-            br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[{"meeting_id":"unknown","title":"x","folder_id":null}]}"#,
             br#"{"schema":"library-metadata/1","revision":0,"folders":[],"meetings":[{"meeting_id":"meeting-a","title":"x/y","folder_id":null}]}"#,
         ];
         for bytes in cases {

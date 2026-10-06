@@ -315,7 +315,7 @@ export function retentionLabel(days) {
 // command; this presentation deliberately contains no fallback selector.
 export function retainedAudioPlaybackPresentation(note, recovery, playback = {}) {
   if (!note || recovery || note.audioRetention?.state !== "retained") return null;
-  if (!["note", "summary-failed", "transcript-only"].includes(note.state)) return null;
+  if (!["note", "summary-failed", "transcript-only", "saved-note-unreadable"].includes(note.state)) return null;
   const availableControls = [
     { source: "microphone", handle: note.microphonePlaybackHandle, label: "Play microphone" },
     { source: "system", handle: note.systemPlaybackHandle, label: "Play system audio" },
@@ -422,6 +422,8 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
   // The note area separately explains that automatic generation is retired.
   "transcript-only": "Transcript",
   "summary-failed": "AI draft not created",
+  // A saved draft exists but this install cannot show it. Still a saved draft.
+  "saved-note-unreadable": "Saved AI draft",
   "recovered-interrupted": "Interrupted",
   "locked": "Locked",
   "metadata-only": "Details only",
@@ -1393,6 +1395,8 @@ export function audioReleasedFact(note) {
 // Keep recovery copy at the same evidence boundary as the library response.
 // Transcript and audio states are read-only facts; neither creates a new note
 // generation or recovery control.
+export const SAVED_NOTE_UNREADABLE_TITLE = "This meeting has a saved AI draft that this version of Yawn can’t show.";
+export const SAVED_NOTE_UNREADABLE_DETAIL = "The draft is still saved on this Mac. The transcript and your notes remain available.";
 export function meetingRecoveryPresentation(note, transcript) {
   const noteState = note?.state || "";
   const transcriptState = transcript?.state || "";
@@ -1412,6 +1416,19 @@ export function meetingRecoveryPresentation(note, transcript) {
         ? transcript.message.trim()
         : "Yawn could not load this meeting’s transcript. Go back to meetings and open it again.",
       action: { action: "meetings", label: "Back to meetings" },
+    };
+  }
+
+  // A saved AI draft exists, but this install cannot project its claims.
+  // Withheld, not absent: say the draft is there and cannot be shown, never
+  // "no draft was created" (CLAUDE.md: render withheld as withheld).
+  if (noteState === "saved-note-unreadable") {
+    return {
+      state: "saved-note-unreadable",
+      tone: "neutral",
+      title: SAVED_NOTE_UNREADABLE_TITLE,
+      detail: SAVED_NOTE_UNREADABLE_DETAIL,
+      action: null,
     };
   }
 

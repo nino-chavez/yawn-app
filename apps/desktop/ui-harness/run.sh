@@ -55,6 +55,7 @@ case "$mode" in
     run transcript-retirement note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run saved-draft note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run summary-failed note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run saved-draft-unreadable note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run_settings settings-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     ;;
   all)

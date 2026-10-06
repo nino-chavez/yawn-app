@@ -174,6 +174,14 @@ fn lexical_absolute(path: &Path) -> Result<PathBuf, StorageError> {
     Ok(result)
 }
 
+/// Finder writes a `.DS_Store` file into any folder the operator opens. It is
+/// view metadata, never meeting data, so a scan that refuses unexpected
+/// entries skips it. Only a regular file with exactly this name qualifies; a
+/// symlink or directory with the same name is still unexpected.
+pub fn is_finder_metadata(name: &std::ffi::OsStr, file_type: &fs::FileType) -> bool {
+    name == ".DS_Store" && file_type.is_file()
+}
+
 pub fn create_private_dir(path: &Path) -> io::Result<()> {
     if fs::symlink_metadata(path)
         .map(|metadata| metadata.file_type().is_symlink())
