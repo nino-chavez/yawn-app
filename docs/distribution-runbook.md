@@ -1,5 +1,67 @@
 # Yawn distribution runbook
 
+## 0.6.10 release receipt
+
+**0.6.10 was released on 2026-10-06.** PR #84 merged build source
+`a87008df61c80c7ebca6dc69574188190a9ac8fc`; annotated tag `v0.6.10`
+points to that exact commit. Main merge `521a8ddcad72004bffd0cba3c8b25011c3aaaf0b`
+has the same tree as the build source (`02465b48d278c8aa9189dbb547444e7b1c63d909`).
+This release makes "Check again" on an unavailable meeting list rebuild the
+library from disk, and records a content-free `library_unavailable`
+diagnostic naming which check refused, plus a `panic` diagnostic giving the
+thread and source location of any panic (never its message). It does not
+claim to fix a confirmed cause: neither 2026-10-06 field report reproduced
+in code (PR #83).
+
+Signed artifact `Yawn-0.6.10-macos-arm64.dmg`, 597,331,948 bytes,
+SHA-256 `9d03ecda65231f611e9fd488ea0e470e01dd4128ce67ba805210418d2d0f9dbc`.
+Apple accepted app submission `4a25f75d-312c-4c6c-bc17-0e7482b405ce` and DMG
+submission `edc7b052-e5d3-4423-b2ea-591bd283e5ef`. Both were stapled. The app
+submission took about an hour in Apple's queue against the usual five to six
+minutes; Apple's developer status page reported no outage at the time.
+The independent signed-release verifier passed for the frozen app and DMG,
+with 207 arm64-compatible Mach-O files under `internal-alpha`; Gatekeeper
+assessed both as Notarized Developer ID. The fresh runtime build passed, and
+on the build commit the native desktop tests (284), session-core tests (533)
+and UI tests (157) passed. All four hosted transcript-model objects matched
+their catalog sizes and full streamed SHA-256 digests (streamed with curl).
+
+The runtime build again needed `YAWN_NEMO_DEPENDENCY_PREFIX` pointed at the
+pinned dependency tree in the `feature/nemotron-runtime-install` worktree and
+`YAWN_NEMO_SOURCE_DIR` at the pinned NeMo-Speech.cpp seed. A fresh worktree
+also needs `npm ci` in `apps/desktop` before `npm run build`; without it the
+build stops at `tauri: command not found`. `npm ci` leaves
+`package-lock.json` unchanged.
+
+The public installer at
+https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/Yawn-0.6.10-macos-arm64.dmg
+returned 200 with the recorded size, disk-image content type, and immutable
+cache control. Its byte-range request returned 206; its public checksum
+sidecar (bare filename, no local path) matched the final artifact digest. It
+was uploaded with rclone and the scoped "Cloudflare yawn-app" S3 key. No full
+public DMG re-download was performed. GitHub release:
+https://github.com/nino-chavez/yawn-app/releases/tag/v0.6.10
+
+Site source `64392e1a2cd3e2baac87d26bc339cc9bd2db7198` merged through PR #7 into
+`7910f3569473b3726fc8c08fa7ec61d62884401c` and deployed as
+https://877b43b1.yawn-site.pages.dev.
+The deployment URL, `https://yawn-site.pages.dev/`, and
+`https://apps.ninochavez.co/yawn/` served the 0.6.10 download and checksum,
+their release-notes pages carry the 0.6.10 entry beside the preserved 0.6.9
+entry, and the app card reports 0.6.10. The production homepage, release-notes
+page and app card matched the rendered files byte for byte.
+
+`/Applications/Yawn.app` was installed from the signed DMG through a staged
+copy and reports 0.6.10 with a strict code signature and Notarized Developer ID
+assessment. It was launched and stayed running, and wrote no new diagnostic
+file; the meeting list itself was not inspected. The previous 0.6.9 bundle is
+preserved in the release worktree's ignored
+`.artifacts/release-0.6.10/Yawn-0.6.9-backup.app`. No previous public
+installer, meeting data, or downloaded model was removed. The merge, R2
+upload, install swap, tag, GitHub release and site deploy were run by an agent
+session at the operator's instruction, after the operator approved the notes.
+Real-meeting acceptance remains separate from packaging and launch evidence.
+
 ## 0.6.9 release receipt
 
 **0.6.9 was released on 2026-10-06.** PR #81 merged build source
