@@ -41,7 +41,9 @@ Stop and report the blocker instead of improvising when any of these is true:
 - the packaging lane refuses the staged runtime as stale or unstamped — the
   source-freshness gate (`worker/source_digest.py`) means the staging predates
   the sources; re-run `worker/build_runtime.sh`, never bypass the check;
-- the runtime build cannot find the pinned local embedding-model assets;
+- the runtime build cannot find the pinned local embedding-model assets, or
+  the pinned Nemotron source or dependency tree (see "Pinned local build
+  inputs" below);
 - either hosted transcript model is missing, changed, or unreachable at its
   immutable catalog URL;
 - the host cannot see the Developer ID identity or `filmroom-notary` profile;
@@ -54,13 +56,16 @@ text, notes, or user data in Git or deployment logs.
 
 ## Build and notarize the internal-alpha app
 
-Start at the repository root:
+Start at the repository root. A release worktree reads the two pinned
+Nemotron inputs from the main checkout's `.artifacts/`:
 
 ```sh
 git status --short
-YAWN_NEMO_SOURCE_DIR=<pinned-NeMo-Speech.cpp-checkout> \
+MAIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+YAWN_NEMO_SOURCE_DIR="$MAIN/.artifacts/nemotron/NeMo-Speech.cpp" \
+YAWN_NEMO_DEPENDENCY_PREFIX="$MAIN/.artifacts/nemotron/deps" \
   worker/build_runtime.sh build-alpha-external-diarization
-(cd apps/desktop && npm run build)
+(cd apps/desktop && npm ci && npm run build)
 scripts/verify-release-bundle.py \
   --admission internal-alpha \
   target/release/bundle/macos/Yawn.app
@@ -73,6 +78,45 @@ MLX needs this Mac's Metal device; a restricted shell can falsely fail its
 import check. Keep the signing lane attached as one process. In Codex, do not
 wrap it with `/usr/bin/script`: that wrapper can detach the child, which makes a
 second signing attempt dangerous.
+
+A fresh worktree has no `apps/desktop/node_modules`; without `npm ci` the
+build stops at `tauri: command not found`. Use `npm ci`, which leaves
+`package-lock.json` unchanged.
+
+### Pinned local build inputs
+
+The diarization lane needs two inputs that are not in Git and are not
+downloaded by the build. Both live in the main checkout's ignored
+`.artifacts/nemotron/`, never inside a linked worktree: on 2026-10-06 a
+worktree cleanup removed the worktree that held the dependency tree, and the
+release lane could not build until it was rebuilt.
+
+- `NeMo-Speech.cpp/` is the source checkout at the revision pinned in
+  `scripts/package_nemotron_diarizer.py` (`SOURCE_COMMIT`), with a local edit
+  in its `ggml` submodule. Nothing recreates that edit; keep this copy.
+- `deps/sentencepiece/` is a static SentencePiece build:
+  `lib/libsentencepiece.a`, `include/sentencepiece_processor.h`, and
+  `share/licenses/nemo-speech/third_party/sentencepiece/`. The packager
+  checks that these exist, not their digest.
+
+To rebuild `deps/`, follow NeMo-Speech.cpp's
+`scripts/build_sentencepiece_static.sh` (SentencePiece commit
+`17d7580d6407802f85855d2cc9190634e2c95624`; Release, Ninja,
+`SPM_ENABLE_SHARED=OFF`, `SPM_ENABLE_TCMALLOC=OFF`, target
+`sentencepiece-static`), with two macOS changes: CMake 4 needs
+`-DCMAKE_POLICY_VERSION_MINIMUM=3.5`, and macOS `install` has no `-D`, so
+create the license directory first and copy the four license files into it.
+Then prove the tree by building the diarizer into scratch directories:
+
+```sh
+python3 scripts/package_nemotron_diarizer.py build \
+  --source "$MAIN/.artifacts/nemotron/NeMo-Speech.cpp" \
+  --build-dir <scratch>/nemo-build \
+  --dependency-prefix "$MAIN/.artifacts/nemotron/deps" \
+  --stage <scratch>/nemo-stage
+```
+
+It must print `package-nemotron-diarizer: PASS`.
 
 The lane creates these exact artifacts:
 
