@@ -9253,7 +9253,7 @@ fn initialize_application(app: AppHandle, retry: bool) {
     if let Err(error) = transition_startup(&mut model, StartupState::Ready) {
         model.error = Some(error);
     } else {
-        model.startup_message = "Ready to Yawn.".into();
+        model.startup_message = "Yawn is ready.".into();
     }
     drop(model);
     sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
