@@ -22,14 +22,25 @@ serve="$build_dir/serve"
 mkdir "$serve"
 ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$PWD/../ui/settings.js" "$PWD/../ui/settings.html" "$PWD/../ui/settings-window.css" "$serve/"
 ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/tonal-ledger-canvas.contract.json" "$PWD/settings-retirement.html" "$serve/"
+ready_token="$(uuidgen)"
+printf '%s' "$ready_token" > "$serve/harness-ready.txt"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!
 
 swiftc -O runner.swift -o "$build_dir/runner"
+# Readiness is a token only this invocation's server can return. If the port
+# was already taken, python exits and someone else's server answers; never
+# run a scenario against that.
+served=""
 for _ in $(seq 1 50); do
-  curl -sf "http://127.0.0.1:$port/harness.html" >/dev/null && break
+  served="$(curl -sf "http://127.0.0.1:$port/harness-ready.txt" 2>/dev/null || true)"
+  [ "$served" = "$ready_token" ] && break
   sleep 0.1
 done
+if [ "$served" != "$ready_token" ]; then
+  echo "run.sh: 127.0.0.1:$port is not this harness's server (port in use?); set HARNESS_PORT" >&2
+  exit 2
+fi
 
 # Each runner launch gets a fresh nonce served through the same HTTP cache as
 # the UI files. The file is backdated so that any WebKit cache that survives

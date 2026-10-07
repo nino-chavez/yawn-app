@@ -68,13 +68,30 @@ Capture options for `note-retirement`:
 
 Snapshots contain synthetic data and do not prove installed-app behavior.
 
+### Every run loads the files on disk
+
+The runner uses a non-persistent WebKit data store, so nothing is cached between
+launches. Before 2026-10-07 it used the default persistent store, shared by
+every worktree at `~/Library/WebKit/runner`. Python's server sends no
+`Cache-Control`, so WebKit reused cached UI files without asking the server.
+A rerun on the same port after an edit could pass against the old code.
+
+Two checks guard this:
+
+- Each launch serves a fresh, backdated `harness-nonce.js`, which both harness
+  pages load. The runner exits 4 with `STALE PAGE` when the page’s nonce does
+  not match, before the scenario runs.
+- run.sh waits for a per-invocation token from its own server. If the port is
+  already taken by another server, it exits 2 instead of testing that server’s
+  page.
+
 ## Files
 
 - `runner.swift` — opens a WKWebView, loads the harness page, executes the
   scenario body via `callAsyncJavaScript`, prints its JSON return. A window
   appears briefly; the scenario needs it key for editing commands.
-- `harness.html` — `ui/index.html` with the stub loaded as a classic script
-  before the `main.js` module.
+- `harness.html` — `ui/index.html` with the per-launch nonce and the stub
+  loaded as classic scripts before the `main.js` module.
 - `tauri-stub.js` — fake `window.__TAURI__` bridge. `?mode=capture` serves an
   active-recording snapshot; `?mode=library` serves an idle snapshot with one
   finished meeting and a two-turn transcript. Also collects page errors on

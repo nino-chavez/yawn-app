@@ -21,6 +21,12 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let configuration = WKWebViewConfiguration()
+        // A persistent store is keyed by the executable name, so every
+        // worktree's `runner` shared one HTTP cache at ~/Library/WebKit/runner.
+        // run.sh serves files without Cache-Control, and WebKit reused cached
+        // UI files across launches without asking the server, so a scenario
+        // could pass against code that was no longer on disk (2026-10-07).
+        configuration.websiteDataStore = .nonPersistent()
         let components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
         let width = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "width" })?.value ?? "960") ?? 960)
         let height = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "height" })?.value ?? "760") ?? 760)
