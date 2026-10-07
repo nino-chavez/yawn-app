@@ -2249,7 +2249,11 @@ function canReadCurrentNote(snapshot) {
 
 async function refreshSnapshot({ shouldRender = true } = {}) {
   const oldMeetingId = state.snapshot?.meeting_id;
+  const oldCaptureNotice = state.snapshot?.capture_notice;
   state.snapshot = await invoke("app_snapshot");
+  if (state.snapshot.capture_notice && state.snapshot.capture_notice !== oldCaptureNotice) {
+    state.notice = state.snapshot.capture_notice;
+  }
   const meetingId = state.snapshot.meeting_id;
   if (!meetingId && oldMeetingId) { clearCurrentNote(); clearCurrentContext(); }
   if (meetingId && meetingId !== state.noteLoadedFor && canReadCurrentNote(state.snapshot)) void loadCurrentNote(meetingId);
@@ -2436,6 +2440,7 @@ async function startRecording() {
       attestation: state.consent,
       journeyTiming,
     });
+    state.notice = "";
     clearCurrentNote();
     clearCurrentContext();
     state.activeView = "capture";

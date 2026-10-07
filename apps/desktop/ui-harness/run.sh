@@ -66,13 +66,20 @@ run_settings() {
 case "$mode" in
   capture) run capture scenario.js ;;
   stop-status) run stop-status scenario.js ;;
+  mic-change)
+    run mic-change-stop scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run mic-change-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run mic-change-resume-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    ;;
   transcribing-meeting)
     run transcribing-meeting scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run transcribing-meeting-lands scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     ;;
   transcribing-meeting-legacy)
     # Negative control: the same scenario against the backend's answer from
-    # before the fix. It must fail; if it passes, the scenario cannot see the defect.
+    # before the fix. It passes only when it reproduces the old defect
+    # (scenario.js reports defectReproduced); if it fails, the scenario cannot
+    # see the defect.
     run transcribing-meeting scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}&legacy=1"
     ;;
   library) run library scenario.js ;;
@@ -103,5 +110,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
 esac

@@ -18,13 +18,19 @@ public struct MeetingCaptureFault: Error, Codable, Equatable, Sendable {
   }
 }
 
+public enum MeetingCaptureStopReason: String, Codable, Sendable {
+  case microphoneConfigurationChanged = "microphone_configuration_changed"
+}
+
 public struct MeetingCaptureReceipt: Codable, Equatable, Sendable {
   public let micSamples: Int
   public let systemSamples: Int
+  public let stopReason: MeetingCaptureStopReason?
 
-  public init(micSamples: Int, systemSamples: Int) {
+  public init(micSamples: Int, systemSamples: Int, stopReason: MeetingCaptureStopReason? = nil) {
     self.micSamples = micSamples
     self.systemSamples = systemSamples
+    self.stopReason = stopReason
   }
 }
 
@@ -99,6 +105,7 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
   private var watchdogEpoch: UInt64?
   private var acquisitionEpoch: UInt64 = 0
   private var storedFault: MeetingCaptureFault?
+  private var stopReason: MeetingCaptureStopReason?
   private var pair: PrivateWAVPair?
 
   public init(
@@ -315,6 +322,25 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
   }
 
   private func recordSource(_ fault: MeetingCaptureFault, from leg: MeetingCaptureLeg, epoch: UInt64) {
+    // Ending a relayed call can reconfigure the microphone without corrupting
+    // the PCM already captured. End an established take through the same drain
+    // and promotion checks as Stop. Arming/resuming faults remain failures.
+    if leg == .mic && fault.code == "microphone_configuration_changed" {
+      let endRecording = lock.withLock { () -> Bool in
+        guard acquisitionEpoch == epoch, _state == .recording else { return false }
+        stopReason = .microphoneConfigurationChanged
+        return true
+      }
+      if endRecording {
+        controlQueue.async { [weak self] in
+          _ = self?.finish(promote: true, interrupted: false)
+        }
+        return
+      }
+      // Stopping the engine itself can produce the same notification. It
+      // cannot turn a requested Stop into a failed recording.
+      if lock.withLock({ acquisitionEpoch == epoch && _state == .stopping }) { return }
+    }
     let shouldSchedule = lock.withLock { () -> Bool in
       guard
         acquisitionEpoch == epoch,
@@ -457,7 +483,10 @@ public final class MeetingCaptureCoordinator: @unchecked Sendable {
     var terminalFault = failure ?? lock.withLock { storedFault }
     if let activePair {
       do {
-        receipt = try activePair.finish(promote: promote && terminalFault == nil && !interrupted)
+        let finalized = try activePair.finish(promote: promote && terminalFault == nil && !interrupted)
+        receipt = MeetingCaptureReceipt(
+          micSamples: finalized.micSamples, systemSamples: finalized.systemSamples,
+          stopReason: lock.withLock { stopReason })
       } catch let fault as MeetingCaptureFault {
         terminalFault = terminalFault ?? fault
       } catch {

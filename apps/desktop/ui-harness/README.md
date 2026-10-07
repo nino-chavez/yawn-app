@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|stop-status|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
+    ./run.sh [capture|stop-status|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON

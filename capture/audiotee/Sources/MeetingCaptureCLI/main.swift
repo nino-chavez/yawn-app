@@ -601,8 +601,10 @@ private func run() throws -> Int32 {
   @Sendable func emitResumed() {
     if !events.emit(event: "resumed") { terminal.set(2) }
   }
-  @Sendable func emitFinalized(legs: [String: Any]) {
-    let sent = events.emit(event: "finalized", extra: ["legs": legs])
+  @Sendable func emitFinalized(legs: [String: Any], stopReason: MeetingCaptureStopReason? = nil) {
+    var evidence: [String: Any] = ["legs": legs]
+    if let stopReason { evidence["stop_reason"] = stopReason.rawValue }
+    let sent = events.emit(event: "finalized", extra: evidence)
     terminal.set(sent ? 0 : 2)
   }
   @Sendable func emitFailed(_ fault: MeetingCaptureFault) {
@@ -642,7 +644,7 @@ private func run() throws -> Int32 {
         emitFinalized(legs: [
           "mic": ["samples": receipt.micSamples],
           "system": ["samples": receipt.systemSamples],
-        ])
+        ], stopReason: receipt.stopReason)
       case .failed(let fault):
         emitFailed(fault)
       case .interrupted:

@@ -14,6 +14,39 @@ const waitFor = async (selector, tries = 60) => {
 };
 const result = { mode };
 
+if (mode === "mic-change-stop") {
+  // No click: the backend stops on its own. Wait past the stub's switch and
+  // one 900 ms snapshot poll.
+  const live = await waitFor('.record-control .record.live');
+  result.startedLive = !!live;
+  await sleep(2400);
+  const toast = q('#toast-notice');
+  result.noticeShown = !!toast && toast.getAttribute('role') === 'status'
+    && toast.textContent.includes("microphone setup changed")
+    && toast.textContent.includes("saved and queued for transcription");
+  // The real post-stop snapshot is idle with the meeting cleared, so Record
+  // is offered again and no capture phase is shown.
+  result.backToIdle = !!q('.record-control [data-action="open-start"], .record-control [data-action="start-recording"], [data-action="open-start"]');
+  result.noLiveControls = !q('.record-control .record.live') && !q('.record-control [data-action="stop-recording"]');
+  result.noCapturePhase = !["Transcribing on this Mac", "Stopping recording"].includes(q('.toolbar-title')?.textContent);
+  result.errors = window.__errors || [];
+  result.pass = result.startedLive && result.noticeShown && result.backToIdle
+    && result.noLiveControls && result.noCapturePhase && result.errors.length === 0;
+  return result;
+}
+
+if (mode === "mic-change-failed" || mode === "mic-change-resume-failed") {
+  const note = await waitFor('.canvas-context-note');
+  const expected = mode === "mic-change-failed"
+    ? ["Recording did not start", "No audio was captured"]
+    : ["Recording could not resume", "kept as interrupted"];
+  result.failureShown = !!note && expected.every((words) => note.textContent.includes(words));
+  result.noSavedClaim = !document.body.textContent.includes("saved and queued for transcription");
+  result.errors = window.__errors || [];
+  result.pass = result.failureShown && result.noSavedClaim && result.errors.length === 0;
+  return result;
+}
+
 // A just-stopped meeting whose transcript is still being made. The meeting is
 // auto-opened (launch selection), so there is no click. Everything here is
 // state, role or structure, not label copy, except two negative claims that are
