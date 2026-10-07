@@ -69,6 +69,7 @@ case "$mode" in
   mic-change)
     run mic-change-stop scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run mic-change-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run mic-change-resume-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     ;;
   library) run library scenario.js ;;
   search)

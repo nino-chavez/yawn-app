@@ -35,10 +35,12 @@ if (mode === "mic-change-stop") {
   return result;
 }
 
-if (mode === "mic-change-failed") {
+if (mode === "mic-change-failed" || mode === "mic-change-resume-failed") {
   const note = await waitFor('.canvas-context-note');
-  result.failureShown = !!note && note.textContent.includes("microphone setup changed")
-    && note.textContent.includes("Nothing was marked complete");
+  const expected = mode === "mic-change-failed"
+    ? ["Recording did not start", "No audio was captured"]
+    : ["Recording could not resume", "kept as interrupted"];
+  result.failureShown = !!note && expected.every((words) => note.textContent.includes(words));
   result.noSavedClaim = !document.body.textContent.includes("saved and queued for transcription");
   result.errors = window.__errors || [];
   result.pass = result.failureShown && result.noSavedClaim && result.errors.length === 0;

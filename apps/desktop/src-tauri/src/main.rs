@@ -9823,7 +9823,7 @@ fn run_capture_task(
                 true,
                 "capture_hardware_failed",
                 &format!("capture helper failed with code {code}"),
-                capture_user_message(&code),
+                capture_arming_message(&code),
             );
             return;
         }
@@ -11627,6 +11627,17 @@ fn elapsed_samples(duration: Duration) -> Result<u64, String> {
     Ok(samples.round() as u64)
 }
 
+/// The arming failure says what actually happened: the WAV pair opens only
+/// once both legs are ready, so a change while arming leaves no audio.
+fn capture_arming_message(code: &str) -> &'static str {
+    match code {
+        "microphone_configuration_changed" => {
+            "Recording did not start because the microphone setup changed. No audio was captured. Check your audio input, then press Record."
+        }
+        _ => capture_user_message(code),
+    }
+}
+
 fn capture_user_message(code: &str) -> &'static str {
     match code {
         "microphone_permission_denied" => {
@@ -11638,8 +11649,11 @@ fn capture_user_message(code: &str) -> &'static str {
         "microphone_audio_stalled" => {
             "Recording stopped because the microphone stopped sending audio. Check your microphone connection. Nothing was marked complete."
         }
+        // Reached only while paused or resuming: an established take is
+        // finalized and saved instead (MeetingCaptureCoordinator), and the
+        // arming case has its own wording in capture_arming_message.
         "microphone_configuration_changed" => {
-            "Recording stopped because the microphone setup changed. Check your audio input before starting another recording. Nothing was marked complete."
+            "Recording could not resume because the microphone setup changed. This meeting is kept as interrupted. Check your audio input before starting another recording."
         }
         "system_audio_stalled" => {
             "Recording stopped because meeting audio stopped arriving. Check your meeting app and audio output. Nothing was marked complete."
@@ -11680,6 +11694,22 @@ fn io_error(error: io::Error) -> Box<dyn std::error::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn microphone_change_messages_say_what_happened_to_the_audio() {
+        let arming = capture_arming_message("microphone_configuration_changed");
+        assert!(arming.starts_with("Recording did not start"));
+        assert!(arming.contains("No audio was captured"));
+        let resuming = capture_user_message("microphone_configuration_changed");
+        assert!(resuming.starts_with("Recording could not resume"));
+        assert!(resuming.contains("kept as interrupted"));
+        assert!(!resuming.contains("No audio was captured"), "audio from before the pause may exist");
+        // Every other code is unchanged on the arming path.
+        assert_eq!(
+            capture_arming_message("microphone_permission_denied"),
+            capture_user_message("microphone_permission_denied"),
+        );
+    }
 
     #[test]
     fn stalled_audio_message_identifies_the_source_without_claiming_recovery() {

@@ -32,10 +32,16 @@
   // clears the meeting projection (main.rs, after enqueue), so the notice
   // rides on an idle snapshot, not a "transcribing" one.
   // mode=mic-change-failed: the same change while arming, which still fails.
+  // mode=mic-change-resume-failed: the change while resuming a paused take,
+  // which also fails; the meeting is kept as interrupted.
+  // Both failure modes show the capture pane's first moment. The meeting
+  // record is created RecoveredInterrupted, so once the library lists it the
+  // UI opens its "did not finish" page instead (see the cold review record).
   // Both modes carry a library, as a real install would. Copy is the
   // backend's own, verbatim.
   const MIC_CHANGE_SAVED = "Recording stopped because the microphone setup changed. Your audio was saved and queued for transcription.";
-  const MIC_CHANGE_FAILED = "Recording stopped because the microphone setup changed. Check your audio input before starting another recording. Nothing was marked complete.";
+  const MIC_CHANGE_FAILED = "Recording did not start because the microphone setup changed. No audio was captured. Check your audio input, then press Record.";
+  const MIC_CHANGE_RESUME_FAILED = "Recording could not resume because the microphone setup changed. This meeting is kept as interrupted. Check your audio input before starting another recording.";
   let micChangeSnapshot = { ...captureSnapshot };
   if (mode === "mic-change-stop") {
     setTimeout(() => {
@@ -161,6 +167,7 @@
       : mode === "stop-status" ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
+      : mode === "mic-change-resume-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_RESUME_FAILED }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
@@ -207,7 +214,7 @@
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
             createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60) },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
-      : mode === "library" || mode === "fidelity" || mode === "mic-change-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+      : mode === "library" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
           handle: "row-handle-2",
