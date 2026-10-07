@@ -563,6 +563,7 @@ struct AppModel {
     current_transcript_sha256: Option<String>,
     warnings: Vec<String>,
     error: Option<String>,
+    capture_notice: Option<String>,
 }
 
 impl Default for AppModel {
@@ -588,6 +589,7 @@ impl Default for AppModel {
             current_transcript_sha256: None,
             warnings: Vec::new(),
             error: None,
+            capture_notice: None,
         }
     }
 }
@@ -617,6 +619,7 @@ impl AppModel {
             current_transcript_sha256: self.current_transcript_sha256.clone(),
             warnings: self.warnings.clone(),
             error: self.error.clone(),
+            capture_notice: self.capture_notice.clone(),
         }
     }
 
@@ -633,6 +636,7 @@ impl AppModel {
         self.current_transcript_sha256 = None;
         self.warnings.clear();
         self.error = None;
+        self.capture_notice = None;
     }
 }
 
@@ -660,6 +664,7 @@ struct AppSnapshot {
     current_transcript_sha256: Option<String>,
     warnings: Vec<String>,
     error: Option<String>,
+    capture_notice: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -1355,6 +1360,14 @@ fn apply_restored_transcript_projection(
     model: &mut AppModel,
     projection: RestoredTranscriptProjection,
 ) -> Result<(), String> {
+    // Check again reconciles storage after capture has stopped. Keep the
+    // interrupted meeting and its failure visible; an older saved transcript
+    // must not replace it or turn a successful startup retry into a blocker.
+    if model.reducer.startup() == StartupState::Retrying
+        && model.reducer.capture() == CaptureState::RecoveredInterrupted
+    {
+        return Ok(());
+    }
     model
         .reducer
         .restore_capture_projection(CaptureState::TranscriptReady)
@@ -1703,6 +1716,7 @@ enum CaptureEvent {
     Finalized {
         mic_samples: u64,
         system_samples: u64,
+        stop_reason: Option<CaptureStopReason>,
     },
     /// The dedicated-sitting helper mode records the mic leg only, so its
     /// finalized receipt carries exactly one leg. A meeting capture must
@@ -1715,6 +1729,59 @@ enum CaptureEvent {
         code: String,
     },
     Interrupted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CaptureStopReason {
+    MicrophoneConfigurationChanged,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct MeetingCaptureFinalization {
+    mic_samples: u64,
+    system_samples: u64,
+    stop_reason: Option<CaptureStopReason>,
+}
+
+fn validate_meeting_finalization(
+    event: CaptureEvent,
+    stop_requested: bool,
+) -> Result<MeetingCaptureFinalization, String> {
+    match event {
+        CaptureEvent::Finalized { mic_samples, system_samples, stop_reason }
+            if (stop_requested || stop_reason.is_some())
+                && mic_samples > 0 && system_samples > 0
+                && mic_samples <= 16_000 * 60 * 60 * 24
+                && system_samples <= 16_000 * 60 * 60 * 24 =>
+        {
+            Ok(MeetingCaptureFinalization { mic_samples, system_samples, stop_reason })
+        }
+        CaptureEvent::Failed { code } => Err(format!("capture helper failed with code {code}")),
+        _ => Err("capture helper did not return an authorized two-track finalization".into()),
+    }
+}
+
+fn accept_automatic_capture_stop(model: &mut AppModel) -> Result<(), String> {
+    // Stop may already have won the race on the UI thread.
+    if model.reducer.capture() != CaptureState::Stopping {
+        transition_capture(model, CaptureState::Stopping)?;
+    }
+    model.capture_pause_change_pending = false;
+    Ok(())
+}
+
+fn finish_capture_helper(
+    helper: &mut CaptureProcess,
+    automatic: Option<MeetingCaptureFinalization>,
+) -> Result<MeetingCaptureFinalization, String> {
+    if let Some(finalized) = automatic {
+        return Ok(finalized);
+    }
+    // An automatic stop can close the control pipe just before the operator
+    // presses Stop. Its verified event still proves why both tracks ended.
+    let stop_sent = helper.send(b'X').is_ok();
+    let event = helper.receive_until(Instant::now() + CAPTURE_STOP_TIMEOUT)?;
+    validate_meeting_finalization(event, stop_sent)
 }
 
 enum CaptureStreamItem {
@@ -9186,7 +9253,7 @@ fn initialize_application(app: AppHandle, retry: bool) {
     if let Err(error) = transition_startup(&mut model, StartupState::Ready) {
         model.error = Some(error);
     } else {
-        model.startup_message = "Yawn is ready.".into();
+        model.startup_message = "Ready to Yawn.".into();
     }
     drop(model);
     sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
@@ -9833,6 +9900,7 @@ fn run_capture_task(
     // or resumed event, and consuming it as if it were the finalize would fail
     // an otherwise healthy take. The deadline above bounds the wait.
     let mut stop_requested = false;
+    let mut automatic_finalization = None;
     loop {
         if stop_requested && pause_change_deadline.is_none() {
             break;
@@ -9957,6 +10025,29 @@ fn run_capture_task(
                 model.mic_state = Some("Active".into());
                 model.system_state = Some("Active".into());
             }
+            Ok(Some(event @ CaptureEvent::Finalized { .. })) => {
+                let finalized = match validate_meeting_finalization(event, false) {
+                    Ok(finalized) => finalized,
+                    Err(error) => {
+                        fail_capture_task(&app, Some(&meeting_id), recovery_required, true,
+                            "capture_automatic_stop_invalid", &error,
+                            "The recording ended without a valid stop reason.");
+                        return;
+                    }
+                };
+                let mut model = state.model.lock().expect("application model lock");
+                if let Err(error) = accept_automatic_capture_stop(&mut model) {
+                    drop(model);
+                    fail_capture_task(&app, Some(&meeting_id), recovery_required, true,
+                        "capture_automatic_stop_transition_failed", &error,
+                        "The recording could not finish after the microphone changed.");
+                    return;
+                }
+                drop(model);
+                capture_shortcut::deactivate(&app);
+                automatic_finalization = Some(finalized);
+                break;
+            }
             Ok(Some(CaptureEvent::Failed { code })) => {
                 fail_capture_task(
                     &app,
@@ -10015,72 +10106,17 @@ fn run_capture_task(
             return;
         }
     };
-    if let Err(error) = helper.send(b'X') {
-        fail_capture_task(
-            &app,
-            Some(&meeting_id),
-            recovery_required,
-            true,
-            "capture_stop_signal_failed",
-            &error,
-            "The audio helper did not receive Stop.",
-        );
-        return;
-    }
-    let finalized = match helper.receive_until(Instant::now() + CAPTURE_STOP_TIMEOUT) {
-        Ok(CaptureEvent::Finalized {
-            mic_samples,
-            system_samples,
-        }) if mic_samples > 0 && system_samples > 0 => (mic_samples, system_samples),
-        Ok(CaptureEvent::Failed { code }) => {
-            fail_capture_task(
-                &app,
-                Some(&meeting_id),
-                recovery_required,
-                true,
-                "capture_finalize_failed",
-                &format!("capture helper failed with code {code}"),
-                capture_user_message(&code),
-            );
-            return;
-        }
-        Ok(_) => {
-            fail_capture_task(
-                &app,
-                Some(&meeting_id),
-                recovery_required,
-                true,
-                "capture_finalize_event_invalid",
-                "capture helper did not return a valid finalized event",
-                "Both audio files could not be finalized.",
-            );
-            return;
-        }
+    let finalized = match finish_capture_helper(&mut helper, automatic_finalization) {
+        Ok(finalized) => finalized,
         Err(error) => {
             fail_capture_task(
-                &app,
-                Some(&meeting_id),
-                recovery_required,
-                true,
-                "capture_finalize_event_failed",
-                &error,
+                &app, Some(&meeting_id), recovery_required, true,
+                "capture_finalize_event_failed", &error,
                 "Both audio files could not be finalized.",
             );
             return;
         }
     };
-    if finalized.0 > 16_000 * 60 * 60 * 24 || finalized.1 > 16_000 * 60 * 60 * 24 {
-        fail_capture_task(
-            &app,
-            Some(&meeting_id),
-            recovery_required,
-            true,
-            "capture_sample_count_invalid",
-            "capture helper returned an out-of-range sample count",
-            "The finalized audio timing was invalid.",
-        );
-        return;
-    }
     if let Err(error) = helper.finish_cleanly(Instant::now() + Duration::from_secs(5)) {
         fail_capture_task(
             &app,
@@ -10243,7 +10279,16 @@ fn run_capture_task(
                 Some("The capture was saved, but the recorder could not return to idle.".into());
         } else {
             model.clear_meeting_projection();
+            if finalized.stop_reason == Some(CaptureStopReason::MicrophoneConfigurationChanged) {
+                model.capture_notice = Some(
+                    "Recording stopped because the microphone setup changed. Your audio was saved and queued for transcription.".into(),
+                );
+            }
         }
+    }
+    if finalized.stop_reason.is_some() {
+        write_diagnostic(&state, "capture_stopped_audio_configuration_changed",
+            "microphone configuration changed; both tracks finalized and queued for transcription");
     }
 }
 
@@ -11333,7 +11378,14 @@ fn parse_capture_event(frame: &[u8]) -> Result<CaptureEvent, String> {
             }
             Ok(CaptureEvent::Recording)
         }
-        Some("finalized") if exact_object_keys(object, &["schema", "event", "legs"]) => {
+        Some("finalized") if exact_object_keys(object, &["schema", "event", "legs"])
+            || exact_object_keys(object, &["schema", "event", "legs", "stop_reason"]) => {
+            let stop_reason = match object.get("stop_reason") {
+                None => None,
+                Some(Value::String(reason)) if reason == "microphone_configuration_changed" =>
+                    Some(CaptureStopReason::MicrophoneConfigurationChanged),
+                _ => return Err("capture stop reason is invalid".into()),
+            };
             let legs = object["legs"]
                 .as_object()
                 .ok_or_else(|| "capture legs are invalid".to_string())?;
@@ -11352,8 +11404,9 @@ fn parse_capture_event(frame: &[u8]) -> Result<CaptureEvent, String> {
                 Ok(CaptureEvent::Finalized {
                     mic_samples: samples("mic")?,
                     system_samples: samples("system")?,
+                    stop_reason,
                 })
-            } else if exact_object_keys(legs, &["mic"]) {
+            } else if exact_object_keys(legs, &["mic"]) && stop_reason.is_none() {
                 Ok(CaptureEvent::FinalizedMicOnly {
                     mic_samples: samples("mic")?,
                 })
@@ -11584,6 +11637,9 @@ fn capture_user_message(code: &str) -> &'static str {
         }
         "microphone_audio_stalled" => {
             "Recording stopped because the microphone stopped sending audio. Check your microphone connection. Nothing was marked complete."
+        }
+        "microphone_configuration_changed" => {
+            "Recording stopped because the microphone setup changed. Check your audio input before starting another recording. Nothing was marked complete."
         }
         "system_audio_stalled" => {
             "Recording stopped because meeting audio stopped arriving. Check your meeting app and audio output. Nothing was marked complete."
@@ -14128,6 +14184,60 @@ mod tests {
     }
 
     #[test]
+    fn automatic_capture_stop_requires_a_known_reason_and_two_valid_tracks() {
+        let event = |reason: Option<&str>, mic: u64, system: u64| {
+            let mut value = json!({"schema":"capture-event/1", "event":"finalized",
+                "legs":{"mic":{"samples":mic},"system":{"samples":system}}});
+            if let Some(reason) = reason { value["stop_reason"] = json!(reason); }
+            parse_capture_event(&serde_json::to_vec(&value).unwrap())
+        };
+        let automatic = event(Some("microphone_configuration_changed"), 32000, 32001).unwrap();
+        let receipt = validate_meeting_finalization(automatic, false).unwrap();
+        assert_eq!(receipt.stop_reason, Some(CaptureStopReason::MicrophoneConfigurationChanged));
+        assert!(event(Some("unknown"), 1, 1).is_err());
+        assert!(validate_meeting_finalization(event(None, 1, 1).unwrap(), false).is_err());
+        assert!(validate_meeting_finalization(event(None, 1, 1).unwrap(), true).is_ok());
+        assert!(validate_meeting_finalization(event(Some("microphone_configuration_changed"), 0, 1).unwrap(), false).is_err());
+        assert!(validate_meeting_finalization(event(Some("microphone_configuration_changed"), u64::MAX, 1).unwrap(), false).is_err());
+        assert!(parse_capture_event(br#"{"schema":"capture-event/1","event":"finalized","stop_reason":"microphone_configuration_changed","legs":{"mic":{"samples":7}}}"#).is_err());
+        for already_stopping in [false, true] {
+            let mut model = AppModel::default();
+            transition_capture(&mut model, CaptureState::Arming).unwrap();
+            transition_capture(&mut model, CaptureState::Recording).unwrap();
+            if already_stopping { transition_capture(&mut model, CaptureState::Stopping).unwrap(); }
+            model.capture_pause_change_pending = true;
+            accept_automatic_capture_stop(&mut model).unwrap();
+            assert_eq!(model.reducer.capture(), CaptureState::Stopping);
+            assert!(!model.capture_pause_change_pending);
+            transition_capture(&mut model, CaptureState::Captured).unwrap();
+            transition_capture(&mut model, CaptureState::Idle).unwrap();
+        }
+        let mut arming = AppModel::default();
+        transition_capture(&mut arming, CaptureState::Arming).unwrap();
+        assert!(accept_automatic_capture_stop(&mut arming).is_err());
+    }
+
+    #[test]
+    fn automatic_capture_finalization_survives_a_closed_stop_pipe() {
+        for automatic in [false, true] {
+            let temporary = TempDir::new().unwrap();
+            let reason = if automatic { r#", "stop_reason":"microphone_configuration_changed""# } else { "" };
+            let body = format!(r#"emit '{{"schema":"capture-event/1","event":"finalized","legs":{{"mic":{{"samples":32000}},"system":{{"samples":32000}}}}{reason}}}'
+exit 0"#);
+            let script = write_sitting_helper(temporary.path(), &body);
+            let mut anchor = spawn_group_anchor();
+            let mut helper = CaptureProcess::spawn(&script, temporary.path(), anchor.id() as i32).unwrap();
+            // The call can finish and close its control pipe before Stop is sent.
+            helper.control.take();
+            let result = finish_capture_helper(&mut helper, None);
+            assert_eq!(result.is_ok(), automatic, "{result:?}");
+            helper.finish_cleanly(Instant::now() + Duration::from_secs(2)).unwrap();
+            let _ = anchor.kill();
+            anchor.wait().unwrap();
+        }
+    }
+
+    #[test]
     fn capture_events_are_closed_and_format_bound() {
         assert_eq!(
             parse_capture_event(br#"{"schema":"capture-event/1","event":"paused"}"#).unwrap(),
@@ -15386,6 +15496,44 @@ mod tests {
                 .message,
             "The retry candidate is still awaiting a decision."
         );
+    }
+
+    #[test]
+    fn startup_retry_keeps_interrupted_recording_when_an_older_transcript_exists() {
+        let (_temporary, storage) = test_storage();
+        let older = Uuid::new_v4().to_string();
+        write_transcript_fixture(&storage, &older, 10, AudioState::Retained, "older words");
+        let interrupted = Uuid::new_v4().to_string();
+        let mut model = AppModel::default();
+        transition_startup(&mut model, StartupState::Checking).unwrap();
+        transition_startup(&mut model, StartupState::Ready).unwrap();
+        transition_capture(&mut model, CaptureState::Arming).unwrap();
+        transition_capture(&mut model, CaptureState::Recording).unwrap();
+        model.meeting_id = Some(interrupted.clone());
+        transition_capture(&mut model, CaptureState::RecoveredInterrupted).unwrap();
+        transition_startup(&mut model, StartupState::DiagnosticWritten).unwrap();
+        let failure = "The microphone configuration changed during recording.";
+        model.error = Some(failure.into());
+
+        prepare_startup_retry(&mut model).unwrap();
+        let projection = load_latest_transcript_projection(&storage, &[older.clone()])
+            .unwrap().unwrap();
+        apply_restored_transcript_projection(&mut model, projection).unwrap();
+        transition_startup(&mut model, StartupState::Ready).unwrap();
+
+        let snapshot = model.snapshot();
+        assert_eq!(snapshot.startup, StartupState::Ready);
+        assert_eq!(snapshot.capture, CaptureState::RecoveredInterrupted);
+        assert_eq!(snapshot.meeting_id.as_deref(), Some(interrupted.as_str()));
+        assert_eq!(snapshot.error.as_deref(), Some(failure));
+        assert!(snapshot.turns.is_empty());
+        assert!(snapshot.current_transcript_sha256.is_none());
+        // Dismiss can now return to the library and arm a new recording.
+        transition_capture(&mut model, CaptureState::Idle).unwrap();
+        model.clear_meeting_projection();
+        arm_new_meeting_capture(&mut model).unwrap();
+        let saved = load_latest_transcript_projection(&storage, &[older]).unwrap().unwrap();
+        assert_eq!(saved.turns[0].text, "older words");
     }
 
     #[test]
