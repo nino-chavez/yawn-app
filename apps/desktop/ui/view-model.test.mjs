@@ -27,6 +27,8 @@ import {
   libraryLoadingPresentation,
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
+  meetingTranscribingPresentation,
+  pendingTranscriptRefreshDue,
   libraryRowPreview,
   libraryStallTransition,
   localVocabularyPresentation,
@@ -1512,6 +1514,7 @@ test("a locked row keeps its title and date and drops preview and transcript det
   });
   assert.deepEqual(unlocked, {
     locked: false,
+    transcribing: false,
     label: "transcript available",
     preview: "We agreed to ship on Friday.",
     duration: null,
@@ -1526,7 +1529,7 @@ test("a locked row keeps its title and date and drops preview and transcript det
     transcriptAvailable: true,
     notePreview: "We agreed to ship on Friday.",
   });
-  assert.deepEqual(locked, { locked: true, label: "Locked", preview: null, duration: null, needsAttention: false });
+  assert.deepEqual(locked, { locked: true, transcribing: false, label: "Locked", preview: null, duration: null, needsAttention: false });
 });
 
 // Refit R10: length and a needs-attention dot, both read defensively so a
@@ -2116,4 +2119,76 @@ test("transcription engine presentation leads with native speech and truthful fa
     whisper: { state: "downloading" },
   }).state, "whisper-downloading");
   assert.equal(transcriptionEnginePresentation(null).state, "legacy");
+});
+
+// A just-recorded meeting is listed before its transcript exists. The row and
+// the page must say the transcript is coming, and only when the backend says
+// so: an absent field, a locked row, or a row that needs recovery never reads
+// as transcribing.
+test("a row reads as transcribing only when the backend says its transcript is pending", () => {
+  const pending = libraryRowMetaPresentation({ transcriptAvailable: false, transcriptPending: true, recovery: null });
+  assert.equal(pending.transcribing, true);
+  assert.equal(pending.needsAttention, false, "nothing needs recovering while the transcript is made");
+  assert.notEqual(pending.label, libraryRowMetaPresentation({ transcriptAvailable: false }).label);
+
+  assert.equal(libraryRowMetaPresentation({ transcriptAvailable: false }).transcribing, false);
+  assert.equal(libraryRowMetaPresentation({ transcriptAvailable: false, transcriptPending: false }).transcribing, false);
+  assert.equal(libraryRowMetaPresentation({ transcriptAvailable: false, transcriptPending: "yes" }).transcribing, false);
+  assert.equal(libraryRowMetaPresentation({ transcriptPending: true, locked: true }).transcribing, false);
+  assert.equal(
+    libraryRowMetaPresentation({ transcriptPending: true, recovery: "recovered-interrupted" }).transcribing,
+    false,
+    "an interrupted capture never produced a transcript and never will",
+  );
+});
+
+test("the meeting page's transcribing status exists only for the transcribing note state", () => {
+  const status = meetingTranscribingPresentation({ state: "transcribing" });
+  assert.equal(status.state, "transcribing");
+  assert.doesNotMatch(status.detail, /remain/i, "no transcript exists yet, so none can \"remain\"");
+  for (const state of ["transcript-only", "summary-failed", "note", "recovered-interrupted", "locked", "stale", "unavailable", "saved-note-unreadable", ""]) {
+    assert.equal(meetingTranscribingPresentation({ state }), null, state);
+  }
+  assert.equal(meetingTranscribingPresentation(null), null);
+});
+
+test("a transcribing meeting is a normal page: no recovery pane, audio still playable", () => {
+  const note = {
+    state: "transcribing",
+    claims: [],
+    audioRetention: { state: "retained" },
+    microphonePlaybackHandle: "opaque-mic",
+    systemPlaybackHandle: "opaque-system",
+    operatorNoteHandle: "opaque-note",
+  };
+  assert.equal(meetingRecoveryPresentation(note, null), null);
+  assert.equal(meetingBlockingRecovery(note, null), null);
+  const playback = retainedAudioPlaybackPresentation(note, null, { state: "idle" });
+  assert.deepEqual(playback.controls.map((control) => control.source), ["microphone", "system"]);
+});
+
+test("a page that says transcribing re-reads itself once the backend is quiet, with backoff", () => {
+  const idle = { startup: "ready", capture: "idle", background_transcription_active: false, background_transcription_queued_count: 0 };
+  const base = { snapshot: idle, selectedNote: { state: "transcribing" }, nowMs: 100_000, lastAttemptMs: 0, attempts: 0 };
+  assert.equal(pendingTranscriptRefreshDue(base), true);
+  // A pending row in the sidebar counts even when another meeting is open.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, selectedNote: { state: "note" }, libraryRows: [{ transcriptPending: true }] }), true);
+  // Nothing says transcribing: nothing to refresh.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, selectedNote: { state: "note" }, libraryRows: [{ transcriptPending: false }, {}] }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, libraryRows: [], selectedNote: null }), false);
+  // A locked row's flag is not a reason to touch the library.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, selectedNote: null, libraryRows: [{ transcriptPending: true, locked: true }] }), false);
+  // The backend still visibly working: wait.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, snapshot: { ...idle, background_transcription_active: true } }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, snapshot: { ...idle, background_transcription_queued_count: 1 } }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, snapshot: { ...idle, capture: "recording" } }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, snapshot: { ...idle, startup: "checking" } }), false);
+  // Never while the person is mid-action.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, busy: true }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, modal: true }), false);
+  // Backoff: a meeting that stays "transcribing" is re-read less and less often.
+  assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 99_000, attempts: 1 }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 96_000, attempts: 1 }), true);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 99_999, attempts: 30 }), false);
+  assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 69_000, attempts: 30 }), true);
 });
