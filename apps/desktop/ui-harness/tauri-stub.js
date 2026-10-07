@@ -314,7 +314,7 @@
         ? "No admitted note is available. Retained transcript text remains available."
         : legacyContract
           ? "No transcript was created for this retained meeting."
-          : "Transcribing your saved audio. It will appear here when it's ready.",
+          : "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     } : searchMode && openedSearchMeeting ? {

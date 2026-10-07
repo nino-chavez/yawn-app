@@ -438,7 +438,7 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
 // made; a failed transcription or a deleted transcript never carries it. The
 // sentence matches `TRANSCRIBING_MESSAGE` in library_reader.rs, and a Rust test
 // pins them together.
-export const TRANSCRIBING_DETAIL = "Transcribing your saved audio. It will appear here when it\u2019s ready.";
+export const TRANSCRIBING_DETAIL = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it\u2019s ready.";
 export function meetingTranscribingPresentation(note) {
   if (note?.state !== "transcribing") return null;
   return { state: "transcribing", detail: TRANSCRIBING_DETAIL };

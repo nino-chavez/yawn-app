@@ -22,3 +22,5 @@ What was removed, combined, demoted or hidden: the false "transcript remains ava
 ![Transcript landed, light](../transcribing-meeting-2026-10-07/landed-light.png)
 
 Checks: `npm run test:ui` (161 pass). `cargo test -p local-meeting-notes-desktop` (289 pass) and `-p local-meeting-notes-session-core` (536 pass). `./run.sh transcribing-meeting` passes (both the pending state and the transcript landing while text is being typed). Run against main's UI it fails: no status node, row reads "note only". `./run.sh all` has two failing animation-count checks in `sheets` that fail identically on main. This review does not establish behavior in an installed build.
+
+**Operator decision, 2026-10-07:** the status line now says the audio is saved on this Mac, answering pass 1's finding that "saved audio" and the play buttons only implied it: "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready." Frames recaptured with this copy. No progress indicator was added, because no progress signal exists.
