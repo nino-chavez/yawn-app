@@ -28,20 +28,22 @@
   let stopStatusSnapshot = { ...captureSnapshot };
   // mode=mic-change-stop: the microphone setup changes mid-recording (a call
   // ending), and the backend stops, saves and queues the take by itself — no
-  // Stop click. mode=mic-change-failed: the same change while arming, which
-  // still fails. Copy is the backend's own, verbatim.
+  // Stop click. Like any finalized take, it then steps Captured -> Idle and
+  // clears the meeting projection (main.rs, after enqueue), so the notice
+  // rides on an idle snapshot, not a "transcribing" one.
+  // mode=mic-change-failed: the same change while arming, which still fails.
+  // Both modes carry a library, as a real install would. Copy is the
+  // backend's own, verbatim.
   const MIC_CHANGE_SAVED = "Recording stopped because the microphone setup changed. Your audio was saved and queued for transcription.";
   const MIC_CHANGE_FAILED = "Recording stopped because the microphone setup changed. Check your audio input before starting another recording. Nothing was marked complete.";
   let micChangeSnapshot = { ...captureSnapshot };
   if (mode === "mic-change-stop") {
     setTimeout(() => {
       micChangeSnapshot = {
-        ...captureSnapshot,
-        capture: "transcribing",
-        mic_state: "stopped",
-        system_state: "stopped",
-        capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000),
+        ...idleSnapshot,
         capture_notice: MIC_CHANGE_SAVED,
+        background_transcription_active: true,
+        background_transcription_queued_count: 1,
       };
     }, 1200);
   }
@@ -158,7 +160,7 @@
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : mode === "stop-status" ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
-      : mode === "mic-change-failed" ? { ...captureSnapshot, capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
+      : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
@@ -199,7 +201,13 @@
         prompted: true,
       };
     },
-    library_snapshot: () => (mode === "library" || mode === "fidelity" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+    library_snapshot: () => (mode === "mic-change-stop" ? {
+        rows: [
+          { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false },
+          { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
+            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60) },
+        ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
+      : mode === "library" || mode === "fidelity" || mode === "mic-change-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
           ...libraryRow,
           handle: "row-handle-2",
@@ -288,7 +296,20 @@
     },
     // mode=summary-failed: the same meeting after a rejected generation,
     // audio released, with a source pin so the retry control renders (R23).
-    library_open_note: () => (searchMode && openedSearchMeeting ? {
+    library_open_note: () => (mode === "mic-change-stop" ? {
+      // A Captured meeting still queued: library_reader's default branch,
+      // "transcript-only" with no transcript handle and its real message.
+      meetingId: "harness-meeting-1",
+      state: "transcript-only",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { text: "", unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: null,
+      message: "No transcript was created for this retained meeting.",
+      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      capturePauses: null,
+    } : searchMode && openedSearchMeeting ? {
       meetingId: "harness-meeting-2",
       state: "transcript-only",
       claims: [],

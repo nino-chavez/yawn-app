@@ -24,11 +24,14 @@ if (mode === "mic-change-stop") {
   result.noticeShown = !!toast && toast.getAttribute('role') === 'status'
     && toast.textContent.includes("microphone setup changed")
     && toast.textContent.includes("saved and queued for transcription");
-  result.transcribingShowsPhase = q('.record-control [role="status"]')?.textContent === "Transcribing on this Mac";
+  // The real post-stop snapshot is idle with the meeting cleared, so Record
+  // is offered again and no capture phase is shown.
+  result.backToIdle = !!q('.record-control [data-action="open-start"], .record-control [data-action="start-recording"], [data-action="open-start"]');
   result.noLiveControls = !q('.record-control .record.live') && !q('.record-control [data-action="stop-recording"]');
+  result.noCapturePhase = !["Transcribing on this Mac", "Stopping recording"].includes(q('.toolbar-title')?.textContent);
   result.errors = window.__errors || [];
-  result.pass = result.startedLive && result.noticeShown && result.transcribingShowsPhase
-    && result.noLiveControls && result.errors.length === 0;
+  result.pass = result.startedLive && result.noticeShown && result.backToIdle
+    && result.noLiveControls && result.noCapturePhase && result.errors.length === 0;
   return result;
 }
 
