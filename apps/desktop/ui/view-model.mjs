@@ -315,7 +315,7 @@ export function retentionLabel(days) {
 // command; this presentation deliberately contains no fallback selector.
 export function retainedAudioPlaybackPresentation(note, recovery, playback = {}) {
   if (!note || recovery || note.audioRetention?.state !== "retained") return null;
-  if (!["note", "summary-failed", "transcript-only", "saved-note-unreadable"].includes(note.state)) return null;
+  if (!["note", "summary-failed", "transcript-only", "saved-note-unreadable", "transcribing"].includes(note.state)) return null;
   const availableControls = [
     { source: "microphone", handle: note.microphonePlaybackHandle, label: "Play microphone" },
     { source: "system", handle: note.systemPlaybackHandle, label: "Play system audio" },
@@ -421,6 +421,8 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
   "note": "Saved AI draft",
   // The note area separately explains that automatic generation is retired.
   "transcript-only": "Transcript",
+  // No transcript exists yet, so the caption must not name one.
+  "transcribing": "Transcribing",
   "summary-failed": "AI draft not created",
   // The note area explains the withheld saved draft; the caption names
   // what is readable, like transcript-only.
@@ -429,6 +431,45 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
   "locked": "Locked",
   "metadata-only": "Details only",
 });
+
+// A just-recorded meeting is listed and opened before its transcript exists.
+// The backend names that state ("transcribing", and the row's
+// `transcriptPending`) only while the transcript is positively still being
+// made; a failed transcription or a deleted transcript never carries it. The
+// sentence matches `TRANSCRIBING_MESSAGE` in library_reader.rs, and a Rust test
+// pins them together.
+export const TRANSCRIBING_DETAIL = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it\u2019s ready.";
+export function meetingTranscribingPresentation(note) {
+  if (note?.state !== "transcribing") return null;
+  return { state: "transcribing", detail: TRANSCRIBING_DETAIL };
+}
+
+// Nothing pushes "the transcript landed" to an open page, so the page asks.
+// True when something on screen still says "transcribing" (the open meeting or
+// a library row), the backend is no longer visibly working, and the backoff
+// since the last attempt has passed. Waiting for the backend to go quiet keeps
+// this from re-reading the meeting every tick while the work is running; the
+// backoff keeps a request that ended without a transcript from being re-read
+// forever (the backend stops saying "transcribing" for it, but a lagging
+// record must not make this a loop).
+export function pendingTranscriptRefreshDue({
+  snapshot,
+  libraryRows,
+  selectedNote,
+  busy = false,
+  modal = false,
+  nowMs = 0,
+  lastAttemptMs = 0,
+  attempts = 0,
+} = {}) {
+  const waiting = selectedNote?.state === "transcribing"
+    || (Array.isArray(libraryRows) && libraryRows.some((row) => row?.transcriptPending === true && !row?.locked));
+  if (!waiting || busy || modal) return false;
+  if (snapshot?.startup !== "ready" || captureIsInProgress(snapshot)) return false;
+  if (backgroundTranscriptionPresentation(snapshot)) return false;
+  const backoffMs = Math.min(1500 * 2 ** Math.max(0, attempts), 30000);
+  return nowMs - lastAttemptMs >= backoffMs;
+}
 
 export function meetingStateCaption(noteState) {
   const key = String(noteState || "");
@@ -922,13 +963,19 @@ export function durationLabel(totalSeconds) {
 // row from a build that hasn't shipped the Rust side renders byte-identical
 // to before this packet.
 export function libraryRowMetaPresentation(row) {
-  if (row?.locked) return { locked: true, label: "Locked", preview: null, duration: null, needsAttention: false };
+  if (row?.locked) return { locked: true, transcribing: false, label: "Locked", preview: null, duration: null, needsAttention: false };
   const durationSeconds = row?.durationSeconds;
+  // `transcriptPending` is absent on rows from a build without it, which must
+  // read exactly as before: only an explicit true says the transcript is coming.
+  const transcribing = row?.transcriptPending === true && row?.recovery == null;
   return {
     locked: false,
+    transcribing,
     label: row?.recovery === "recovered-interrupted"
       ? "interrupted"
-      : row?.transcriptAvailable ? "transcript available" : "note only",
+      : transcribing
+        ? "transcribing"
+        : row?.transcriptAvailable ? "transcript available" : "note only",
     preview: libraryRowPreview(row),
     duration: typeof durationSeconds === "number" && Number.isFinite(durationSeconds) ? durationLabel(durationSeconds) : null,
     needsAttention: ["recovered-interrupted", "needs-attention"].includes(row?.recovery),

@@ -322,6 +322,50 @@ impl<'a> TranscriptionQueue<'a> {
         })
     }
 
+    /// Whether this meeting's transcript is still going to be made: the
+    /// meeting is captured, its audio is still retained, and its request is
+    /// either still waiting or running, or has not been written yet (the
+    /// executor enqueues such a capture on its next pass).
+    ///
+    /// A request that already ended in `terminal` without a transcript, or a
+    /// meeting whose lifecycle moved on, is not pending. Readers use this to
+    /// say "transcribing" only while that is true, so a failed or abandoned
+    /// request never reads as work in progress.
+    pub fn meeting_transcript_pending(
+        &self,
+        meeting_id: &str,
+    ) -> Result<bool, TranscriptionQueueError> {
+        let meeting_dir = self.meeting_dir(meeting_id)?;
+        let meeting = load_meeting(&meeting_dir)?;
+        if meeting.lifecycle != MeetingLifecycle::Captured
+            || meeting.retention.state != AudioState::Retained
+        {
+            return Ok(false);
+        }
+        let queue_dir = meeting_dir.join(QUEUE_DIRECTORY);
+        if !path_exists(&queue_dir)? {
+            return Ok(true);
+        }
+        require_private_directory(&queue_dir)?;
+        for entry in fs::read_dir(&queue_dir)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if crate::storage::is_finder_metadata(&entry.file_name(), &file_type) {
+                continue;
+            }
+            if !file_type.is_dir() {
+                return Err(TranscriptionQueueError::InvalidPrivateStorage);
+            }
+            let request_id = Uuid::parse_str(&entry.file_name().to_string_lossy())
+                .map_err(|_| TranscriptionQueueError::Malformed("request directory id"))?;
+            let item = self.load_item(&entry.path(), request_id)?;
+            if item.terminal.is_none() && item.commit.is_none() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Claim one request. Claims are immutable and are valid only while the
     /// source still matches. A fresh process should first inspect `discover`.
     pub fn claim(
@@ -974,6 +1018,47 @@ mod tests {
             queue.discover(),
             Err(TranscriptionQueueError::InvalidPrivateStorage)
         ));
+    }
+
+    #[test]
+    fn a_captured_meeting_is_pending_until_its_request_ends_without_a_transcript() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        // Captured and not yet queued: the executor enqueues it on its next
+        // pass, so the transcript is still coming.
+        assert!(queue.meeting_transcript_pending("meeting-a").unwrap());
+        queue.enqueue(request.clone()).unwrap();
+        assert!(queue.meeting_transcript_pending("meeting-a").unwrap());
+        // A request that ended in failure will never produce one, even though
+        // the meeting record can still read Captured.
+        queue
+            .fail(request.request_id, TranscriptionTerminalKind::Failed, 5)
+            .unwrap();
+        assert!(!queue.meeting_transcript_pending("meeting-a").unwrap());
+    }
+
+    #[test]
+    fn a_quarantined_request_is_not_pending() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request.clone()).unwrap();
+        queue
+            .fail(request.request_id, TranscriptionTerminalKind::Quarantined, 5)
+            .unwrap();
+        assert!(!queue.meeting_transcript_pending("meeting-a").unwrap());
+    }
+
+    #[test]
+    fn a_meeting_that_is_no_longer_captured_is_not_pending() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request).unwrap();
+        let meeting_path = storage.path().join("meetings/meeting-a/meeting.json");
+        let mut meeting: MeetingRecord =
+            serde_json::from_slice(&fs::read(&meeting_path).unwrap()).unwrap();
+        meeting.lifecycle = MeetingLifecycle::TranscriptionFailed;
+        durable_replace(&meeting_path, &serde_json::to_vec_pretty(&meeting).unwrap()).unwrap();
+        assert!(!queue.meeting_transcript_pending("meeting-a").unwrap());
     }
 
     #[test]

@@ -62,6 +62,25 @@
     createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 3600,
     transcriptAvailable: true,
   };
+  // mode=transcribing-meeting / transcribing-meeting-lands: the state right
+  // after a normal Stop. The backend has queued the take, capture is idle, and
+  // the newest meeting is listed (and auto-opened) with no transcript yet --
+  // `library_reader.rs` answers "transcribing" for its note and
+  // `transcriptPending` on its row while the queue still holds the request. The
+  // scenario calls `window.__harnessLandTranscript()` to make the transcript
+  // arrive, after which the same meeting reads as an ordinary transcript-ready
+  // one and the queue is empty. The personal note a person typed is kept, as
+  // the real `library_save_operator_note` keeps it.
+  const transcribingMode = mode === "transcribing-meeting" || mode === "transcribing-meeting-lands";
+  // `&legacy=1` answers with the backend contract from before the fix: the
+  // just-stopped meeting opens as "transcript-only" with the retained-meeting
+  // message, and its row carries no pending flag. It is the negative control --
+  // the scenario is expected to FAIL against it, and the "before" frames come
+  // from it.
+  const legacyContract = new URLSearchParams(location.search).has("legacy");
+  let transcriptLanded = false;
+  let savedOperatorNote = "";
+  window.__harnessLandTranscript = () => { transcriptLanded = true; };
   const sheetMode = mode === "retry-sheet" || mode === "retry-sheet-no-note"
     || mode === "retry-sheet-diff-skipped" || mode === "delete-sheet";
   const searchMode = mode === "search-results" || mode === "search-capture";
@@ -164,6 +183,7 @@
     // no speech model installed yet. Both render surfaces the other modes
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
+      : transcribingMode ? { ...idleSnapshot, background_transcription_active: !transcriptLanded, background_transcription_queued_count: transcriptLanded ? 0 : 1 }
       : mode === "stop-status" ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
@@ -209,10 +229,21 @@
       };
     },
     library_snapshot: () => (mode === "mic-change-stop" ? {
+        // The just-stopped take, listed with its transcript still pending.
         rows: [
-          { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false },
+          { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false,
+            transcriptPending: true, recovery: null },
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60) },
+            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
+        ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
+      : transcribingMode ? {
+        rows: [
+          // Just recorded and not yet named: no label, so the sidebar and the
+          // page both fall back to "Meeting · <date>", as they do for real.
+          { ...libraryRow, label: "", labelSource: "date", createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 90,
+            transcriptAvailable: transcriptLanded, transcriptPending: legacyContract ? undefined : !transcriptLanded, recovery: null, durationSeconds: 1832 },
+          { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
+            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
       : mode === "library" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow }, {
@@ -304,16 +335,39 @@
     // mode=summary-failed: the same meeting after a rejected generation,
     // audio released, with a source pin so the retry control renders (R23).
     library_open_note: () => (mode === "mic-change-stop" ? {
-      // A Captured meeting still queued: library_reader's default branch,
-      // "transcript-only" with no transcript handle and its real message.
+      // The just-stopped take, still queued: library_reader's "transcribing"
+      // note, no transcript handle yet.
       meetingId: "harness-meeting-1",
-      state: "transcript-only",
+      state: "transcribing",
       claims: [],
       noteGenerationAvailable: false,
       operatorNote: { text: "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
       transcriptHandle: null,
-      message: "No transcript was created for this retained meeting.",
+      microphonePlaybackHandle: "mic-playback-1",
+      systemPlaybackHandle: "system-playback-1",
+      message: "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.",
+      audioRetention: { state: "retained", message: "Audio retained on this Mac." },
+      capturePauses: null,
+    } : transcribingMode ? {
+      meetingId: "harness-meeting-1",
+      // Before: library_reader's "transcribing" note -- no transcript handle,
+      // audio and personal note as for any captured meeting. After: the
+      // ordinary transcript-ready note.
+      state: transcriptLanded || legacyContract ? "transcript-only" : "transcribing",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { text: savedOperatorNote, unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: transcriptLanded ? "transcript-handle-1" : null,
+      microphonePlaybackHandle: "mic-playback-1",
+      systemPlaybackHandle: "system-playback-1",
+      meetingDeletionHandle: "deletion-handle-1",
+      message: transcriptLanded
+        ? "No admitted note is available. Retained transcript text remains available."
+        : legacyContract
+          ? "No transcript was created for this retained meeting."
+          : "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     } : searchMode && openedSearchMeeting ? {
@@ -396,7 +450,7 @@
     // makes the sheet appear from one click on Retry transcript.
     transcript_retry_pending: () => null,
     transcript_retry_start: () => ({ ...retryComparison }),
-    library_save_operator_note: (args) => ({
+    library_save_operator_note: (args) => (savedOperatorNote = args?.text || "", {
       operatorNote: { text: args?.text || "", unreadable: false },
       operatorNoteHandle: "note-handle-1",
     }),

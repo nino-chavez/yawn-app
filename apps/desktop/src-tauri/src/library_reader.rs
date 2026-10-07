@@ -25,6 +25,7 @@ use local_meeting_notes_session_core::note_projection::{ClaimType, NoteProjector
 use local_meeting_notes_session_core::retention::meeting_dir;
 use local_meeting_notes_session_core::storage::StorageRoot;
 use local_meeting_notes_session_core::transcript_deletion::transcript_deletion_completed;
+use local_meeting_notes_session_core::transcription_queue::TranscriptionQueue;
 use crate::meeting_lock::MeetingLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -32,6 +33,12 @@ use uuid::Uuid;
 
 const STALE_MESSAGE: &str = "That view is no longer current. Reopen it and try again.";
 const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the app and try again.";
+/// What a just-recorded meeting says while its transcript is still being made.
+/// The frontend renders its own copy of this sentence (`TRANSCRIBING_DETAIL`
+/// in `ui/view-model.mjs`, with a typographic apostrophe); this one is for
+/// any consumer that reads the response's `message` directly.
+const TRANSCRIBING_MESSAGE: &str =
+    "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.";
 const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "Yawn no longer includes AI notes, so it can't show this meeting's saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 /// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
 /// and deliberately not a security claim: the meeting is behind a local
@@ -247,6 +254,13 @@ pub(crate) struct LibrarySnapshotRow {
     /// transcription failed (that row still reads its transcript normally,
     /// so it is not "needing attention" at the list level).
     pub(crate) recovery: Option<&'static str>,
+    /// True only while this meeting's transcript is still going to be made:
+    /// captured, audio retained, and its transcription request waiting,
+    /// running, or about to be written. It is its own field, not a `recovery`
+    /// value, because nothing here needs recovering and the row must not read
+    /// as needing attention. False for a transcript that was deleted, a
+    /// request that ended without one, and every meeting that has a transcript.
+    pub(crate) transcript_pending: bool,
 }
 
 /// Operator title, then the meeting's own opening line, then nothing.
@@ -428,7 +442,11 @@ pub(crate) struct LibrarySearchOpenResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LibraryNoteResponse {
     /// `"note"`, `"summary-failed"`, `"transcript-only"`, `"locked"`,
-    /// `"stale"`, or `"unavailable"` -- plus `"saved-note-unreadable"` (a
+    /// `"stale"`, or `"unavailable"` -- plus `"transcribing"` (a captured
+    /// meeting whose transcript is still being made: `transcriptHandle` is
+    /// `None` because there is nothing to open yet, and the state ends on its
+    /// own once the transcript lands; a transcription that failed, or a
+    /// transcript the person deleted, is never this) plus `"saved-note-unreadable"` (a
     /// ready meeting whose saved draft this install cannot project; `claims`
     /// is empty because the draft is withheld) and `"recovered-interrupted"` (D-READ):
     /// a meeting salvaged from a crash or quit-during-finalize capture, whose
@@ -996,6 +1014,8 @@ impl LibraryReader {
             let Ok(hit) = self.projection.meeting_handle(&meeting_id) else {
                 return Self::unavailable_snapshot();
             };
+            let transcript_pending =
+                Self::transcript_pending(&self.storage, &meeting_id, lifecycle);
             rows.push(LibrarySnapshotRow {
                 handle: self.retain_handle(hit),
                 meeting_id,
@@ -1008,6 +1028,7 @@ impl LibraryReader {
                 locked,
                 duration_seconds,
                 recovery: Self::recovery_state_for(lifecycle),
+                transcript_pending,
             });
         }
         LibrarySnapshot {
@@ -1518,6 +1539,40 @@ impl LibraryReader {
                     lock_token: None,
                     can_confirm_operator: false,
                     message: SAVED_NOTE_UNREADABLE_MESSAGE.into(),
+                };
+            }
+            // The recording was just stopped and its transcript is still being
+            // made on this Mac. Without this arm the meeting fell through to
+            // `transcript-only` below and told the person that no transcript
+            // was created and that one "remains available" -- both false while
+            // the work is still running. The audio and the person's notes are
+            // exactly as they are for any other captured meeting.
+            MeetingLifecycle::Captured
+                if Self::transcript_pending(&self.storage, &meeting_id, lifecycle) =>
+            {
+                return LibraryNoteResponse {
+                    state: "transcribing",
+                    transcript_handle: None,
+                    operator_note_handle,
+                    audio_deletion_handle,
+                    microphone_playback_handle,
+                    system_playback_handle,
+                    transcript_deletion_handle,
+                    meeting_deletion_handle,
+                    meeting_id: meeting_id.clone(),
+                    regeneration_source_sha256: None,
+                    note_generation_available: false,
+                    note_generation_unavailable_reason: None,
+                    claims: Vec::new(),
+                    audio_retention,
+                    capture_pauses: capture_pauses.clone(),
+                    operator_note,
+                    meeting_context: meeting_context.clone(),
+                    turns_cited: Vec::new(),
+                    lock,
+                    lock_token: None,
+                    can_confirm_operator: false,
+                    message: TRANSCRIBING_MESSAGE.into(),
                 };
             }
             MeetingLifecycle::Ready => {}
@@ -2577,6 +2632,29 @@ impl LibraryReader {
             MeetingLifecycle::SummaryFailed => Some("summary-failed"),
             _ => None,
         }
+    }
+
+    /// Whether this meeting's transcript is still going to be made. `Captured`
+    /// alone is not enough: deleting a transcript also returns a meeting to
+    /// `Captured`, and a transcription request can end in failure while the
+    /// meeting record still reads `Captured`. Both must keep reading as what
+    /// they are, so this asks the deletion receipt and the request itself.
+    /// Any doubt answers false: a meeting is only called "transcribing" when
+    /// that is positively known.
+    fn transcript_pending(
+        storage: &StorageRoot,
+        meeting_id: &str,
+        lifecycle: MeetingLifecycle,
+    ) -> bool {
+        if lifecycle != MeetingLifecycle::Captured {
+            return false;
+        }
+        if !matches!(transcript_deletion_completed(storage, meeting_id), Ok(false)) {
+            return false;
+        }
+        TranscriptionQueue::open(storage)
+            .and_then(|queue| queue.meeting_transcript_pending(meeting_id))
+            .unwrap_or(false)
     }
 
     /// Roadmap R10's recording length. Reads the meeting record fresh (the
@@ -5135,5 +5213,156 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage, projection);
         let snapshot = reader.snapshot(&HashSet::new());
         assert_eq!(snapshot.rows[0].duration_seconds, None);
+    }
+
+    // ---- A meeting whose transcript is still being made -------------------
+
+    /// A meeting exactly as the backend leaves it after Stop: audio retained,
+    /// lifecycle `Captured`, no transcript yet. `lifecycle` lets a test put
+    /// the same meeting into the states that must not read as transcribing.
+    fn captured_fixture(lifecycle: MeetingLifecycle) -> Fixture {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let mut record = load_meeting(&fixture.directory).unwrap();
+        let transcript = record.artifacts.current_transcript.take().unwrap();
+        fs::remove_file(fixture.directory.join(transcript.relative_path)).unwrap();
+        record.lifecycle = lifecycle;
+        write_meeting(&fixture.directory, &record).unwrap();
+        fixture
+    }
+
+    fn open_only_row(fixture: &Fixture) -> (LibrarySnapshotRow, LibraryNoteResponse) {
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let mut snapshot = reader.snapshot(&HashSet::new());
+        assert_eq!(snapshot.rows.len(), 1, "the meeting must be listed");
+        let row = snapshot.rows.remove(0);
+        let note = reader.open_note(&row.handle, &HashSet::new(), None);
+        (row, note)
+    }
+
+    #[test]
+    fn captured_meeting_waiting_for_its_transcript_reads_as_transcribing() {
+        let fixture = captured_fixture(MeetingLifecycle::Captured);
+        let (row, note) = open_only_row(&fixture);
+
+        assert!(row.transcript_pending, "the row must say the transcript is coming");
+        assert!(!row.transcript_available, "no transcript exists yet");
+        assert_eq!(row.recovery, None, "nothing needs recovering");
+
+        assert_eq!(note.state, "transcribing");
+        assert_eq!(note.transcript_handle, None, "there is nothing to open yet");
+        assert!(note.claims.is_empty());
+        assert!(
+            note.operator_note_handle.is_some(),
+            "the person's own notes stay editable while the transcript is made"
+        );
+        assert!(note.meeting_deletion_handle.is_some());
+        assert_eq!(note.audio_retention.state, "retained");
+        assert!(
+            !note.message.contains("remain"),
+            "must not claim a transcript remains available: {}",
+            note.message
+        );
+    }
+
+    #[test]
+    fn failed_transcription_is_never_presented_as_transcribing() {
+        let fixture = captured_fixture(MeetingLifecycle::TranscriptionFailed);
+        let (row, note) = open_only_row(&fixture);
+
+        assert!(!row.transcript_pending);
+        assert_eq!(note.state, "transcript-only");
+        assert_eq!(
+            note.message,
+            "No transcript was created for this retained meeting."
+        );
+    }
+
+    #[test]
+    fn captured_meeting_whose_request_already_ended_is_not_transcribing() {
+        use local_meeting_notes_session_core::transcription_queue::{
+            TranscriptionQueue, TranscriptionRequest, TranscriptionRequestSchema,
+            TranscriptionTerminalKind,
+        };
+        let fixture = captured_fixture(MeetingLifecycle::Captured);
+        let record = load_meeting(&fixture.directory).unwrap();
+        let request_id = Uuid::new_v4();
+        let queue = TranscriptionQueue::open(&fixture.storage).unwrap();
+        queue
+            .enqueue(TranscriptionRequest {
+                schema: TranscriptionRequestSchema::V1,
+                request_id,
+                meeting_id: MEETING_ID.into(),
+                capture_session_sha256: record.artifacts.capture_session.unwrap().sha256,
+                microphone_audio_sha256: record.artifacts.microphone_audio.unwrap().sha256,
+                system_audio_sha256: record.artifacts.system_audio.unwrap().sha256,
+                model_identity: "model/v1".into(),
+                producer: None,
+                worker_runtime_identity: "worker/v1".into(),
+                enqueued_at_epoch_seconds: 1,
+            })
+            .unwrap();
+        let (waiting, _) = open_only_row(&fixture);
+        assert!(waiting.transcript_pending, "a queued request is still pending");
+
+        queue
+            .fail(request_id, TranscriptionTerminalKind::Failed, 2)
+            .unwrap();
+        let (row, note) = open_only_row(&fixture);
+        assert!(
+            !row.transcript_pending,
+            "a request that ended without a transcript must not read as in progress"
+        );
+        assert_eq!(note.state, "transcript-only");
+    }
+
+    #[test]
+    fn captured_meeting_whose_transcript_was_deleted_is_not_transcribing() {
+        use local_meeting_notes_session_core::retention::AppDataWriterLock;
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let writer = AppDataWriterLock::acquire(&fixture.storage).unwrap();
+        writer
+            .transcript_deletion_authority()
+            .delete_transcript(MEETING_ID)
+            .unwrap();
+        assert_eq!(
+            load_meeting(&fixture.directory).unwrap().lifecycle,
+            MeetingLifecycle::Captured,
+            "deleting a transcript returns the meeting to Captured"
+        );
+
+        let (row, note) = open_only_row(&fixture);
+        assert!(!row.transcript_pending);
+        assert_eq!(note.state, "transcript-only");
+        assert!(
+            note.message.contains("permanently deleted"),
+            "the deletion message must survive: {}",
+            note.message
+        );
+    }
+
+    #[test]
+    fn meeting_with_a_transcript_is_not_transcribing() {
+        let fixture = fixture(
+            AudioState::Retained,
+            AudioRetentionRule::UntilManualDeletion,
+            &[1; 19],
+            &[2; 23],
+        );
+        let (row, note) = open_only_row(&fixture);
+        assert!(!row.transcript_pending);
+        assert!(row.transcript_available);
+        assert_ne!(note.state, "transcribing");
+        assert!(note.transcript_handle.is_some());
     }
 }
