@@ -26,6 +26,25 @@
     warnings: [],
   };
   let stopStatusSnapshot = { ...captureSnapshot };
+  // mode=mic-change-stop: the microphone setup changes mid-recording (a call
+  // ending), and the backend stops, saves and queues the take by itself — no
+  // Stop click. mode=mic-change-failed: the same change while arming, which
+  // still fails. Copy is the backend's own, verbatim.
+  const MIC_CHANGE_SAVED = "Recording stopped because the microphone setup changed. Your audio was saved and queued for transcription.";
+  const MIC_CHANGE_FAILED = "Recording stopped because the microphone setup changed. Check your audio input before starting another recording. Nothing was marked complete.";
+  let micChangeSnapshot = { ...captureSnapshot };
+  if (mode === "mic-change-stop") {
+    setTimeout(() => {
+      micChangeSnapshot = {
+        ...captureSnapshot,
+        capture: "transcribing",
+        mic_state: "stopped",
+        system_state: "stopped",
+        capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000),
+        capture_notice: MIC_CHANGE_SAVED,
+      };
+    }, 1200);
+  }
   const idleSnapshot = { startup: "ready", capture: "idle", meeting_id: "", turns: [], warnings: [] };
   const libraryRow = {
     handle: "row-handle-1",
@@ -138,6 +157,8 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : mode === "stop-status" ? { ...stopStatusSnapshot }
+      : mode === "mic-change-stop" ? { ...micChangeSnapshot }
+      : mode === "mic-change-failed" ? { ...captureSnapshot, capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [

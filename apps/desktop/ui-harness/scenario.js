@@ -14,6 +14,34 @@ const waitFor = async (selector, tries = 60) => {
 };
 const result = { mode };
 
+if (mode === "mic-change-stop") {
+  // No click: the backend stops on its own. Wait past the stub's switch and
+  // one 900 ms snapshot poll.
+  const live = await waitFor('.record-control .record.live');
+  result.startedLive = !!live;
+  await sleep(2400);
+  const toast = q('#toast-notice');
+  result.noticeShown = !!toast && toast.getAttribute('role') === 'status'
+    && toast.textContent.includes("microphone setup changed")
+    && toast.textContent.includes("saved and queued for transcription");
+  result.transcribingShowsPhase = q('.record-control [role="status"]')?.textContent === "Transcribing on this Mac";
+  result.noLiveControls = !q('.record-control .record.live') && !q('.record-control [data-action="stop-recording"]');
+  result.errors = window.__errors || [];
+  result.pass = result.startedLive && result.noticeShown && result.transcribingShowsPhase
+    && result.noLiveControls && result.errors.length === 0;
+  return result;
+}
+
+if (mode === "mic-change-failed") {
+  const note = await waitFor('.canvas-context-note');
+  result.failureShown = !!note && note.textContent.includes("microphone setup changed")
+    && note.textContent.includes("Nothing was marked complete");
+  result.noSavedClaim = !document.body.textContent.includes("saved and queued for transcription");
+  result.errors = window.__errors || [];
+  result.pass = result.failureShown && result.noSavedClaim && result.errors.length === 0;
+  return result;
+}
+
 if (mode === "stop-status") {
   const stop = await waitFor('.record-control [data-action="stop-recording"]');
   if (!stop) return { ...result, error: "live Stop control never appeared" };

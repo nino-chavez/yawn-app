@@ -66,6 +66,10 @@ run_settings() {
 case "$mode" in
   capture) run capture scenario.js ;;
   stop-status) run stop-status scenario.js ;;
+  mic-change)
+    run mic-change-stop scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run mic-change-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    ;;
   library) run library scenario.js ;;
   search)
     echo "== search: cross-meeting exact-match focus and honest result states =="
