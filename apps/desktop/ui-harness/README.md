@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|stop-status|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
+    ./run.sh [capture|stop-status|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON
@@ -58,6 +58,19 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   transcripts through the stub, and opens the saved draft’s source inspector.
 - `note-retirement-negative` — injects a known generation button. Expected
   result: exit 1. This proves the absence check can detect its defect.
+- `transcribing-meeting` — the state right after a normal Stop: capture is idle,
+  the newest meeting is listed and open, and its transcript is still being made.
+  Checks that the page and its sidebar row say so by state and role, that no
+  transcript section or "transcript remains" claim appears, and that the
+  personal note and audio playback stay available. The `-lands` mode then makes
+  the transcript arrive while text is being typed in the note, and checks the
+  page switches to the ready presentation without losing the text, the focus,
+  or the editor node.
+- `transcribing-meeting-legacy` — negative control: the same scenario against the
+  backend's answer from before the fix (`transcript-only`, no pending flag). Its
+  verdict is inverted: it passes only while the old defect is on screen, and its
+  frame is the "before" picture. Run it against the fixed UI and it still
+  passes, because the defect it reproduces comes from the old backend answer.
 - `all` — the four editor-preservation modes in sequence.
 
 Capture options for `note-retirement`:

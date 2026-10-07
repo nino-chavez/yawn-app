@@ -23,6 +23,8 @@ import {
   meetingRecoveryPresentation,
   audioReleasedFact,
   meetingStateCaption,
+  meetingTranscribingPresentation,
+  pendingTranscriptRefreshDue,
   modelSetupOptionsPresentation,
   transcriptionEnginePresentation,
   meetingNotePresentation,
@@ -727,7 +729,7 @@ function renderSidebarRow(row, { selected = false } = {}) {
   if (meta.duration) captionParts.push(meta.duration);
   captionParts.push(meta.label);
   return `
-    <button class="row${selected ? " selected" : ""}" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}>
+    <button class="row${selected ? " selected" : ""}" type="button" role="listitem" data-action="open-meeting" data-handle="${escapeHtml(row.handle)}"${meta.locked ? ` data-locked="true"` : ""}${meta.transcribing ? ` data-status="transcribing"` : ""}>
       <span class="row-title">${meta.needsAttention ? `<span class="attention-dot" aria-hidden="true"></span>` : ""}<span>${escapeHtml(title)}</span></span>
       <span class="row-caption caption">${escapeHtml(captionParts.join(" · "))}</span>
       ${meta.preview ? `<span class="row-excerpt">${escapeHtml(meta.preview)}</span>` : ""}
@@ -1155,6 +1157,17 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
         </section>
       `;
     }
+    // The transcript is still being made: say so, and nothing about a
+    // transcript that "remains" -- none exists yet. The note editor below is
+    // untouched, so the person can keep writing.
+    const transcribing = meetingTranscribingPresentation(note);
+    if (transcribing) {
+      return `
+      <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading" role="status" data-meeting-status="${escapeHtml(transcribing.state)}">
+        <p id="meeting-note-heading" class="doc-fact">${escapeHtml(transcribing.detail)}</p>
+      </section>
+    `;
+    }
     if (note?.state !== "transcript-only") return "";
     return `
       <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading">
@@ -1361,6 +1374,10 @@ function renderMeetingPane() {
       </article></div>`;
   }
 
+  // The personal-note section carries an id (`meeting-your-notes`) so the
+  // patcher keys it. Sections that appear above it when a transcript lands (its
+  // retry control) would otherwise shift it positionally and get its editor
+  // recreated, dropping the person's undo history mid-typing.
   const operatorNote = note?.operatorNote;
   const selectedNoteState = state.selected?.operatorNoteSaveState || "local";
   const selectedNoteCopy = operatorNote?.unreadable
@@ -1439,7 +1456,7 @@ function renderMeetingPane() {
         ${renderTranscriptRetryAction(note, transcript, recovery)}
         ${renderRetainedAudioPlayback(playback)}
         ${renderMeetingContextSection(note)}
-        <section class="note-section your-notes-section" aria-labelledby="operator-note-heading">
+        <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
           <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
           ${operatorNote?.unreadable
             ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
@@ -3837,6 +3854,55 @@ async function maybeAutoSelectMeeting() {
   try { await openMeeting(top.handle); } finally { state.autoSelecting = false; }
 }
 
+// The transcript for a just-recorded meeting lands while its page is open.
+// `reopenSelectedMeeting` re-reads the library and the meeting together (so the
+// sidebar row and the page change in one step), and the person's unsaved
+// typing is flushed first and carried across if they typed during the read.
+const pendingTranscriptRefresh = { inFlight: false, lastAttemptMs: 0, attempts: 0 };
+
+async function maybeRefreshPendingTranscripts() {
+  if (!invoke || pendingTranscriptRefresh.inFlight) return;
+  // The backend visibly working is the "still going" signal; restart the
+  // backoff so the first quiet tick after it checks straight away.
+  if (backgroundTranscriptionPresentation(state.snapshot)) pendingTranscriptRefresh.attempts = 0;
+  if (!pendingTranscriptRefreshDue({
+    snapshot: state.snapshot,
+    libraryRows: state.library?.rows,
+    selectedNote: state.selected?.note,
+    busy: Boolean(state.busyAction),
+    modal: Boolean(state.modal),
+    nowMs: Date.now(),
+    lastAttemptMs: pendingTranscriptRefresh.lastAttemptMs,
+    attempts: pendingTranscriptRefresh.attempts,
+  })) return;
+  pendingTranscriptRefresh.inFlight = true;
+  pendingTranscriptRefresh.lastAttemptMs = Date.now();
+  pendingTranscriptRefresh.attempts += 1;
+  try {
+    const selection = state.selected;
+    if (!selection) {
+      await runBusy("library", refreshLibrary);
+      return;
+    }
+    const epoch = meetingOpenEpoch;
+    await flushSelectedNoteSave();
+    if (state.selected !== selection || epoch !== meetingOpenEpoch) return;
+    const draftAtStart = selection.operatorNoteDraft;
+    await runBusy("refresh-selected-meeting", () => reopenSelectedMeeting(selection.row.meetingId));
+    const reopened = state.selected;
+    if (reopened && reopened !== selection
+      && reopened.row?.meetingId === selection.row.meetingId
+      && selection.operatorNoteDraft !== draftAtStart) {
+      reopened.operatorNoteDraft = selection.operatorNoteDraft;
+      reopened.operatorNoteSaveState = "local";
+      scheduleSelectedNoteSave();
+      render();
+    }
+  } finally {
+    pendingTranscriptRefresh.inFlight = false;
+  }
+}
+
 async function initialize() {
   syncThemeFromSystem();
   render();
@@ -3866,6 +3932,7 @@ async function initialize() {
       void maybeAutoSelectMeeting();
     }
     void refreshRetainedAudioPlayback();
+    void maybeRefreshPendingTranscripts().catch(reportError);
     // Startup may become ready after the first permission status; probe once
     // when that is the only remaining Record gate (no-op after attempted).
     if (shouldAutoProbeSystemAudio()) {

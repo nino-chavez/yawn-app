@@ -14,6 +14,66 @@ const waitFor = async (selector, tries = 60) => {
 };
 const result = { mode };
 
+// A just-stopped meeting whose transcript is still being made. The meeting is
+// auto-opened (launch selection), so there is no click. Everything here is
+// state, role or structure, not label copy, except two negative claims that are
+// contracts: no "transcript remains" sentence and no "note only" row label while
+// no transcript exists.
+if (mode === "transcribing-meeting" || mode === "transcribing-meeting-lands") {
+  const editor = await waitFor('[data-field="library-operator-note"]');
+  if (!editor) return { ...result, error: "meeting page never opened" };
+  await sleep(300);
+  const status = () => q('[data-meeting-status="transcribing"]');
+  const sidebarRow = () => q('.sidebar-scroll .row[data-status="transcribing"]');
+  result.pageShowsStatus = !!status() && status().getAttribute('role') === 'status';
+  result.pageClaimsNoRemainingTranscript = !/transcript remain/i.test(q('.meeting-note')?.textContent || "");
+  result.captionNamesNoTranscript = (q('.doc-caption')?.textContent || "").split("\u00b7").pop().trim().toLowerCase() !== "transcript";
+  result.rowShowsStatus = !!sidebarRow();
+  result.rowNotNoteOnly = !/note only/.test(q('.sidebar-scroll')?.textContent || "");
+  result.noTranscriptSection = !q("details.transcript-disclosure");
+  result.notesEditable = !editor.disabled;
+  result.audioPlayable = !!q('[data-action="play-retained-audio"]');
+  result.noRecoveryPane = !q(".needs-attention");
+  const states = ["pageShowsStatus", "pageClaimsNoRemainingTranscript", "captionNamesNoTranscript", "rowShowsStatus", "rowNotNoteOnly", "noTranscriptSection", "notesEditable", "audioPlayable", "noRecoveryPane"];
+  if (new URLSearchParams(location.search).has("legacy")) {
+    // The negative control inverts the verdict: it passes only when the
+    // pre-fix defect is on screen (a "Transcript" caption, a "transcript
+    // remains" sentence, a "note only" row). That is also what lets the runner
+    // capture the "before" frame, which it does only for a passing run.
+    result.defectReproduced = !result.captionNamesNoTranscript
+      && !result.pageClaimsNoRemainingTranscript && !result.rowNotNoteOnly;
+    result.errors = window.__errors || [];
+    result.pass = result.defectReproduced && result.errors.length === 0;
+    return result;
+  }
+  if (mode === "transcribing-meeting") {
+    result.errors = window.__errors || [];
+    result.pass = states.every((key) => result[key]) && result.errors.length === 0;
+    return result;
+  }
+  // The transcript arrives while the person is typing in their own note. The
+  // page must switch to the ready presentation without losing the typed text,
+  // the focus, or the editor node itself.
+  editor.focus();
+  document.execCommand("insertText", false, "Check the Friday owner.");
+  window.__harnessLandTranscript();
+  const transcript = await waitFor("details.transcript-disclosure", 120);
+  await sleep(300);
+  const editorAfter = q('[data-field="library-operator-note"]');
+  result.transcriptAppeared = !!transcript;
+  result.statusGone = !status();
+  result.rowStatusGone = !sidebarRow();
+  result.rowReadsTranscriptAvailable = /transcript available/.test(q('.sidebar-scroll')?.textContent || "");
+  result.typedTextKept = !!editorAfter && editorAfter.value.includes("Check the Friday owner.");
+  result.editorKeptFocus = !!editorAfter && document.activeElement === editorAfter;
+  result.editorNodeKept = editorAfter === editor;
+  result.errors = window.__errors || [];
+  result.pass = states.every((key) => result[key]) && result.transcriptAppeared && result.statusGone
+    && result.rowStatusGone && result.rowReadsTranscriptAvailable && result.typedTextKept
+    && result.editorKeptFocus && result.editorNodeKept && result.errors.length === 0;
+  return result;
+}
+
 if (mode === "stop-status") {
   const stop = await waitFor('.record-control [data-action="stop-recording"]');
   if (!stop) return { ...result, error: "live Stop control never appeared" };
