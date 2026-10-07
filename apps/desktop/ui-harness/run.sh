@@ -31,10 +31,25 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
+# Each runner launch gets a fresh nonce served through the same HTTP cache as
+# the UI files. The file is backdated so that any WebKit cache that survives
+# between launches would treat the previous launch's copy as fresh (or get a
+# 304 for it), and the runner refuses to run the scenario when the page's nonce
+# does not match. This is what catches a runner that tests stale UI code.
+nonce_file="$serve/harness-nonce.js"
+stamp_nonce() {
+  HARNESS_NONCE="$(uuidgen)"
+  export HARNESS_NONCE
+  printf 'window.__harnessNonce = "%s";\n' "$HARNESS_NONCE" > "$nonce_file"
+  touch -t 202001010000 "$nonce_file"
+}
+
 run() {
+  stamp_nonce
   if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/$1-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1${3:-}" "$PWD/$2"; }
 run_settings() {
+  stamp_nonce
   if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/settings-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/settings-retirement.html?mode=settings-retirement${2:-}" "$PWD/$1"; }
 case "$mode" in

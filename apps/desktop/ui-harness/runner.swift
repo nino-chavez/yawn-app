@@ -51,6 +51,24 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // run.sh serves a per-launch nonce through the same HTTP path as the
+        // UI files. A mismatch means WebKit reused a previous launch's copy,
+        // so every other file on the page may be stale too.
+        guard let expected = ProcessInfo.processInfo.environment["HARNESS_NONCE"] else {
+            runScenario()
+            return
+        }
+        webView.evaluateJavaScript("window.__harnessNonce ?? null") { value, _ in
+            let loaded = value as? String
+            guard loaded == expected else {
+                FileHandle.standardError.write(Data("STALE PAGE: expected harness nonce \(expected), page loaded \(loaded ?? "none"). WebKit served cached files instead of the current UI.\n".utf8))
+                exit(4)
+            }
+            self.runScenario()
+        }
+    }
+
+    private func runScenario() {
         guard let body = try? String(contentsOfFile: scenarioPath, encoding: .utf8) else {
             FileHandle.standardError.write(Data("cannot read scenario\n".utf8))
             exit(2)
