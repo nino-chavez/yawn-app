@@ -21,6 +21,12 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let configuration = WKWebViewConfiguration()
+        // A persistent store is keyed by the executable name, so every
+        // worktree's `runner` shared one HTTP cache at ~/Library/WebKit/runner.
+        // run.sh serves files without Cache-Control, and WebKit reused cached
+        // UI files across launches without asking the server, so a scenario
+        // could pass against code that was no longer on disk (2026-10-07).
+        configuration.websiteDataStore = .nonPersistent()
         let components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false)
         let width = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "width" })?.value ?? "960") ?? 960)
         let height = CGFloat(Int(components?.queryItems?.first(where: { $0.name == "height" })?.value ?? "760") ?? 760)
@@ -51,6 +57,24 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // run.sh serves a per-launch nonce through the same HTTP path as the
+        // UI files. A mismatch means WebKit reused a previous launch's copy,
+        // so every other file on the page may be stale too.
+        guard let expected = ProcessInfo.processInfo.environment["HARNESS_NONCE"] else {
+            runScenario()
+            return
+        }
+        webView.evaluateJavaScript("window.__harnessNonce ?? null") { value, _ in
+            let loaded = value as? String
+            guard loaded == expected else {
+                FileHandle.standardError.write(Data("STALE PAGE: expected harness nonce \(expected), page loaded \(loaded ?? "none"). WebKit served cached files instead of the current UI.\n".utf8))
+                exit(4)
+            }
+            self.runScenario()
+        }
+    }
+
+    private func runScenario() {
         guard let body = try? String(contentsOfFile: scenarioPath, encoding: .utf8) else {
             FileHandle.standardError.write(Data("cannot read scenario\n".utf8))
             exit(2)

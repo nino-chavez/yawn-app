@@ -22,19 +22,45 @@ serve="$build_dir/serve"
 mkdir "$serve"
 ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$PWD/../ui/settings.js" "$PWD/../ui/settings.html" "$PWD/../ui/settings-window.css" "$serve/"
 ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/tonal-ledger-canvas.contract.json" "$PWD/settings-retirement.html" "$serve/"
+ready_token="$(uuidgen)"
+printf '%s' "$ready_token" > "$serve/harness-ready.txt"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!
 
 swiftc -O runner.swift -o "$build_dir/runner"
+# Readiness is a token only this invocation's server can return. If the port
+# was already taken, python exits and someone else's server answers; never
+# run a scenario against that.
+served=""
 for _ in $(seq 1 50); do
-  curl -sf "http://127.0.0.1:$port/harness.html" >/dev/null && break
+  served="$(curl -sf "http://127.0.0.1:$port/harness-ready.txt" 2>/dev/null || true)"
+  [ "$served" = "$ready_token" ] && break
   sleep 0.1
 done
+if [ "$served" != "$ready_token" ]; then
+  echo "run.sh: 127.0.0.1:$port is not this harness's server (port in use?); set HARNESS_PORT" >&2
+  exit 2
+fi
+
+# Each runner launch gets a fresh nonce served through the same HTTP cache as
+# the UI files. The file is backdated so that any WebKit cache that survives
+# between launches would treat the previous launch's copy as fresh (or get a
+# 304 for it), and the runner refuses to run the scenario when the page's nonce
+# does not match. This is what catches a runner that tests stale UI code.
+nonce_file="$serve/harness-nonce.js"
+stamp_nonce() {
+  HARNESS_NONCE="$(uuidgen)"
+  export HARNESS_NONCE
+  printf 'window.__harnessNonce = "%s";\n' "$HARNESS_NONCE" > "$nonce_file"
+  touch -t 202001010000 "$nonce_file"
+}
 
 run() {
+  stamp_nonce
   if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/$1-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1${3:-}" "$PWD/$2"; }
 run_settings() {
+  stamp_nonce
   if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/settings-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/settings-retirement.html?mode=settings-retirement${2:-}" "$PWD/$1"; }
 case "$mode" in
