@@ -25,6 +25,7 @@ import {
   meetingStateCaption,
   meetingTranscribingPresentation,
   pendingTranscriptRefreshDue,
+  finishedMeetingStep,
   modelSetupOptionsPresentation,
   transcriptionEnginePresentation,
   meetingNotePresentation,
@@ -2249,13 +2250,23 @@ function canReadCurrentNote(snapshot) {
 
 async function refreshSnapshot({ shouldRender = true } = {}) {
   const oldMeetingId = state.snapshot?.meeting_id;
+  const oldCaptureInProgress = captureIsInProgress(state.snapshot);
   const oldCaptureNotice = state.snapshot?.capture_notice;
   state.snapshot = await invoke("app_snapshot");
   if (state.snapshot.capture_notice && state.snapshot.capture_notice !== oldCaptureNotice) {
     state.notice = state.snapshot.capture_notice;
   }
   const meetingId = state.snapshot.meeting_id;
-  if (!meetingId && oldMeetingId) { clearCurrentNote(); clearCurrentContext(); }
+  if (!meetingId && oldMeetingId) {
+    clearCurrentNote();
+    clearCurrentContext();
+    // The capture let go of this meeting by itself (a dismiss starts from a
+    // finished state, never one in progress), and the library was read
+    // before the meeting existed.
+    if (oldCaptureInProgress) {
+      Object.assign(finishedMeeting, { meetingId: oldMeetingId, attempts: 0, lastAttemptMs: 0 });
+    }
+  }
   if (meetingId && meetingId !== state.noteLoadedFor && canReadCurrentNote(state.snapshot)) void loadCurrentNote(meetingId);
   if (meetingId && meetingId !== state.contextLoadedFor && canReadCurrentNote(state.snapshot)) void loadCurrentContext(meetingId);
   if (state.snapshot.capture === "idle" && state.activeView === "capture") state.activeView = "home";
@@ -3874,7 +3885,7 @@ async function maybeRefreshPendingTranscripts() {
     snapshot: state.snapshot,
     libraryRows: state.library?.rows,
     selectedNote: state.selected?.note,
-    busy: Boolean(state.busyAction),
+    busy: Boolean(state.busyAction) || backgroundLibraryRefresh.inFlight,
     modal: Boolean(state.modal),
     nowMs: Date.now(),
     lastAttemptMs: pendingTranscriptRefresh.lastAttemptMs,
@@ -3883,6 +3894,24 @@ async function maybeRefreshPendingTranscripts() {
   pendingTranscriptRefresh.inFlight = true;
   pendingTranscriptRefresh.lastAttemptMs = Date.now();
   pendingTranscriptRefresh.attempts += 1;
+  try {
+    await refreshLibraryKeepingSelection();
+  } finally {
+    pendingTranscriptRefresh.inFlight = false;
+  }
+}
+
+// A background library re-read. A library read spends every handle the open
+// meeting holds, so with a meeting open the two are re-read together; the
+// person's unsaved typing is flushed first and carried across if they typed
+// during the read. Both background refreshes run from the same poll tick, and
+// the flush awaits before `runBusy` marks the app busy, so the shared flag is
+// what keeps a second re-read from spending the first one's handles.
+const backgroundLibraryRefresh = { inFlight: false };
+
+async function refreshLibraryKeepingSelection() {
+  if (backgroundLibraryRefresh.inFlight) return;
+  backgroundLibraryRefresh.inFlight = true;
   try {
     const selection = state.selected;
     if (!selection) {
@@ -3904,7 +3933,45 @@ async function maybeRefreshPendingTranscripts() {
       render();
     }
   } finally {
-    pendingTranscriptRefresh.inFlight = false;
+    backgroundLibraryRefresh.inFlight = false;
+  }
+}
+
+// Set by `refreshSnapshot` when a capture lets go of its meeting. Opening the
+// row goes through `openMeeting`, the same path as a click.
+const finishedMeeting = { meetingId: null, attempts: 0, lastAttemptMs: 0, inFlight: false };
+
+async function maybeShowFinishedMeeting() {
+  if (!invoke || finishedMeeting.inFlight) return;
+  const step = finishedMeetingStep({
+    meetingId: finishedMeeting.meetingId,
+    snapshot: state.snapshot,
+    libraryRows: state.library?.rows,
+    selected: Boolean(state.selected),
+    filtered: Boolean(state.search.trim()),
+    busy: Boolean(state.busyAction) || Boolean(state.autoSelecting) || backgroundLibraryRefresh.inFlight,
+    modal: Boolean(state.modal),
+    nowMs: Date.now(),
+    lastAttemptMs: finishedMeeting.lastAttemptMs,
+    attempts: finishedMeeting.attempts,
+  });
+  if (step === "none" || step === "wait") return;
+  const meetingId = finishedMeeting.meetingId;
+  if (step !== "refresh") {
+    finishedMeeting.meetingId = null;
+    if (step !== "open" || state.trashOpen) return;
+    const row = state.library.rows.find((candidate) => candidate.meetingId === meetingId);
+    state.autoSelecting = true;
+    try { await openMeeting(row.handle); } finally { state.autoSelecting = false; }
+    return;
+  }
+  finishedMeeting.inFlight = true;
+  finishedMeeting.lastAttemptMs = Date.now();
+  finishedMeeting.attempts += 1;
+  try {
+    await refreshLibraryKeepingSelection();
+  } finally {
+    finishedMeeting.inFlight = false;
   }
 }
 
@@ -3938,6 +4005,7 @@ async function initialize() {
     }
     void refreshRetainedAudioPlayback();
     void maybeRefreshPendingTranscripts().catch(reportError);
+    void maybeShowFinishedMeeting().catch(reportError);
     // Startup may become ready after the first permission status; probe once
     // when that is the only remaining Record gate (no-op after attempted).
     if (shouldAutoProbeSystemAudio()) {

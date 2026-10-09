@@ -29,6 +29,8 @@ import {
   libraryRowMetaPresentation,
   meetingTranscribingPresentation,
   pendingTranscriptRefreshDue,
+  finishedMeetingStep,
+  FINISHED_MEETING_ROW_ATTEMPTS,
   libraryRowPreview,
   libraryStallTransition,
   localVocabularyPresentation,
@@ -2191,4 +2193,40 @@ test("a page that says transcribing re-reads itself once the backend is quiet, w
   assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 96_000, attempts: 1 }), true);
   assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 99_999, attempts: 30 }), false);
   assert.equal(pendingTranscriptRefreshDue({ ...base, lastAttemptMs: 69_000, attempts: 30 }), true);
+});
+
+test("a just-finished recording is re-read into the library and opened, not left off the list", () => {
+  const idle = { startup: "ready", capture: "idle" };
+  const base = { meetingId: "m-new", snapshot: idle, libraryRows: [], nowMs: 100_000, lastAttemptMs: 0, attempts: 0 };
+  // Nothing finished: nothing to do.
+  assert.equal(finishedMeetingStep({ ...base, meetingId: null }), "none");
+  // The library was read before the meeting existed: re-read it straight away.
+  assert.equal(finishedMeetingStep(base), "refresh");
+  assert.equal(finishedMeetingStep({ ...base, libraryRows: [{ meetingId: "m-old" }] }), "refresh");
+  // Its row is there: open it, the same place a click on the row would go.
+  assert.equal(finishedMeetingStep({ ...base, libraryRows: [{ meetingId: "m-new" }] }), "open");
+  // Found, but not opened: a locked row asks first, another meeting is already
+  // open, or a new recording owns the window.
+  assert.equal(finishedMeetingStep({ ...base, libraryRows: [{ meetingId: "m-new", locked: true }] }), "found");
+  assert.equal(finishedMeetingStep({ ...base, libraryRows: [{ meetingId: "m-new" }], selected: true }), "found");
+  assert.equal(finishedMeetingStep({ ...base, libraryRows: [{ meetingId: "m-new" }], snapshot: { ...idle, capture: "recording" } }), "found");
+  // A meeting opened during the recording is still open: the list is re-read
+  // anyway (the caller re-reads the open meeting with it), it just isn't replaced.
+  assert.equal(finishedMeetingStep({ ...base, selected: true }), "refresh");
+  // Never while the person is mid-action.
+  assert.equal(finishedMeetingStep({ ...base, busy: true }), "wait");
+  assert.equal(finishedMeetingStep({ ...base, modal: true }), "wait");
+  // Backoff between re-reads, then a bounded stop: a meeting that never
+  // appears must not keep rebuilding the library from disk.
+  assert.equal(finishedMeetingStep({ ...base, attempts: 1, lastAttemptMs: 99_500 }), "wait");
+  assert.equal(finishedMeetingStep({ ...base, attempts: 1, lastAttemptMs: 99_000 }), "refresh");
+  assert.equal(finishedMeetingStep({ ...base, attempts: 5, lastAttemptMs: 90_000 }), "wait");
+  assert.equal(finishedMeetingStep({ ...base, attempts: 5, lastAttemptMs: 88_000 }), "refresh");
+  assert.equal(finishedMeetingStep({ ...base, attempts: FINISHED_MEETING_ROW_ATTEMPTS, lastAttemptMs: 0 }), "give-up");
+  // A sidebar search is filtering the list: one re-read makes it current for
+  // that search, and a title that doesn't match is not waited for. Clearing
+  // the search reads the whole library again.
+  assert.equal(finishedMeetingStep({ ...base, filtered: true }), "refresh");
+  assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, lastAttemptMs: 0 }), "give-up");
+  assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, libraryRows: [{ meetingId: "m-new" }] }), "open");
 });

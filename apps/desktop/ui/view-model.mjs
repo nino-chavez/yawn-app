@@ -471,6 +471,39 @@ export function pendingTranscriptRefreshDue({
   return nowMs - lastAttemptMs >= backoffMs;
 }
 
+// A stopped recording is handed to background transcription and the capture
+// returns straight to idle with no meeting id, so the window goes home holding
+// the library it read before the recording existed. The page keeps the
+// finished meeting's id and re-reads the library until its row is there, then
+// opens it. Bounded: a meeting that never appears (refused, quarantined) stops
+// the re-reads rather than rebuilding the library from disk forever.
+export const FINISHED_MEETING_ROW_ATTEMPTS = 6;
+
+export function finishedMeetingStep({
+  meetingId,
+  snapshot,
+  libraryRows,
+  selected = false,
+  filtered = false,
+  busy = false,
+  modal = false,
+  nowMs = 0,
+  lastAttemptMs = 0,
+  attempts = 0,
+} = {}) {
+  if (!meetingId) return "none";
+  const row = Array.isArray(libraryRows)
+    ? libraryRows.find((candidate) => candidate?.meetingId === meetingId)
+    : undefined;
+  if (row) return row.locked || selected || captureIsInProgress(snapshot) ? "found" : "open";
+  // Under a sidebar search the row may simply not match; one current read is
+  // enough, and clearing the search reads the whole library again.
+  if (attempts >= (filtered ? 1 : FINISHED_MEETING_ROW_ATTEMPTS)) return "give-up";
+  if (busy || modal) return "wait";
+  const backoffMs = attempts === 0 ? 0 : Math.min(750 * 2 ** (attempts - 1), 12000);
+  return nowMs - lastAttemptMs >= backoffMs ? "refresh" : "wait";
+}
+
 export function meetingStateCaption(noteState) {
   const key = String(noteState || "");
   if (!key) return "Loading note";

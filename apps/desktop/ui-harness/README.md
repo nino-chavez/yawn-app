@@ -15,7 +15,7 @@ undo stack.
 
 ## run.sh
 
-    ./run.sh [capture|stop-status|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
+    ./run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|note-retirement-negative|all]
 
 Serves the real `../ui/` files plus the harness page from a temporary local
 HTTP origin, compiles `runner.swift`, drives the scenario, and prints a JSON
@@ -66,6 +66,18 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   the transcript arrive while text is being typed in the note, and checks the
   page switches to the ready presentation without losing the text, the focus,
   or the editor node.
+- `stop-lands` — a normal Stop, as the backend answers it now: the take is
+  queued, the capture goes idle and the snapshot no longer names the meeting.
+  The library was empty before the recording, and the stub leaves the meeting
+  out while its capture holds it, as the real reader does. Checks that the
+  meeting reaches the sidebar, says it is transcribing, and opens with no
+  relaunch. Also checks that the library re-reads stop once it is there.
+  Against the UI from before the fix it fails: zero library reads after Stop,
+  and the empty-library prompt stays up. That is the 2026-10-09 report. A
+  second run (`&selected=1`) selects an earlier meeting during the recording.
+  It checks that the new meeting is still listed and the earlier one stays
+  open. With `HARNESS_CAPTURE_DIR` set, the second run's frame overwrites the
+  first, because both runs share the mode name.
 - `transcribing-meeting-legacy` — negative control: the same scenario against the
   backend's answer from before the fix (`transcript-only`, no pending flag). Its
   verdict is inverted: it passes only while the old defect is on screen, and its
