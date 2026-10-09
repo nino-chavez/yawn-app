@@ -10481,6 +10481,7 @@ fn start_transcription_queue_executor(
     let runtime = runtime.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = stop.clone();
+    let mut refused_orphans = HashSet::new();
     let handle = match std::thread::Builder::new()
         .name("background-transcription-queue".into())
         .spawn(move || loop {
@@ -10494,7 +10495,7 @@ fn start_transcription_queue_executor(
                     continue;
                 }
             };
-            let item = match recover_transcription_queue(&state, &storage, &runtime, &queue) {
+            let item = match recover_transcription_queue(&state, &storage, &runtime, &queue, &mut refused_orphans) {
                 Ok(discovery) => {
                     let eligible = discovery
                         .items
@@ -10618,11 +10619,21 @@ fn start_transcription_queue_executor(
     *executor = Some(TranscriptionExecutorControl { stop, handle });
 }
 
+/// Releases stale claims, commits admitted results, and requests transcripts
+/// for captured meetings that have none, then returns a fresh discovery.
+///
+/// A captured meeting that cannot be enqueued, usually because its audio no
+/// longer matches its record, is refused on its own and kept in
+/// `refused_orphans`. Later passes skip it, so it neither stops every other
+/// meeting's transcription nor has its audio rehashed every 250 ms. The set
+/// lives as long as the executor, so each launch tries a refused capture once
+/// more; a transient failure therefore waits for the next launch.
 fn recover_transcription_queue(
     state: &ApplicationState,
     storage: &StorageRoot,
     runtime: &RuntimeIdentity,
     queue: &TranscriptionQueue<'_>,
+    refused_orphans: &mut HashSet<String>,
 ) -> Result<local_meeting_notes_session_core::transcription_queue::QueueDiscovery, String> {
     let discovery = queue.discover().map_err(|error| error.to_string())?;
     for item in &discovery.items {
@@ -10661,25 +10672,44 @@ fn recover_transcription_queue(
     }
     let discovery = queue.discover().map_err(|error| error.to_string())?;
     for meeting_id in discovery.orphan_captured_meetings {
-        let meeting_dir = storage
-            .resolve(Path::new("meetings").join(&meeting_id).as_path())
-            .map_err(error_text)?;
-        let meeting = load_meeting(&meeting_dir).map_err(error_text)?;
-        let request = TranscriptionRequest {
-            schema: local_meeting_notes_session_core::transcription_queue::TranscriptionRequestSchema::V1,
-            request_id: Uuid::new_v4(),
-            meeting_id: meeting_id.clone(),
-            capture_session_sha256: meeting.artifacts.capture_session.as_ref().ok_or_else(|| "captured meeting has no session artifact".to_string())?.sha256.clone(),
-            microphone_audio_sha256: meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "captured meeting has no microphone artifact".to_string())?.sha256.clone(),
-            system_audio_sha256: meeting.artifacts.system_audio.as_ref().ok_or_else(|| "captured meeting has no system artifact".to_string())?.sha256.clone(),
-            model_identity: runtime.transcript_model_identity.clone(),
-            producer: Some(runtime.transcription_producer.clone()),
-            worker_runtime_identity: runtime.worker_executable_sha256.clone(),
-            enqueued_at_epoch_seconds: now_epoch_seconds(),
-        };
-        queue.enqueue(request).map_err(|error| error.to_string())?;
+        if refused_orphans.contains(&meeting_id) {
+            continue;
+        }
+        if let Err(error) = enqueue_orphan_capture(storage, runtime, queue, &meeting_id) {
+            write_diagnostic(state, "transcription_queue_orphan_refused", &error);
+            refused_orphans.insert(meeting_id);
+        }
     }
     queue.discover().map_err(|error| error.to_string())
+}
+
+/// Requests a transcript for one captured meeting that has none yet.
+/// `enqueue` re-verifies the audio before it writes anything, so a capture
+/// whose files no longer match its record is refused and left as it was.
+fn enqueue_orphan_capture(
+    storage: &StorageRoot,
+    runtime: &RuntimeIdentity,
+    queue: &TranscriptionQueue<'_>,
+    meeting_id: &str,
+) -> Result<(), String> {
+    let meeting_dir = storage
+        .resolve(Path::new("meetings").join(meeting_id).as_path())
+        .map_err(error_text)?;
+    let meeting = load_meeting(&meeting_dir).map_err(error_text)?;
+    let request = TranscriptionRequest {
+        schema: local_meeting_notes_session_core::transcription_queue::TranscriptionRequestSchema::V1,
+        request_id: Uuid::new_v4(),
+        meeting_id: meeting_id.to_string(),
+        capture_session_sha256: meeting.artifacts.capture_session.as_ref().ok_or_else(|| "captured meeting has no session artifact".to_string())?.sha256.clone(),
+        microphone_audio_sha256: meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "captured meeting has no microphone artifact".to_string())?.sha256.clone(),
+        system_audio_sha256: meeting.artifacts.system_audio.as_ref().ok_or_else(|| "captured meeting has no system artifact".to_string())?.sha256.clone(),
+        model_identity: runtime.transcript_model_identity.clone(),
+        producer: Some(runtime.transcription_producer.clone()),
+        worker_runtime_identity: runtime.worker_executable_sha256.clone(),
+        enqueued_at_epoch_seconds: now_epoch_seconds(),
+    };
+    queue.enqueue(request).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn queue_item_is_repairable(
@@ -15353,6 +15383,112 @@ exit 0"#);
         };
         assert!(!queue_item_is_repairable(&quarantined));
         assert!(!queue_item_is_eligible(&quarantined));
+    }
+
+    fn queue_test_runtime() -> RuntimeIdentity {
+        RuntimeIdentity {
+            admission: "internal-alpha".into(),
+            worker_build_sha256: "worker-build".into(),
+            worker_executable_sha256: "worker-executable".into(),
+            transcript_model_identity: "whisper-model".into(),
+            transcription_producer: TranscriptionProducer::whisper("whisper-model".into()),
+            tap_build_sha256: "tap-build".into(),
+            tap_path: PathBuf::from("/nonexistent/tap"),
+            packaged_models: Vec::new(),
+            encoder_sha256: "encoder".into(),
+            encoder_available: false,
+        }
+    }
+
+    /// A captured meeting with retained audio and no transcription request:
+    /// what discovery reports as an orphan for the executor to enqueue.
+    fn write_captured_orphan_fixture(storage: &StorageRoot, meeting_id: &str) -> PathBuf {
+        write_transcript_fixture_with_turns(storage, meeting_id, 1_000, AudioState::Retained, json!([]));
+        let directory = meeting_dir(storage, meeting_id).unwrap();
+        let mut meeting = load_meeting(&directory).unwrap();
+        meeting.lifecycle = MeetingLifecycle::Captured;
+        meeting.artifacts.current_transcript = None;
+        write_meeting(&directory, &meeting).unwrap();
+        load_meeting(&directory).expect("a captured fixture the meeting record accepts");
+        directory
+    }
+
+    // One captured meeting whose audio no longer matches its record used to
+    // fail the whole recovery pass, every 250 ms, so no other meeting was
+    // ever enqueued or transcribed. It is refused on its own now.
+    #[test]
+    fn one_refused_orphan_does_not_starve_the_rest_of_the_queue() {
+        use local_meeting_notes_session_core::storage::durable_replace;
+        use local_meeting_notes_session_core::transcription_queue::TranscriptionRequestSchema;
+        let (_temporary, storage) = test_storage();
+        let state = ApplicationState::default();
+        let runtime = queue_test_runtime();
+        let refused = write_captured_orphan_fixture(&storage, "meeting-a-refused");
+        write_captured_orphan_fixture(&storage, "meeting-b-orphan");
+        let queued = write_captured_orphan_fixture(&storage, "meeting-c-queued");
+        let queue = TranscriptionQueue::open(&storage).unwrap();
+        let meeting = load_meeting(&queued).unwrap();
+        queue
+            .enqueue(TranscriptionRequest {
+                schema: TranscriptionRequestSchema::V1,
+                request_id: Uuid::new_v4(),
+                meeting_id: "meeting-c-queued".into(),
+                capture_session_sha256: meeting.artifacts.capture_session.unwrap().sha256,
+                microphone_audio_sha256: meeting.artifacts.microphone_audio.unwrap().sha256,
+                system_audio_sha256: meeting.artifacts.system_audio.unwrap().sha256,
+                model_identity: "whisper-model".into(),
+                producer: Some(runtime.transcription_producer.clone()),
+                worker_runtime_identity: "worker-executable".into(),
+                enqueued_at_epoch_seconds: 1,
+            })
+            .unwrap();
+        durable_replace(&refused.join("capture/mic.wav"), b"changed after capture").unwrap();
+
+        let discovery =
+            recover_transcription_queue(&state, &storage, &runtime, &queue, &mut HashSet::new())
+                .expect("one refused orphan does not fail the pass");
+
+        let eligible = discovery
+            .items
+            .iter()
+            .filter(|item| queue_item_is_eligible(item))
+            .map(|item| item.request.meeting_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(eligible, ["meeting-b-orphan", "meeting-c-queued"]);
+        assert!(
+            !refused.join("transcription-queue").exists(),
+            "audio that no longer matches its record is never enqueued"
+        );
+    }
+
+    // Retrying a refused capture on every pass would rehash its audio every
+    // 250 ms. It is tried again only when the executor starts over, at the
+    // next launch.
+    #[test]
+    fn a_refused_orphan_is_tried_again_only_at_the_next_launch() {
+        use local_meeting_notes_session_core::storage::durable_replace;
+        let (_temporary, storage) = test_storage();
+        let state = ApplicationState::default();
+        let runtime = queue_test_runtime();
+        let refused = write_captured_orphan_fixture(&storage, "meeting-a-refused");
+        let microphone = fs::read(refused.join("capture/mic.wav")).unwrap();
+        let queue = TranscriptionQueue::open(&storage).unwrap();
+        durable_replace(&refused.join("capture/mic.wav"), b"changed after capture").unwrap();
+        let mut refused_orphans = HashSet::new();
+        recover_transcription_queue(&state, &storage, &runtime, &queue, &mut refused_orphans)
+            .unwrap();
+
+        // With its audio restored, a retry would enqueue it; it stays
+        // unqueued because no retry runs.
+        durable_replace(&refused.join("capture/mic.wav"), &microphone).unwrap();
+        recover_transcription_queue(&state, &storage, &runtime, &queue, &mut refused_orphans)
+            .unwrap();
+        assert!(!refused.join("transcription-queue").exists());
+
+        let discovery =
+            recover_transcription_queue(&state, &storage, &runtime, &queue, &mut HashSet::new())
+                .unwrap();
+        assert_eq!(discovery.items.len(), 1, "the next launch enqueues it");
     }
 
     fn view_current_transcript_resolves_with_restored_turn_visible() {
