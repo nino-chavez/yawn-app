@@ -66,6 +66,10 @@ run_settings() {
 case "$mode" in
   capture) run capture scenario.js ;;
   stop-status) run stop-status scenario.js ;;
+  stop-lands)
+    run stop-lands scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run stop-lands scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}&selected=1"
+    ;;
   mic-change)
     run mic-change-stop scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
     run mic-change-failed scenario.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
@@ -110,5 +114,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
 esac

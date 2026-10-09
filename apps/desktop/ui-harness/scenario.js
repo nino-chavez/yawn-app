@@ -107,6 +107,61 @@ if (mode === "transcribing-meeting" || mode === "transcribing-meeting-lands") {
   return result;
 }
 
+// A normal Stop, as the backend now answers it: the capture goes idle with the
+// meeting cleared and the take queued. The meeting must reach the sidebar and
+// open without a relaunch. Before the fix the window went home on the library
+// it read during the recording, which could not contain the take, and nothing
+// read it again.
+if (mode === "stop-lands" && new URLSearchParams(location.search).has("selected")) {
+  // The person opened an earlier meeting while recording. Stop must still
+  // bring the new meeting into the list, without taking the open page away.
+  const earlier = await waitFor('.sidebar-scroll [data-action="open-meeting"][data-handle="row-handle-2"]');
+  if (!earlier) return { ...result, error: "earlier meeting row never appeared" };
+  // The click selects it; the pane keeps showing the live recording until the
+  // capture ends (`contentView`), and the selected meeting takes over after.
+  earlier.click();
+  await waitFor('.sidebar-scroll [data-action="open-meeting"][data-handle="row-handle-2"].selected', 30);
+  result.earlierSelectedDuringRecording = !!q('.sidebar-scroll [data-handle="row-handle-2"].selected');
+  const stop = await waitFor('.record-control [data-action="stop-recording"]');
+  if (!stop) return { ...result, error: "Stop control not reachable with a meeting open" };
+  stop.click();
+  const row = await waitFor('.sidebar-scroll [data-action="open-meeting"][data-handle="row-handle-1"]', 60);
+  result.meetingListed = !!row;
+  result.rowSaysTranscribing = row?.getAttribute("data-status") === "transcribing";
+  const readsAfterListed = window.__harnessLibraryReads;
+  await sleep(4000);
+  result.earlierStillOpen = !!q('[data-field="library-operator-note"][data-meeting-id="harness-meeting-2"]')
+    && !q('[data-field="library-operator-note"][data-meeting-id="harness-meeting-1"]');
+  result.rereadsStopped = window.__harnessLibraryReads === readsAfterListed;
+  result.errors = window.__errors || [];
+  result.pass = result.earlierSelectedDuringRecording && result.meetingListed
+    && result.rowSaysTranscribing && result.earlierStillOpen
+    && result.rereadsStopped && result.errors.length === 0;
+  return result;
+}
+
+if (mode === "stop-lands") {
+  const stop = await waitFor('.record-control [data-action="stop-recording"]');
+  if (!stop) return { ...result, error: "live Stop control never appeared" };
+  const readsBeforeStop = window.__harnessLibraryReads;
+  stop.click();
+  // 600 ms to idle, one 900 ms poll to notice, then the re-read and the open.
+  const row = await waitFor('.sidebar-scroll [data-action="open-meeting"][data-handle="row-handle-1"]', 60);
+  result.meetingListed = !!row;
+  result.rowSaysTranscribing = row?.getAttribute("data-status") === "transcribing";
+  result.meetingOpened = !!(await waitFor('[data-field="library-operator-note"][data-meeting-id="harness-meeting-1"]', 30));
+  result.noEmptyLibraryPrompt = !document.querySelector('.sidebar-scroll')?.textContent?.includes("Press Record");
+  // Bounded: once the row is there the re-reads stop.
+  const readsAfterOpen = window.__harnessLibraryReads;
+  await sleep(4000);
+  result.libraryReadsAfterStop = readsAfterOpen - readsBeforeStop;
+  result.rereadsStopped = window.__harnessLibraryReads === readsAfterOpen;
+  result.errors = window.__errors || [];
+  result.pass = result.meetingListed && result.rowSaysTranscribing && result.meetingOpened
+    && result.noEmptyLibraryPrompt && result.rereadsStopped && result.errors.length === 0;
+  return result;
+}
+
 if (mode === "stop-status") {
   const stop = await waitFor('.record-control [data-action="stop-recording"]');
   if (!stop) return { ...result, error: "live Stop control never appeared" };

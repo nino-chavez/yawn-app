@@ -26,6 +26,18 @@
     warnings: [],
   };
   let stopStatusSnapshot = { ...captureSnapshot };
+  // mode=stop-lands: a normal Stop as the backend does it now. The take is
+  // queued for background transcription, the capture steps Captured -> Idle
+  // and clears the meeting projection (main.rs, after enqueue), so nothing in
+  // the snapshot names the meeting any more. `library_snapshot` leaves the
+  // meeting out while its capture holds it, as the real reader excludes active
+  // meetings, and the library is otherwise empty -- the window was opened on
+  // an empty library before the recording began.
+  const stopLandsMode = mode === "stop-lands";
+  // `&selected=1`: the library also holds an earlier meeting, and the scenario
+  // opens it during the recording, so Stop lands with another meeting open.
+  const stopLandsSelected = stopLandsMode && new URLSearchParams(location.search).has("selected");
+  window.__harnessLibraryReads = 0;
   // mode=mic-change-stop: the microphone setup changes mid-recording (a call
   // ending), and the backend stops, saves and queues the take by itself — no
   // Stop click. Like any finalized take, it then steps Captured -> Idle and
@@ -184,7 +196,7 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : transcribingMode ? { ...idleSnapshot, background_transcription_active: !transcriptLanded, background_transcription_queued_count: transcriptLanded ? 0 : 1 }
-      : mode === "stop-status" ? { ...stopStatusSnapshot }
+      : mode === "stop-status" || stopLandsMode ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
       : mode === "mic-change-resume-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_RESUME_FAILED }
@@ -228,7 +240,19 @@
         prompted: true,
       };
     },
-    library_snapshot: () => (mode === "mic-change-stop" ? {
+    library_snapshot: () => (++window.__harnessLibraryReads, stopLandsMode ? (() => {
+        const capturing = ["arming", "recording", "paused", "stopping", "captured", "transcribing"].includes(stopStatusSnapshot.capture);
+        const rows = [
+          ...(capturing ? [] : [
+            { ...libraryRow, label: "", labelSource: "date", createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60,
+              transcriptAvailable: false, transcriptPending: true, recovery: null, durationSeconds: 1079 },
+          ]),
+          ...(stopLandsSelected ? [{ ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
+            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null }] : []),
+        ];
+        return { rows, total: rows.length, metadataRevision: 1, searchProbeEnabled: false };
+      })()
+      : mode === "mic-change-stop" ? {
         // The just-stopped take, listed with its transcript still pending.
         rows: [
           { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false,
@@ -266,6 +290,15 @@
         capture: "stopping",
         capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000),
       };
+      if (stopLandsMode) {
+        setTimeout(() => {
+          stopStatusSnapshot = {
+            ...idleSnapshot,
+            background_transcription_active: true,
+            background_transcription_queued_count: 1,
+          };
+        }, 600);
+      }
       if (mode === "stop-status") {
         setTimeout(() => {
           stopStatusSnapshot = {
@@ -334,7 +367,21 @@
     },
     // mode=summary-failed: the same meeting after a rejected generation,
     // audio released, with a source pin so the retry control renders (R23).
-    library_open_note: () => (mode === "mic-change-stop" ? {
+    library_open_note: ({ handle } = {}) => (stopLandsMode && handle === "row-handle-2" ? {
+      // `&selected=1`: the earlier meeting, opened while the recording runs.
+      meetingId: "harness-meeting-2",
+      state: "transcript-only",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { text: "", unreadable: false },
+      operatorNoteHandle: "note-handle-2",
+      transcriptHandle: null,
+      microphonePlaybackHandle: null,
+      systemPlaybackHandle: null,
+      message: "No admitted note is available. Retained transcript text remains available.",
+      audioRetention: { state: "released", message: "Audio was released." },
+      capturePauses: null,
+    } : mode === "mic-change-stop" || stopLandsMode ? {
       // The just-stopped take, still queued: library_reader's "transcribing"
       // note, no transcript handle yet.
       meetingId: "harness-meeting-1",
