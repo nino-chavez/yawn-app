@@ -484,6 +484,7 @@ export function finishedMeetingStep({
   snapshot,
   libraryRows,
   selected = false,
+  filtered = false,
   busy = false,
   modal = false,
   nowMs = 0,
@@ -495,7 +496,9 @@ export function finishedMeetingStep({
     ? libraryRows.find((candidate) => candidate?.meetingId === meetingId)
     : undefined;
   if (row) return row.locked || selected || captureIsInProgress(snapshot) ? "found" : "open";
-  if (attempts >= FINISHED_MEETING_ROW_ATTEMPTS) return "give-up";
+  // Under a sidebar search the row may simply not match; one current read is
+  // enough, and clearing the search reads the whole library again.
+  if (attempts >= (filtered ? 1 : FINISHED_MEETING_ROW_ATTEMPTS)) return "give-up";
   if (busy || modal) return "wait";
   const backoffMs = attempts === 0 ? 0 : Math.min(750 * 2 ** (attempts - 1), 12000);
   return nowMs - lastAttemptMs >= backoffMs ? "refresh" : "wait";

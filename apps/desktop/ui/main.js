@@ -3885,7 +3885,7 @@ async function maybeRefreshPendingTranscripts() {
     snapshot: state.snapshot,
     libraryRows: state.library?.rows,
     selectedNote: state.selected?.note,
-    busy: Boolean(state.busyAction),
+    busy: Boolean(state.busyAction) || backgroundLibraryRefresh.inFlight,
     modal: Boolean(state.modal),
     nowMs: Date.now(),
     lastAttemptMs: pendingTranscriptRefresh.lastAttemptMs,
@@ -3904,26 +3904,36 @@ async function maybeRefreshPendingTranscripts() {
 // A background library re-read. A library read spends every handle the open
 // meeting holds, so with a meeting open the two are re-read together; the
 // person's unsaved typing is flushed first and carried across if they typed
-// during the read.
+// during the read. Both background refreshes run from the same poll tick, and
+// the flush awaits before `runBusy` marks the app busy, so the shared flag is
+// what keeps a second re-read from spending the first one's handles.
+const backgroundLibraryRefresh = { inFlight: false };
+
 async function refreshLibraryKeepingSelection() {
-  const selection = state.selected;
-  if (!selection) {
-    await runBusy("library", refreshLibrary);
-    return;
-  }
-  const epoch = meetingOpenEpoch;
-  await flushSelectedNoteSave();
-  if (state.selected !== selection || epoch !== meetingOpenEpoch) return;
-  const draftAtStart = selection.operatorNoteDraft;
-  await runBusy("refresh-selected-meeting", () => reopenSelectedMeeting(selection.row.meetingId));
-  const reopened = state.selected;
-  if (reopened && reopened !== selection
-    && reopened.row?.meetingId === selection.row.meetingId
-    && selection.operatorNoteDraft !== draftAtStart) {
-    reopened.operatorNoteDraft = selection.operatorNoteDraft;
-    reopened.operatorNoteSaveState = "local";
-    scheduleSelectedNoteSave();
-    render();
+  if (backgroundLibraryRefresh.inFlight) return;
+  backgroundLibraryRefresh.inFlight = true;
+  try {
+    const selection = state.selected;
+    if (!selection) {
+      await runBusy("library", refreshLibrary);
+      return;
+    }
+    const epoch = meetingOpenEpoch;
+    await flushSelectedNoteSave();
+    if (state.selected !== selection || epoch !== meetingOpenEpoch) return;
+    const draftAtStart = selection.operatorNoteDraft;
+    await runBusy("refresh-selected-meeting", () => reopenSelectedMeeting(selection.row.meetingId));
+    const reopened = state.selected;
+    if (reopened && reopened !== selection
+      && reopened.row?.meetingId === selection.row.meetingId
+      && selection.operatorNoteDraft !== draftAtStart) {
+      reopened.operatorNoteDraft = selection.operatorNoteDraft;
+      reopened.operatorNoteSaveState = "local";
+      scheduleSelectedNoteSave();
+      render();
+    }
+  } finally {
+    backgroundLibraryRefresh.inFlight = false;
   }
 }
 
@@ -3938,7 +3948,8 @@ async function maybeShowFinishedMeeting() {
     snapshot: state.snapshot,
     libraryRows: state.library?.rows,
     selected: Boolean(state.selected),
-    busy: Boolean(state.busyAction) || Boolean(state.autoSelecting),
+    filtered: Boolean(state.search.trim()),
+    busy: Boolean(state.busyAction) || Boolean(state.autoSelecting) || backgroundLibraryRefresh.inFlight,
     modal: Boolean(state.modal),
     nowMs: Date.now(),
     lastAttemptMs: finishedMeeting.lastAttemptMs,

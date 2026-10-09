@@ -2223,4 +2223,10 @@ test("a just-finished recording is re-read into the library and opened, not left
   assert.equal(finishedMeetingStep({ ...base, attempts: 5, lastAttemptMs: 90_000 }), "wait");
   assert.equal(finishedMeetingStep({ ...base, attempts: 5, lastAttemptMs: 88_000 }), "refresh");
   assert.equal(finishedMeetingStep({ ...base, attempts: FINISHED_MEETING_ROW_ATTEMPTS, lastAttemptMs: 0 }), "give-up");
+  // A sidebar search is filtering the list: one re-read makes it current for
+  // that search, and a title that doesn't match is not waited for. Clearing
+  // the search reads the whole library again.
+  assert.equal(finishedMeetingStep({ ...base, filtered: true }), "refresh");
+  assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, lastAttemptMs: 0 }), "give-up");
+  assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, libraryRows: [{ meetingId: "m-new" }] }), "open");
 });
