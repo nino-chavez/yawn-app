@@ -47,19 +47,19 @@ fn spawn_tap_for_orphan_cleanup_test(mode: &str) -> u32 {
         .id()
 }
 
+// Tests poll for this file to appear and parse it at once, so it must never be
+// visible empty: write a sibling temp file, then rename it into place.
+fn write_pid_receipt(worker: u32, tap: u32) {
+    if let Ok(path) = env::var("LMN_PID_FILE") {
+        let staging = format!("{path}.tmp");
+        fs::write(&staging, format!("{{\"worker\":{worker},\"tap\":{tap}}}\n")).unwrap();
+        fs::rename(staging, path).unwrap();
+    }
+}
+
 fn spawn_stubborn_tap_with_receipt() -> u32 {
     let tap_pid = spawn_tap_for_orphan_cleanup_test("tap-stubborn");
-    if let Ok(path) = env::var("LMN_PID_FILE") {
-        fs::write(
-            path,
-            format!(
-                "{{\"worker\":{},\"tap\":{}}}\n",
-                std::process::id(),
-                tap_pid
-            ),
-        )
-        .unwrap();
-    }
+    write_pid_receipt(std::process::id(), tap_pid);
     tap_pid
 }
 
@@ -271,17 +271,7 @@ fn main() {
                 .stderr(Stdio::null())
                 .spawn()
                 .unwrap();
-            if let Ok(path) = env::var("LMN_PID_FILE") {
-                fs::write(
-                    path,
-                    format!(
-                        "{{\"worker\":{},\"tap\":{}}}\n",
-                        std::process::id(),
-                        tap.id()
-                    ),
-                )
-                .unwrap();
-            }
+            write_pid_receipt(std::process::id(), tap.id());
             ready();
             read_parent_liveness(parent_fd()).unwrap();
             let _ = tap.wait();
