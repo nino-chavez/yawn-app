@@ -4019,52 +4019,6 @@ fn with_library_organization(
     response
 }
 
-#[tauri::command]
-fn library_create_folder(
-    expected_revision: u64,
-    name: String,
-    state: State<'_, ApplicationState>,
-) -> library_organization::OrganizationResponse {
-    with_library_organization(&state, |authority| {
-        authority.create_folder(expected_revision, &name)
-    })
-}
-
-#[tauri::command]
-fn library_rename_folder(
-    expected_revision: u64,
-    folder_id: String,
-    name: String,
-    state: State<'_, ApplicationState>,
-) -> library_organization::OrganizationResponse {
-    with_library_organization(&state, |authority| {
-        authority.rename_folder(expected_revision, &folder_id, &name)
-    })
-}
-
-#[tauri::command]
-fn library_delete_folder(
-    expected_revision: u64,
-    folder_id: String,
-    state: State<'_, ApplicationState>,
-) -> library_organization::OrganizationResponse {
-    with_library_organization(&state, |authority| {
-        authority.delete_folder(expected_revision, &folder_id)
-    })
-}
-
-#[tauri::command]
-fn library_assign_meeting_folder(
-    expected_revision: u64,
-    meeting_id: String,
-    folder_id: Option<String>,
-    state: State<'_, ApplicationState>,
-) -> library_organization::OrganizationResponse {
-    with_library_organization(&state, |authority| {
-        authority.assign_meeting_folder(expected_revision, &meeting_id, folder_id.as_deref())
-    })
-}
-
 /// Null clears the operator's title and restores the derived one.
 #[tauri::command]
 fn library_set_meeting_title(
