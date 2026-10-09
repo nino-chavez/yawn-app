@@ -395,12 +395,6 @@ pub(crate) fn restore_withheld_turn(
     facade: State<'_, ProductOperationFacade>,
     app: State<'_, crate::ApplicationState>,
 ) -> Result<UiOperationAccepted, String> {
-    // An active setup recording holds the app-data writer lock this
-    // restoration's coordination handle would queue behind; refuse in the
-    // recorder's own vocabulary instead of hanging the call.
-    if crate::sitting_task_active(&app) {
-        return Err("Finish the setup recording first.".into());
-    }
     let capture = app
         .model
         .lock()

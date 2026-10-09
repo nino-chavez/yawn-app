@@ -47,8 +47,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::{
     ApplicationState, CaptureState, StartupState, has_pending_transcription_work,
-    product_facade::ProductOperationFacade, show_settings_window, sitting_task_active,
-    transcription_operation_active,
+    product_facade::ProductOperationFacade, show_settings_window, transcription_operation_active,
 };
 
 /// Presence turns the automatic check off; absence (the default) leaves it on.
@@ -188,19 +187,17 @@ fn busy_facts(app: &AppHandle) -> BusyFacts {
     };
     BusyFacts {
         starting: matches!(startup, StartupState::Checking | StartupState::Retrying),
-        // A finished, failed or interrupted meeting holds no microphone; an
-        // enrollment sitting does, whatever the meeting capture says.
-        capturing: sitting_task_active(&state)
-            || matches!(
-                capture,
-                CaptureState::Arming
-                    | CaptureState::Recording
-                    | CaptureState::Paused
-                    | CaptureState::Stopping
-                    | CaptureState::Captured
-                    | CaptureState::Transcribing
-                    | CaptureState::Summarizing
-            ),
+        // A finished, failed or interrupted meeting holds no microphone.
+        capturing: matches!(
+            capture,
+            CaptureState::Arming
+                | CaptureState::Recording
+                | CaptureState::Paused
+                | CaptureState::Stopping
+                | CaptureState::Captured
+                | CaptureState::Transcribing
+                | CaptureState::Summarizing
+        ),
         transcribing,
         downloading_model: state.model_install_active.load(Ordering::SeqCst)
             || state.note_model_install_active.load(Ordering::SeqCst)

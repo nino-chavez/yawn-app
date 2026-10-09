@@ -105,9 +105,6 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use error_codes::CommandError;
 use local_meeting_notes_session_core::diagnostic::write_private_diagnostic;
-use local_meeting_notes_session_core::enrollment_guidance::{
-    EnrollmentEvidence, GuidedEnrollmentStatus, evaluate_enrollment_evidence,
-};
 use local_meeting_notes_session_core::meeting::{
     ArtifactRef, AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts,
     MeetingLifecycle, MeetingRecord, MeetingSchema, artifact_ref, load_meeting, read_private_bytes,
@@ -269,12 +266,10 @@ struct ApplicationState {
     transcription_worker: Arc<Mutex<Option<OwnedChild>>>,
     transcription_executor: Mutex<Option<TranscriptionExecutorControl>>,
     capture_task: Mutex<Option<CaptureTaskControl>>,
-    sitting_task: Mutex<Option<SittingTaskControl>>,
     command_lock: Mutex<()>,
-    // The slot holds an Arc so a long-running owner (the sitting take)
-    // can hold the writer without holding this mutex guard: readers that
-    // only need the coordination handle stay unblocked for the take's
-    // whole duration. Single-writer authority is the AppDataWriterLock
+    // The slot holds an Arc so a long-running owner can hold the writer
+    // without holding this mutex guard: readers that only need the
+    // coordination handle stay unblocked for the owner's whole duration. Single-writer authority is the AppDataWriterLock
     // itself (the owner-only flock), not this mutex.
     app_data_writer_lock: Arc<Mutex<Option<Arc<AppDataWriterLock>>>>,
     retention_started: AtomicBool,
@@ -292,8 +287,6 @@ struct ApplicationState {
     /// never a PID: every stop and reap action is constrained to this exact
     /// process object rather than a reused system process identifier.
     audio_playback: Mutex<Option<RetainedAudioPlayback>>,
-    preview_profile: Mutex<PreviewProfileSnapshot>,
-    preview_enrollment: Mutex<PreviewEnrollmentSurface>,
     // Successful note-projector admission, cached off the hot library-rebuild
     // path. Only success is cached: a failed admission (no generate manifest,
     // no catalog entry, weights not yet downloaded) is cheap to re-derive and
@@ -332,7 +325,6 @@ impl Default for ApplicationState {
             transcription_worker: Arc::new(Mutex::new(None)),
             transcription_executor: Mutex::new(None),
             capture_task: Mutex::new(None),
-            sitting_task: Mutex::new(None),
             command_lock: Mutex::new(()),
             app_data_writer_lock: Arc::new(Mutex::new(None)),
             retention_started: AtomicBool::new(false),
@@ -350,8 +342,6 @@ impl Default for ApplicationState {
             transcription_engine: Mutex::new(TranscriptionEngineState::default()),
             preview_library: Mutex::new(None),
             audio_playback: Mutex::new(None),
-            preview_profile: Mutex::new(PreviewProfileSnapshot::unavailable()),
-            preview_enrollment: Mutex::new(PreviewEnrollmentSurface::unavailable()),
             note_projector: Mutex::new(None),
             note_generation_admission: Arc::new(Mutex::new(None)),
             locked_actions: Mutex::new(meeting_lock::LockedActionAuthority::default()),
@@ -912,7 +902,7 @@ fn sync_transcription_engine_snapshot(
     };
     operation_active |= matches!(startup, StartupState::Checking | StartupState::Retrying);
     let can_change = matches!(startup, StartupState::Ready | StartupState::ModelRequired)
-        && model_change_audio_idle(capture, sitting_task_active(state))
+        && model_change_audio_idle(capture)
         && !operation_active;
     let whisper = if whisper_ready {
         WhisperSettingsSnapshot {
@@ -1143,102 +1133,6 @@ struct PreviewLibraryTranscript {
     message: String,
 }
 
-/// Content-free voice-setup status cached for Settings.
-///
-/// `profile_present` and `profile_active` are deliberately separate, because
-/// the lifecycle distinguishes them and the operator consequence is opposite.
-/// Preserved legacy bytes are present and inactive: Preview will not activate
-/// them, and saying so is the whole point of the migration-review path. An
-/// enrolled profile is present and active. Collapsing the two would let the
-/// surface describe a live profile as "stored material Preview will not
-/// activate", which is the exact reassurance this product must not get wrong.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewProfileSnapshot {
-    state: &'static str,
-    profile_present: Option<bool>,
-    profile_active: Option<bool>,
-    guided_enrollment: GuidedEnrollmentStatus,
-}
-
-impl PreviewProfileSnapshot {
-    /// The empty-evidence evaluation used wherever the lifecycle could not
-    /// answer: it truthfully reports `blocked` with the first enforced step.
-    /// The expected encoder is `None` because there is no evidence to
-    /// mislabel; real evidence flows through `baseline_from_store` instead.
-    fn guidance() -> GuidedEnrollmentStatus {
-        evaluate_enrollment_evidence(&EnrollmentEvidence::default(), None)
-    }
-
-    fn unavailable() -> Self {
-        Self {
-            state: "unavailable",
-            profile_present: None,
-            profile_active: None,
-            guided_enrollment: Self::guidance(),
-        }
-    }
-}
-
-/// Content-free sentences for why the dedicated sitting recorder cannot
-/// start. Each names the actual boundary; none invites retrying around it.
-const RECORDER_REASON_STATUS_UNAVAILABLE: &str =
-    "Voice profile status is unavailable, so a setup recording cannot start.";
-
-/// One recorded sitting, content-free: an identifier, what kind of material
-/// it is, and where it sits in the evidence lifecycle. No audio digest,
-/// timing, or transcript-derived value crosses this surface.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewSittingSummary {
-    sitting_id: String,
-    kind: &'static str,
-    source_class: Option<String>,
-    state: &'static str,
-}
-
-/// The recorder half of the Voice profile screen. Recording opens only in a
-/// build whose verified runtime carries the admitted encoder — the boundary
-/// sentence names the actual reason in every other lane — and the sittings
-/// list is the durable evidence store's projection. `last_outcome` is the
-/// content-free completion sentence for the most recent recording attempt.
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewEnrollmentSurface {
-    recording_available: bool,
-    recording_unavailable_reason: Option<&'static str>,
-    sittings: Vec<PreviewSittingSummary>,
-    last_outcome: Option<&'static str>,
-    /// True from the moment a take claims the task slot until its thread's
-    /// final refresh. It outlives the recording-in-progress row — capture
-    /// closes before derivation — so the surface can stay honest, and keep
-    /// polling, through the derive window.
-    attempt_active: bool,
-}
-
-impl PreviewEnrollmentSurface {
-    fn unavailable() -> Self {
-        Self {
-            recording_available: false,
-            recording_unavailable_reason: Some(RECORDER_REASON_STATUS_UNAVAILABLE),
-            sittings: Vec::new(),
-            last_outcome: None,
-            attempt_active: false,
-        }
-    }
-}
-
-/// Control handle for the dedicated-sitting capture thread. The sender is the
-/// operator's Stop; the driver treats a vanished stop channel as a
-/// control-plane fault, so the handle stays in place until the thread clears
-/// it on the way out. Stop deliberately avoids `command_lock`, so it never
-/// queues behind whatever command is in flight — the one signal an operator
-/// mid-take must always be able to land.
-struct SittingTaskControl {
-    sitting_id: String,
-    sender: mpsc::Sender<()>,
-}
-
 /// Whether a speech or note model may be swapped right now. The mic and the
 /// system tap are released once a transcript is on screen, and opening a
 /// past meeting from the library restores the reducer to `TranscriptReady`
@@ -1246,16 +1140,8 @@ struct SittingTaskControl {
 /// this purpose. Treating it as "a meeting in progress" disabled Settings
 /// with "Finish the current meeting" while the operator was only reading
 /// (roadmap D-GATE, found on the 88da6b6 installed captures).
-fn model_change_audio_idle(capture: CaptureState, sitting_task_active: bool) -> bool {
-    matches!(capture, CaptureState::Idle | CaptureState::TranscriptReady) && !sitting_task_active
-}
-
-fn sitting_task_active(state: &ApplicationState) -> bool {
-    state
-        .sitting_task
-        .lock()
-        .map(|active| active.is_some())
-        .unwrap_or(true)
+fn model_change_audio_idle(capture: CaptureState) -> bool {
+    matches!(capture, CaptureState::Idle | CaptureState::TranscriptReady)
 }
 
 /// Arm a new recording from either the empty home state or a restored
@@ -1462,18 +1348,6 @@ struct RuntimeIdentity {
     transcript_model_identity: String,
     tap_build_sha256: String,
     tap_path: PathBuf,
-    /// The digest the verified manifest records for the speaker encoder.
-    /// Today that is the `encoder-unavailable.identity` placeholder; guided
-    /// enrolment compares derived material against exactly this value, so a
-    /// build without a real encoder truthfully refuses rather than guessing.
-    encoder_sha256: String,
-    /// Whether the manifest names a real encoder resource at all.
-    /// `worker/build_runtime.sh` deliberately records the
-    /// `encoder-unavailable.identity` placeholder file when no speaker
-    /// encoder is packaged — the file name is the build's own declared
-    /// signal, so the recorder surface derives its honest boundary from it
-    /// instead of hardcoding the placeholder's digest.
-    encoder_available: bool,
 }
 
 struct TranscriptionExecutorControl {
@@ -1907,12 +1781,6 @@ fn start_meeting(
         if active.is_some() {
             return Err("Another capture attempt is already active.".into());
         }
-        // A meeting starting mid-take would make the take's remaining
-        // evidence operations refuse (the store excludes active meetings),
-        // so the meeting is what refuses here.
-        if sitting_task_active(&state) {
-            return Err("Finish the setup recording before starting a meeting.".into());
-        }
         arm_new_meeting_capture(&mut model)?;
         model.clear_meeting_projection();
         model.meeting_id = Some(meeting_id.clone());
@@ -2290,11 +2158,6 @@ fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
     let operation = app
         .state::<product_facade::ProductOperationFacade>()
         .claim_runtime_change()?;
-    // A startup retry re-runs reconciliation over the same stores the take
-    // is writing; it lands after the take, by refusal.
-    if sitting_task_active(&state) {
-        return Err("Finish the setup recording first.".into());
-    }
     if state
         .capture_task
         .lock()
@@ -2462,8 +2325,7 @@ fn transcript_model_settings_for(
         )
     };
     let startup_ready = matches!(startup, StartupState::Ready | StartupState::ModelRequired);
-    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state))
-        && !has_pending_transcription_work(state);
+    let audio_idle = model_change_audio_idle(capture) && !has_pending_transcription_work(state);
     let can_change = startup_ready && audio_idle && !installing;
     let unavailable_reason = if installing {
         Some("Wait for the current model change to finish.".into())
@@ -2569,7 +2431,6 @@ fn select_transcription_engine(
         return Err("Wait for Yawn to finish starting before changing speech models.".into());
     }
     if has_pending_transcription_work(&state)
-        || sitting_task_active(&state)
         || state.model_install_active.load(Ordering::SeqCst)
         || state.note_model_install_active.load(Ordering::SeqCst)
     {
@@ -2655,7 +2516,6 @@ fn install_apple_speech_assets(
         return Err("Wait for Yawn to finish starting before changing speech models.".into());
     }
     if has_pending_transcription_work(&state)
-        || sitting_task_active(&state)
         || state.note_model_install_active.load(Ordering::SeqCst)
     {
         return Err("Finish queued or active transcription before preparing Apple speech.".into());
@@ -2752,7 +2612,7 @@ fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnaps
         .expect("application model lock")
         .reducer
         .capture();
-    if !model_change_audio_idle(capture, sitting_task_active(&state))
+    if !model_change_audio_idle(capture)
         || has_pending_transcription_work(&state)
         || state.note_model_install_active.load(Ordering::SeqCst)
     {
@@ -2906,9 +2766,9 @@ fn remove_transcript_model(
         matches!(
             model.reducer.startup(),
             StartupState::Ready | StartupState::ModelRequired
-        ) && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
+        ) && model_change_audio_idle(model.reducer.capture())
     };
-    if !ready || sitting_task_active(&state) || has_pending_transcription_work(&state) {
+    if !ready || has_pending_transcription_work(&state) {
         return Err("Finish the current meeting before removing a speech model.".into());
     }
     let storage_context = state
@@ -2972,7 +2832,7 @@ fn note_model_settings_for(state: &ApplicationState) -> Result<NoteModelSettings
         (model.reducer.startup(), model.reducer.capture())
     };
     let startup_ready = matches!(startup, StartupState::Ready | StartupState::ModelRequired);
-    let audio_idle = model_change_audio_idle(capture, sitting_task_active(state));
+    let audio_idle = model_change_audio_idle(capture);
     let can_change = startup_ready && audio_idle && !installing;
     let unavailable_reason = if installing {
         Some("Wait for the current note model change to finish.".into())
@@ -3275,7 +3135,6 @@ fn nemotron_model_settings_for(
                 .expect("application model lock")
                 .reducer
                 .capture(),
-            sitting_task_active(state),
         )
         && !active
         && !state.speaker_analysis_active.load(Ordering::SeqCst);
@@ -3325,7 +3184,6 @@ fn install_nemotron_model(app: AppHandle) -> Result<NemotronModelSettingsSnapsho
             .expect("application model lock")
             .reducer
             .capture(),
-        sitting_task_active(&state),
     ) {
         return Err("Speaker analysis cannot be installed while audio work is active.".into());
     }
@@ -3406,9 +3264,9 @@ fn remove_note_model(
         matches!(
             model.reducer.startup(),
             StartupState::Ready | StartupState::ModelRequired
-        ) && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
+        ) && model_change_audio_idle(model.reducer.capture())
     };
-    if !ready || sitting_task_active(&state) {
+    if !ready {
         return Err("Finish the current meeting before removing the note model.".into());
     }
     let storage_context = state
@@ -3463,14 +3321,6 @@ fn with_library_organization(
             "Renaming is unavailable. Reopen the app and try again.",
         );
     };
-    // Organization writes to the same storage root a take's evidence writes
-    // sit beside, so like every mutating command it refuses during a take
-    // rather than interleaving with it.
-    if sitting_task_active(state) {
-        return library_organization::OrganizationResponse::unavailable(
-            "Finish the setup recording before changing folders or titles.",
-        );
-    }
     let writer = match state.app_data_writer_lock.lock() {
         Ok(held) => held.clone(),
         Err(_) => None,
@@ -4425,17 +4275,6 @@ fn preview_delete_meeting_audio_for(
         return unavailable_preview_audio_deletion();
     };
     stop_owned_audio_playback(state);
-    // Deletion mutates retained-audio state the take's evidence writes sit
-    // beside; like every mutating command it refuses during a take instead
-    // of interleaving with it.
-    if sitting_task_active(state) {
-        return PreviewAudioDeletionResponse {
-            state: "capture-active",
-            audio_retention: None,
-            message: "Finish the setup recording before deleting a recording.".into(),
-            code: None,
-        };
-    }
     let (startup, capture) = match state.model.lock() {
         Ok(model) => (model.reducer.startup(), model.reducer.capture()),
         Err(_) => return unavailable_preview_audio_deletion(),
@@ -4607,13 +4446,6 @@ fn preview_delete_meeting_transcript_for(
         return unavailable_preview_transcript_deletion();
     };
     stop_owned_audio_playback(state);
-    if sitting_task_active(state) {
-        return PreviewTranscriptDeletionResponse {
-            state: "capture-active",
-            message: "Finish the setup recording before deleting a transcript.".into(),
-            code: None,
-        };
-    }
     let (startup, capture) = match state.model.lock() {
         Ok(model) => (model.reducer.startup(), model.reducer.capture()),
         Err(_) => return unavailable_preview_transcript_deletion(),
@@ -4794,13 +4626,6 @@ fn preview_delete_meeting_for(
         return unavailable_preview_meeting_deletion();
     };
     stop_owned_audio_playback(state);
-    if sitting_task_active(state) {
-        return PreviewMeetingDeletionResponse {
-            state: "capture-active",
-            message: "Finish the setup recording before deleting a meeting.".into(),
-            code: None,
-        };
-    }
     let (startup, capture) = match state.model.lock() {
         Ok(model) => (model.reducer.startup(), model.reducer.capture()),
         Err(_) => return unavailable_preview_meeting_deletion(),
@@ -5939,9 +5764,6 @@ fn with_current_local_vocabulary<T>(
             "Vocabulary is unavailable. Reopen the meeting and try again.",
         )
     })?;
-    if sitting_task_active(state) {
-        return Err("Finish the setup recording before changing local vocabulary.".into());
-    }
     {
         let model = state.model.lock().map_err(|_| {
             CommandError::coded(
@@ -6147,9 +5969,6 @@ fn correct_speaker_name_for(
             "Speaker correction is unavailable. Reopen the meeting and try again.",
         )
     })?;
-    if sitting_task_active(state) {
-        return Err("Finish the setup recording before correcting a speaker name.".into());
-    }
     {
         let model = state.model.lock().map_err(|_| {
             CommandError::coded(
@@ -6319,9 +6138,6 @@ fn retry_comparison_response(
 }
 
 fn retry_command_is_available(state: &ApplicationState) -> Result<(), String> {
-    if sitting_task_active(state) {
-        return Err("Finish the setup recording first.".into());
-    }
     let capture = state
         .model
         .lock()
@@ -6798,9 +6614,6 @@ fn handle_run_event(_app_handle: &AppHandle, _event: tauri::RunEvent) {}
 fn initialize_application(app: AppHandle, retry: bool) {
     let state = app.state::<ApplicationState>();
     stop_owned_audio_playback(&state);
-    if let Ok(mut profile) = state.preview_profile.lock() {
-        *profile = PreviewProfileSnapshot::unavailable();
-    }
     {
         let mut model = state.model.lock().expect("application model lock");
         model.retention_operational = false;
@@ -7380,9 +7193,6 @@ fn initialize_application(app: AppHandle, retry: bool) {
         },
         tap_build_sha256: manifest.tap.sha256.clone(),
         tap_path: storage_context.resource_root.join(&manifest.tap.path),
-        encoder_sha256: manifest.encoder.sha256.clone(),
-        encoder_available: manifest.encoder.path.file_name()
-            != Some(std::ffi::OsStr::new("encoder-unavailable.identity")),
     };
     *state.worker.lock().expect("worker process lock") = Some(worker);
     let mut transcription_command = Command::new(&worker_path);
@@ -9996,18 +9806,11 @@ mod tests {
 
     #[test]
     fn a_meeting_open_for_reading_does_not_block_model_changes() {
-        assert!(model_change_audio_idle(CaptureState::Idle, false));
-        assert!(model_change_audio_idle(
-            CaptureState::TranscriptReady,
-            false
-        ));
-        assert!(!model_change_audio_idle(CaptureState::Recording, false));
-        assert!(!model_change_audio_idle(CaptureState::Paused, false));
-        assert!(!model_change_audio_idle(CaptureState::Transcribing, false));
-        assert!(!model_change_audio_idle(
-            CaptureState::TranscriptReady,
-            true
-        ));
+        assert!(model_change_audio_idle(CaptureState::Idle));
+        assert!(model_change_audio_idle(CaptureState::TranscriptReady));
+        assert!(!model_change_audio_idle(CaptureState::Recording));
+        assert!(!model_change_audio_idle(CaptureState::Paused));
+        assert!(!model_change_audio_idle(CaptureState::Transcribing));
     }
     use std::sync::Barrier;
     use tempfile::TempDir;
@@ -12649,8 +12452,6 @@ exit 0"#
             transcription_producer: TranscriptionProducer::whisper("whisper-model".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
-            encoder_sha256: "encoder".into(),
-            encoder_available: false,
         }
     }
 
