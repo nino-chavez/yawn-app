@@ -90,7 +90,10 @@ mod tests {
         // against the same storage root is exactly what a relaunch observes.
         let (_temporary, storage) = test_storage();
         mark_seen(&storage);
-        assert!(seen(&storage), "the marker must persist across a fresh read of the same storage root");
+        assert!(
+            seen(&storage),
+            "the marker must persist across a fresh read of the same storage root"
+        );
     }
 
     #[test]

@@ -35,7 +35,9 @@ use local_meeting_notes_session_core::meeting::{
     verify_artifact_ref,
 };
 use local_meeting_notes_session_core::retention::meeting_dir;
-use local_meeting_notes_session_core::storage::{StorageRoot, create_private_dir, durable_create_new};
+use local_meeting_notes_session_core::storage::{
+    StorageRoot, create_private_dir, durable_create_new,
+};
 
 use crate::library_reader::ExportClaim;
 use crate::{TranscriptTurn, load_transcript_projection};
@@ -69,17 +71,18 @@ pub(crate) fn export_meeting(
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
     match &meeting.artifacts.current_transcript {
-        Some(reference) => {
-            match load_transcript_projection(&directory, meeting_id, reference) {
-                Ok((turns, _warnings)) => {
-                    files.push(("transcript.md".to_string(), transcript_markdown(&turns).into_bytes()));
-                }
-                Err(_) => withheld.push(
-                    "transcript.md was not included: the retained transcript failed verification."
-                        .to_string(),
-                ),
+        Some(reference) => match load_transcript_projection(&directory, meeting_id, reference) {
+            Ok((turns, _warnings)) => {
+                files.push((
+                    "transcript.md".to_string(),
+                    transcript_markdown(&turns).into_bytes(),
+                ));
             }
-        }
+            Err(_) => withheld.push(
+                "transcript.md was not included: the retained transcript failed verification."
+                    .to_string(),
+            ),
+        },
         None => withheld.push(
             "transcript.md was not included: this meeting has no retained transcript.".to_string(),
         ),
@@ -105,8 +108,9 @@ pub(crate) fn export_meeting(
 
     let operator_note = crate::operator_note::read(&directory);
     if operator_note.unreadable {
-        withheld
-            .push("your-notes.txt was not included: your saved note could not be read.".to_string());
+        withheld.push(
+            "your-notes.txt was not included: your saved note could not be read.".to_string(),
+        );
     } else if !operator_note.text.trim().is_empty() {
         files.push((
             "your-notes.txt".to_string(),
@@ -156,7 +160,10 @@ pub(crate) fn export_meeting(
         );
     }
 
-    files.push(("README.txt".to_string(), readme_text(&withheld).into_bytes()));
+    files.push((
+        "README.txt".to_string(),
+        readme_text(&withheld).into_bytes(),
+    ));
 
     let export_dir = write_export_folder(&directory, &files)?;
     let archive_name = format!("{}.zip", archive_base_name(label, created_at_epoch_seconds));
@@ -185,7 +192,9 @@ fn export_receipt(
         .and_then(|path| read_private_bytes(&path, MAX_RECEIPT_BYTES).map_err(|_| ()))
     {
         Ok(bytes) => files.push((relative_path.to_string(), bytes)),
-        Err(()) => withheld.push(format!("{relative_path} was not included: it failed verification.")),
+        Err(()) => withheld.push(format!(
+            "{relative_path} was not included: it failed verification."
+        )),
     }
 }
 
@@ -205,7 +214,10 @@ fn note_markdown(claims: &[ExportClaim]) -> String {
          the exact retained words each claim cites.\n",
     );
 
-    let summary: Vec<&ExportClaim> = claims.iter().filter(|c| c.claim_type == "summary").collect();
+    let summary: Vec<&ExportClaim> = claims
+        .iter()
+        .filter(|c| c.claim_type == "summary")
+        .collect();
     if !summary.is_empty() {
         out.push_str("\n## Overview\n\n");
         for claim in &summary {
@@ -221,7 +233,10 @@ fn note_markdown(claims: &[ExportClaim]) -> String {
         ("proposal", "Ideas discussed"),
         ("question", "Open questions"),
     ] {
-        let group: Vec<&ExportClaim> = claims.iter().filter(|c| c.claim_type == claim_type).collect();
+        let group: Vec<&ExportClaim> = claims
+            .iter()
+            .filter(|c| c.claim_type == claim_type)
+            .collect();
         if group.is_empty() {
             continue;
         }
@@ -312,7 +327,9 @@ fn timestamp(seconds: f64) -> String {
 fn readme_text(withheld: &[String]) -> String {
     let mut out = String::new();
     out.push_str("This folder was created on this Mac by Yawn.\n");
-    out.push_str("note.md is the generated meeting note; transcript.md is the full retained record.\n");
+    out.push_str(
+        "note.md is the generated meeting note; transcript.md is the full retained record.\n",
+    );
     out.push_str("your-notes.txt and context.txt, if present, are what you personally wrote.\n");
     out.push_str("receipts/ holds plain records of what happened during capture.\n");
     out.push_str("These are ordinary text files you own. Nothing here needs Yawn to be read.\n");
@@ -330,10 +347,7 @@ fn readme_text(withheld: &[String]) -> String {
 /// Replaces `export/` wholesale so a stale or partial export never survives
 /// next to a fresh one, then writes every file through the same durable,
 /// private-mode primitives the rest of the meeting directory is written with.
-fn write_export_folder(
-    directory: &Path,
-    files: &[(String, Vec<u8>)],
-) -> Result<PathBuf, String> {
+fn write_export_folder(directory: &Path, files: &[(String, Vec<u8>)]) -> Result<PathBuf, String> {
     let export_dir = directory.join(EXPORT_DIR_NAME);
     if export_dir.exists() {
         fs::remove_dir_all(&export_dir)
@@ -496,7 +510,8 @@ mod tests {
             ]
         }))
         .unwrap();
-        let transcript_relative = format!("transcript/{:x}.json", Sha256::digest(&transcript_bytes));
+        let transcript_relative =
+            format!("transcript/{:x}.json", Sha256::digest(&transcript_bytes));
         durable_create_new(&directory.join(&transcript_relative), &transcript_bytes).unwrap();
 
         let rule = AudioRetentionRule::UntilManualDeletion;
@@ -564,18 +579,29 @@ mod tests {
 
         let outcome = export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();
 
-        assert!(outcome.withheld.iter().any(|line| line
-            .contains("transcript.md was not included: the retained transcript failed verification.")));
+        assert!(outcome.withheld.iter().any(|line| line.contains(
+            "transcript.md was not included: the retained transcript failed verification."
+        )));
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
         assert!(!export_dir.join("transcript.md").exists());
         let readme = fs::read_to_string(export_dir.join("README.txt")).unwrap();
-        assert!(readme.contains("transcript.md was not included: the retained transcript failed verification."));
+        assert!(readme.contains(
+            "transcript.md was not included: the retained transcript failed verification."
+        ));
     }
 
     #[test]
     fn re_export_replaces_the_export_folder_wholesale() {
         let fixture = fixture();
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims(), false).unwrap();
+        export_meeting(
+            &fixture.storage,
+            MEETING_ID,
+            Some("Kickoff"),
+            0,
+            &sample_claims(),
+            false,
+        )
+        .unwrap();
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
         assert!(export_dir.join("note.md").exists());
 
@@ -585,7 +611,15 @@ mod tests {
         fs::write(export_dir.join("stray.txt"), b"leftover").unwrap();
         assert!(export_dir.join("stray.txt").exists());
 
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff"), 0, &sample_claims(), false).unwrap();
+        export_meeting(
+            &fixture.storage,
+            MEETING_ID,
+            Some("Kickoff"),
+            0,
+            &sample_claims(),
+            false,
+        )
+        .unwrap();
         assert!(!export_dir.join("stray.txt").exists());
         assert!(export_dir.join("note.md").exists());
     }
@@ -593,7 +627,15 @@ mod tests {
     #[test]
     fn export_zip_contains_exactly_the_written_folder_files() {
         let fixture = fixture();
-        export_meeting(&fixture.storage, MEETING_ID, Some("Kickoff Call"), 0, &sample_claims(), false).unwrap();
+        export_meeting(
+            &fixture.storage,
+            MEETING_ID,
+            Some("Kickoff Call"),
+            0,
+            &sample_claims(),
+            false,
+        )
+        .unwrap();
         let export_dir = fixture.directory.join(EXPORT_DIR_NAME);
 
         let zip_path = export_dir.join("kickoff-call.zip");
@@ -640,7 +682,8 @@ mod tests {
         assert!(!export_dir.join("context.txt").exists());
 
         crate::operator_note::write(&fixture.directory, "remember the follow-up").unwrap();
-        crate::meeting_context::write(&fixture.directory, "client is evaluating two vendors").unwrap();
+        crate::meeting_context::write(&fixture.directory, "client is evaluating two vendors")
+            .unwrap();
         export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();
 
         let your_notes = fs::read_to_string(export_dir.join("your-notes.txt")).unwrap();
@@ -695,14 +738,24 @@ mod tests {
     #[test]
     fn note_markdown_preserves_every_claim_with_its_locator_turns_and_excerpts() {
         let claims = vec![
-            claim(0, "summary", "Kickoff went well.", vec![(0, "we kicked off")]),
+            claim(
+                0,
+                "summary",
+                "Kickoff went well.",
+                vec![(0, "we kicked off")],
+            ),
             claim(
                 1,
                 "decision",
                 "Ship the beta Friday.",
                 vec![(2, "we will ship Friday"), (4, "beta scope is frozen")],
             ),
-            claim(2, "point", "an unclassified excerpt", vec![(6, "an unclassified excerpt")]),
+            claim(
+                2,
+                "point",
+                "an unclassified excerpt",
+                vec![(6, "an unclassified excerpt")],
+            ),
         ];
         let rendered = note_markdown(&claims);
 
@@ -757,9 +810,14 @@ mod tests {
         assert!(!clean.contains("Not exported"));
         assert!(clean.contains("ordinary text files you own"));
 
-        let partial = readme_text(&["transcript.md was not included: the retained transcript failed verification.".to_string()]);
+        let partial = readme_text(&[
+            "transcript.md was not included: the retained transcript failed verification."
+                .to_string(),
+        ]);
         assert!(partial.contains("Not exported:"));
-        assert!(partial.contains("transcript.md was not included: the retained transcript failed verification."));
+        assert!(partial.contains(
+            "transcript.md was not included: the retained transcript failed verification."
+        ));
     }
 
     #[test]

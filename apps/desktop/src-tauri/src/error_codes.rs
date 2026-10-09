@@ -97,6 +97,7 @@ impl From<&str> for CommandError {
 
 pub const VIEW_STALE: &str = "view-stale";
 pub const LIBRARY_UNAVAILABLE: &str = "library-unavailable";
+#[allow(dead_code)] // the message still goes out as plain text; the UI already maps this code
 pub const PREVIEW_LIBRARY_UNAVAILABLE: &str = "preview-library-unavailable";
 pub const MEETING_LIBRARY_UNAVAILABLE: &str = "meeting-library-unavailable";
 pub const TRANSCRIPT_UNAVAILABLE: &str = "transcript-unavailable";
@@ -114,6 +115,7 @@ pub const RETRY_PAUSE_EVIDENCE_CHANGED: &str = "retry-pause-evidence-changed";
 pub const RETRY_CANDIDATE_CHANGED: &str = "retry-candidate-changed";
 pub const RETAINED_AUDIO_UNAVAILABLE: &str = "retained-audio-unavailable";
 pub const RECORDING_DELETION_UNAVAILABLE: &str = "recording-deletion-unavailable";
+#[allow(dead_code)] // the message still goes out as plain text; the UI already maps this code
 pub const AUDIO_RETENTION_UNAVAILABLE: &str = "audio-retention-unavailable";
 pub const MEETING_CHANGED_UNAVAILABLE: &str = "meeting-changed-unavailable";
 pub const MEETING_ACTION_IN_PROGRESS: &str = "meeting-action-in-progress";
@@ -125,6 +127,7 @@ pub const MEETING_DELETION_UNAVAILABLE: &str = "meeting-deletion-unavailable";
 /// Every code this module defines. Manually kept in sync with the constants
 /// above (compiler-checked: each entry must name a real constant) and
 /// tested against `error-codes.json` by `error_code_drift` below.
+#[cfg(test)]
 pub const ALL_CODES: &[&str] = &[
     VIEW_STALE,
     LIBRARY_UNAVAILABLE,

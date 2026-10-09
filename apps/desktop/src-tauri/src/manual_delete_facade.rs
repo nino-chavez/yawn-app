@@ -26,6 +26,8 @@ use local_meeting_notes_session_core::transcript_deletion::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AudioDeletionReview {
     Reviewed,
+    // The app builds only reviewed values; the facade still refuses this one, as tested.
+    #[allow(dead_code)]
     NotReviewed,
 }
 
@@ -117,7 +119,6 @@ fn map_core_error(error: ManualAudioDeletionError) -> ManualAudioDeletionFacadeE
         _ => ManualAudioDeletionFacadeError::StorageUnavailable,
     }
 }
-
 
 /// The reviewed confirmation for removing a whole meeting.
 ///
@@ -943,11 +944,16 @@ mod tests {
             review: MeetingTrashReview::NotReviewed,
         };
         assert_eq!(
-            state.meeting_trash_facade().trash_meeting(unreviewed, 1_000),
+            state
+                .meeting_trash_facade()
+                .trash_meeting(unreviewed, 1_000),
             Err(MeetingTrashFacadeError::ConfirmationRequired)
         );
         assert_eq!(fs::read(directory.join("meeting.json")).unwrap(), before);
-        assert!(directory.exists(), "an unreviewed request moved the meeting");
+        assert!(
+            directory.exists(),
+            "an unreviewed request moved the meeting"
+        );
 
         let reviewed = MeetingTrashUiArgs {
             meeting_id: MEETING_ID.into(),
@@ -959,14 +965,12 @@ mod tests {
         );
         assert!(!directory.exists(), "the meeting stayed at meetings/<id>");
 
-        let restored = state
-            .meeting_restore_facade()
-            .restore_meeting(
-                MeetingRestoreUiArgs {
-                    meeting_id: MEETING_ID.into(),
-                },
-                2_000,
-            );
+        let restored = state.meeting_restore_facade().restore_meeting(
+            MeetingRestoreUiArgs {
+                meeting_id: MEETING_ID.into(),
+            },
+            2_000,
+        );
         assert_eq!(restored, Ok(MeetingRestoreFacadeOutcome::Restored));
         assert!(directory.join("meeting.json").exists());
 

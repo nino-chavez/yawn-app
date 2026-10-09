@@ -133,10 +133,7 @@ pub(crate) struct OperationClaim {
 }
 
 impl OperationClaim {
-    fn settle(
-        mut self,
-        accepted: UiOperationAccepted,
-    ) -> Result<(), ProductOperationFacadeError> {
+    fn settle(mut self, accepted: UiOperationAccepted) -> Result<(), ProductOperationFacadeError> {
         let mut slot = self
             .slot
             .lock()
@@ -191,11 +188,15 @@ impl ProductOperationFacade {
     /// change. Ownership can move to the background task; drop releases it on
     /// every exit, including a failed thread spawn.
     pub(crate) fn claim_runtime_change(&self) -> Result<OperationClaim, String> {
-        self.claim().map_err(|_| "Wait for the current note, transcript or model change to finish.".into())
+        self.claim()
+            .map_err(|_| "Wait for the current note, transcript or model change to finish.".into())
     }
 
     pub(crate) fn is_active(&self) -> bool {
-        self.active.lock().map(|slot| slot.is_some()).unwrap_or(true)
+        self.active
+            .lock()
+            .map(|slot| slot.is_some())
+            .unwrap_or(true)
     }
 
     pub(crate) fn restore_withheld_turn(
@@ -324,15 +325,12 @@ impl ProductOperationFacade {
     ) -> Result<UiOperationAccepted, ProductOperationFacadeError> {
         let claim = self.claim()?;
 
-        let source = self
-            .coordinator
-            .source_for(meeting_id)
-            .map_err(|error| {
-                if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
-                    eprintln!("[note-trace] facade source_for failed: {error:?}");
-                }
-                ProductOperationFacadeError::OperationUnavailable
-            })?;
+        let source = self.coordinator.source_for(meeting_id).map_err(|error| {
+            if local_meeting_notes_session_core::note_projector_process::note_trace_enabled() {
+                eprintln!("[note-trace] facade source_for failed: {error:?}");
+            }
+            ProductOperationFacadeError::OperationUnavailable
+        })?;
         if source.meeting_id != meeting_id
             || source.current_transcript_sha256 != source_transcript_sha256
             || !source_is_eligible(&source)
@@ -397,12 +395,6 @@ pub(crate) fn restore_withheld_turn(
     facade: State<'_, ProductOperationFacade>,
     app: State<'_, crate::ApplicationState>,
 ) -> Result<UiOperationAccepted, String> {
-    // An active setup recording holds the app-data writer lock this
-    // restoration's coordination handle would queue behind; refuse in the
-    // recorder's own vocabulary instead of hanging the call.
-    if crate::sitting_task_active(&app) {
-        return Err("Finish the setup recording first.".into());
-    }
     let capture = app
         .model
         .lock()
@@ -441,9 +433,9 @@ pub(crate) fn regenerate_note(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
     use serde::de::DeserializeOwned;
     use serde_json::Value;
+    use std::sync::Mutex;
 
     use super::*;
 
@@ -611,5 +603,4 @@ mod tests {
             assert_eq!(*coordinator.restore_calls.lock().unwrap(), 0);
         }
     }
-
 }

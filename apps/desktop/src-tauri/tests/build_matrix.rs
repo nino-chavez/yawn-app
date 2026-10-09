@@ -1,4 +1,5 @@
 #[path = "../build_contract.rs"]
+#[allow(dead_code)] // shared with build.rs; this test uses only part of it
 mod build_contract;
 
 use build_contract::{BuildMode, plan, validate};
@@ -38,7 +39,10 @@ fn production_config_is_the_signed_product_lane() {
         "save_operator_note",
         "open_current_transcript_file",
     ] {
-        assert!(plan.commands.contains(&command), "missing product command: {command}");
+        assert!(
+            plan.commands.contains(&command),
+            "missing product command: {command}"
+        );
     }
     assert_eq!(production["bundle"]["macOS"]["signingIdentity"], "-");
 }
@@ -49,7 +53,10 @@ fn preview_is_the_only_optional_build_lane() {
     let fixture = config(include_str!("../tauri.fixture.conf.json"));
     assert!(validate(BuildMode::Preview, &preview).is_ok());
     assert!(validate(BuildMode::Preview, &fixture).is_ok());
-    assert_eq!(BuildMode::from_enabled_features(false), BuildMode::Production);
+    assert_eq!(
+        BuildMode::from_enabled_features(false),
+        BuildMode::Production
+    );
     assert_eq!(BuildMode::from_enabled_features(true), BuildMode::Preview);
 }
 
@@ -72,7 +79,10 @@ fn product_builds_ship_the_complete_note_runtime() {
             "../runtime/note-runtime-project.json",
             "../runtime/note-validator.zip",
         ] {
-            assert!(resources.contains_key(path), "missing note runtime resource: {path}");
+            assert!(
+                resources.contains_key(path),
+                "missing note runtime resource: {path}"
+            );
         }
     }
 }
@@ -107,7 +117,10 @@ fn fixture_rejects_preview_and_production_hybrids() {
 fn product_rejects_a_hybrid_or_non_adhoc_bundle() {
     let production = config(include_str!("../tauri.conf.json"));
     let mut hybrid = production.clone();
-    hybrid["app"]["windows"].as_array_mut().unwrap().push(json!({ "label": "extra" }));
+    hybrid["app"]["windows"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({ "label": "extra" }));
     assert!(validate(BuildMode::Production, &hybrid).is_err());
 
     let mut non_adhoc = production;

@@ -47,8 +47,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::{
     ApplicationState, CaptureState, StartupState, has_pending_transcription_work,
-    product_facade::ProductOperationFacade, show_settings_window, sitting_task_active,
-    transcription_operation_active,
+    product_facade::ProductOperationFacade, show_settings_window, transcription_operation_active,
 };
 
 /// Presence turns the automatic check off; absence (the default) leaves it on.
@@ -188,19 +187,17 @@ fn busy_facts(app: &AppHandle) -> BusyFacts {
     };
     BusyFacts {
         starting: matches!(startup, StartupState::Checking | StartupState::Retrying),
-        // A finished, failed or interrupted meeting holds no microphone; an
-        // enrollment sitting does, whatever the meeting capture says.
-        capturing: sitting_task_active(&state)
-            || matches!(
-                capture,
-                CaptureState::Arming
-                    | CaptureState::Recording
-                    | CaptureState::Paused
-                    | CaptureState::Stopping
-                    | CaptureState::Captured
-                    | CaptureState::Transcribing
-                    | CaptureState::Summarizing
-            ),
+        // A finished, failed or interrupted meeting holds no microphone.
+        capturing: matches!(
+            capture,
+            CaptureState::Arming
+                | CaptureState::Recording
+                | CaptureState::Paused
+                | CaptureState::Stopping
+                | CaptureState::Captured
+                | CaptureState::Transcribing
+                | CaptureState::Summarizing
+        ),
         transcribing,
         downloading_model: state.model_install_active.load(Ordering::SeqCst)
             || state.note_model_install_active.load(Ordering::SeqCst)
@@ -232,7 +229,12 @@ fn set_automatic_at(flag: &Path, enabled: bool) -> std::io::Result<()> {
     }
 }
 
-fn status_of(inner: &Inner, automatic: bool, current_version: String, blocked: Option<&'static str>) -> UpdateStatus {
+fn status_of(
+    inner: &Inner,
+    automatic: bool,
+    current_version: String,
+    blocked: Option<&'static str>,
+) -> UpdateStatus {
     let pending = inner.pending.as_ref();
     UpdateStatus {
         automatic,
@@ -262,7 +264,11 @@ fn current_status(app: &AppHandle) -> UpdateStatus {
         let inner = updater.inner.lock().expect("updater state lock");
         inner.pending.is_some() && matches!(inner.phase, Phase::Available | Phase::Failed(_))
     };
-    let blocked = if installable { install_blocker(busy_facts(app)) } else { None };
+    let blocked = if installable {
+        install_blocker(busy_facts(app))
+    } else {
+        None
+    };
     let updater = app.state::<UpdaterState>();
     let inner = updater.inner.lock().expect("updater state lock");
     status_of(&inner, automatic, current_version, blocked)
@@ -274,7 +280,9 @@ fn build_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, Strin
         let url = feed
             .parse()
             .map_err(|_| format!("{FEED_OVERRIDE_ENV} is not a URL"))?;
-        builder = builder.endpoints(vec![url]).map_err(|error| error.to_string())?;
+        builder = builder
+            .endpoints(vec![url])
+            .map_err(|error| error.to_string())?;
     }
     builder.build().map_err(|error| error.to_string())
 }
@@ -376,9 +384,13 @@ pub(crate) fn update_status(app: AppHandle) -> UpdateStatus {
 }
 
 #[tauri::command]
-pub(crate) fn set_automatic_update_check(app: AppHandle, enabled: bool) -> Result<UpdateStatus, String> {
+pub(crate) fn set_automatic_update_check(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<UpdateStatus, String> {
     let flag = automatic_flag_path(&app).ok_or("Yawn could not find its settings folder.")?;
-    set_automatic_at(&flag, enabled).map_err(|_| "Yawn could not save this setting.".to_string())?;
+    set_automatic_at(&flag, enabled)
+        .map_err(|_| "Yawn could not save this setting.".to_string())?;
     Ok(current_status(&app))
 }
 
@@ -404,10 +416,7 @@ pub(crate) fn install_update(app: AppHandle) -> Result<UpdateStatus, String> {
         if inner.phase.busy() {
             return Err("An update is already in progress.".into());
         }
-        let update = inner
-            .pending
-            .clone()
-            .ok_or("Check for updates first.")?;
+        let update = inner.pending.clone().ok_or("Check for updates first.")?;
         inner.phase = Phase::Downloading;
         inner.downloaded = 0;
         inner.total = None;
@@ -431,16 +440,25 @@ pub(crate) fn install_update(app: AppHandle) -> Result<UpdateStatus, String> {
         let bytes = match downloaded {
             Ok(bytes) => bytes,
             Err(error) => {
-                set_phase(&handle, Phase::Failed(format!("The update could not be downloaded: {error}")));
+                set_phase(
+                    &handle,
+                    Phase::Failed(format!("The update could not be downloaded: {error}")),
+                );
                 return;
             }
         };
         let finisher = handle.clone();
-        let outcome = tauri::async_runtime::spawn_blocking(move || install_and_relaunch(&finisher, &update, &bytes)).await;
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            install_and_relaunch(&finisher, &update, &bytes)
+        })
+        .await;
         match outcome {
             Ok(Ok(())) => {}
             Ok(Err(message)) => set_phase(&handle, Phase::Failed(message)),
-            Err(_) => set_phase(&handle, Phase::Failed("The update stopped unexpectedly.".into())),
+            Err(_) => set_phase(
+                &handle,
+                Phase::Failed("The update stopped unexpectedly.".into()),
+            ),
         }
     });
     Ok(current_status(&app))
@@ -451,20 +469,33 @@ pub(crate) fn install_update(app: AppHandle) -> Result<UpdateStatus, String> {
 /// after, it would only ever see the install's own claim and refuse every
 /// time. A claim that fails here means another operation took the slot since
 /// the check, which is the same refusal.
-fn gate_install<C>(blocker: Option<&'static str>, claim: impl FnOnce() -> Result<C, String>) -> Result<C, String> {
+fn gate_install<C>(
+    blocker: Option<&'static str>,
+    claim: impl FnOnce() -> Result<C, String>,
+) -> Result<C, String> {
     if let Some(reason) = blocker {
-        return Err(format!("The update was downloaded but not installed. {reason}"));
+        return Err(format!(
+            "The update was downloaded but not installed. {reason}"
+        ));
     }
-    claim().map_err(|_| "The update was downloaded but not installed. Wait for the current task to finish.".to_string())
+    claim().map_err(|_| {
+        "The update was downloaded but not installed. Wait for the current task to finish."
+            .to_string()
+    })
 }
 
 /// Holds the command lock from the last idle check to the exit, so a
 /// recording cannot start between them. Returns only on failure.
 fn install_and_relaunch(app: &AppHandle, update: &Update, bytes: &[u8]) -> Result<(), String> {
     let state = app.state::<ApplicationState>();
-    let _command = state.command_lock.lock().map_err(|_| "Yawn is busy. Try again in a moment.".to_string())?;
+    let _command = state
+        .command_lock
+        .lock()
+        .map_err(|_| "Yawn is busy. Try again in a moment.".to_string())?;
     let operations = app.state::<ProductOperationFacade>();
-    let _operation = gate_install(install_blocker(busy_facts(app)), || operations.claim_runtime_change())?;
+    let _operation = gate_install(install_blocker(busy_facts(app)), || {
+        operations.claim_runtime_change()
+    })?;
     set_phase(app, Phase::Installing);
     let bundle = std::env::current_exe()
         .ok()
@@ -510,12 +541,30 @@ mod tests {
     fn install_is_refused_for_each_kind_of_work_in_progress() {
         assert_eq!(install_blocker(BusyFacts::default()), None);
         let cases = [
-            BusyFacts { starting: true, ..Default::default() },
-            BusyFacts { capturing: true, ..Default::default() },
-            BusyFacts { transcribing: true, ..Default::default() },
-            BusyFacts { downloading_model: true, ..Default::default() },
-            BusyFacts { analyzing_speakers: true, ..Default::default() },
-            BusyFacts { product_operation: true, ..Default::default() },
+            BusyFacts {
+                starting: true,
+                ..Default::default()
+            },
+            BusyFacts {
+                capturing: true,
+                ..Default::default()
+            },
+            BusyFacts {
+                transcribing: true,
+                ..Default::default()
+            },
+            BusyFacts {
+                downloading_model: true,
+                ..Default::default()
+            },
+            BusyFacts {
+                analyzing_speakers: true,
+                ..Default::default()
+            },
+            BusyFacts {
+                product_operation: true,
+                ..Default::default()
+            },
         ];
         for facts in cases {
             assert!(install_blocker(facts).is_some(), "{facts:?}");
@@ -528,7 +577,12 @@ mod tests {
         // check reads it, the claim fills it. Checking after claiming would
         // refuse the first install too.
         let slot = std::sync::Mutex::new(None::<()>);
-        let busy = || install_blocker(BusyFacts { product_operation: slot.lock().unwrap().is_some(), ..Default::default() });
+        let busy = || {
+            install_blocker(BusyFacts {
+                product_operation: slot.lock().unwrap().is_some(),
+                ..Default::default()
+            })
+        };
         let claim = || {
             let mut held = slot.lock().unwrap();
             if held.is_some() {
@@ -540,14 +594,26 @@ mod tests {
         // The order this replaces: claim first, then check. The check then
         // sees the install's own claim and calls an idle Yawn busy.
         claim().unwrap();
-        assert!(busy().is_some(), "claim-then-check reads its own claim as busy");
+        assert!(
+            busy().is_some(),
+            "claim-then-check reads its own claim as busy"
+        );
         *slot.lock().unwrap() = None;
-        assert!(gate_install(busy(), claim).is_ok(), "an idle Yawn must install");
+        assert!(
+            gate_install(busy(), claim).is_ok(),
+            "an idle Yawn must install"
+        );
         let refused = gate_install(busy(), claim).unwrap_err();
-        assert!(refused.contains("Wait for the current task to finish."), "{refused}");
+        assert!(
+            refused.contains("Wait for the current task to finish."),
+            "{refused}"
+        );
         // A slot taken between the check and the claim is refused as well.
         let refused = gate_install(None, || Err::<(), _>("taken".to_string())).unwrap_err();
-        assert!(refused.contains("Wait for the current task to finish."), "{refused}");
+        assert!(
+            refused.contains("Wait for the current task to finish."),
+            "{refused}"
+        );
         // A busy reason stops the gate before it claims anything.
         let mut claimed = false;
         let refused = gate_install(Some("Finish the current recording first."), || {
@@ -561,8 +627,16 @@ mod tests {
 
     #[test]
     fn a_recording_outranks_every_other_reason() {
-        let facts = BusyFacts { capturing: true, transcribing: true, downloading_model: true, ..Default::default() };
-        assert_eq!(install_blocker(facts), Some("Finish the current recording first."));
+        let facts = BusyFacts {
+            capturing: true,
+            transcribing: true,
+            downloading_model: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            install_blocker(facts),
+            Some("Finish the current recording first.")
+        );
     }
 
     #[test]
@@ -584,12 +658,20 @@ mod tests {
     #[test]
     fn status_reports_a_block_only_when_there_is_something_to_install() {
         let inner = Inner::default();
-        let status = status_of(&inner, true, "0.6.15".into(), Some("Finish the current recording first."));
+        let status = status_of(
+            &inner,
+            true,
+            "0.6.15".into(),
+            Some("Finish the current recording first."),
+        );
         assert_eq!(status.state, "idle");
         assert_eq!(status.install_blocked, None);
         assert_eq!(status.available_version, None);
 
-        let failed = Inner { phase: Phase::Failed("offline".into()), ..Default::default() };
+        let failed = Inner {
+            phase: Phase::Failed("offline".into()),
+            ..Default::default()
+        };
         let status = status_of(&failed, false, "0.6.15".into(), None);
         assert_eq!(status.state, "failed");
         assert_eq!(status.message.as_deref(), Some("offline"));
@@ -601,7 +683,12 @@ mod tests {
         for phase in [Phase::Checking, Phase::Downloading, Phase::Installing] {
             assert!(phase.busy(), "{phase:?}");
         }
-        for phase in [Phase::Idle, Phase::UpToDate, Phase::Available, Phase::Failed(String::new())] {
+        for phase in [
+            Phase::Idle,
+            Phase::UpToDate,
+            Phase::Available,
+            Phase::Failed(String::new()),
+        ] {
             assert!(!phase.busy(), "{phase:?}");
         }
     }
@@ -617,7 +704,11 @@ mod tests {
         assert!(!updater.pubkey.is_empty());
         assert_eq!(updater.endpoints.len(), 1);
         assert_eq!(updater.endpoints[0].scheme(), "https");
-        assert!(updater.endpoints[0].path().ends_with("/updates/latest.json"));
+        assert!(
+            updater.endpoints[0]
+                .path()
+                .ends_with("/updates/latest.json")
+        );
         assert!(!updater.dangerous_insecure_transport_protocol);
         assert!(!updater.dangerous_accept_invalid_certs);
     }
@@ -631,14 +722,22 @@ mod tests {
         std::fs::write(&package, b"package").unwrap();
         let signature = "untrusted comment: signature from tauri secret key\nRUQ=\ntrusted comment: timestamp:1\tfile:x\nAA==\n";
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, signature);
-        std::fs::write(dir.path().join("Yawn-0.6.99-macos-arm64.app.tar.gz.sig"), &encoded).unwrap();
+        std::fs::write(
+            dir.path().join("Yawn-0.6.99-macos-arm64.app.tar.gz.sig"),
+            &encoded,
+        )
+        .unwrap();
         let feed = dir.path().join("latest.json");
-        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/prepare-update-feed.py");
+        let script =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/prepare-update-feed.py");
         let status = Command::new("python3")
             .arg(&script)
-            .arg("--package").arg(&package)
-            .arg("--base-url").arg("https://releases.example/")
-            .arg("--output").arg(&feed)
+            .arg("--package")
+            .arg(&package)
+            .arg("--base-url")
+            .arg("https://releases.example/")
+            .arg("--output")
+            .arg(&feed)
             .stdout(Stdio::null())
             .status()
             .unwrap();
@@ -657,8 +756,19 @@ mod tests {
     fn relaunch_opens_the_bundle_with_the_system_opener() {
         let command = relaunch_command(4242, Path::new("/Applications/Yawn.app"), Path::new(OPEN));
         assert_eq!(command.get_program(), "/bin/sh");
-        let args: Vec<_> = command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect();
-        assert_eq!(&args[2..], ["yawn-relaunch", "4242", "/Applications/Yawn.app", "/usr/bin/open"]);
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            &args[2..],
+            [
+                "yawn-relaunch",
+                "4242",
+                "/Applications/Yawn.app",
+                "/usr/bin/open"
+            ]
+        );
     }
 
     #[test]
@@ -673,7 +783,10 @@ mod tests {
             .spawn()
             .unwrap();
         std::thread::sleep(Duration::from_millis(500));
-        assert!(!marker.exists(), "opened while the old process was still running");
+        assert!(
+            !marker.exists(),
+            "opened while the old process was still running"
+        );
         stand_in.wait().unwrap();
         assert!(relaunch.wait().unwrap().success());
         assert!(marker.exists(), "never opened after the old process exited");

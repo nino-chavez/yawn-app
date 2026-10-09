@@ -10,6 +10,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
+use crate::meeting_lock::MeetingLock;
 use local_meeting_notes_session_core::corpus_index::CorpusIndex;
 use local_meeting_notes_session_core::library_read::FolderFilter;
 use local_meeting_notes_session_core::library_read::{
@@ -21,12 +22,13 @@ use local_meeting_notes_session_core::meeting::{
     resolve_artifact, verify_record_artifacts, verify_record_static_artifacts,
 };
 use local_meeting_notes_session_core::meeting_title;
-use local_meeting_notes_session_core::note_projection::{ClaimType, NoteProjector, UnavailableProjector};
+use local_meeting_notes_session_core::note_projection::{
+    ClaimType, NoteProjector, UnavailableProjector,
+};
 use local_meeting_notes_session_core::retention::meeting_dir;
 use local_meeting_notes_session_core::storage::StorageRoot;
 use local_meeting_notes_session_core::transcript_deletion::transcript_deletion_completed;
 use local_meeting_notes_session_core::transcription_queue::TranscriptionQueue;
-use crate::meeting_lock::MeetingLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -37,8 +39,7 @@ const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the 
 /// The frontend renders its own copy of this sentence (`TRANSCRIBING_DETAIL`
 /// in `ui/view-model.mjs`, with a typographic apostrophe); this one is for
 /// any consumer that reads the response's `message` directly.
-const TRANSCRIBING_MESSAGE: &str =
-    "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.";
+const TRANSCRIBING_MESSAGE: &str = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.";
 const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "Yawn no longer includes AI notes, so it can't show this meeting's saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 /// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
 /// and deliberately not a security claim: the meeting is behind a local
@@ -317,9 +318,7 @@ fn first_sentence_preview(claim_text: &str) -> String {
     let mut end = chars.len();
     for (index, ch) in chars.iter().enumerate() {
         if matches!(ch, '.' | '!' | '?') {
-            let at_boundary = chars
-                .get(index + 1)
-                .is_none_or(|next| next.is_whitespace());
+            let at_boundary = chars.get(index + 1).is_none_or(|next| next.is_whitespace());
             if at_boundary {
                 end = index + 1;
                 break;
@@ -849,7 +848,7 @@ impl LibraryReader {
         if active_meeting_ids != &self.excluded_meeting_ids
             || self
                 .projection
-                .validate_snapshot_excluding(&self.storage, &active_meeting_ids)
+                .validate_snapshot_excluding(&self.storage, active_meeting_ids)
                 .is_err()
         {
             self.clear_handles();
@@ -1679,7 +1678,7 @@ impl LibraryReader {
             system_playback_handle,
             transcript_deletion_handle,
             meeting_deletion_handle,
-            meeting_id: meeting_id.into(),
+            meeting_id,
             regeneration_source_sha256: None,
             note_generation_available: false,
             note_generation_unavailable_reason: None,
@@ -1749,6 +1748,7 @@ impl LibraryReader {
     /// Revalidates the opaque transcript handle and runs the bound byte loader
     /// before releasing the same storage sequence. The callback receives only
     /// the already-authorized meeting and artifact identity.
+    #[allow(clippy::result_large_err)] // the refusal record the callers map into their own error
     pub(crate) fn open_transcript_bound<T>(
         &mut self,
         handle: &str,
@@ -1788,6 +1788,7 @@ impl LibraryReader {
         Ok(save(&self.storage, &meeting_id))
     }
 
+    #[allow(clippy::result_large_err)] // the refusal record the callers map into their own error
     fn open_transcript_current<T>(
         &mut self,
         handle: &str,
@@ -1888,7 +1889,8 @@ impl LibraryReader {
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
             capture_pauses:
-                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
+                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(
+                ),
             operator_note: crate::operator_note::OperatorNote::none(),
             meeting_context: crate::meeting_context::MeetingContext::none(),
             turns_cited: Vec::new(),
@@ -2113,7 +2115,10 @@ impl LibraryReader {
         else {
             return Err(Self::stale_export());
         };
-        let label = row.title().map(str::to_owned).or_else(|| row.derived_title());
+        let label = row
+            .title()
+            .map(str::to_owned)
+            .or_else(|| row.derived_title());
         let created_at_epoch_seconds = row.created_at_epoch_seconds;
         let saved_note_unreadable = row.saved_note_unreadable();
         let claims = match self.export_claims(&meeting_id) {
@@ -2149,17 +2154,17 @@ impl LibraryReader {
         let handles = self.projection.note_claims(meeting_id).map_err(|_| ())?;
         let mut claims = Vec::with_capacity(handles.len());
         for hit in &handles {
-            let (ordinal, claim_type, text, locator_count) = match self.projection.open_snapshot(hit)
-            {
-                Ok(OpenedLibraryHit::Claim {
-                    claim_ordinal,
-                    claim_type,
-                    claim,
-                    locators,
-                    ..
-                }) => (claim_ordinal, claim_type, claim, locators.len()),
-                _ => return Err(()),
-            };
+            let (ordinal, claim_type, text, locator_count) =
+                match self.projection.open_snapshot(hit) {
+                    Ok(OpenedLibraryHit::Claim {
+                        claim_ordinal,
+                        claim_type,
+                        claim,
+                        locators,
+                        ..
+                    }) => (claim_ordinal, claim_type, claim, locators.len()),
+                    _ => return Err(()),
+                };
             let mut export_locators = Vec::with_capacity(locator_count);
             for locator_ordinal in 0..locator_count {
                 let evidence = self
@@ -2408,14 +2413,11 @@ impl LibraryReader {
     /// reader's generation with the visible detail view and dies when it is
     /// spent, a new snapshot is minted, or the library revalidates differently.
     pub(crate) fn retain_operator_note_handle(&mut self, meeting_id: &str) -> Option<String> {
-        self.projection
-            .meeting_handle(meeting_id)
-            .ok()
-            .map(|hit| {
-                let handle = Uuid::new_v4().to_string();
-                self.operator_note_handles.insert(handle.clone(), hit);
-                handle
-            })
+        self.projection.meeting_handle(meeting_id).ok().map(|hit| {
+            let handle = Uuid::new_v4().to_string();
+            self.operator_note_handles.insert(handle.clone(), hit);
+            handle
+        })
     }
 
     fn meeting_has_transcript(&self, meeting_id: &str) -> bool {
@@ -2649,7 +2651,10 @@ impl LibraryReader {
         if lifecycle != MeetingLifecycle::Captured {
             return false;
         }
-        if !matches!(transcript_deletion_completed(storage, meeting_id), Ok(false)) {
+        if !matches!(
+            transcript_deletion_completed(storage, meeting_id),
+            Ok(false)
+        ) {
             return false;
         }
         TranscriptionQueue::open(storage)
@@ -2690,6 +2695,7 @@ impl LibraryReader {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn retain_search_open(
         &mut self,
         hit: LibraryHit,
@@ -2782,7 +2788,8 @@ impl LibraryReader {
             claims: Vec::new(),
             audio_retention: Self::unavailable_audio_retention(),
             capture_pauses:
-                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(),
+                local_meeting_notes_session_core::capture_quality::CapturePauseProjection::unchecked(
+                ),
             operator_note: crate::operator_note::OperatorNote::none(),
             meeting_context: crate::meeting_context::MeetingContext::none(),
             turns_cited: Vec::new(),
@@ -3292,10 +3299,8 @@ mod tests {
         fn project(
             &self,
             request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
-        ) -> Result<
-            Vec<u8>,
-            local_meeting_notes_session_core::note_projection::ProjectTransportError,
-        > {
+        ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
+        {
             let alpha_sha256 = format!("{:x}", sha2::Sha256::digest(b"alpha"));
             let delta_sha256 = format!("{:x}", sha2::Sha256::digest(b"delta"));
             let decision_text = "decide on alpha";
@@ -3357,9 +3362,11 @@ mod tests {
         let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
 
         let seen = reader
-            .open_export_bound(&handle, &HashSet::new(), |_, _, _, _, claims, unreadable| {
-                (claims.len(), unreadable)
-            })
+            .open_export_bound(
+                &handle,
+                &HashSet::new(),
+                |_, _, _, _, claims, unreadable| (claims.len(), unreadable),
+            )
             .ok();
 
         assert_eq!(seen, Some((0, true)));
@@ -3434,9 +3441,13 @@ mod tests {
         // digest no longer matches `meeting.json`, so the whole projection --
         // claims and their reverse index alike -- must read as current no
         // longer, not merely thin on data.
-        fs::write(fixture.directory.join("notes").join(
-            format!("{:x}.json", sha2::Sha256::digest(b"{}\n".as_slice())),
-        ), b"{\"changed\":true}\n")
+        fs::write(
+            fixture.directory.join("notes").join(format!(
+                "{:x}.json",
+                sha2::Sha256::digest(b"{}\n".as_slice())
+            )),
+            b"{\"changed\":true}\n",
+        )
         .unwrap();
 
         let stale = reader.open_note(&handle, &HashSet::new(), None);
@@ -3518,10 +3529,8 @@ mod tests {
         fn project(
             &self,
             request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
-        ) -> Result<
-            Vec<u8>,
-            local_meeting_notes_session_core::note_projection::ProjectTransportError,
-        > {
+        ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
+        {
             let alpha_sha256 = format!("{:x}", sha2::Sha256::digest(b"alpha"));
             let summary_text = "This meeting covered the alpha rollout timeline in detail. It also touched on staffing.";
             let decision_text = "decide on alpha";
@@ -3597,8 +3606,10 @@ mod tests {
             fn project(
                 &self,
                 _: &local_meeting_notes_session_core::note_projection::ProjectRequest,
-            ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
-            {
+            ) -> Result<
+                Vec<u8>,
+                local_meeting_notes_session_core::note_projection::ProjectTransportError,
+            > {
                 Err(local_meeting_notes_session_core::note_projection::ProjectTransportError::Unavailable)
             }
         }
@@ -3655,9 +3666,7 @@ mod tests {
     #[test]
     fn first_sentence_preview_stops_at_the_first_sentence_terminator() {
         assert_eq!(
-            first_sentence_preview(
-                "First point stands alone. Second point never appears here."
-            ),
+            first_sentence_preview("First point stands alone. Second point never appears here."),
             "First point stands alone."
         );
     }
@@ -3719,7 +3728,11 @@ mod tests {
             &[1; 19],
             &[2; 23],
         );
-        fs::write(fixture.directory.join("meeting-context.json"), b"{ not context").unwrap();
+        fs::write(
+            fixture.directory.join("meeting-context.json"),
+            b"{ not context",
+        )
+        .unwrap();
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
@@ -4042,7 +4055,9 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage, projection);
         let snapshot = reader.snapshot(&HashSet::new());
         assert_eq!(
-            reader.open_note(&snapshot.rows[0].handle, &changed, None).state,
+            reader
+                .open_note(&snapshot.rows[0].handle, &changed, None)
+                .state,
             "stale"
         );
     }
@@ -4147,11 +4162,10 @@ mod tests {
 
         let generic_handle = reader.snapshot(&HashSet::new()).rows[0].handle.clone();
         let called = Cell::new(false);
-        let generic_refused = reader.open_operator_note_bound(
-            &generic_handle,
-            &HashSet::new(),
-            |_, _| called.set(true),
-        );
+        let generic_refused =
+            reader.open_operator_note_bound(&generic_handle, &HashSet::new(), |_, _| {
+                called.set(true)
+            });
         assert_eq!(generic_refused.unwrap_err().state, "stale");
         assert!(!called.get());
 
@@ -4358,11 +4372,7 @@ mod tests {
         assert_eq!(bytes, microphone);
 
         let system_handle = reader
-            .retain_audio_playback_handle(
-                MEETING_ID,
-                RetainedAudioSource::System,
-                &HashSet::new(),
-            )
+            .retain_audio_playback_handle(MEETING_ID, RetainedAudioSource::System, &HashSet::new())
             .expect("verified retained system audio gets a distinct native handle");
         let system_grant = reader
             .authorize_audio_playback(&system_handle, &HashSet::new(), None)
@@ -4884,7 +4894,11 @@ mod tests {
         );
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        assert_eq!(snapshot.rows.len(), 1, "the meeting must appear in the library");
+        assert_eq!(
+            snapshot.rows.len(),
+            1,
+            "the meeting must appear in the library"
+        );
 
         let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
         assert_eq!(
@@ -5060,7 +5074,11 @@ mod tests {
         );
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
-        assert_eq!(snapshot.rows.len(), 1, "the meeting must appear in the library");
+        assert_eq!(
+            snapshot.rows.len(),
+            1,
+            "the meeting must appear in the library"
+        );
         assert_eq!(
             snapshot.rows[0].recovery,
             Some("recovered-interrupted"),
@@ -5129,8 +5147,7 @@ mod tests {
             "a tampered recovered-interrupted meeting must not appear in the library"
         );
 
-        let audio_retention =
-            LibraryReader::read_audio_retention(&fixture.storage, MEETING_ID);
+        let audio_retention = LibraryReader::read_audio_retention(&fixture.storage, MEETING_ID);
         assert_eq!(
             audio_retention.state, "unavailable",
             "retained audio that vanished with no deletion receipt must never be reported as released or retained"
@@ -5250,7 +5267,10 @@ mod tests {
         let fixture = captured_fixture(MeetingLifecycle::Captured);
         let (row, note) = open_only_row(&fixture);
 
-        assert!(row.transcript_pending, "the row must say the transcript is coming");
+        assert!(
+            row.transcript_pending,
+            "the row must say the transcript is coming"
+        );
         assert!(!row.transcript_available, "no transcript exists yet");
         assert_eq!(row.recovery, None, "nothing needs recovering");
 
@@ -5308,7 +5328,10 @@ mod tests {
             })
             .unwrap();
         let (waiting, _) = open_only_row(&fixture);
-        assert!(waiting.transcript_pending, "a queued request is still pending");
+        assert!(
+            waiting.transcript_pending,
+            "a queued request is still pending"
+        );
 
         queue
             .fail(request_id, TranscriptionTerminalKind::Failed, 2)
