@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 #[path = "../build_contract.rs"]
+#[allow(dead_code)] // shared with build.rs; this test uses only part of it
 mod build_contract;
 
 const PRODUCT_COMMANDS: &[&str] = &[

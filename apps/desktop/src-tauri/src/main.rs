@@ -378,28 +378,28 @@ impl Default for ApplicationState {
 
 impl Drop for ApplicationState {
     fn drop(&mut self) {
-        if let Ok(mut slot) = self.transcription_worker.lock() {
-            if let Some(mut worker) = slot.take() {
-                let _ = worker.stop_and_wait(Duration::from_millis(750));
-            }
+        if let Ok(mut slot) = self.transcription_worker.lock()
+            && let Some(mut worker) = slot.take()
+        {
+            let _ = worker.stop_and_wait(Duration::from_millis(750));
         }
-        if let Ok(mut slot) = self.worker.lock() {
-            if let Some(mut worker) = slot.take() {
-                let _ = worker.stop_and_wait(Duration::from_millis(750));
-            }
+        if let Ok(mut slot) = self.worker.lock()
+            && let Some(mut worker) = slot.take()
+        {
+            let _ = worker.stop_and_wait(Duration::from_millis(750));
         }
-        if let Ok(slot) = self.transcription_executor.get_mut() {
-            if let Some(control) = slot.take() {
-                control.stop.store(true, Ordering::SeqCst);
-                let _ = control.handle.join();
-            }
+        if let Ok(slot) = self.transcription_executor.get_mut()
+            && let Some(control) = slot.take()
+        {
+            control.stop.store(true, Ordering::SeqCst);
+            let _ = control.handle.join();
         }
         // App teardown owns the same child slot as explicit Stop. No PID is
         // retained or signalled after this state goes away.
-        if let Ok(slot) = self.audio_playback.get_mut() {
-            if let Some(mut playback) = slot.take() {
-                playback.stop_and_reap();
-            }
+        if let Ok(slot) = self.audio_playback.get_mut()
+            && let Some(mut playback) = slot.take()
+        {
+            playback.stop_and_reap();
         }
     }
 }
@@ -1326,13 +1326,12 @@ struct SittingTaskControl {
 }
 
 fn clear_sitting_task(state: &ApplicationState, sitting_id: &str) {
-    if let Ok(mut active) = state.sitting_task.lock() {
-        if active
+    if let Ok(mut active) = state.sitting_task.lock()
+        && active
             .as_ref()
             .is_some_and(|control| control.sitting_id == sitting_id)
-        {
-            *active = None;
-        }
+    {
+        *active = None;
     }
 }
 
@@ -5762,16 +5761,16 @@ struct SittingTaskGuard<'a> {
 #[cfg(target_os = "macos")]
 impl Drop for SittingTaskGuard<'_> {
     fn drop(&mut self) {
-        if !self.completed {
-            if let Ok(mut cached) = self.state.preview_enrollment.lock() {
-                cached.recording_available = false;
-                cached.recording_unavailable_reason = Some(RECORDER_REASON_STATUS_UNAVAILABLE);
-                cached.attempt_active = false;
-                cached.last_outcome = Some(SITTING_OUTCOME_REHEARSAL);
-                cached
-                    .sittings
-                    .retain(|sitting| sitting.state != "recording-in-progress");
-            }
+        if !self.completed
+            && let Ok(mut cached) = self.state.preview_enrollment.lock()
+        {
+            cached.recording_available = false;
+            cached.recording_unavailable_reason = Some(RECORDER_REASON_STATUS_UNAVAILABLE);
+            cached.attempt_active = false;
+            cached.last_outcome = Some(SITTING_OUTCOME_REHEARSAL);
+            cached
+                .sittings
+                .retain(|sitting| sitting.state != "recording-in-progress");
         }
         clear_sitting_task(self.state, self.sitting_id);
     }
@@ -6450,11 +6449,12 @@ fn library_open_note_for(
     response.note_generation_available = available;
     response.note_generation_unavailable_reason = reason;
 
-    if response.lock.locked && response.state != "locked" {
-        if let Ok(mut authority) = state.locked_actions.lock() {
-            response.lock_token =
-                Some(authority.mint(&response.meeting_id, meeting_lock::LockedAction::Open));
-        }
+    if response.lock.locked
+        && response.state != "locked"
+        && let Ok(mut authority) = state.locked_actions.lock()
+    {
+        response.lock_token =
+            Some(authority.mint(&response.meeting_id, meeting_lock::LockedAction::Open));
     }
     response
 }
@@ -8233,7 +8233,7 @@ fn local_vocabulary_list(
         meeting_id,
         &source_transcript_sha256,
         &state,
-        |vocabulary, turns| local_vocabulary_sheet_response(vocabulary, turns),
+        local_vocabulary_sheet_response,
     )
 }
 
@@ -8353,7 +8353,7 @@ fn correct_speaker_name_for(
             "Speaker correction is unavailable. Reopen the meeting and try again.",
         )
     })?;
-    if sitting_task_active(&state) {
+    if sitting_task_active(state) {
         return Err("Finish the setup recording before correcting a speaker name.".into());
     }
     {
@@ -8369,7 +8369,7 @@ fn correct_speaker_name_for(
             return Err("Finish the current recording before correcting a speaker name.".into());
         }
     }
-    let storage = preview_storage_clone(&state)
+    let storage = preview_storage_clone(state)
         .map_err(|_| "Local meeting storage is unavailable. Reopen the app and try again.")?;
     let coordination = state.meeting_storage_coordination()?;
     let _lease = coordination.acquire(&meeting_id.to_string()).map_err(|_| {
@@ -8424,7 +8424,7 @@ fn correct_speaker_name_for(
     {
         return Err("The saved speaker correction could not be verified.".into());
     }
-    with_preview_library_invalidated(&state, || ())
+    with_preview_library_invalidated(state, || ())
         .map_err(|_| "The meeting was corrected, but the library could not refresh.".to_string())?;
     Ok(SpeakerCorrectionResponse {
         operation_id,
@@ -8781,11 +8781,11 @@ fn main() {
         // destroying it — a destroyed last window exits the process and
         // takes the tray with it. Quit (⌘Q) still exits honestly.
         .on_window_event(|window, event| {
-            if window.label() == ACTIVE_WINDOW_LABEL {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
+            if window.label() == ACTIVE_WINDOW_LABEL
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .manage(state)
@@ -9077,7 +9077,7 @@ fn main() {
         // That gap left Dock-clicking the app with no visible window front
         // nothing (the tray's "Open Yawn" was the only recovery), so this
         // app runs its own callback instead of the shorthand.
-        .run(|app_handle, event| handle_run_event(app_handle, event));
+        .run(handle_run_event);
 }
 
 // `RunEvent::Reopen` only exists on macOS (`applicationShouldHandleReopen`),
@@ -9091,10 +9091,9 @@ fn handle_run_event(app_handle: &AppHandle, event: tauri::RunEvent) {
         has_visible_windows,
         ..
     } = event
+        && should_show_on_reopen(has_visible_windows)
     {
-        if should_show_on_reopen(has_visible_windows) {
-            show_and_focus_active_window(app_handle);
-        }
+        show_and_focus_active_window(app_handle);
     }
 }
 
@@ -10074,6 +10073,7 @@ fn mark_retention_unavailable(state: &ApplicationState) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_capture_task(
     app: AppHandle,
     meeting_id: String,
@@ -15922,7 +15922,6 @@ exit 0"#
         assert!(parse_transcript_projection_with(document, &BTreeSet::new()).is_err());
     }
 
-    #[test]
     /// The digest travels with the projection it verified, and leaves with it.
     ///
     /// It is what the frozen restore shape requires back, so the recording
@@ -16330,9 +16329,10 @@ exit 0"#
             if restart {
                 transition_startup(&mut model, StartupState::Retrying).unwrap();
             }
-            let projection = load_latest_transcript_projection(&storage, &[meeting_id.clone()])
-                .unwrap()
-                .unwrap();
+            let projection =
+                load_latest_transcript_projection(&storage, std::slice::from_ref(&meeting_id))
+                    .unwrap()
+                    .unwrap();
             apply_restored_transcript_projection(&mut model, projection).unwrap();
             transition_startup(&mut model, StartupState::Ready).unwrap();
             let snapshot = model.snapshot();
@@ -16404,7 +16404,7 @@ exit 0"#
         model.error = Some(failure.into());
 
         prepare_startup_retry(&mut model).unwrap();
-        let projection = load_latest_transcript_projection(&storage, &[older.clone()])
+        let projection = load_latest_transcript_projection(&storage, std::slice::from_ref(&older))
             .unwrap()
             .unwrap();
         apply_restored_transcript_projection(&mut model, projection).unwrap();

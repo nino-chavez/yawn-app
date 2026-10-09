@@ -1,4 +1,5 @@
 #[path = "../build_contract.rs"]
+#[allow(dead_code)] // shared with build.rs; this test uses only part of it
 mod build_contract;
 
 use build_contract::{BuildMode, plan, validate};

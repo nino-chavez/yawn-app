@@ -848,7 +848,7 @@ impl LibraryReader {
         if active_meeting_ids != &self.excluded_meeting_ids
             || self
                 .projection
-                .validate_snapshot_excluding(&self.storage, &active_meeting_ids)
+                .validate_snapshot_excluding(&self.storage, active_meeting_ids)
                 .is_err()
         {
             self.clear_handles();
@@ -1678,7 +1678,7 @@ impl LibraryReader {
             system_playback_handle,
             transcript_deletion_handle,
             meeting_deletion_handle,
-            meeting_id: meeting_id.into(),
+            meeting_id,
             regeneration_source_sha256: None,
             note_generation_available: false,
             note_generation_unavailable_reason: None,
@@ -1748,6 +1748,7 @@ impl LibraryReader {
     /// Revalidates the opaque transcript handle and runs the bound byte loader
     /// before releasing the same storage sequence. The callback receives only
     /// the already-authorized meeting and artifact identity.
+    #[allow(clippy::result_large_err)] // the refusal record the callers map into their own error
     pub(crate) fn open_transcript_bound<T>(
         &mut self,
         handle: &str,
@@ -1787,6 +1788,7 @@ impl LibraryReader {
         Ok(save(&self.storage, &meeting_id))
     }
 
+    #[allow(clippy::result_large_err)] // the refusal record the callers map into their own error
     fn open_transcript_current<T>(
         &mut self,
         handle: &str,
@@ -2693,6 +2695,7 @@ impl LibraryReader {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn retain_search_open(
         &mut self,
         hit: LibraryHit,

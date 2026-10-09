@@ -212,7 +212,7 @@ fn validate_and_project(
             .iter()
             .enumerate()
             .any(|(index, cluster)| cluster != &format!("cluster-{}", index + 1))
-        || (document.status == "review-required") != !clusters.is_empty()
+        || (document.status == "review-required") == clusters.is_empty()
     {
         return Err(());
     }

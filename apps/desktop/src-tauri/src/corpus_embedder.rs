@@ -189,7 +189,9 @@ mod tests {
         )])));
         let embedder = WorkerWindowEmbedder::new(port.clone(), 384);
 
-        let vectors = embedder.embed(&[asked.clone()]).expect("decodes");
+        let vectors = embedder
+            .embed(std::slice::from_ref(&asked))
+            .expect("decodes");
         assert_eq!(vectors[&asked.text_sha256], values);
 
         // The text crosses the boundary exactly once, beside its digest.

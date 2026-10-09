@@ -18,7 +18,7 @@
 //! Every response carries only an enum and a boolean. No path, no error text from
 //! the platform, and no operator content crosses this boundary.
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Command;
 
 use local_meeting_notes_session_core::runtime::{PermissionRequester, RuntimeManifest};
@@ -162,7 +162,7 @@ pub(crate) fn merge_permissions(
 /// A non-zero exit is not automatically a failure: the probe exits 0 for a denied
 /// permission because a denial is an answer. Exit 2 means it could not answer, and
 /// that is the only status treated as unavailable.
-fn run_permission_requester(manifest_path: &PathBuf, mode: &str) -> Option<Value> {
+fn run_permission_requester(manifest_path: &Path, mode: &str) -> Option<Value> {
     let requester = RuntimeManifest::verified_permission_requester(manifest_path).ok()?;
     let mut command = match requester {
         PermissionRequester::CaptureHelper(path) => {
@@ -196,7 +196,7 @@ fn read(parsed: &Value, key: &str) -> Option<String> {
     parsed.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-pub fn permissions_status(manifest_path: &PathBuf) -> FirstRunPermissions {
+pub fn permissions_status(manifest_path: &Path) -> FirstRunPermissions {
     let Some(parsed) = run_permission_requester(manifest_path, "status") else {
         return FirstRunPermissions::unavailable();
     };
@@ -208,7 +208,7 @@ pub fn permissions_status(manifest_path: &PathBuf) -> FirstRunPermissions {
     }
 }
 
-pub fn request_microphone(manifest_path: &PathBuf) -> FirstRunPermissions {
+pub fn request_microphone(manifest_path: &Path) -> FirstRunPermissions {
     let Some(parsed) = run_permission_requester(manifest_path, "request-microphone") else {
         return FirstRunPermissions::unavailable();
     };
@@ -225,7 +225,7 @@ pub fn request_microphone(manifest_path: &PathBuf) -> FirstRunPermissions {
     }
 }
 
-pub fn request_system_audio(manifest_path: &PathBuf) -> FirstRunPermissions {
+pub fn request_system_audio(manifest_path: &Path) -> FirstRunPermissions {
     let Some(parsed) = run_permission_requester(manifest_path, "request-system-audio") else {
         return FirstRunPermissions::unavailable();
     };
@@ -244,6 +244,7 @@ pub fn request_system_audio(manifest_path: &PathBuf) -> FirstRunPermissions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn every_unrecognised_probe_value_becomes_unknown_rather_than_passing_through() {
