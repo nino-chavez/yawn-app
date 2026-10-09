@@ -14114,10 +14114,17 @@ mod tests {
         let directory = diagnostics.path().to_path_buf();
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| write_panic_diagnostic(&directory, info)));
-        let line = line!() + 2;
-        let _ = std::thread::Builder::new().name("library-probe".into()).spawn(|| {
-            panic!("meeting title Quarterly secrets at /Users/someone/meetings");
-        }).unwrap().join();
+        let (line_sender, line_receiver) = std::sync::mpsc::channel();
+        let _ = std::thread::Builder::new()
+            .name("library-probe".into())
+            .spawn(move || {
+                // Read the panic's line beside it, so reformatting cannot shift it.
+                line_sender.send(line!() + 1).unwrap();
+                panic!("meeting title Quarterly secrets at /Users/someone/meetings");
+            })
+            .unwrap()
+            .join();
+        let line = line_receiver.recv().unwrap();
         std::panic::set_hook(previous);
 
         let recorded = diagnostics_with_code(diagnostics.path(), "panic");
