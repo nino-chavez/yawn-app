@@ -446,18 +446,25 @@ pub(crate) fn install_update(app: AppHandle) -> Result<UpdateStatus, String> {
     Ok(current_status(&app))
 }
 
+/// The order the last gate must keep. The busy check reads the shared
+/// operation slot, so it runs before this install claims that slot; checked
+/// after, it would only ever see the install's own claim and refuse every
+/// time. A claim that fails here means another operation took the slot since
+/// the check, which is the same refusal.
+fn gate_install<C>(blocker: Option<&'static str>, claim: impl FnOnce() -> Result<C, String>) -> Result<C, String> {
+    if let Some(reason) = blocker {
+        return Err(format!("The update was downloaded but not installed. {reason}"));
+    }
+    claim().map_err(|_| "The update was downloaded but not installed. Wait for the current task to finish.".to_string())
+}
+
 /// Holds the command lock from the last idle check to the exit, so a
 /// recording cannot start between them. Returns only on failure.
 fn install_and_relaunch(app: &AppHandle, update: &Update, bytes: &[u8]) -> Result<(), String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().map_err(|_| "Yawn is busy. Try again in a moment.".to_string())?;
-    let _operation = app
-        .state::<ProductOperationFacade>()
-        .claim_runtime_change()
-        .map_err(|_| "Wait for the current task to finish.".to_string())?;
-    if let Some(reason) = install_blocker(busy_facts(app)) {
-        return Err(format!("The update was downloaded but not installed. {reason}"));
-    }
+    let operations = app.state::<ProductOperationFacade>();
+    let _operation = gate_install(install_blocker(busy_facts(app)), || operations.claim_runtime_change())?;
     set_phase(app, Phase::Installing);
     let bundle = std::env::current_exe()
         .ok()
@@ -513,6 +520,43 @@ mod tests {
         for facts in cases {
             assert!(install_blocker(facts).is_some(), "{facts:?}");
         }
+    }
+
+    #[test]
+    fn an_idle_install_gets_through_the_gate_and_a_second_one_does_not() {
+        // A real slot stands in for the product-operation facade: the busy
+        // check reads it, the claim fills it. Checking after claiming would
+        // refuse the first install too.
+        let slot = std::sync::Mutex::new(None::<()>);
+        let busy = || install_blocker(BusyFacts { product_operation: slot.lock().unwrap().is_some(), ..Default::default() });
+        let claim = || {
+            let mut held = slot.lock().unwrap();
+            if held.is_some() {
+                return Err("taken".to_string());
+            }
+            *held = Some(());
+            Ok(())
+        };
+        // The order this replaces: claim first, then check. The check then
+        // sees the install's own claim and calls an idle Yawn busy.
+        claim().unwrap();
+        assert!(busy().is_some(), "claim-then-check reads its own claim as busy");
+        *slot.lock().unwrap() = None;
+        assert!(gate_install(busy(), claim).is_ok(), "an idle Yawn must install");
+        let refused = gate_install(busy(), claim).unwrap_err();
+        assert!(refused.contains("Wait for the current task to finish."), "{refused}");
+        // A slot taken between the check and the claim is refused as well.
+        let refused = gate_install(None, || Err::<(), _>("taken".to_string())).unwrap_err();
+        assert!(refused.contains("Wait for the current task to finish."), "{refused}");
+        // A busy reason stops the gate before it claims anything.
+        let mut claimed = false;
+        let refused = gate_install(Some("Finish the current recording first."), || {
+            claimed = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!claimed);
+        assert!(refused.ends_with("Finish the current recording first."));
     }
 
     #[test]
