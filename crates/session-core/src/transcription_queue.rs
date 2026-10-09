@@ -814,11 +814,11 @@ fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 /// records it as an orphan capture when it has no queue folder.
 ///
 /// Trash and deletion move or remove a meeting folder without waiting for a
-/// scan, and the scan rereads every queued source, so a folder can leave
-/// `meetings/` between its listing and its last read. A meeting whose folder
-/// is gone once its scan ends is read as absent, whatever the scan returned,
-/// as a listing taken a moment later would read it. A file missing from a
-/// meeting that is still here fails closed.
+/// scan, and the scan rereads every queued source, so a meeting can leave
+/// between its listing and its last read. A meeting that no longer loads once
+/// its scan ends is read as absent, whatever the scan returned, as a listing
+/// taken a moment later would read it. A file missing from a meeting that
+/// still loads fails closed.
 fn add_listed_meeting(
     discovery: &mut QueueDiscovery,
     id: String,
@@ -826,7 +826,7 @@ fn add_listed_meeting(
     meeting: &crate::meeting::MeetingRecord,
     scanned: Result<Option<Vec<TranscriptionQueueItem>>, TranscriptionQueueError>,
 ) -> Result<(), TranscriptionQueueError> {
-    if folder_is_gone(meeting_dir) {
+    if meeting_record_is_gone(meeting_dir) {
         return Ok(());
     }
     match scanned? {
@@ -840,10 +840,14 @@ fn add_listed_meeting(
     Ok(())
 }
 
-/// Only a definite "not found" counts as gone; any other error reading the
-/// folder leaves the scan's own result to decide.
-fn folder_is_gone(path: &Path) -> bool {
-    matches!(fs::symlink_metadata(path), Err(error) if error.kind() == io::ErrorKind::NotFound)
+/// Whether `meeting.json` is gone: trash moves the whole folder, and deletion
+/// removes this file before anything else in the folder. Only a definite "not
+/// found" counts; any other error leaves the scan's own result to decide.
+fn meeting_record_is_gone(meeting_dir: &Path) -> bool {
+    matches!(
+        fs::symlink_metadata(meeting_dir.join("meeting.json")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+    )
 }
 
 fn path_exists(path: &Path) -> Result<bool, io::Error> {
@@ -1111,6 +1115,34 @@ mod tests {
 
         fs::rename(&meeting_dir, temp.path().join("trashed-meeting-a")).unwrap();
         let scanned = queue.listed_meeting_items(&meeting_dir, &meeting);
+
+        let mut discovery = empty_discovery();
+        add_listed_meeting(
+            &mut discovery,
+            "meeting-a".into(),
+            &meeting_dir,
+            &meeting,
+            scanned,
+        )
+        .unwrap();
+        assert_eq!(discovery, empty_discovery());
+    }
+
+    // Deletion removes `meeting.json` first, then the folder's contents one
+    // file at a time, so a scan can meet a folder that is still there but
+    // half emptied.
+    #[test]
+    fn a_meeting_deleted_mid_scan_is_read_as_absent() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request).unwrap();
+        let meeting_dir = storage.path().join("meetings/meeting-a");
+        let meeting = load_meeting(&meeting_dir).unwrap();
+
+        fs::remove_file(meeting_dir.join("meeting.json")).unwrap();
+        fs::remove_file(meeting_dir.join("capture/mic.wav")).unwrap();
+        let scanned = queue.listed_meeting_items(&meeting_dir, &meeting);
+        assert!(scanned.is_err(), "the scan itself meets the missing file");
 
         let mut discovery = empty_discovery();
         add_listed_meeting(
