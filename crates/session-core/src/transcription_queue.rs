@@ -270,8 +270,10 @@ impl<'a> TranscriptionQueue<'a> {
     pub fn discover(&self) -> Result<QueueDiscovery, TranscriptionQueueError> {
         let meetings = self.storage.resolve(Path::new("meetings"))?;
         require_private_directory(&meetings)?;
-        let mut items = Vec::new();
-        let mut orphans = Vec::new();
+        let mut discovery = QueueDiscovery {
+            items: Vec::new(),
+            orphan_captured_meetings: Vec::new(),
+        };
         let mut meeting_entries = fs::read_dir(meetings)?.collect::<Result<Vec<_>, _>>()?;
         meeting_entries.sort_by_key(|entry| entry.file_name());
         for entry in meeting_entries {
@@ -288,38 +290,45 @@ impl<'a> TranscriptionQueue<'a> {
                 Ok(meeting) => meeting,
                 Err(_) => continue,
             };
-            let queue_dir = meeting_dir.join(QUEUE_DIRECTORY);
-            if !path_exists(&queue_dir)? {
-                if meeting.lifecycle == MeetingLifecycle::Captured {
-                    orphans.push(id);
-                }
+            let scanned = self.listed_meeting_items(&meeting_dir, &meeting);
+            add_listed_meeting(&mut discovery, id, &meeting_dir, &meeting, scanned)?;
+        }
+        Ok(discovery)
+    }
+
+    /// The verified requests in one meeting's queue folder, or `None` when
+    /// the meeting has no queue folder.
+    fn listed_meeting_items(
+        &self,
+        meeting_dir: &Path,
+        meeting: &crate::meeting::MeetingRecord,
+    ) -> Result<Option<Vec<TranscriptionQueueItem>>, TranscriptionQueueError> {
+        let queue_dir = meeting_dir.join(QUEUE_DIRECTORY);
+        if !path_exists(&queue_dir)? {
+            return Ok(None);
+        }
+        require_private_directory(&queue_dir)?;
+        let mut items = Vec::new();
+        let mut queue_entries = fs::read_dir(queue_dir)?.collect::<Result<Vec<_>, _>>()?;
+        queue_entries.sort_by_key(|entry| entry.file_name());
+        for item in queue_entries {
+            let file_type = item.file_type()?;
+            if crate::storage::is_finder_metadata(&item.file_name(), &file_type) {
                 continue;
             }
-            require_private_directory(&queue_dir)?;
-            let mut queue_entries = fs::read_dir(queue_dir)?.collect::<Result<Vec<_>, _>>()?;
-            queue_entries.sort_by_key(|entry| entry.file_name());
-            for item in queue_entries {
-                let file_type = item.file_type()?;
-                if crate::storage::is_finder_metadata(&item.file_name(), &file_type) {
-                    continue;
-                }
-                if !file_type.is_dir() {
-                    return Err(TranscriptionQueueError::InvalidPrivateStorage);
-                }
-                let request_id = Uuid::parse_str(&item.file_name().to_string_lossy())
-                    .map_err(|_| TranscriptionQueueError::Malformed("request directory id"))?;
-                let queue_item = self.load_item(&item.path(), request_id)?;
-                verify_source(&meeting_dir, &meeting, &queue_item.request)?;
-                if let Some(result) = &queue_item.result {
-                    verify_artifact_ref(&meeting_dir, &result.transcript)?;
-                }
-                items.push(queue_item);
+            if !file_type.is_dir() {
+                return Err(TranscriptionQueueError::InvalidPrivateStorage);
             }
+            let request_id = Uuid::parse_str(&item.file_name().to_string_lossy())
+                .map_err(|_| TranscriptionQueueError::Malformed("request directory id"))?;
+            let queue_item = self.load_item(&item.path(), request_id)?;
+            verify_source(meeting_dir, meeting, &queue_item.request)?;
+            if let Some(result) = &queue_item.result {
+                verify_artifact_ref(meeting_dir, &result.transcript)?;
+            }
+            items.push(queue_item);
         }
-        Ok(QueueDiscovery {
-            items,
-            orphan_captured_meetings: orphans,
-        })
+        Ok(Some(items))
     }
 
     /// Whether this meeting's transcript is still going to be made: the
@@ -800,6 +809,47 @@ fn digest_bytes(bytes: &[u8]) -> String {
 fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec_pretty(value)
 }
+
+/// Adds one listed, loaded meeting's scanned requests to `discovery`, or
+/// records it as an orphan capture when it has no queue folder.
+///
+/// Trash and deletion move or remove a meeting folder without waiting for a
+/// scan, and the scan rereads every queued source, so a meeting can leave
+/// between its listing and its last read. A meeting that no longer loads once
+/// its scan ends is read as absent, whatever the scan returned, as a listing
+/// taken a moment later would read it. A file missing from a meeting that
+/// still loads fails closed.
+fn add_listed_meeting(
+    discovery: &mut QueueDiscovery,
+    id: String,
+    meeting_dir: &Path,
+    meeting: &crate::meeting::MeetingRecord,
+    scanned: Result<Option<Vec<TranscriptionQueueItem>>, TranscriptionQueueError>,
+) -> Result<(), TranscriptionQueueError> {
+    if meeting_record_is_gone(meeting_dir) {
+        return Ok(());
+    }
+    match scanned? {
+        Some(items) => discovery.items.extend(items),
+        None => {
+            if meeting.lifecycle == MeetingLifecycle::Captured {
+                discovery.orphan_captured_meetings.push(id);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Whether `meeting.json` is gone: trash moves the whole folder, and deletion
+/// removes this file before anything else in the folder. Only a definite "not
+/// found" counts; any other error leaves the scan's own result to decide.
+fn meeting_record_is_gone(meeting_dir: &Path) -> bool {
+    matches!(
+        fs::symlink_metadata(meeting_dir.join("meeting.json")),
+        Err(error) if error.kind() == io::ErrorKind::NotFound
+    )
+}
+
 fn path_exists(path: &Path) -> Result<bool, io::Error> {
     Ok(fs::symlink_metadata(path)
         .map(|m| !m.file_type().is_symlink())
@@ -1018,6 +1068,103 @@ mod tests {
             queue.discover(),
             Err(TranscriptionQueueError::InvalidPrivateStorage)
         ));
+    }
+
+    fn empty_discovery() -> QueueDiscovery {
+        QueueDiscovery {
+            items: Vec::new(),
+            orphan_captured_meetings: Vec::new(),
+        }
+    }
+
+    // Trash renames a meeting folder without waiting for a discovery pass
+    // that has already listed and loaded it. Seen on a real install: one
+    // "No such file or directory (os error 2)" a second after a meeting with
+    // a queue folder was trashed. The rename landed mid-scan, so the scan
+    // itself returned the error; it is passed in here as it was returned.
+    #[test]
+    fn a_meeting_moved_away_mid_scan_is_read_as_absent() {
+        let (temp, storage, _request) = fixture();
+        let meeting_dir = storage.path().join("meetings/meeting-a");
+        let meeting = load_meeting(&meeting_dir).unwrap();
+
+        fs::rename(&meeting_dir, temp.path().join("trashed-meeting-a")).unwrap();
+        let scanned = Err(TranscriptionQueueError::Io(io::Error::from_raw_os_error(2)));
+
+        let mut discovery = empty_discovery();
+        add_listed_meeting(
+            &mut discovery,
+            "meeting-a".into(),
+            &meeting_dir,
+            &meeting,
+            scanned,
+        )
+        .unwrap();
+        assert_eq!(discovery, empty_discovery());
+    }
+
+    // The same rename before the queue folder is checked reads as "no queue
+    // folder", which would name a captured meeting an orphan the executor
+    // then fails to load.
+    #[test]
+    fn a_capture_moved_away_before_its_queue_was_read_is_not_an_orphan() {
+        let (temp, storage, _request) = fixture();
+        let queue = queue(&storage);
+        let meeting_dir = storage.path().join("meetings/meeting-a");
+        let meeting = load_meeting(&meeting_dir).unwrap();
+
+        fs::rename(&meeting_dir, temp.path().join("trashed-meeting-a")).unwrap();
+        let scanned = queue.listed_meeting_items(&meeting_dir, &meeting);
+
+        let mut discovery = empty_discovery();
+        add_listed_meeting(
+            &mut discovery,
+            "meeting-a".into(),
+            &meeting_dir,
+            &meeting,
+            scanned,
+        )
+        .unwrap();
+        assert_eq!(discovery, empty_discovery());
+    }
+
+    // Deletion removes `meeting.json` first, then the folder's contents one
+    // file at a time, so a scan can meet a folder that is still there but
+    // half emptied.
+    #[test]
+    fn a_meeting_deleted_mid_scan_is_read_as_absent() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request).unwrap();
+        let meeting_dir = storage.path().join("meetings/meeting-a");
+        let meeting = load_meeting(&meeting_dir).unwrap();
+
+        fs::remove_file(meeting_dir.join("meeting.json")).unwrap();
+        fs::remove_file(meeting_dir.join("capture/mic.wav")).unwrap();
+        let scanned = queue.listed_meeting_items(&meeting_dir, &meeting);
+        assert!(scanned.is_err(), "the scan itself meets the missing file");
+
+        let mut discovery = empty_discovery();
+        add_listed_meeting(
+            &mut discovery,
+            "meeting-a".into(),
+            &meeting_dir,
+            &meeting,
+            scanned,
+        )
+        .unwrap();
+        assert_eq!(discovery, empty_discovery());
+    }
+
+    #[test]
+    fn a_missing_source_in_a_meeting_still_listed_fails_discovery() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request).unwrap();
+        fs::remove_file(storage.path().join("meetings/meeting-a/capture/mic.wav")).unwrap();
+
+        let result = queue.discover();
+        assert!(result.is_err(), "{result:?}");
     }
 
     #[test]
