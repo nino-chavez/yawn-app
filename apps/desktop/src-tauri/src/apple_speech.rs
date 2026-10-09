@@ -93,15 +93,31 @@ pub(crate) fn install_assets(helper: &Path, private_root: &Path, locale: &str) -
     let result = run_bounded(result, Duration::from_secs(1800));
     let capability = match result {
         Ok(true) => parse(&output, locale),
-        Ok(_) => Capability { state: State::Failed, reason: Some("Apple Speech assets could not be prepared.".into()), locale: locale.into(), asset_identity: "os-managed".into(), os_version: String::new() },
-        Err(_) => Capability { state: State::Failed, reason: Some("Apple Speech assets could not be prepared.".into()), locale: locale.into(), asset_identity: "os-managed".into(), os_version: String::new() },
+        Ok(_) => Capability {
+            state: State::Failed,
+            reason: Some("Apple Speech assets could not be prepared.".into()),
+            locale: locale.into(),
+            asset_identity: "os-managed".into(),
+            os_version: String::new(),
+        },
+        Err(_) => Capability {
+            state: State::Failed,
+            reason: Some("Apple Speech assets could not be prepared.".into()),
+            locale: locale.into(),
+            asset_identity: "os-managed".into(),
+            os_version: String::new(),
+        },
     };
     let _ = fs::remove_file(output);
     capability
 }
 
 fn run_bounded(command: &mut Command, timeout: Duration) -> std::io::Result<bool> {
-    let mut child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
@@ -110,7 +126,10 @@ fn run_bounded(command: &mut Command, timeout: Duration) -> std::io::Result<bool
             result => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return match result { Err(error) => Err(error), _ => Ok(false) };
+                return match result {
+                    Err(error) => Err(error),
+                    _ => Ok(false),
+                };
             }
         }
     }
@@ -122,32 +141,58 @@ fn parse(path: &Path, expected_locale: &str) -> Capability {
             if metadata.is_file()
                 && !metadata.file_type().is_symlink()
                 && metadata.len() <= MAX_CAPABILITY_BYTES
-                && metadata.permissions().mode() & 0o077 == 0 => fs::read(path).ok(),
+                && metadata.permissions().mode() & 0o077 == 0 =>
+        {
+            fs::read(path).ok()
+        }
         _ => None,
     };
     let Some(bytes) = bytes else {
-        return unavailable(expected_locale, "Apple Speech did not return a valid capability result.");
+        return unavailable(
+            expected_locale,
+            "Apple Speech did not return a valid capability result.",
+        );
     };
     let Ok(document) = serde_json::from_slice::<CapabilityDocument>(&bytes) else {
-        return unavailable(expected_locale, "Apple Speech did not return a valid capability result.");
+        return unavailable(
+            expected_locale,
+            "Apple Speech did not return a valid capability result.",
+        );
     };
     if document.schema != "apple-speech-capability/1"
         || document.locale != expected_locale
         || document.os_version.is_empty()
         || document.asset_identity != "os-managed"
     {
-        return unavailable(expected_locale, "Apple Speech returned an unsupported capability result.");
+        return unavailable(
+            expected_locale,
+            "Apple Speech returned an unsupported capability result.",
+        );
     }
     let state = match document.state.as_str() {
         "ready" => State::Ready,
         "assets-required" => State::AssetsRequired,
         "unavailable" => State::Unavailable,
-        _ => return unavailable(expected_locale, "Apple Speech returned an unsupported capability result."),
+        _ => {
+            return unavailable(
+                expected_locale,
+                "Apple Speech returned an unsupported capability result.",
+            );
+        }
     };
     if matches!(state, State::Ready) != document.reason.is_none() {
-        return unavailable(expected_locale, "Apple Speech returned an unsupported capability result.");
+        return unavailable(
+            expected_locale,
+            "Apple Speech returned an unsupported capability result.",
+        );
     }
-    Capability { state, reason: document.reason, locale: document.locale, asset_identity: document.asset_identity, os_version: document.os_version }
+    Capability {
+        state,
+        reason: document.reason,
+        locale: document.locale,
+        asset_identity: document.asset_identity,
+        os_version: document.os_version,
+    }
 }
 
 #[cfg(test)]
@@ -160,10 +205,15 @@ mod tests {
     fn capability_requires_exact_schema_locale_and_private_file() {
         let temp = TempDir::new().unwrap();
         let path = temp.path().join("capability.json");
-        fs::write(&path, serde_json::json!({
-            "schema":"apple-speech-capability/1", "state":"ready", "reason":null,
-            "locale":"en-US", "os_version":"26.0", "asset_identity":"os-managed"
-        }).to_string()).unwrap();
+        fs::write(
+            &path,
+            serde_json::json!({
+                "schema":"apple-speech-capability/1", "state":"ready", "reason":null,
+                "locale":"en-US", "os_version":"26.0", "asset_identity":"os-managed"
+            })
+            .to_string(),
+        )
+        .unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         assert_eq!(parse(&path, "en-US").state, State::Ready);
         fs::write(&path, b"{}").unwrap();

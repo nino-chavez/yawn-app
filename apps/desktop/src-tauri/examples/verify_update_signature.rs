@@ -20,7 +20,8 @@ fn decode(label: &str, encoded: &str) -> Result<String, String> {
 
 fn verify(package: &str, signature: &str, config: &str) -> Result<String, String> {
     let config: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(config).map_err(|error| format!("cannot read {config}: {error}"))?,
+        &std::fs::read_to_string(config)
+            .map_err(|error| format!("cannot read {config}: {error}"))?,
     )
     .map_err(|error| format!("{config} is not JSON: {error}"))?;
     let public_key = config["plugins"]["updater"]["pubkey"]

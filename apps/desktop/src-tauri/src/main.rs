@@ -82,8 +82,8 @@ mod capture_timing;
 // backend errors the frontend attaches a recovery action to, so that
 // coupling no longer relies on exact string equality with a hand-maintained
 // JS array. See the module docs for the two transports this covers.
-mod error_codes;
 mod apple_speech;
+mod error_codes;
 mod updater;
 
 use manual_delete_facade::{
@@ -93,9 +93,9 @@ use manual_delete_facade::{
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
-use std::os::unix::fs::OpenOptionsExt;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -104,26 +104,27 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use error_codes::CommandError;
 use local_meeting_notes_session_core::diagnostic::write_private_diagnostic;
 use local_meeting_notes_session_core::enrollment_guidance::{
     EnrollmentEvidence, GuidedEnrollmentStatus, evaluate_enrollment_evidence,
 };
-use local_meeting_notes_session_core::meeting::{resolve_artifact, verify_artifact_ref};
 use local_meeting_notes_session_core::meeting::{
     ArtifactRef, AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts,
     MeetingLifecycle, MeetingRecord, MeetingSchema, artifact_ref, load_meeting, read_private_bytes,
     retention_policy_sha256, verify_record_artifacts, write_meeting,
 };
+use local_meeting_notes_session_core::meeting::{resolve_artifact, verify_artifact_ref};
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::meeting_deletion::reconcile_pending_meeting_deletions;
 use local_meeting_notes_session_core::meeting_trash::{
-    execute_due_trash_purge, list_trash_entries, reconcile_pending_trash, TrashPurgeOutcome,
+    TrashPurgeOutcome, execute_due_trash_purge, list_trash_entries, reconcile_pending_trash,
 };
 use local_meeting_notes_session_core::model_store::{
     DownloadableFile, DownloadableModel, InstalledTranscriptModel, ModelCatalog, ModelStoreError,
-    ModelVerification, TranscriptModel, activate_model, active_model,
-    active_note_model, deactivate_note_model, installed_model, model_is_stored,
-    note_model_is_stored, remove_inactive_model, remove_inactive_note_model,
+    ModelVerification, TranscriptModel, activate_model, active_model, active_note_model,
+    deactivate_note_model, installed_model, model_is_stored, note_model_is_stored,
+    remove_inactive_model, remove_inactive_note_model,
 };
 use local_meeting_notes_session_core::note_projection::{NoteProjector, UnavailableProjector};
 use local_meeting_notes_session_core::note_projector_process::{
@@ -168,7 +169,6 @@ use local_meeting_notes_session_core::transcript_retry_diff::{
 use local_meeting_notes_session_core::transcription_queue::{
     TranscriptionProducer, TranscriptionQueue, TranscriptionQueueError, TranscriptionRequest,
 };
-use error_codes::CommandError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -197,7 +197,8 @@ const NEMOTRON_MODEL_ID: &str = "nemotron-3-diarization-q8";
 const NEMOTRON_MODEL_REVISION: &str = "f667ed73aee57d40cc39428eb768b4fd87a0a29e";
 const NEMOTRON_MODEL_FILE: &str = "Nemotron-3-Diarization.q8_0.gguf";
 const NEMOTRON_MODEL_BYTES: u64 = 107_012_128;
-const NEMOTRON_MODEL_SHA256: &str = "08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1";
+const NEMOTRON_MODEL_SHA256: &str =
+    "08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1";
 const NEMOTRON_MODEL_URL: &str = "https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/f667ed73aee57d40cc39428eb768b4fd87a0a29e/Nemotron-3-Diarization.q8_0.gguf";
 const TRANSCRIPT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const PARTICIPANT_NOTICE_VERSION: &str = "internal-transcript-alpha/1";
@@ -855,7 +856,9 @@ struct TranscriptionEnginePreference {
     selected: TranscriptionEngine,
 }
 
-fn load_transcription_engine_preference(storage: &StorageRoot) -> Result<Option<TranscriptionEngine>, String> {
+fn load_transcription_engine_preference(
+    storage: &StorageRoot,
+) -> Result<Option<TranscriptionEngine>, String> {
     let path = storage
         .resolve(Path::new(TRANSCRIPTION_ENGINE_PREFERENCE))
         .map_err(error_text)?;
@@ -863,26 +866,33 @@ fn load_transcription_engine_preference(storage: &StorageRoot) -> Result<Option<
         return Ok(None);
     }
     let bytes = read_private_bytes(&path, 4096).map_err(error_text)?;
-    let preference: TranscriptionEnginePreference = serde_json::from_slice(&bytes).map_err(error_text)?;
+    let preference: TranscriptionEnginePreference =
+        serde_json::from_slice(&bytes).map_err(error_text)?;
     if preference.schema != "transcription-engine-preference/1" {
         return Err("the stored transcription engine preference is invalid".into());
     }
     Ok(Some(preference.selected))
 }
 
-fn store_transcription_engine_preference(storage: &StorageRoot, selected: TranscriptionEngine) -> Result<(), String> {
+fn store_transcription_engine_preference(
+    storage: &StorageRoot,
+    selected: TranscriptionEngine,
+) -> Result<(), String> {
     let path = storage
         .resolve(Path::new(TRANSCRIPTION_ENGINE_PREFERENCE))
         .map_err(error_text)?;
     if path.is_symlink() {
         return Err("the stored transcription engine preference is unsafe".into());
     }
-    let parent = path.parent().ok_or_else(|| "the stored transcription engine preference is unsafe".to_string())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "the stored transcription engine preference is unsafe".to_string())?;
     create_private_dir(parent).map_err(error_text)?;
     let bytes = serde_json::to_vec(&TranscriptionEnginePreference {
         schema: "transcription-engine-preference/1".into(),
         selected,
-    }).map_err(error_text)?;
+    })
+    .map_err(error_text)?;
     let temporary = parent.join(format!(".transcription-engine-{}.tmp", Uuid::new_v4()));
     let mut output = OpenOptions::new()
         .write(true)
@@ -897,9 +907,18 @@ fn store_transcription_engine_preference(storage: &StorageRoot, selected: Transc
     sync_directory(parent).map_err(error_text)
 }
 
-fn sync_transcription_engine_snapshot(state: &ApplicationState, whisper_ready: bool, product_operation_active: bool) {
-    let engine = state.transcription_engine.lock().expect("transcription engine lock").clone();
-    let mut operation_active = product_operation_active || has_pending_transcription_work(state)
+fn sync_transcription_engine_snapshot(
+    state: &ApplicationState,
+    whisper_ready: bool,
+    product_operation_active: bool,
+) {
+    let engine = state
+        .transcription_engine
+        .lock()
+        .expect("transcription engine lock")
+        .clone();
+    let mut operation_active = product_operation_active
+        || has_pending_transcription_work(state)
         || state.model_install_active.load(Ordering::SeqCst)
         || state.note_model_install_active.load(Ordering::SeqCst);
     let (capture, startup) = {
@@ -911,9 +930,15 @@ fn sync_transcription_engine_snapshot(state: &ApplicationState, whisper_ready: b
         && model_change_audio_idle(capture, sitting_task_active(state))
         && !operation_active;
     let whisper = if whisper_ready {
-        WhisperSettingsSnapshot { state: "ready".into(), reason: None }
+        WhisperSettingsSnapshot {
+            state: "ready".into(),
+            reason: None,
+        }
     } else {
-        WhisperSettingsSnapshot { state: "download-required".into(), reason: Some("Download a speech model to use Whisper transcription.".into()) }
+        WhisperSettingsSnapshot {
+            state: "download-required".into(),
+            reason: Some("Download a speech model to use Whisper transcription.".into()),
+        }
     };
     let snapshot = TranscriptionEngineSettingsSnapshot {
         selected: engine.selected.map(|selected| selected.as_str().into()),
@@ -926,14 +951,26 @@ fn sync_transcription_engine_snapshot(state: &ApplicationState, whisper_ready: b
         },
         whisper,
     };
-    state.model.lock().expect("application model lock").transcription_engine = snapshot;
+    state
+        .model
+        .lock()
+        .expect("application model lock")
+        .transcription_engine = snapshot;
 }
 
 fn transcription_operation_active(state: &ApplicationState) -> bool {
     let model = state.model.lock().expect("application model lock");
     model.background_transcription_active
         || model.background_transcription_queued_count > 0
-        || matches!(model.reducer.capture(), CaptureState::Arming | CaptureState::Recording | CaptureState::Paused | CaptureState::Stopping | CaptureState::Captured | CaptureState::Transcribing)
+        || matches!(
+            model.reducer.capture(),
+            CaptureState::Arming
+                | CaptureState::Recording
+                | CaptureState::Paused
+                | CaptureState::Stopping
+                | CaptureState::Captured
+                | CaptureState::Transcribing
+        )
 }
 
 impl From<&TranscriptModel> for ModelSetupOption {
@@ -1749,13 +1786,21 @@ fn validate_meeting_finalization(
     stop_requested: bool,
 ) -> Result<MeetingCaptureFinalization, String> {
     match event {
-        CaptureEvent::Finalized { mic_samples, system_samples, stop_reason }
-            if (stop_requested || stop_reason.is_some())
-                && mic_samples > 0 && system_samples > 0
-                && mic_samples <= 16_000 * 60 * 60 * 24
-                && system_samples <= 16_000 * 60 * 60 * 24 =>
+        CaptureEvent::Finalized {
+            mic_samples,
+            system_samples,
+            stop_reason,
+        } if (stop_requested || stop_reason.is_some())
+            && mic_samples > 0
+            && system_samples > 0
+            && mic_samples <= 16_000 * 60 * 60 * 24
+            && system_samples <= 16_000 * 60 * 60 * 24 =>
         {
-            Ok(MeetingCaptureFinalization { mic_samples, system_samples, stop_reason })
+            Ok(MeetingCaptureFinalization {
+                mic_samples,
+                system_samples,
+                stop_reason,
+            })
         }
         CaptureEvent::Failed { code } => Err(format!("capture helper failed with code {code}")),
         _ => Err("capture helper did not return an authorized two-track finalization".into()),
@@ -2776,7 +2821,9 @@ fn prepare_startup_retry(model: &mut AppModel) -> Result<(), String> {
 fn retry_startup(app: AppHandle) -> Result<AppSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
-    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
+    let operation = app
+        .state::<product_facade::ProductOperationFacade>()
+        .claim_runtime_change()?;
     // A startup retry re-runs reconciliation over the same stores the take
     // is writing; it lands after the take, by refusal.
     if sitting_task_active(&state) {
@@ -2888,7 +2935,10 @@ fn note_generation_admission_for(state: &ApplicationState) -> NoteGenerationAdmi
     let _ = state;
     // New generation is retired independent of manifests, model receipts, or
     // stale selection state. Do not turn opening a meeting into model I/O.
-    (false, Some(product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+    (
+        false,
+        Some(product_facade::NOTE_GENERATION_RETIRED_COPY.into()),
+    )
 }
 
 fn verified_model_catalog(
@@ -2983,9 +3033,16 @@ fn has_pending_transcription_work(state: &ApplicationState) -> bool {
     if transcription_operation_active(state) {
         return true;
     }
-    let storage = state.storage.lock().ok().and_then(|slot| slot.as_ref().map(|context| context.storage.clone()));
+    let storage = state
+        .storage
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|context| context.storage.clone()));
     match storage.and_then(|storage| TranscriptionQueue::open(&storage).ok()?.discover().ok()) {
-        Some(discovery) => discovery.items.into_iter().any(|item| item.commit.is_none() && item.terminal.is_none()),
+        Some(discovery) => discovery
+            .items
+            .into_iter()
+            .any(|item| item.commit.is_none() && item.terminal.is_none()),
         None => true,
     }
 }
@@ -2995,14 +3052,33 @@ fn get_transcription_engine_settings(
     app: AppHandle,
 ) -> Result<TranscriptionEngineSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
-    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
-        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let storage = state
+        .storage
+        .lock()
+        .map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone()
+        .ok_or_else(|| "the private workspace is unavailable".to_string())?;
     let manifest = cached_verified_manifest(&state, &storage.manifest_path)?;
     let whisper_ready = verified_model_catalog(&storage.manifest_path, &manifest)?
-        .map(|catalog| installed_model(&storage.storage, &catalog).ok().flatten().is_some())
+        .map(|catalog| {
+            installed_model(&storage.storage, &catalog)
+                .ok()
+                .flatten()
+                .is_some()
+        })
         .unwrap_or(true);
-    sync_transcription_engine_snapshot(&state, whisper_ready, app.state::<product_facade::ProductOperationFacade>().is_active());
-    Ok(state.model.lock().expect("application model lock").transcription_engine.clone())
+    sync_transcription_engine_snapshot(
+        &state,
+        whisper_ready,
+        app.state::<product_facade::ProductOperationFacade>()
+            .is_active(),
+    );
+    Ok(state
+        .model
+        .lock()
+        .expect("application model lock")
+        .transcription_engine
+        .clone())
 }
 
 #[tauri::command]
@@ -3012,21 +3088,43 @@ fn select_transcription_engine(
 ) -> Result<TranscriptionEngineSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
-    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    if !matches!(state.model.lock().expect("application model lock").reducer.startup(),
-        StartupState::Ready | StartupState::ModelRequired) {
+    let operation = app
+        .state::<product_facade::ProductOperationFacade>()
+        .claim_runtime_change()?;
+    if !matches!(
+        state
+            .model
+            .lock()
+            .expect("application model lock")
+            .reducer
+            .startup(),
+        StartupState::Ready | StartupState::ModelRequired
+    ) {
         return Err("Wait for Yawn to finish starting before changing speech models.".into());
     }
-    if has_pending_transcription_work(&state) || sitting_task_active(&state)
-        || state.model_install_active.load(Ordering::SeqCst) || state.note_model_install_active.load(Ordering::SeqCst) {
-        return Err("Finish queued or active transcription before changing the transcription engine.".into());
+    if has_pending_transcription_work(&state)
+        || sitting_task_active(&state)
+        || state.model_install_active.load(Ordering::SeqCst)
+        || state.note_model_install_active.load(Ordering::SeqCst)
+    {
+        return Err(
+            "Finish queued or active transcription before changing the transcription engine."
+                .into(),
+        );
     }
-    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
-        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let storage = state
+        .storage
+        .lock()
+        .map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone()
+        .ok_or_else(|| "the private workspace is unavailable".to_string())?;
     let current = get_transcription_engine_settings(app.clone())?;
     match engine {
         TranscriptionEngine::AppleNative if current.apple.state != "ready" => {
-            return Err(current.apple.reason.unwrap_or_else(|| "Apple Speech is not ready on this Mac.".into()));
+            return Err(current
+                .apple
+                .reason
+                .unwrap_or_else(|| "Apple Speech is not ready on this Mac.".into()));
         }
         TranscriptionEngine::Whisper if current.whisper.state != "ready" => {
             return Err("Download a speech model before choosing Whisper transcription.".into());
@@ -3035,7 +3133,10 @@ fn select_transcription_engine(
     }
     store_transcription_engine_preference(&storage.storage, engine)?;
     {
-        let mut selected = state.transcription_engine.lock().expect("transcription engine lock");
+        let mut selected = state
+            .transcription_engine
+            .lock()
+            .expect("transcription engine lock");
         selected.selected = Some(engine);
         selected.explicit = true;
     }
@@ -3044,41 +3145,73 @@ fn select_transcription_engine(
         transition_startup(&mut model, StartupState::Retrying)?;
     }
     let task_app = app.clone();
-    let spawned = std::thread::Builder::new().name("speech-engine-switch".into())
+    let spawned = std::thread::Builder::new()
+        .name("speech-engine-switch".into())
         .spawn(move || {
             let _operation = operation;
             initialize_application(task_app, true);
         });
     if let Err(error) = spawned {
-        write_diagnostic(&state, "speech_engine_switch_spawn_failed", &error.to_string());
-        finish_startup_failure(&state, true, StartupFailure::Diagnostic,
-            "The speech engine change could not start. Check again to retry.");
+        write_diagnostic(
+            &state,
+            "speech_engine_switch_spawn_failed",
+            &error.to_string(),
+        );
+        finish_startup_failure(
+            &state,
+            true,
+            StartupFailure::Diagnostic,
+            "The speech engine change could not start. Check again to retry.",
+        );
         return Err("The speech engine change could not start. Check again to retry.".into());
     }
     get_transcription_engine_settings(app.clone())
 }
 
 #[tauri::command]
-fn install_apple_speech_assets(app: AppHandle) -> Result<TranscriptionEngineSettingsSnapshot, String> {
+fn install_apple_speech_assets(
+    app: AppHandle,
+) -> Result<TranscriptionEngineSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
-    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    if !matches!(state.model.lock().expect("application model lock").reducer.startup(),
-        StartupState::Ready | StartupState::ModelRequired) {
+    let operation = app
+        .state::<product_facade::ProductOperationFacade>()
+        .claim_runtime_change()?;
+    if !matches!(
+        state
+            .model
+            .lock()
+            .expect("application model lock")
+            .reducer
+            .startup(),
+        StartupState::Ready | StartupState::ModelRequired
+    ) {
         return Err("Wait for Yawn to finish starting before changing speech models.".into());
     }
-    if has_pending_transcription_work(&state) || sitting_task_active(&state)
-        || state.note_model_install_active.load(Ordering::SeqCst) {
+    if has_pending_transcription_work(&state)
+        || sitting_task_active(&state)
+        || state.note_model_install_active.load(Ordering::SeqCst)
+    {
         return Err("Finish queued or active transcription before preparing Apple speech.".into());
     }
-    let storage = state.storage.lock().map_err(|_| "the private workspace is unavailable".to_string())?
-        .clone().ok_or_else(|| "the private workspace is unavailable".to_string())?;
+    let storage = state
+        .storage
+        .lock()
+        .map_err(|_| "the private workspace is unavailable".to_string())?
+        .clone()
+        .ok_or_else(|| "the private workspace is unavailable".to_string())?;
     let helper = RuntimeManifest::verified_apple_speech_helper(&storage.manifest_path)
-        .map_err(error_text)?.ok_or_else(|| "Apple speech is not included in this version of Yawn.".to_string())?;
+        .map_err(error_text)?
+        .ok_or_else(|| "Apple speech is not included in this version of Yawn.".to_string())?;
     if state.model_install_active.swap(true, Ordering::SeqCst) {
         return Err("Wait for the current model change to finish.".into());
     }
-    state.transcription_engine.lock().expect("transcription engine lock").apple.state = apple_speech::State::Installing;
+    state
+        .transcription_engine
+        .lock()
+        .expect("transcription engine lock")
+        .apple
+        .state = apple_speech::State::Installing;
     let task_app = app.clone();
     if let Err(error) = std::thread::Builder::new().name("apple-speech-assets".into()).spawn(move || {
         let _operation = operation;
@@ -3144,10 +3277,19 @@ fn finish_model_selection(
 fn install_transcript_model(app: AppHandle, model_id: String) -> Result<AppSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
-    let operation = app.state::<product_facade::ProductOperationFacade>().claim_runtime_change()?;
-    let capture = state.model.lock().expect("application model lock").reducer.capture();
-    if !model_change_audio_idle(capture, sitting_task_active(&state)) || has_pending_transcription_work(&state)
-        || state.note_model_install_active.load(Ordering::SeqCst) {
+    let operation = app
+        .state::<product_facade::ProductOperationFacade>()
+        .claim_runtime_change()?;
+    let capture = state
+        .model
+        .lock()
+        .expect("application model lock")
+        .reducer
+        .capture();
+    if !model_change_audio_idle(capture, sitting_task_active(&state))
+        || has_pending_transcription_work(&state)
+        || state.note_model_install_active.load(Ordering::SeqCst)
+    {
         return Err("A speech model cannot be installed while audio work is active.".into());
     }
     if state
@@ -3430,14 +3572,28 @@ impl NemotronModel {
 }
 
 impl DownloadableModel for NemotronModel {
-    fn id(&self) -> &str { NEMOTRON_MODEL_ID }
-    fn revision(&self) -> &str { NEMOTRON_MODEL_REVISION }
-    fn download_bytes(&self) -> u64 { NEMOTRON_MODEL_BYTES }
+    fn id(&self) -> &str {
+        NEMOTRON_MODEL_ID
+    }
+    fn revision(&self) -> &str {
+        NEMOTRON_MODEL_REVISION
+    }
+    fn download_bytes(&self) -> u64 {
+        NEMOTRON_MODEL_BYTES
+    }
     fn files(&self) -> Vec<DownloadableFile<'_>> {
-        vec![DownloadableFile { name: NEMOTRON_MODEL_FILE, url: NEMOTRON_MODEL_URL, bytes: NEMOTRON_MODEL_BYTES, sha256: NEMOTRON_MODEL_SHA256 }]
+        vec![DownloadableFile {
+            name: NEMOTRON_MODEL_FILE,
+            url: NEMOTRON_MODEL_URL,
+            bytes: NEMOTRON_MODEL_BYTES,
+            sha256: NEMOTRON_MODEL_SHA256,
+        }]
     }
     fn relative_path(&self) -> PathBuf {
-        Path::new("models").join("diarizer.d").join(NEMOTRON_MODEL_ID).join(NEMOTRON_MODEL_REVISION)
+        Path::new("models")
+            .join("diarizer.d")
+            .join(NEMOTRON_MODEL_ID)
+            .join(NEMOTRON_MODEL_REVISION)
     }
     fn receipt_bytes(&self) -> Vec<u8> {
         let mut bytes = serde_json::to_vec_pretty(&json!({
@@ -3449,19 +3605,48 @@ impl DownloadableModel for NemotronModel {
         bytes.push(b'\n');
         bytes
     }
-    fn verify_directory(&self, directory: &Path, verification: ModelVerification) -> Result<(), ModelStoreError> {
-        if directory.is_symlink() || !directory.is_dir() { return Err(ModelStoreError::InvalidModel); }
-        let names = fs::read_dir(directory)?.map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned())).collect::<Result<HashSet<_>, _>>()?;
-        if names != HashSet::from([NEMOTRON_MODEL_FILE.to_string(), local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME.to_string()]) { return Err(ModelStoreError::InvalidModel); }
-        let receipt = read_private_bytes(&directory.join(local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME), 32 * 1024).map_err(|_| ModelStoreError::InvalidReceipt)?;
+    fn verify_directory(
+        &self,
+        directory: &Path,
+        verification: ModelVerification,
+    ) -> Result<(), ModelStoreError> {
+        if directory.is_symlink() || !directory.is_dir() {
+            return Err(ModelStoreError::InvalidModel);
+        }
+        let names = fs::read_dir(directory)?
+            .map(|entry| entry.map(|entry| entry.file_name().to_string_lossy().into_owned()))
+            .collect::<Result<HashSet<_>, _>>()?;
+        if names
+            != HashSet::from([
+                NEMOTRON_MODEL_FILE.to_string(),
+                local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME.to_string(),
+            ])
+        {
+            return Err(ModelStoreError::InvalidModel);
+        }
+        let receipt = read_private_bytes(
+            &directory.join(local_meeting_notes_session_core::model_store::INSTALL_RECEIPT_NAME),
+            32 * 1024,
+        )
+        .map_err(|_| ModelStoreError::InvalidReceipt)?;
         let expected = self.receipt_bytes();
-        if receipt != expected { return Err(ModelStoreError::InvalidReceipt); }
+        if receipt != expected {
+            return Err(ModelStoreError::InvalidReceipt);
+        }
         let file = directory.join(NEMOTRON_MODEL_FILE);
-        if file.is_symlink() || !file.is_file() || file.metadata()?.len() != NEMOTRON_MODEL_BYTES { return Err(ModelStoreError::InvalidModel); }
-        if verification == ModelVerification::Contents && sha256_file(&file).map_err(ModelStoreError::Io)? != NEMOTRON_MODEL_SHA256 { return Err(ModelStoreError::InvalidModel); }
+        if file.is_symlink() || !file.is_file() || file.metadata()?.len() != NEMOTRON_MODEL_BYTES {
+            return Err(ModelStoreError::InvalidModel);
+        }
+        if verification == ModelVerification::Contents
+            && sha256_file(&file).map_err(ModelStoreError::Io)? != NEMOTRON_MODEL_SHA256
+        {
+            return Err(ModelStoreError::InvalidModel);
+        }
         Ok(())
     }
-    fn activate(&self, _storage: &StorageRoot) -> Result<(), ModelStoreError> { Ok(()) }
+    fn activate(&self, _storage: &StorageRoot) -> Result<(), ModelStoreError> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -3497,80 +3682,234 @@ fn verified_speaker_analysis_runtime(context: &StorageContext) -> Result<PathBuf
 fn verified_nemotron_runtime(resource_root: &Path) -> Result<PathBuf, String> {
     let root = resource_root.join("nemotron-diarization");
     let receipt = root.join("runtime.json");
-    let bytes = fs::read(&receipt).map_err(|_| "The optional speaker-analysis runtime is unavailable in this build.".to_string())?;
-    let value: Value = serde_json::from_slice(&bytes).map_err(|_| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
-    let object = value.as_object().ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
-    if object.keys().map(String::as_str).collect::<HashSet<_>>() != HashSet::from(["schema", "source", "platform", "command", "dylibs", "assets", "licenses"])
+    let bytes = fs::read(&receipt).map_err(|_| {
+        "The optional speaker-analysis runtime is unavailable in this build.".to_string()
+    })?;
+    let value: Value = serde_json::from_slice(&bytes)
+        .map_err(|_| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+    if object.keys().map(String::as_str).collect::<HashSet<_>>()
+        != HashSet::from([
+            "schema", "source", "platform", "command", "dylibs", "assets", "licenses",
+        ])
         || value.get("schema").and_then(Value::as_str) != Some("nemotron-diarization-runtime/2")
         || value.get("platform") != Some(&json!({"os":"macos","arch":"arm64","backend":"metal"}))
-        || value.pointer("/source/commit").and_then(Value::as_str) != Some("97a15afa5caa9bce5baaa86c1184103877af4101")
-        || value.pointer("/source/tree").and_then(Value::as_str) != Some("afa144fdbda5d04f2fb7bf83335673f15689cb04")
-        || value.pointer("/source/patch_sha256").and_then(Value::as_str) != Some("fd433fc4c3343fcaba3a5c4cbbfc4a4d2bc1f3ddbd1c82ad97a412077985079e")
+        || value.pointer("/source/commit").and_then(Value::as_str)
+            != Some("97a15afa5caa9bce5baaa86c1184103877af4101")
+        || value.pointer("/source/tree").and_then(Value::as_str)
+            != Some("afa144fdbda5d04f2fb7bf83335673f15689cb04")
+        || value
+            .pointer("/source/patch_sha256")
+            .and_then(Value::as_str)
+            != Some("fd433fc4c3343fcaba3a5c4cbbfc4a4d2bc1f3ddbd1c82ad97a412077985079e")
         || value.pointer("/command/path").and_then(Value::as_str) != Some("bin/nemo-speech")
-        || value.pointer("/command/argv") != Some(&json!(["diarize", "INPUT", "--model", "MODEL", "--device", "metal", "--preset", "v3-offline", "--format", "json"]))
-        || value.get("assets").and_then(Value::as_array).is_none_or(|items| !items.is_empty())
-        || value.get("dylibs").and_then(Value::as_array).is_none_or(|items| {
-            items.iter().filter_map(|entry| entry.get("path").and_then(Value::as_str)).collect::<HashSet<_>>()
-                != HashSet::from([
-                    "lib/libggml-base.0.dylib",
-                    "lib/libggml-blas.0.dylib",
-                    "lib/libggml-cpu.0.dylib",
-                    "lib/libggml-metal.0.dylib",
-                    "lib/libggml.0.dylib",
-                    "lib/libnemo_speech_asr.dylib",
-                ]) || items.len() != 6
-        }) {
-        return Err("The optional speaker-analysis runtime receipt is unavailable or changed.".into());
+        || value.pointer("/command/argv")
+            != Some(&json!([
+                "diarize",
+                "INPUT",
+                "--model",
+                "MODEL",
+                "--device",
+                "metal",
+                "--preset",
+                "v3-offline",
+                "--format",
+                "json"
+            ]))
+        || value
+            .get("assets")
+            .and_then(Value::as_array)
+            .is_none_or(|items| !items.is_empty())
+        || value
+            .get("dylibs")
+            .and_then(Value::as_array)
+            .is_none_or(|items| {
+                items
+                    .iter()
+                    .filter_map(|entry| entry.get("path").and_then(Value::as_str))
+                    .collect::<HashSet<_>>()
+                    != HashSet::from([
+                        "lib/libggml-base.0.dylib",
+                        "lib/libggml-blas.0.dylib",
+                        "lib/libggml-cpu.0.dylib",
+                        "lib/libggml-metal.0.dylib",
+                        "lib/libggml.0.dylib",
+                        "lib/libnemo_speech_asr.dylib",
+                    ])
+                    || items.len() != 6
+            })
+    {
+        return Err(
+            "The optional speaker-analysis runtime receipt is unavailable or changed.".into(),
+        );
     }
-    let mut entries = vec![value.get("command").cloned().ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?];
+    let mut entries =
+        vec![value.get("command").cloned().ok_or_else(|| {
+            "The optional speaker-analysis runtime receipt is invalid.".to_string()
+        })?];
     for section in ["dylibs", "licenses"] {
-        entries.extend(value.get(section).and_then(Value::as_array).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?.iter().cloned());
+        entries.extend(
+            value
+                .get(section)
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    "The optional speaker-analysis runtime receipt is invalid.".to_string()
+                })?
+                .iter()
+                .cloned(),
+        );
     }
     let mut paths = HashSet::new();
     for entry in entries {
-        let path = entry.get("path").and_then(Value::as_str).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
-        let digest = entry.get("sha256").and_then(Value::as_str).ok_or_else(|| "The optional speaker-analysis runtime receipt is invalid.".to_string())?;
+        let path = entry.get("path").and_then(Value::as_str).ok_or_else(|| {
+            "The optional speaker-analysis runtime receipt is invalid.".to_string()
+        })?;
+        let digest = entry.get("sha256").and_then(Value::as_str).ok_or_else(|| {
+            "The optional speaker-analysis runtime receipt is invalid.".to_string()
+        })?;
         let relative = Path::new(path);
-        if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::ParentDir)) || !paths.insert(path.to_owned()) { return Err("The optional speaker-analysis runtime receipt is invalid.".into()); }
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+            || !paths.insert(path.to_owned())
+        {
+            return Err("The optional speaker-analysis runtime receipt is invalid.".into());
+        }
         let candidate = root.join(relative);
-        if candidate.is_symlink() || !candidate.is_file() || sha256_file(&candidate).map_err(error_text)? != digest { return Err("The optional speaker-analysis runtime is unavailable or changed.".into()); }
+        if candidate.is_symlink()
+            || !candidate.is_file()
+            || sha256_file(&candidate).map_err(error_text)? != digest
+        {
+            return Err("The optional speaker-analysis runtime is unavailable or changed.".into());
+        }
     }
     Ok(root.join("bin/nemo-speech"))
 }
 
-fn nemotron_model_settings_for(state: &ApplicationState) -> Result<NemotronModelSettingsSnapshot, String> {
-    let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+fn nemotron_model_settings_for(
+    state: &ApplicationState,
+) -> Result<NemotronModelSettingsSnapshot, String> {
+    let context = state
+        .storage
+        .lock()
+        .map_err(|_| "The private workspace is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "The private workspace is unavailable.".to_string())?;
     let runtime = verified_speaker_analysis_runtime(&context);
     let stored = NemotronModel::verify(&context.storage).is_ok();
     let active = state.nemotron_model_install_active.load(Ordering::SeqCst);
-    let can_change = runtime.is_ok() && model_change_audio_idle(state.model.lock().expect("application model lock").reducer.capture(), sitting_task_active(state)) && !active && !state.speaker_analysis_active.load(Ordering::SeqCst);
+    let can_change = runtime.is_ok()
+        && model_change_audio_idle(
+            state
+                .model
+                .lock()
+                .expect("application model lock")
+                .reducer
+                .capture(),
+            sitting_task_active(state),
+        )
+        && !active
+        && !state.speaker_analysis_active.load(Ordering::SeqCst);
     let failed = state.nemotron_model_install_failed.load(Ordering::SeqCst);
-    Ok(NemotronModelSettingsSnapshot { state: if active { "downloading" } else if stored { "ready" } else if failed { "download-failed" } else { "download-required" }.into(), stored, change_active: active, downloaded_bytes: state.nemotron_model_downloaded_bytes.load(Ordering::SeqCst), total_bytes: NEMOTRON_MODEL_BYTES, can_change, unavailable_reason: runtime.err() })
+    Ok(NemotronModelSettingsSnapshot {
+        state: if active {
+            "downloading"
+        } else if stored {
+            "ready"
+        } else if failed {
+            "download-failed"
+        } else {
+            "download-required"
+        }
+        .into(),
+        stored,
+        change_active: active,
+        downloaded_bytes: state.nemotron_model_downloaded_bytes.load(Ordering::SeqCst),
+        total_bytes: NEMOTRON_MODEL_BYTES,
+        can_change,
+        unavailable_reason: runtime.err(),
+    })
 }
 
 #[tauri::command]
-fn nemotron_model_settings(state: State<'_, ApplicationState>) -> Result<NemotronModelSettingsSnapshot, String> { nemotron_model_settings_for(&state) }
+fn nemotron_model_settings(
+    state: State<'_, ApplicationState>,
+) -> Result<NemotronModelSettingsSnapshot, String> {
+    nemotron_model_settings_for(&state)
+}
 
 #[tauri::command]
 fn install_nemotron_model(app: AppHandle) -> Result<NemotronModelSettingsSnapshot, String> {
     let state = app.state::<ApplicationState>();
     let _command = state.command_lock.lock().expect("command lock");
-    let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+    let context = state
+        .storage
+        .lock()
+        .map_err(|_| "The private workspace is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "The private workspace is unavailable.".to_string())?;
     verified_speaker_analysis_runtime(&context)?;
-    if !model_change_audio_idle(state.model.lock().expect("application model lock").reducer.capture(), sitting_task_active(&state)) { return Err("Speaker analysis cannot be installed while audio work is active.".into()); }
-    if state.nemotron_model_install_active.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() { return Err("The speaker-analysis model is already downloading.".into()); }
-    state.nemotron_model_downloaded_bytes.store(0, Ordering::SeqCst);
-    state.nemotron_model_install_failed.store(false, Ordering::SeqCst);
+    if !model_change_audio_idle(
+        state
+            .model
+            .lock()
+            .expect("application model lock")
+            .reducer
+            .capture(),
+        sitting_task_active(&state),
+    ) {
+        return Err("Speaker analysis cannot be installed while audio work is active.".into());
+    }
+    if state
+        .nemotron_model_install_active
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("The speaker-analysis model is already downloading.".into());
+    }
+    state
+        .nemotron_model_downloaded_bytes
+        .store(0, Ordering::SeqCst);
+    state
+        .nemotron_model_install_failed
+        .store(false, Ordering::SeqCst);
     let task_app = app.clone();
-    if std::thread::Builder::new().name("nemotron-model-download".into()).spawn(move || {
-        let state = task_app.state::<ApplicationState>();
-        let result = model_download::install(&context.storage, &NemotronModel, |downloaded| state.nemotron_model_downloaded_bytes.store(downloaded, Ordering::SeqCst));
-        if let Err(error) = result {
-            let _ = write_private_diagnostic(&context.diagnostics, "nemotron_model_download_failed", &error.to_string());
-            state.nemotron_model_install_failed.store(true, Ordering::SeqCst);
-        }
-        state.nemotron_model_install_active.store(false, Ordering::SeqCst);
-    }).is_err() { state.nemotron_model_install_active.store(false, Ordering::SeqCst); state.nemotron_model_install_failed.store(true, Ordering::SeqCst); return Err("The speaker-analysis model download could not start.".into()); }
+    if std::thread::Builder::new()
+        .name("nemotron-model-download".into())
+        .spawn(move || {
+            let state = task_app.state::<ApplicationState>();
+            let result = model_download::install(&context.storage, &NemotronModel, |downloaded| {
+                state
+                    .nemotron_model_downloaded_bytes
+                    .store(downloaded, Ordering::SeqCst)
+            });
+            if let Err(error) = result {
+                let _ = write_private_diagnostic(
+                    &context.diagnostics,
+                    "nemotron_model_download_failed",
+                    &error.to_string(),
+                );
+                state
+                    .nemotron_model_install_failed
+                    .store(true, Ordering::SeqCst);
+            }
+            state
+                .nemotron_model_install_active
+                .store(false, Ordering::SeqCst);
+        })
+        .is_err()
+    {
+        state
+            .nemotron_model_install_active
+            .store(false, Ordering::SeqCst);
+        state
+            .nemotron_model_install_failed
+            .store(true, Ordering::SeqCst);
+        return Err("The speaker-analysis model download could not start.".into());
+    }
     nemotron_model_settings_for(&state)
 }
 
@@ -3598,8 +3937,10 @@ fn remove_note_model(
     }
     let ready = {
         let model = state.model.lock().expect("application model lock");
-        matches!(model.reducer.startup(), StartupState::Ready | StartupState::ModelRequired)
-            && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
+        matches!(
+            model.reducer.startup(),
+            StartupState::Ready | StartupState::ModelRequired
+        ) && model_change_audio_idle(model.reducer.capture(), sitting_task_active(&state))
     };
     if !ready || sitting_task_active(&state) {
         return Err("Finish the current meeting before removing the note model.".into());
@@ -4242,7 +4583,9 @@ fn write_panic_diagnostic(directory: &Path, info: &std::panic::PanicHookInfo<'_>
         .name()
         .unwrap_or("unnamed")
         .chars()
-        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':' | '.'))
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | ':' | '.')
+        })
         .take(64)
         .collect();
     // The basename only: the full path is a build-machine path, and the
@@ -4250,11 +4593,23 @@ fn write_panic_diagnostic(directory: &Path, info: &std::panic::PanicHookInfo<'_>
     let location = info.location().map_or_else(
         || "an unknown location".to_owned(),
         |location| {
-            let file = location.file().rsplit(['/', '\\']).next().unwrap_or("unknown");
-            format!("{file} line {} column {}", location.line(), location.column())
+            let file = location
+                .file()
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or("unknown");
+            format!(
+                "{file} line {} column {}",
+                location.line(),
+                location.column()
+            )
         },
     );
-    let _ = write_private_diagnostic(directory, "panic", &format!("thread {thread} at {location}"));
+    let _ = write_private_diagnostic(
+        directory,
+        "panic",
+        &format!("thread {thread} at {location}"),
+    );
 }
 
 /// Why a library snapshot answered unavailable (or, for `RebuiltStale`, why a
@@ -4314,7 +4669,11 @@ fn record_library_unavailable(state: &ApplicationState, reason: LibraryUnavailab
     let Some(directory) = directory.filter(|directory| !directory.as_os_str().is_empty()) else {
         return;
     };
-    let refresh = if rebuild { "explicit-refresh" } else { "ordinary-refresh" };
+    let refresh = if rebuild {
+        "explicit-refresh"
+    } else {
+        "ordinary-refresh"
+    };
     let _ = write_private_diagnostic(
         &directory,
         "library_unavailable",
@@ -4337,7 +4696,9 @@ fn library_snapshot_with(
     // A cached reader that answers stale is replaced before the attempt
     // returns, so a stale answer here always came from a fresh rebuild.
     match snapshot.state {
-        "unavailable" => record_library_unavailable(state, LibraryUnavailable::ReaderRefused, rebuild),
+        "unavailable" => {
+            record_library_unavailable(state, LibraryUnavailable::ReaderRefused, rebuild)
+        }
         "stale" => record_library_unavailable(state, LibraryUnavailable::RebuiltStale, rebuild),
         _ => {}
     }
@@ -6798,12 +7159,12 @@ fn preview_list_trash_for(state: &ApplicationState) -> TrashListResponse {
         entries: entries
             .into_iter()
             .map(|entry| TrashEntryPresentation {
-                label: entry
-                    .title
-                    .clone()
-                    .unwrap_or_else(|| {
-                        format!("Meeting · {}", entry.meeting_id.chars().take(8).collect::<String>())
-                    }),
+                label: entry.title.clone().unwrap_or_else(|| {
+                    format!(
+                        "Meeting · {}",
+                        entry.meeting_id.chars().take(8).collect::<String>()
+                    )
+                }),
                 meeting_id: entry.meeting_id,
                 deleted_at_epoch_seconds: entry.deleted_at_epoch_seconds,
                 purge_after_epoch_seconds: entry.purge_after_epoch_seconds,
@@ -6862,14 +7223,12 @@ fn restore_meeting_from_trash_for(
         };
     }
 
-    let result = state
-        .meeting_restore_facade()
-        .restore_meeting(
-            manual_delete_facade::MeetingRestoreUiArgs {
-                meeting_id: meeting_id.clone(),
-            },
-            now_epoch_seconds(),
-        );
+    let result = state.meeting_restore_facade().restore_meeting(
+        manual_delete_facade::MeetingRestoreUiArgs {
+            meeting_id: meeting_id.clone(),
+        },
+        now_epoch_seconds(),
+    );
     let (response_state, message) = match result {
         Ok(manual_delete_facade::MeetingRestoreFacadeOutcome::Restored) => (
             "restored",
@@ -6882,10 +7241,7 @@ fn restore_meeting_from_trash_for(
         Err(
             manual_delete_facade::MeetingRestoreFacadeError::NoSuchTrashEntry
             | manual_delete_facade::MeetingRestoreFacadeError::AlreadyPurged,
-        ) => (
-            "not-found",
-            "This meeting is no longer in Trash.",
-        ),
+        ) => ("not-found", "This meeting is no longer in Trash."),
         Err(manual_delete_facade::MeetingRestoreFacadeError::DestinationExists) => (
             "unavailable",
             "Yawn could not restore this meeting because a meeting already occupies its place. Reopen Trash and try again.",
@@ -7322,50 +7678,127 @@ fn analyze_speakers(
     request: SpeakerAnalysisRequest,
     state: State<'_, ApplicationState>,
 ) -> Result<SpeakerAnalysisResponse, String> {
-    if state.speaker_analysis_active.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+    if state
+        .speaker_analysis_active
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("Speaker analysis is already running for another meeting.".into());
     }
     let result = (|| {
         let _command = state.command_lock.lock().expect("command lock");
-        let context = state.storage.lock().map_err(|_| "The private workspace is unavailable.".to_string())?.clone().ok_or_else(|| "The private workspace is unavailable.".to_string())?;
+        let context = state
+            .storage
+            .lock()
+            .map_err(|_| "The private workspace is unavailable.".to_string())?
+            .clone()
+            .ok_or_else(|| "The private workspace is unavailable.".to_string())?;
         let diarizer_executable = verified_speaker_analysis_runtime(&context)?;
         let diarizer_model = NemotronModel::verify(&context.storage).map_err(|_| "Download and verify the speaker-analysis model in Settings before analyzing speakers.".to_string())?;
         let directory = meeting_dir(&context.storage, &request.meeting_id).map_err(error_text)?;
-        if meeting_lock::read(&directory).locked { return Err("This meeting is locked. Unlock it before analyzing speakers.".into()); }
+        if meeting_lock::read(&directory).locked {
+            return Err("This meeting is locked. Unlock it before analyzing speakers.".into());
+        }
         let meeting = load_meeting(&directory).map_err(error_text)?;
-        if !matches!(meeting.lifecycle, MeetingLifecycle::TranscriptReady | MeetingLifecycle::Ready | MeetingLifecycle::SummaryFailed) { return Err("Finish this meeting before analyzing speakers.".into()); }
-        let transcript = meeting.artifacts.current_transcript.as_ref().ok_or_else(|| "This meeting has no completed transcript to analyze.".to_string())?;
-        if transcript.sha256 != request.source_transcript_sha256 { return Err("The transcript changed. Reopen this meeting before analyzing speakers.".into()); }
-        let microphone = meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "This meeting has no retained microphone recording for speaker analysis.".to_string())?;
-        if meeting.retention.state != AudioState::Retained { return Err("The microphone recording is no longer retained for this meeting.".into()); }
-        verify_artifact_ref(&directory, transcript).map_err(|_| "The transcript changed. Reopen this meeting before analyzing speakers.".to_string())?;
-        verify_artifact_ref(&directory, microphone).map_err(|_| "The retained microphone recording changed and cannot be analyzed.".to_string())?;
-        let manifest = RuntimeManifest::load_and_verify(&context.manifest_path).map_err(error_text)?;
-        if !manifest.is_internal_alpha() { return Err("Speaker analysis is unavailable in this build.".into()); }
+        if !matches!(
+            meeting.lifecycle,
+            MeetingLifecycle::TranscriptReady
+                | MeetingLifecycle::Ready
+                | MeetingLifecycle::SummaryFailed
+        ) {
+            return Err("Finish this meeting before analyzing speakers.".into());
+        }
+        let transcript = meeting
+            .artifacts
+            .current_transcript
+            .as_ref()
+            .ok_or_else(|| "This meeting has no completed transcript to analyze.".to_string())?;
+        if transcript.sha256 != request.source_transcript_sha256 {
+            return Err(
+                "The transcript changed. Reopen this meeting before analyzing speakers.".into(),
+            );
+        }
+        let microphone = meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| {
+            "This meeting has no retained microphone recording for speaker analysis.".to_string()
+        })?;
+        if meeting.retention.state != AudioState::Retained {
+            return Err("The microphone recording is no longer retained for this meeting.".into());
+        }
+        verify_artifact_ref(&directory, transcript).map_err(|_| {
+            "The transcript changed. Reopen this meeting before analyzing speakers.".to_string()
+        })?;
+        verify_artifact_ref(&directory, microphone).map_err(|_| {
+            "The retained microphone recording changed and cannot be analyzed.".to_string()
+        })?;
+        let manifest =
+            RuntimeManifest::load_and_verify(&context.manifest_path).map_err(error_text)?;
+        if !manifest.is_internal_alpha() {
+            return Err("Speaker analysis is unavailable in this build.".into());
+        }
         let worker_path = context.resource_root.join(&manifest.runtime.path);
         let mut command = Command::new(&worker_path);
-        command.args(["-E", "-s", "-B", "-m", "worker.main"])
-            .arg("--app-data-root").arg(context.storage.path())
-            .arg("--runtime-manifest").arg(&context.manifest_path)
+        command
+            .args(["-E", "-s", "-B", "-m", "worker.main"])
+            .arg("--app-data-root")
+            .arg(context.storage.path())
+            .arg("--runtime-manifest")
+            .arg(&context.manifest_path)
             .arg("--speaker-only")
-            .args(["--diarizer-executable"]).arg(&diarizer_executable)
-            .args(["--diarizer-model"]).arg(&diarizer_model)
+            .args(["--diarizer-executable"])
+            .arg(&diarizer_executable)
+            .args(["--diarizer-model"])
+            .arg(&diarizer_model)
             .current_dir(&context.resource_root);
-        let worker = OwnedChild::spawn(&mut command).map_err(|_| "The local speaker-analysis runtime could not start.".to_string())?;
+        let worker = OwnedChild::spawn(&mut command)
+            .map_err(|_| "The local speaker-analysis runtime could not start.".to_string())?;
         let temporary = Arc::new(Mutex::new(Some(worker)));
-        let ready = temporary.lock().expect("temporary worker lock").as_mut().ok_or_else(|| "The local speaker-analysis runtime could not start.".to_string())?.wait_ready(Duration::from_secs(10), &HashSet::from([Operation::SpeakerSuggest])).map_err(|_| "The local speaker-analysis runtime is unavailable.".to_string())?;
-        if !manifest.matches_ready(&ready) { return Err("The local speaker-analysis worker does not match this app build.".into()); }
-        let reply = request_worker_on(temporary.clone(), Operation::SpeakerSuggest, json!({
-            "meeting_id": request.meeting_id,
-            "source_transcript_sha256": transcript.sha256,
-            "microphone_audio_sha256": microphone.sha256,
-        }), SPEAKER_ANALYSIS_TIMEOUT, |_| Err(ProtocolError::InvalidEvent));
-        let _ = temporary.lock().ok().and_then(|mut slot| slot.take()).map(|mut worker| worker.stop_and_wait(Duration::from_millis(750)));
+        let ready = temporary
+            .lock()
+            .expect("temporary worker lock")
+            .as_mut()
+            .ok_or_else(|| "The local speaker-analysis runtime could not start.".to_string())?
+            .wait_ready(
+                Duration::from_secs(10),
+                &HashSet::from([Operation::SpeakerSuggest]),
+            )
+            .map_err(|_| "The local speaker-analysis runtime is unavailable.".to_string())?;
+        if !manifest.matches_ready(&ready) {
+            return Err("The local speaker-analysis worker does not match this app build.".into());
+        }
+        let reply = request_worker_on(
+            temporary.clone(),
+            Operation::SpeakerSuggest,
+            json!({
+                "meeting_id": request.meeting_id,
+                "source_transcript_sha256": transcript.sha256,
+                "microphone_audio_sha256": microphone.sha256,
+            }),
+            SPEAKER_ANALYSIS_TIMEOUT,
+            |_| Err(ProtocolError::InvalidEvent),
+        );
+        let _ = temporary
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+            .map(|mut worker| worker.stop_and_wait(Duration::from_millis(750)));
         let reply = reply.map_err(|_| "Speaker analysis did not complete. The transcript and recording were left unchanged.".to_string())?;
-        if reply.get("status").map(String::as_str) != Some("suggestions-ready") { return Err(reply.get("reason").cloned().unwrap_or_else(|| "Speaker analysis could not complete.".into())); }
+        if reply.get("status").map(String::as_str) != Some("suggestions-ready") {
+            return Err(reply
+                .get("reason")
+                .cloned()
+                .unwrap_or_else(|| "Speaker analysis could not complete.".into()));
+        }
         let current = load_meeting(&directory).map_err(error_text)?;
-        if current.artifacts.current_transcript.as_ref() != Some(transcript) || current.artifacts.microphone_audio.as_ref() != Some(microphone) { return Err("The meeting changed while speaker analysis ran. Reopen it and try again.".into()); }
-        Ok(SpeakerAnalysisResponse { message: "Anonymous speaker suggestions are ready for review." })
+        if current.artifacts.current_transcript.as_ref() != Some(transcript)
+            || current.artifacts.microphone_audio.as_ref() != Some(microphone)
+        {
+            return Err(
+                "The meeting changed while speaker analysis ran. Reopen it and try again.".into(),
+            );
+        }
+        Ok(SpeakerAnalysisResponse {
+            message: "Anonymous speaker suggestions are ready for review.",
+        })
     })();
     state.speaker_analysis_active.store(false, Ordering::SeqCst);
     result
@@ -7465,7 +7898,12 @@ fn library_export_meeting(
         |reader, active| match reader.open_export_bound(
             &handle,
             active,
-            |storage, meeting_id, label, created_at_epoch_seconds, claims, saved_note_unreadable| {
+            |storage,
+             meeting_id,
+             label,
+             created_at_epoch_seconds,
+             claims,
+             saved_note_unreadable| {
                 // Roadmap intake I5, checked before a single file is written.
                 let outcome = refuse_locked_meeting(storage, meeting_id, unlocked.as_deref())
                     .and_then(|()| {
@@ -7568,11 +8006,14 @@ fn load_bound_preview_transcript_projection(
     storage: &StorageRoot,
     meeting_id: &str,
     expected: &ArtifactRef,
-) -> Result<(
-    Vec<TranscriptTurn>,
-    Vec<String>,
-    speaker_suggestion::SuggestionsRead,
-), String> {
+) -> Result<
+    (
+        Vec<TranscriptTurn>,
+        Vec<String>,
+        speaker_suggestion::SuggestionsRead,
+    ),
+    String,
+> {
     let directory = meeting_dir(storage, meeting_id).map_err(error_text)?;
     let meeting = load_meeting(&directory).map_err(error_text)?;
     if meeting.artifacts.current_transcript.as_ref() != Some(expected) {
@@ -7666,9 +8107,7 @@ fn local_vocabulary_error(
         LocalVocabularyError::NotFound => {
             "That replacement is no longer available. Reopen Vocabulary and try again.".into()
         }
-        LocalVocabularyError::TooManyEntries => {
-            "You can save up to 256 local replacements.".into()
-        }
+        LocalVocabularyError::TooManyEntries => "You can save up to 256 local replacements.".into(),
         LocalVocabularyError::InvalidEntry(_) => {
             "Use two different single-line phrases, up to 256 characters each.".into()
         }
@@ -7684,12 +8123,10 @@ fn local_vocabulary_error(
         LocalVocabularyError::InvalidPrivateStorage
         | LocalVocabularyError::Malformed(_)
         | LocalVocabularyError::Io(_)
-        | LocalVocabularyError::Json(_) => {
-            CommandError::coded(
-                error_codes::VOCABULARY_READ_FAILED,
-                "Your saved vocabulary could not be read. Nothing changed. Reopen the meeting and try again.",
-            )
-        }
+        | LocalVocabularyError::Json(_) => CommandError::coded(
+            error_codes::VOCABULARY_READ_FAILED,
+            "Your saved vocabulary could not be read. Nothing changed. Reopen the meeting and try again.",
+        ),
     }
 }
 
@@ -8157,8 +8594,7 @@ fn retry_comparison_response(
             )
         })?;
     let pauses = local_meeting_notes_session_core::capture_quality::project_capture_pauses(
-        &directory,
-        &meeting,
+        &directory, &meeting,
     )
     .map_err(|_| {
         CommandError::coded(
@@ -8472,9 +8908,10 @@ fn main() {
             // `stop_meeting` command for a window-driven stop. The tray's own
             // "Stop recording" item is unrelated — it calls `stop_meeting`
             // directly, unchanged.
-            let new_recording = tauri::menu::MenuItemBuilder::with_id("new-recording", "New Recording")
-                .accelerator("CmdOrCtrl+R")
-                .build(app)?;
+            let new_recording =
+                tauri::menu::MenuItemBuilder::with_id("new-recording", "New Recording")
+                    .accelerator("CmdOrCtrl+R")
+                    .build(app)?;
             let file_stop_recording =
                 tauri::menu::MenuItemBuilder::with_id("stop-recording", "Stop Recording")
                     .accelerator("CmdOrCtrl+.")
@@ -8624,13 +9061,7 @@ fn main() {
                     }
                 })
                 .build(app)?;
-            spawn_tray_updater(
-                app.handle().clone(),
-                tray,
-                menu,
-                stop,
-                file_stop_recording,
-            );
+            spawn_tray_updater(app.handle().clone(), tray, menu, stop, file_stop_recording);
             updater::start_background_checks(app.handle().clone());
             let handle = app.handle().clone();
             std::thread::Builder::new()
@@ -8937,21 +9368,37 @@ fn initialize_application(app: AppHandle, retry: bool) {
             return;
         }
     };
-    let apple_capability = match RuntimeManifest::verified_apple_speech_helper(&storage_context.manifest_path) {
-        Ok(Some(helper)) => apple_speech::probe(&helper, storage_context.storage.path(), "en-US"),
-        Ok(None) => apple_speech::unavailable("en-US", "Apple Speech is not included in this version of Yawn."),
-        Err(_) => apple_speech::unavailable("en-US", "Apple Speech could not be verified in this version of Yawn."),
-    };
+    let apple_capability =
+        match RuntimeManifest::verified_apple_speech_helper(&storage_context.manifest_path) {
+            Ok(Some(helper)) => {
+                apple_speech::probe(&helper, storage_context.storage.path(), "en-US")
+            }
+            Ok(None) => apple_speech::unavailable(
+                "en-US",
+                "Apple Speech is not included in this version of Yawn.",
+            ),
+            Err(_) => apple_speech::unavailable(
+                "en-US",
+                "Apple Speech could not be verified in this version of Yawn.",
+            ),
+        };
     let stored_engine = match load_transcription_engine_preference(&storage_context.storage) {
         Ok(preference) => preference,
         Err(_) => {
-            finish_startup_failure(&state, retry, StartupFailure::Diagnostic,
-                "The saved speech selection could not be read safely.");
+            finish_startup_failure(
+                &state,
+                retry,
+                StartupFailure::Diagnostic,
+                "The saved speech selection could not be read safely.",
+            );
             return;
         }
     };
     {
-        let mut engine = state.transcription_engine.lock().expect("transcription engine lock");
+        let mut engine = state
+            .transcription_engine
+            .lock()
+            .expect("transcription engine lock");
         engine.apple = apple_capability.clone();
         if let Some(selected) = stored_engine {
             engine.selected = Some(selected);
@@ -8973,19 +9420,34 @@ fn initialize_application(app: AppHandle, retry: bool) {
                 Some(installed)
             }
             Ok(None) => {
-                let selected = state.transcription_engine.lock().expect("transcription engine lock").selected;
+                let selected = state
+                    .transcription_engine
+                    .lock()
+                    .expect("transcription engine lock")
+                    .selected;
                 if selected == Some(TranscriptionEngine::AppleNative)
                     || (selected.is_none() && apple_capability.state == apple_speech::State::Ready)
                 {
-                    let mut engine = state.transcription_engine.lock().expect("transcription engine lock");
+                    let mut engine = state
+                        .transcription_engine
+                        .lock()
+                        .expect("transcription engine lock");
                     engine.selected = Some(TranscriptionEngine::AppleNative);
                     drop(engine);
                     let mut model = state.model.lock().expect("application model lock");
-                    model.model_setup = ModelSetupSnapshot { state: "native".into(), ..ModelSetupSnapshot::default() };
+                    model.model_setup = ModelSetupSnapshot {
+                        state: "native".into(),
+                        ..ModelSetupSnapshot::default()
+                    };
                     None
                 } else {
                     finish_model_selection(&state, retry, catalog, None);
-                    sync_transcription_engine_snapshot(&state, false, app.state::<product_facade::ProductOperationFacade>().is_active());
+                    sync_transcription_engine_snapshot(
+                        &state,
+                        false,
+                        app.state::<product_facade::ProductOperationFacade>()
+                            .is_active(),
+                    );
                     return;
                 }
             }
@@ -9011,16 +9473,43 @@ fn initialize_application(app: AppHandle, retry: bool) {
             None
         }
     };
-    let selected_engine = state.transcription_engine.lock().expect("transcription engine lock").selected
+    let selected_engine = state
+        .transcription_engine
+        .lock()
+        .expect("transcription engine lock")
+        .selected
         .unwrap_or(TranscriptionEngine::Whisper);
-    state.transcription_engine.lock().expect("transcription engine lock").selected = Some(selected_engine);
-    if selected_engine == TranscriptionEngine::AppleNative && apple_capability.state != apple_speech::State::Ready {
+    state
+        .transcription_engine
+        .lock()
+        .expect("transcription engine lock")
+        .selected = Some(selected_engine);
+    if selected_engine == TranscriptionEngine::AppleNative
+        && apple_capability.state != apple_speech::State::Ready
+    {
         if let Some(catalog) = catalog.as_ref() {
-            finish_model_selection(&state, retry, catalog, Some("Apple speech is unavailable. Prepare it again or choose a downloaded model.".into()));
-            sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
+            finish_model_selection(
+                &state,
+                retry,
+                catalog,
+                Some(
+                    "Apple speech is unavailable. Prepare it again or choose a downloaded model."
+                        .into(),
+                ),
+            );
+            sync_transcription_engine_snapshot(
+                &state,
+                installed_transcript_model.is_some(),
+                app.state::<product_facade::ProductOperationFacade>()
+                    .is_active(),
+            );
         } else {
-            finish_startup_failure(&state, retry, StartupFailure::Runtime,
-                "This version cannot use the saved Apple speech selection. Install a version that includes Apple speech.");
+            finish_startup_failure(
+                &state,
+                retry,
+                StartupFailure::Runtime,
+                "This version cannot use the saved Apple speech selection. Install a version that includes Apple speech.",
+            );
         }
         return;
     }
@@ -9038,7 +9527,12 @@ fn initialize_application(app: AppHandle, retry: bool) {
             .arg("--transcript-model-receipt")
             .arg(&installed.receipt_path);
     }
-    command.args(["--transcription-engine", selected_engine.as_str(), "--speech-locale", "en-US"]);
+    command.args([
+        "--transcription-engine",
+        selected_engine.as_str(),
+        "--speech-locale",
+        "en-US",
+    ]);
     command.current_dir(&storage_context.resource_root);
     let mut worker = match OwnedChild::spawn(&mut command) {
         Ok(worker) => worker,
@@ -9149,23 +9643,39 @@ fn initialize_application(app: AppHandle, retry: bool) {
         .map(|model| (model.id.clone(), model.sha256.clone()))
         .collect();
     packaged_models.extend(external_models.clone());
-    let selected_engine = state.transcription_engine.lock().expect("transcription engine lock").selected;
+    let selected_engine = state
+        .transcription_engine
+        .lock()
+        .expect("transcription engine lock")
+        .selected;
     let selected_engine = selected_engine.unwrap_or(TranscriptionEngine::Whisper);
-    if installed_transcript_model.is_some() && selected_engine == TranscriptionEngine::AppleNative
+    if installed_transcript_model.is_some()
+        && selected_engine == TranscriptionEngine::AppleNative
         && apple_capability.state != apple_speech::State::Ready
     {
-        finish_startup_failure(&state, retry, StartupFailure::Runtime, "Apple Speech is not ready and no fallback speech model is selected");
+        finish_startup_failure(
+            &state,
+            retry,
+            StartupFailure::Runtime,
+            "Apple Speech is not ready and no fallback speech model is selected",
+        );
         return;
     }
     let transcription_producer = match selected_engine {
         TranscriptionEngine::AppleNative => TranscriptionProducer::AppleNative {
             locale: "en-US".into(),
-            helper_sha256: manifest.apple_speech.as_ref().expect("verified v3 apple resource").sha256.clone(),
+            helper_sha256: manifest
+                .apple_speech
+                .as_ref()
+                .expect("verified v3 apple resource")
+                .sha256
+                .clone(),
             asset_identity: "os-managed".into(),
             os_version: apple_capability.os_version.clone(),
         },
         TranscriptionEngine::Whisper => TranscriptionProducer::whisper(
-            installed_transcript_model.as_ref()
+            installed_transcript_model
+                .as_ref()
                 .map(|model| format!("{}@{}", model.entry.id, model.entry.revision))
                 .or_else(|| manifest.models.first().map(|model| model.id.clone()))
                 .unwrap_or_else(|| "bundled-transcript-model".into()),
@@ -9274,7 +9784,12 @@ fn initialize_application(app: AppHandle, retry: bool) {
         model.startup_message = "Yawn is ready.".into();
     }
     drop(model);
-    sync_transcription_engine_snapshot(&state, installed_transcript_model.is_some(), app.state::<product_facade::ProductOperationFacade>().is_active());
+    sync_transcription_engine_snapshot(
+        &state,
+        installed_transcript_model.is_some(),
+        app.state::<product_facade::ProductOperationFacade>()
+            .is_active(),
+    );
     start_transcription_queue_executor(&app, &storage_context.storage, &runtime);
 }
 
@@ -10047,18 +10562,30 @@ fn run_capture_task(
                 let finalized = match validate_meeting_finalization(event, false) {
                     Ok(finalized) => finalized,
                     Err(error) => {
-                        fail_capture_task(&app, Some(&meeting_id), recovery_required, true,
-                            "capture_automatic_stop_invalid", &error,
-                            "The recording ended without a valid stop reason.");
+                        fail_capture_task(
+                            &app,
+                            Some(&meeting_id),
+                            recovery_required,
+                            true,
+                            "capture_automatic_stop_invalid",
+                            &error,
+                            "The recording ended without a valid stop reason.",
+                        );
                         return;
                     }
                 };
                 let mut model = state.model.lock().expect("application model lock");
                 if let Err(error) = accept_automatic_capture_stop(&mut model) {
                     drop(model);
-                    fail_capture_task(&app, Some(&meeting_id), recovery_required, true,
-                        "capture_automatic_stop_transition_failed", &error,
-                        "The recording could not finish after the microphone changed.");
+                    fail_capture_task(
+                        &app,
+                        Some(&meeting_id),
+                        recovery_required,
+                        true,
+                        "capture_automatic_stop_transition_failed",
+                        &error,
+                        "The recording could not finish after the microphone changed.",
+                    );
                     return;
                 }
                 drop(model);
@@ -10128,8 +10655,12 @@ fn run_capture_task(
         Ok(finalized) => finalized,
         Err(error) => {
             fail_capture_task(
-                &app, Some(&meeting_id), recovery_required, true,
-                "capture_finalize_event_failed", &error,
+                &app,
+                Some(&meeting_id),
+                recovery_required,
+                true,
+                "capture_finalize_event_failed",
+                &error,
                 "Both audio files could not be finalized.",
             );
             return;
@@ -10305,8 +10836,11 @@ fn run_capture_task(
         }
     }
     if finalized.stop_reason.is_some() {
-        write_diagnostic(&state, "capture_stopped_audio_configuration_changed",
-            "microphone configuration changed; both tracks finalized and queued for transcription");
+        write_diagnostic(
+            &state,
+            "capture_stopped_audio_configuration_changed",
+            "microphone configuration changed; both tracks finalized and queued for transcription",
+        );
     }
 }
 
@@ -10715,12 +11249,31 @@ fn enqueue_orphan_capture(
         .map_err(error_text)?;
     let meeting = load_meeting(&meeting_dir).map_err(error_text)?;
     let request = TranscriptionRequest {
-        schema: local_meeting_notes_session_core::transcription_queue::TranscriptionRequestSchema::V1,
+        schema:
+            local_meeting_notes_session_core::transcription_queue::TranscriptionRequestSchema::V1,
         request_id: Uuid::new_v4(),
         meeting_id: meeting_id.to_string(),
-        capture_session_sha256: meeting.artifacts.capture_session.as_ref().ok_or_else(|| "captured meeting has no session artifact".to_string())?.sha256.clone(),
-        microphone_audio_sha256: meeting.artifacts.microphone_audio.as_ref().ok_or_else(|| "captured meeting has no microphone artifact".to_string())?.sha256.clone(),
-        system_audio_sha256: meeting.artifacts.system_audio.as_ref().ok_or_else(|| "captured meeting has no system artifact".to_string())?.sha256.clone(),
+        capture_session_sha256: meeting
+            .artifacts
+            .capture_session
+            .as_ref()
+            .ok_or_else(|| "captured meeting has no session artifact".to_string())?
+            .sha256
+            .clone(),
+        microphone_audio_sha256: meeting
+            .artifacts
+            .microphone_audio
+            .as_ref()
+            .ok_or_else(|| "captured meeting has no microphone artifact".to_string())?
+            .sha256
+            .clone(),
+        system_audio_sha256: meeting
+            .artifacts
+            .system_audio
+            .as_ref()
+            .ok_or_else(|| "captured meeting has no system artifact".to_string())?
+            .sha256
+            .clone(),
         model_identity: runtime.transcript_model_identity.clone(),
         producer: Some(runtime.transcription_producer.clone()),
         worker_runtime_identity: runtime.worker_executable_sha256.clone(),
@@ -11426,12 +11979,15 @@ fn parse_capture_event(frame: &[u8]) -> Result<CaptureEvent, String> {
             }
             Ok(CaptureEvent::Recording)
         }
-        Some("finalized") if exact_object_keys(object, &["schema", "event", "legs"])
-            || exact_object_keys(object, &["schema", "event", "legs", "stop_reason"]) => {
+        Some("finalized")
+            if exact_object_keys(object, &["schema", "event", "legs"])
+                || exact_object_keys(object, &["schema", "event", "legs", "stop_reason"]) =>
+        {
             let stop_reason = match object.get("stop_reason") {
                 None => None,
-                Some(Value::String(reason)) if reason == "microphone_configuration_changed" =>
-                    Some(CaptureStopReason::MicrophoneConfigurationChanged),
+                Some(Value::String(reason)) if reason == "microphone_configuration_changed" => {
+                    Some(CaptureStopReason::MicrophoneConfigurationChanged)
+                }
                 _ => return Err("capture stop reason is invalid".into()),
             };
             let legs = object["legs"]
@@ -11751,7 +12307,10 @@ mod tests {
         let resuming = capture_user_message("microphone_configuration_changed");
         assert!(resuming.starts_with("Recording could not resume"));
         assert!(resuming.contains("kept as interrupted"));
-        assert!(!resuming.contains("No audio was captured"), "audio from before the pause may exist");
+        assert!(
+            !resuming.contains("No audio was captured"),
+            "audio from before the pause may exist"
+        );
         // Every other code is unchanged on the arming path.
         assert_eq!(
             capture_arming_message("microphone_permission_denied"),
@@ -11795,17 +12354,26 @@ mod tests {
         let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
 
         assert!(!opened.note_generation_available);
-        assert_eq!(opened.note_generation_unavailable_reason.as_deref(), Some(product_facade::NOTE_GENERATION_RETIRED_COPY));
+        assert_eq!(
+            opened.note_generation_unavailable_reason.as_deref(),
+            Some(product_facade::NOTE_GENERATION_RETIRED_COPY)
+        );
     }
 
     #[test]
     fn a_meeting_open_for_reading_does_not_block_model_changes() {
         assert!(model_change_audio_idle(CaptureState::Idle, false));
-        assert!(model_change_audio_idle(CaptureState::TranscriptReady, false));
+        assert!(model_change_audio_idle(
+            CaptureState::TranscriptReady,
+            false
+        ));
         assert!(!model_change_audio_idle(CaptureState::Recording, false));
         assert!(!model_change_audio_idle(CaptureState::Paused, false));
         assert!(!model_change_audio_idle(CaptureState::Transcribing, false));
-        assert!(!model_change_audio_idle(CaptureState::TranscriptReady, true));
+        assert!(!model_change_audio_idle(
+            CaptureState::TranscriptReady,
+            true
+        ));
     }
     use std::sync::Barrier;
     use tempfile::TempDir;
@@ -11877,8 +12445,16 @@ mod tests {
     fn every_confirmation_prompt_names_the_act_it_was_raised_for() {
         assert!(UNLOCK_CONFIRMATION_REASON.contains("remove the lock"));
         assert!(meeting_lock::LockedAction::Open.reason().contains("open"));
-        assert!(meeting_lock::LockedAction::Export.reason().contains("export"));
-        assert!(meeting_lock::LockedAction::Playback.reason().contains("play"));
+        assert!(
+            meeting_lock::LockedAction::Export
+                .reason()
+                .contains("export")
+        );
+        assert!(
+            meeting_lock::LockedAction::Playback
+                .reason()
+                .contains("play")
+        );
         // Removing a lock is not one of the three gated actions and must not
         // borrow one of their sentences.
         for action in [
@@ -11893,7 +12469,8 @@ mod tests {
         let source = include_str!("main.rs");
         let start = source.find("fn unlock_meeting(").unwrap();
         assert!(
-            source[start..start + 2_600].contains("confirm_operator(&state, UNLOCK_CONFIRMATION_REASON)")
+            source[start..start + 2_600]
+                .contains("confirm_operator(&state, UNLOCK_CONFIRMATION_REASON)")
         );
     }
 
@@ -11909,8 +12486,7 @@ mod tests {
         let temporary = TempDir::new().unwrap();
         let protected = temporary.path().join("protected");
         local_meeting_notes_session_core::storage::create_private_dir(&protected).unwrap();
-        let storage =
-            StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
+        let storage = StorageRoot::create(&temporary.path().join("app-data"), &protected).unwrap();
         let meeting_id = "11111111-1111-4111-8111-111111111111";
         let directory = storage.path().join("meetings").join(meeting_id);
         local_meeting_notes_session_core::storage::create_private_dir(&directory).unwrap();
@@ -12555,7 +13131,10 @@ mod tests {
     fn menu_event_names_match_the_frontend_contract() {
         assert_eq!(menu_event_name("new-recording"), Some("menu:new-recording"));
         assert_eq!(menu_event_name("stop-recording"), Some("menu:stop"));
-        assert_eq!(menu_event_name("toggle-sidebar"), Some("menu:toggle-sidebar"));
+        assert_eq!(
+            menu_event_name("toggle-sidebar"),
+            Some("menu:toggle-sidebar")
+        );
         assert_eq!(
             menu_event_name("open-transcript"),
             Some("menu:open-transcript")
@@ -12654,13 +13233,16 @@ mod tests {
             transition_startup(&mut model, StartupState::Ready).unwrap();
         }
         state.model_install_active.store(true, Ordering::SeqCst);
-        assert!(claim_sitting_start(
-            &state,
-            "11111111-1111-4111-8111-111111111111",
-            "operator-sitting",
-            None,
-            sender.clone(),
-        ).is_err());
+        assert!(
+            claim_sitting_start(
+                &state,
+                "11111111-1111-4111-8111-111111111111",
+                "operator-sitting",
+                None,
+                sender.clone(),
+            )
+            .is_err()
+        );
         assert!(!sitting_task_active(&state));
         state.model_install_active.store(false, Ordering::SeqCst);
         claim_sitting_start(
@@ -13621,14 +14203,9 @@ mod tests {
         create_private_dir(&directory.join("notes")).unwrap();
         let note_json = b"{}\n";
         let note_markdown = b"# Synthetic note\n";
-        let note_json_relative = format!(
-            "notes/{:x}.json",
-            Sha256::digest(note_json.as_slice())
-        );
-        let note_markdown_relative = format!(
-            "notes/{:x}.md",
-            Sha256::digest(note_markdown.as_slice())
-        );
+        let note_json_relative = format!("notes/{:x}.json", Sha256::digest(note_json.as_slice()));
+        let note_markdown_relative =
+            format!("notes/{:x}.md", Sha256::digest(note_markdown.as_slice()));
         let note_json_path = directory.join(&note_json_relative);
         let note_markdown_path = directory.join(&note_markdown_relative);
         durable_create_new(&note_json_path, note_json).unwrap();
@@ -13636,8 +14213,8 @@ mod tests {
 
         let mut meeting = load_meeting(directory).unwrap();
         meeting.lifecycle = MeetingLifecycle::Ready;
-        meeting.artifacts.current_note = Some(
-            local_meeting_notes_session_core::meeting::NoteRevisionRef {
+        meeting.artifacts.current_note =
+            Some(local_meeting_notes_session_core::meeting::NoteRevisionRef {
                 json: artifact_ref(directory, &note_json_relative).unwrap(),
                 markdown: artifact_ref(directory, &note_markdown_relative).unwrap(),
                 source_transcript_sha256: meeting
@@ -13647,8 +14224,7 @@ mod tests {
                     .unwrap()
                     .sha256
                     .clone(),
-            },
-        );
+            });
         write_meeting(directory, &meeting).unwrap();
     }
 
@@ -13752,7 +14328,13 @@ mod tests {
     fn the_registered_search_commands_inherit_the_w5_b_lock_exclusion() {
         let (_temporary, storage) = test_storage();
         let meeting_id = Uuid::new_v4().to_string();
-        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "exact probe needle");
+        write_transcript_fixture(
+            &storage,
+            &meeting_id,
+            10,
+            AudioState::Retained,
+            "exact probe needle",
+        );
         let state = vocabulary_command_state(&storage);
         fs::write(storage.path().join(search_probe::FLAG_FILE), b"").unwrap();
 
@@ -13794,7 +14376,13 @@ mod tests {
     fn the_registered_search_commands_refuse_with_the_quiet_sentence_while_the_flag_is_absent() {
         let (_temporary, storage) = test_storage();
         let meeting_id = Uuid::new_v4().to_string();
-        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "exact probe needle");
+        write_transcript_fixture(
+            &storage,
+            &meeting_id,
+            10,
+            AudioState::Retained,
+            "exact probe needle",
+        );
         let state = vocabulary_command_state(&storage);
         // Deliberately no flag file written.
 
@@ -13826,7 +14414,11 @@ mod tests {
         let state = vocabulary_command_state(&storage);
         // Deliberately no `first-run-seen.flag` written.
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
+        let response = library_snapshot_response_for(
+            library_reader::LibraryFilterArgs::default(),
+            false,
+            &state,
+        );
         assert_eq!(response.library.total, 0);
         assert!(!response.first_run_sheet_seen);
     }
@@ -13841,10 +14433,20 @@ mod tests {
     fn library_snapshot_reports_a_nonzero_total_for_an_operator_with_existing_meetings() {
         let (_temporary, storage) = test_storage();
         let meeting_id = Uuid::new_v4().to_string();
-        write_transcript_fixture(&storage, &meeting_id, 3, AudioState::Retained, "an existing meeting");
+        write_transcript_fixture(
+            &storage,
+            &meeting_id,
+            3,
+            AudioState::Retained,
+            "an existing meeting",
+        );
         let state = vocabulary_command_state(&storage);
 
-        let response = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
+        let response = library_snapshot_response_for(
+            library_reader::LibraryFilterArgs::default(),
+            false,
+            &state,
+        );
         assert_eq!(response.library.total, 1);
         // No flag was ever written for this operator -- the point is that
         // `total` alone is enough to suppress the sheet regardless.
@@ -13857,10 +14459,8 @@ mod tests {
         fn project(
             &self,
             request: &local_meeting_notes_session_core::note_projection::ProjectRequest,
-        ) -> Result<
-            Vec<u8>,
-            local_meeting_notes_session_core::note_projection::ProjectTransportError,
-        > {
+        ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
+        {
             self.0.fetch_add(1, Ordering::SeqCst);
             Ok(format!(
                 "{{\"schema\":\"note-projection-result/1\",\"request_id\":\"{}\",\"operation\":\"note.project\",\"outcome\":\"succeeded\",\"projection\":{{\"schema\":\"note-claim-projection/1\",\"note_json_sha256\":\"{}\",\"note_markdown_sha256\":\"{}\",\"transcript_sha256\":\"{}\",\"claims\":[]}},\"failure\":null}}\n",
@@ -13880,9 +14480,8 @@ mod tests {
         write_ready_note_fixture(&storage, &meeting_id);
         let state = vocabulary_command_state(&storage);
         let projections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        *state.note_projector.lock().unwrap() = Some(Arc::new(CountingProjector(
-            Arc::clone(&projections),
-        )));
+        *state.note_projector.lock().unwrap() =
+            Some(Arc::new(CountingProjector(Arc::clone(&projections))));
 
         let _first = library_snapshot_for(&state);
         assert_eq!(projections.load(Ordering::SeqCst), 1);
@@ -13901,10 +14500,8 @@ mod tests {
         fn project(
             &self,
             _: &local_meeting_notes_session_core::note_projection::ProjectRequest,
-        ) -> Result<
-            Vec<u8>,
-            local_meeting_notes_session_core::note_projection::ProjectTransportError,
-        > {
+        ) -> Result<Vec<u8>, local_meeting_notes_session_core::note_projection::ProjectTransportError>
+        {
             Err(local_meeting_notes_session_core::note_projection::ProjectTransportError::Unavailable)
         }
     }
@@ -13923,7 +14520,13 @@ mod tests {
     fn a_meeting_moved_into_the_library_appears_on_the_next_snapshot() {
         let (_temporary, storage) = test_storage();
         let (_elsewhere, elsewhere) = test_storage();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         let state = vocabulary_command_state(&storage);
         assert_eq!(library_snapshot_for(&state).rows.len(), 1);
 
@@ -13947,7 +14550,13 @@ mod tests {
     fn removing_an_unprojectable_meeting_recovers_the_next_snapshot() {
         let (_temporary, storage) = test_storage();
         let (_elsewhere, elsewhere) = test_storage();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         let state = vocabulary_command_state(&storage);
         *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
         assert_eq!(library_snapshot_for(&state).state, "populated");
@@ -13978,7 +14587,13 @@ mod tests {
     #[test]
     fn an_explicit_refresh_recovers_a_poisoned_library_cache() {
         let (_temporary, storage) = test_storage();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         let state = vocabulary_command_state(&storage);
         assert_eq!(library_snapshot_for(&state).state, "populated");
 
@@ -14003,9 +14618,8 @@ mod tests {
         write_ready_note_fixture(&storage, &Uuid::new_v4().to_string());
         let state = vocabulary_command_state(&storage);
         let projections = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        *state.note_projector.lock().unwrap() = Some(Arc::new(CountingProjector(
-            Arc::clone(&projections),
-        )));
+        *state.note_projector.lock().unwrap() =
+            Some(Arc::new(CountingProjector(Arc::clone(&projections))));
 
         library_snapshot_for(&state);
         library_snapshot_for(&state);
@@ -14018,7 +14632,13 @@ mod tests {
     #[test]
     fn an_explicit_refresh_still_fails_closed_on_an_unprojectable_meeting() {
         let (_temporary, storage) = test_storage();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         let state = vocabulary_command_state(&storage);
         *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
         assert_eq!(library_snapshot_for(&state).state, "populated");
@@ -14033,7 +14653,13 @@ mod tests {
     fn an_explicit_refresh_still_excludes_a_meeting_a_writer_holds() {
         let (_temporary, storage) = test_storage();
         let held = Uuid::new_v4().to_string();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         write_transcript_fixture(&storage, &held, 4, AudioState::Retained, "held");
         let state = vocabulary_command_state(&storage);
         let coordination = state.meeting_storage_coordination().unwrap();
@@ -14094,7 +14720,13 @@ mod tests {
     fn a_failed_rebuild_records_the_read_error_kind() {
         let (_temporary, storage) = test_storage();
         let diagnostics = TempDir::new().unwrap();
-        write_transcript_fixture(&storage, &Uuid::new_v4().to_string(), 3, AudioState::Retained, "kept");
+        write_transcript_fixture(
+            &storage,
+            &Uuid::new_v4().to_string(),
+            3,
+            AudioState::Retained,
+            "kept",
+        );
         let state = state_recording_diagnostics(&storage, diagnostics.path());
         *state.note_projector.lock().unwrap() = Some(Arc::new(FailingProjector));
         let unprojectable = Uuid::new_v4().to_string();
@@ -14113,7 +14745,9 @@ mod tests {
         let diagnostics = TempDir::new().unwrap();
         let directory = diagnostics.path().to_path_buf();
         let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| write_panic_diagnostic(&directory, info)));
+        std::panic::set_hook(Box::new(move |info| {
+            write_panic_diagnostic(&directory, info)
+        }));
         let (line_sender, line_receiver) = std::sync::mpsc::channel();
         let _ = std::thread::Builder::new()
             .name("library-probe".into())
@@ -14133,7 +14767,9 @@ mod tests {
             .filter(|body| body.contains("thread library-probe "))
             .collect();
         assert_eq!(ours.len(), 1, "recorded: {recorded:?}");
-        assert!(ours[0].contains(&format!("detail=thread library-probe at main.rs line {line} column ")));
+        assert!(ours[0].contains(&format!(
+            "detail=thread library-probe at main.rs line {line} column "
+        )));
         assert!(!ours[0].contains("Quarterly"));
         assert!(!ours[0].contains("someone"));
     }
@@ -14159,13 +14795,24 @@ mod tests {
         let (_temporary, storage) = test_storage();
         let state = vocabulary_command_state(&storage);
 
-        let before = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
+        let before = library_snapshot_response_for(
+            library_reader::LibraryFilterArgs::default(),
+            false,
+            &state,
+        );
         assert!(!before.first_run_sheet_seen);
 
         dismiss_first_run_sheet_for(&state);
 
-        let after = library_snapshot_response_for(library_reader::LibraryFilterArgs::default(), false, &state);
-        assert!(after.first_run_sheet_seen, "dismissal must persist across a fresh snapshot call, not just in-memory");
+        let after = library_snapshot_response_for(
+            library_reader::LibraryFilterArgs::default(),
+            false,
+            &state,
+        );
+        assert!(
+            after.first_run_sheet_seen,
+            "dismissal must persist across a fresh snapshot call, not just in-memory"
+        );
     }
 
     #[test]
@@ -14226,9 +14873,13 @@ mod tests {
         assert_eq!(recorded + paused, 80 * 16_000);
         // Every span sits inside the wall clock the two numbers imply, which is
         // the bound the capture receipt is validated against.
-        assert!(receipt["spans"].as_array().unwrap().iter().all(|span| {
-            span["resumed_at_samples"].as_u64().unwrap() <= recorded + paused
-        }));
+        assert!(
+            receipt["spans"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|span| { span["resumed_at_samples"].as_u64().unwrap() <= recorded + paused })
+        );
     }
 
     #[test]
@@ -14273,23 +14924,42 @@ mod tests {
         let event = |reason: Option<&str>, mic: u64, system: u64| {
             let mut value = json!({"schema":"capture-event/1", "event":"finalized",
                 "legs":{"mic":{"samples":mic},"system":{"samples":system}}});
-            if let Some(reason) = reason { value["stop_reason"] = json!(reason); }
+            if let Some(reason) = reason {
+                value["stop_reason"] = json!(reason);
+            }
             parse_capture_event(&serde_json::to_vec(&value).unwrap())
         };
         let automatic = event(Some("microphone_configuration_changed"), 32000, 32001).unwrap();
         let receipt = validate_meeting_finalization(automatic, false).unwrap();
-        assert_eq!(receipt.stop_reason, Some(CaptureStopReason::MicrophoneConfigurationChanged));
+        assert_eq!(
+            receipt.stop_reason,
+            Some(CaptureStopReason::MicrophoneConfigurationChanged)
+        );
         assert!(event(Some("unknown"), 1, 1).is_err());
         assert!(validate_meeting_finalization(event(None, 1, 1).unwrap(), false).is_err());
         assert!(validate_meeting_finalization(event(None, 1, 1).unwrap(), true).is_ok());
-        assert!(validate_meeting_finalization(event(Some("microphone_configuration_changed"), 0, 1).unwrap(), false).is_err());
-        assert!(validate_meeting_finalization(event(Some("microphone_configuration_changed"), u64::MAX, 1).unwrap(), false).is_err());
+        assert!(
+            validate_meeting_finalization(
+                event(Some("microphone_configuration_changed"), 0, 1).unwrap(),
+                false
+            )
+            .is_err()
+        );
+        assert!(
+            validate_meeting_finalization(
+                event(Some("microphone_configuration_changed"), u64::MAX, 1).unwrap(),
+                false
+            )
+            .is_err()
+        );
         assert!(parse_capture_event(br#"{"schema":"capture-event/1","event":"finalized","stop_reason":"microphone_configuration_changed","legs":{"mic":{"samples":7}}}"#).is_err());
         for already_stopping in [false, true] {
             let mut model = AppModel::default();
             transition_capture(&mut model, CaptureState::Arming).unwrap();
             transition_capture(&mut model, CaptureState::Recording).unwrap();
-            if already_stopping { transition_capture(&mut model, CaptureState::Stopping).unwrap(); }
+            if already_stopping {
+                transition_capture(&mut model, CaptureState::Stopping).unwrap();
+            }
             model.capture_pause_change_pending = true;
             accept_automatic_capture_stop(&mut model).unwrap();
             assert_eq!(model.reducer.capture(), CaptureState::Stopping);
@@ -14306,17 +14976,26 @@ mod tests {
     fn automatic_capture_finalization_survives_a_closed_stop_pipe() {
         for automatic in [false, true] {
             let temporary = TempDir::new().unwrap();
-            let reason = if automatic { r#", "stop_reason":"microphone_configuration_changed""# } else { "" };
-            let body = format!(r#"emit '{{"schema":"capture-event/1","event":"finalized","legs":{{"mic":{{"samples":32000}},"system":{{"samples":32000}}}}{reason}}}'
-exit 0"#);
+            let reason = if automatic {
+                r#", "stop_reason":"microphone_configuration_changed""#
+            } else {
+                ""
+            };
+            let body = format!(
+                r#"emit '{{"schema":"capture-event/1","event":"finalized","legs":{{"mic":{{"samples":32000}},"system":{{"samples":32000}}}}{reason}}}'
+exit 0"#
+            );
             let script = write_sitting_helper(temporary.path(), &body);
             let mut anchor = spawn_group_anchor();
-            let mut helper = CaptureProcess::spawn(&script, temporary.path(), anchor.id() as i32).unwrap();
+            let mut helper =
+                CaptureProcess::spawn(&script, temporary.path(), anchor.id() as i32).unwrap();
             // The call can finish and close its control pipe before Stop is sent.
             helper.control.take();
             let result = finish_capture_helper(&mut helper, None);
             assert_eq!(result.is_ok(), automatic, "{result:?}");
-            helper.finish_cleanly(Instant::now() + Duration::from_secs(2)).unwrap();
+            helper
+                .finish_cleanly(Instant::now() + Duration::from_secs(2))
+                .unwrap();
             let _ = anchor.kill();
             anchor.wait().unwrap();
         }
@@ -14347,10 +15026,12 @@ exit 0"#);
             parse_capture_event(br#"{"schema":"capture-event/1","event":"paused","extra":true}"#)
                 .is_err()
         );
-        assert!(parse_capture_event(
-            br#"{"schema":"capture-event/1","event":"suspended","extra":true}"#
-        )
-        .is_err());
+        assert!(
+            parse_capture_event(
+                br#"{"schema":"capture-event/1","event":"suspended","extra":true}"#
+            )
+            .is_err()
+        );
         assert!(
             parse_capture_event(
                 br#"{"schema":"capture-event/1","event":"recording","format":{"encoding":"pcm_f32le","sample_rate":16000,"channels":1}}"#
@@ -15428,7 +16109,13 @@ exit 0"#);
     /// A captured meeting with retained audio and no transcription request:
     /// what discovery reports as an orphan for the executor to enqueue.
     fn write_captured_orphan_fixture(storage: &StorageRoot, meeting_id: &str) -> PathBuf {
-        write_transcript_fixture_with_turns(storage, meeting_id, 1_000, AudioState::Retained, json!([]));
+        write_transcript_fixture_with_turns(
+            storage,
+            meeting_id,
+            1_000,
+            AudioState::Retained,
+            json!([]),
+        );
         let directory = meeting_dir(storage, meeting_id).unwrap();
         let mut meeting = load_meeting(&directory).unwrap();
         meeting.lifecycle = MeetingLifecycle::Captured;
@@ -15630,7 +16317,13 @@ exit 0"#);
     fn speech_engine_restart_restores_an_already_open_transcript() {
         let (_temporary, storage) = test_storage();
         let meeting_id = Uuid::new_v4().to_string();
-        write_transcript_fixture(&storage, &meeting_id, 10, AudioState::Retained, "saved words");
+        write_transcript_fixture(
+            &storage,
+            &meeting_id,
+            10,
+            AudioState::Retained,
+            "saved words",
+        );
         let mut model = AppModel::default();
         transition_startup(&mut model, StartupState::Checking).unwrap();
         for restart in [false, true, true] {
@@ -15638,7 +16331,8 @@ exit 0"#);
                 transition_startup(&mut model, StartupState::Retrying).unwrap();
             }
             let projection = load_latest_transcript_projection(&storage, &[meeting_id.clone()])
-                .unwrap().unwrap();
+                .unwrap()
+                .unwrap();
             apply_restored_transcript_projection(&mut model, projection).unwrap();
             transition_startup(&mut model, StartupState::Ready).unwrap();
             let snapshot = model.snapshot();
@@ -15653,7 +16347,9 @@ exit 0"#);
         assert_eq!(model.reducer.capture(), CaptureState::Arming);
         assert!(model.meeting_id.is_none());
         assert!(model.turns.is_empty());
-        let saved = load_latest_transcript_projection(&storage, &[meeting_id]).unwrap().unwrap();
+        let saved = load_latest_transcript_projection(&storage, &[meeting_id])
+            .unwrap()
+            .unwrap();
         assert_eq!(saved.turns[0].text, "saved words");
     }
 
@@ -15709,7 +16405,8 @@ exit 0"#);
 
         prepare_startup_retry(&mut model).unwrap();
         let projection = load_latest_transcript_projection(&storage, &[older.clone()])
-            .unwrap().unwrap();
+            .unwrap()
+            .unwrap();
         apply_restored_transcript_projection(&mut model, projection).unwrap();
         transition_startup(&mut model, StartupState::Ready).unwrap();
 
@@ -15724,7 +16421,9 @@ exit 0"#);
         transition_capture(&mut model, CaptureState::Idle).unwrap();
         model.clear_meeting_projection();
         arm_new_meeting_capture(&mut model).unwrap();
-        let saved = load_latest_transcript_projection(&storage, &[older]).unwrap().unwrap();
+        let saved = load_latest_transcript_projection(&storage, &[older])
+            .unwrap()
+            .unwrap();
         assert_eq!(saved.turns[0].text, "older words");
     }
 
@@ -15908,7 +16607,8 @@ exit 0"#);
         for path in [command, "licenses/LICENSE"].into_iter().chain(dylib_names) {
             fs::write(root.join(path), path.as_bytes()).unwrap();
         }
-        let entry = |path: &str| json!({"path": path, "sha256": sha256_file(&root.join(path)).unwrap()});
+        let entry =
+            |path: &str| json!({"path": path, "sha256": sha256_file(&root.join(path)).unwrap()});
         let receipt = json!({
             "schema": "nemotron-diarization-runtime/2",
             "source": {"commit": "97a15afa5caa9bce5baaa86c1184103877af4101", "tree": "afa144fdbda5d04f2fb7bf83335673f15689cb04", "patch_sha256": "fd433fc4c3343fcaba3a5c4cbbfc4a4d2bc1f3ddbd1c82ad97a412077985079e"},
@@ -15918,8 +16618,15 @@ exit 0"#);
             "assets": [],
             "licenses": [entry("licenses/LICENSE")],
         });
-        fs::write(root.join("runtime.json"), serde_json::to_vec(&receipt).unwrap()).unwrap();
-        assert_eq!(verified_nemotron_runtime(temporary.path()).unwrap(), root.join(command));
+        fs::write(
+            root.join("runtime.json"),
+            serde_json::to_vec(&receipt).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            verified_nemotron_runtime(temporary.path()).unwrap(),
+            root.join(command)
+        );
         fs::write(root.join(dylib_names[0]), b"changed").unwrap();
         assert!(verified_nemotron_runtime(temporary.path()).is_err());
     }
@@ -15929,7 +16636,10 @@ exit 0"#);
         let (_temporary, storage) = test_storage();
         let directory = NemotronModel::directory(&storage).unwrap();
         create_private_dir(&directory).unwrap();
-        assert!(NemotronModel::verify(&storage).is_err(), "a missing model must not be admitted");
+        assert!(
+            NemotronModel::verify(&storage).is_err(),
+            "a missing model must not be admitted"
+        );
 
         durable_create_new(&directory.join(NEMOTRON_MODEL_FILE), b"tampered").unwrap();
         durable_create_new(
@@ -15937,7 +16647,9 @@ exit 0"#);
             &NemotronModel.receipt_bytes(),
         )
         .unwrap();
-        assert!(NemotronModel::verify(&storage).is_err(), "a wrong-sized or tampered model must not be admitted");
+        assert!(
+            NemotronModel::verify(&storage).is_err(),
+            "a wrong-sized or tampered model must not be admitted"
+        );
     }
-
 }

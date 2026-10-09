@@ -96,7 +96,12 @@ const PRODUCT_COMMANDS: &[&str] = &[
 ];
 
 // Compatibility-only note commands remain native, never called by current UI.
-const NATIVE_ONLY_COMMANDS: &[&str] = &["regenerate_note", "note_model_settings", "install_note_model", "remove_note_model"];
+const NATIVE_ONLY_COMMANDS: &[&str] = &[
+    "regenerate_note",
+    "note_model_settings",
+    "install_note_model",
+    "remove_note_model",
+];
 
 const MAIN_PERMISSIONS: &[&str] = &[
     "core:window:allow-start-dragging",
@@ -348,7 +353,11 @@ fn settings_can_only_manage_audio_access_local_speech_models_and_updates() {
     ] {
         assert!(script.contains(command));
     }
-    for command in ["note_model_settings", "install_note_model", "remove_note_model"] {
+    for command in [
+        "note_model_settings",
+        "install_note_model",
+        "remove_note_model",
+    ] {
         assert!(!script.contains(command));
     }
     assert!(!script.contains("preview_"));

@@ -215,7 +215,10 @@ impl WorkerProcessNoteGenerationBridge {
     pub(crate) fn admission_check(&self) -> (bool, Option<String>) {
         // Do not inspect the manifest or installed weights for a retired
         // operation. It is unavailable regardless of local model state.
-        (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+        (
+            false,
+            Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()),
+        )
     }
 }
 
@@ -790,10 +793,8 @@ mod tests {
     #[test]
     fn retired_generation_bridge_never_sends_a_worker_request() {
         let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
-        let bridge = WorkerProcessNoteGenerationBridge::new(
-            port.clone(),
-            Arc::new(Mutex::new(None)),
-        );
+        let bridge =
+            WorkerProcessNoteGenerationBridge::new(port.clone(), Arc::new(Mutex::new(None)));
         let result = bridge.create(&NoteCreateWorkerArgs {
             meeting_id: Uuid::new_v4(),
             source_transcript_sha256: "a".repeat(64),
@@ -1213,7 +1214,15 @@ mod tests {
         let fixture = runtime_fixture(gated_turns());
         let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
         let coordinator = coordinator_for(&fixture, port.clone());
-        let storage = fixture.state.storage.lock().unwrap().as_ref().unwrap().storage.clone();
+        let storage = fixture
+            .state
+            .storage
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .storage
+            .clone();
         let meeting_path = storage
             .resolve(&Path::new("meetings").join(fixture.meeting_id.to_string()))
             .unwrap()
@@ -1372,7 +1381,10 @@ mod tests {
         );
         assert_eq!(
             bridge.admission_check(),
-            (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+            (
+                false,
+                Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into())
+            )
         );
         let fixture = runtime_fixture(gated_turns());
         let bridge = WorkerProcessNoteGenerationBridge::new(
@@ -1381,7 +1393,10 @@ mod tests {
         );
         assert_eq!(
             bridge.admission_check(),
-            (false, Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()))
+            (
+                false,
+                Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into())
+            )
         );
     }
 }

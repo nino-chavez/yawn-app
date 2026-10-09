@@ -264,7 +264,10 @@ mod tests {
                 "{hostile:?} must not be treated as a known state"
             );
         }
-        assert_eq!(MicrophonePermission::parse(None), MicrophonePermission::Unknown);
+        assert_eq!(
+            MicrophonePermission::parse(None),
+            MicrophonePermission::Unknown
+        );
         for hostile in ["", "AUTHORIZED", "denied", "yes"] {
             assert_eq!(
                 SystemAudioPermission::parse(Some(hostile)),
@@ -288,10 +291,16 @@ mod tests {
         })
         .unwrap();
         assert!(encoded.contains("\"probeUnavailable\":false"), "{encoded}");
-        assert!(encoded.contains("\"systemAudio\":\"unmeasured\""), "{encoded}");
+        assert!(
+            encoded.contains("\"systemAudio\":\"unmeasured\""),
+            "{encoded}"
+        );
         // The state values are compared as literals in main.js, so their casing is
         // part of the contract too.
-        assert!(encoded.contains("\"microphone\":\"not-determined\""), "{encoded}");
+        assert!(
+            encoded.contains("\"microphone\":\"not-determined\""),
+            "{encoded}"
+        );
     }
 
     #[test]
@@ -309,7 +318,10 @@ mod tests {
             prompted: false,
         })
         .unwrap();
-        assert!(encoded.contains("\"microphone\":\"unmeasured\""), "{encoded}");
+        assert!(
+            encoded.contains("\"microphone\":\"unmeasured\""),
+            "{encoded}"
+        );
         // And the probe cannot claim it: a microphone status is always available on
         // the platform, so this value is only ever this module's own.
         assert_eq!(

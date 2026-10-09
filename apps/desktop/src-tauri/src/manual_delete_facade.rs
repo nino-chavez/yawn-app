@@ -118,7 +118,6 @@ fn map_core_error(error: ManualAudioDeletionError) -> ManualAudioDeletionFacadeE
     }
 }
 
-
 /// The reviewed confirmation for removing a whole meeting.
 ///
 /// Deliberately a distinct type from [`AudioDeletionReview`] rather than a reuse
@@ -943,11 +942,16 @@ mod tests {
             review: MeetingTrashReview::NotReviewed,
         };
         assert_eq!(
-            state.meeting_trash_facade().trash_meeting(unreviewed, 1_000),
+            state
+                .meeting_trash_facade()
+                .trash_meeting(unreviewed, 1_000),
             Err(MeetingTrashFacadeError::ConfirmationRequired)
         );
         assert_eq!(fs::read(directory.join("meeting.json")).unwrap(), before);
-        assert!(directory.exists(), "an unreviewed request moved the meeting");
+        assert!(
+            directory.exists(),
+            "an unreviewed request moved the meeting"
+        );
 
         let reviewed = MeetingTrashUiArgs {
             meeting_id: MEETING_ID.into(),
@@ -959,14 +963,12 @@ mod tests {
         );
         assert!(!directory.exists(), "the meeting stayed at meetings/<id>");
 
-        let restored = state
-            .meeting_restore_facade()
-            .restore_meeting(
-                MeetingRestoreUiArgs {
-                    meeting_id: MEETING_ID.into(),
-                },
-                2_000,
-            );
+        let restored = state.meeting_restore_facade().restore_meeting(
+            MeetingRestoreUiArgs {
+                meeting_id: MEETING_ID.into(),
+            },
+            2_000,
+        );
         assert_eq!(restored, Ok(MeetingRestoreFacadeOutcome::Restored));
         assert!(directory.join("meeting.json").exists());
 

@@ -136,7 +136,10 @@ mod tests {
         assert!(enabled(&storage));
 
         fs::remove_file(storage.path().join(FLAG_FILE)).unwrap();
-        assert!(!enabled(&storage), "deleting the marker must disable the probe on the very next read");
+        assert!(
+            !enabled(&storage),
+            "deleting the marker must disable the probe on the very next read"
+        );
     }
 
     #[test]
@@ -152,9 +155,20 @@ mod tests {
         for (line, expected_event) in lines.iter().zip(["invoked", "opened"]) {
             let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
             let object = parsed.as_object().expect("one JSON object per line");
-            assert_eq!(object.len(), 2, "line must carry only ts_epoch_ms and event: {line}");
-            assert!(object.get("ts_epoch_ms").is_some_and(|value| value.is_u64()));
-            assert_eq!(object.get("event").and_then(|value| value.as_str()), Some(expected_event));
+            assert_eq!(
+                object.len(),
+                2,
+                "line must carry only ts_epoch_ms and event: {line}"
+            );
+            assert!(
+                object
+                    .get("ts_epoch_ms")
+                    .is_some_and(|value| value.is_u64())
+            );
+            assert_eq!(
+                object.get("event").and_then(|value| value.as_str()),
+                Some(expected_event)
+            );
         }
     }
 
