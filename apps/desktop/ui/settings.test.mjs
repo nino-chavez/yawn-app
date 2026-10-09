@@ -92,7 +92,7 @@ test("Settings omits retired notes setup and keeps the remaining navigation alig
   const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
   const navTargets = [...html.matchAll(/<a href="#([^"]+)">/g)].map(([, id]) => id);
   const sectionIds = [...html.matchAll(/<section id="([^"]+)" class="settings-group"/g)].map(([, id]) => id);
-  assert.deepEqual(navTargets, ["recording", "transcription", "speakers", "storage"]);
+  assert.deepEqual(navTargets, ["recording", "transcription", "speakers", "updates", "storage"]);
   assert.deepEqual(sectionIds, navTargets);
 });
 

@@ -88,6 +88,11 @@ const PRODUCT_COMMANDS: &[&str] = &[
     // `library_snapshot`'s `searchProbeEnabled` bit says the marker exists.
     "preview_library_search",
     "preview_library_open_search_result",
+    // In-app updates (`updater.rs`), called only from Settings.
+    "update_status",
+    "set_automatic_update_check",
+    "check_for_updates",
+    "install_update",
 ];
 
 // Compatibility-only note commands remain native, never called by current UI.
@@ -297,7 +302,7 @@ fn every_frontend_call_has_a_matching_product_permission() {
 }
 
 #[test]
-fn settings_can_only_manage_audio_access_and_local_speech_models() {
+fn settings_can_only_manage_audio_access_local_speech_models_and_updates() {
     let settings = permissions(include_str!("../capabilities/product/settings-window.json"));
     assert_eq!(
         settings,
@@ -316,6 +321,10 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
             "allow-install-apple-speech-assets",
             "allow-nemotron-model-settings",
             "allow-install-nemotron-model",
+            "allow-update-status",
+            "allow-set-automatic-update-check",
+            "allow-check-for-updates",
+            "allow-install-update",
         ]
     );
 
@@ -332,6 +341,10 @@ fn settings_can_only_manage_audio_access_and_local_speech_models() {
         "install_apple_speech_assets",
         "nemotron_model_settings",
         "install_nemotron_model",
+        "update_status",
+        "set_automatic_update_check",
+        "check_for_updates",
+        "install_update",
     ] {
         assert!(script.contains(command));
     }

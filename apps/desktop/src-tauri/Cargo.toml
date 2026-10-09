@@ -27,8 +27,15 @@ objc2-local-authentication = { version = "0.3.2", default-features = false, feat
 block2 = "0.6.2"
 objc2 = { version = "0.6.4", default-features = false, features = ["std"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["alloc", "NSString", "NSError"] }
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
+# The verifier and the archive crates tauri-plugin-updater uses, for the
+# release-time checks in examples/ (verify_update_signature.rs and
+# unpack_like_updater.rs), so those checks see what the updater will see.
+flate2 = "1"
+minisign-verify = "0.2"
+tar = "0.4"
 serde_json.workspace = true
 tempfile.workspace = true
 

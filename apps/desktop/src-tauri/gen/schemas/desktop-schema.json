@@ -195,6 +195,12 @@
           "markdownDescription": "Enables the authorize_locked_action command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_for_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-for-updates",
+          "markdownDescription": "Enables the check_for_updates command without any pre-configured scope."
+        },
+        {
           "description": "Enables the corpus_embed_pending command without any pre-configured scope.",
           "type": "string",
           "const": "allow-corpus-embed-pending",
@@ -277,6 +283,12 @@
           "type": "string",
           "const": "allow-install-transcript-model",
           "markdownDescription": "Enables the install_transcript_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-install-update",
+          "markdownDescription": "Enables the install_update command without any pre-configured scope."
         },
         {
           "description": "Enables the library_assign_meeting_folder command without any pre-configured scope.",
@@ -621,6 +633,12 @@
           "markdownDescription": "Enables the select_transcription_engine command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_automatic_update_check command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-automatic-update-check",
+          "markdownDescription": "Enables the set_automatic_update_check command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_desktop_layout command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-desktop-layout",
@@ -669,6 +687,12 @@
           "markdownDescription": "Enables the unlock_meeting command without any pre-configured scope."
         },
         {
+          "description": "Enables the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-status",
+          "markdownDescription": "Enables the update_status command without any pre-configured scope."
+        },
+        {
           "description": "Denies the analyze_speakers command without any pre-configured scope.",
           "type": "string",
           "const": "deny-analyze-speakers",
@@ -685,6 +709,12 @@
           "type": "string",
           "const": "deny-authorize-locked-action",
           "markdownDescription": "Denies the authorize_locked_action command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_for_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-for-updates",
+          "markdownDescription": "Denies the check_for_updates command without any pre-configured scope."
         },
         {
           "description": "Denies the corpus_embed_pending command without any pre-configured scope.",
@@ -769,6 +799,12 @@
           "type": "string",
           "const": "deny-install-transcript-model",
           "markdownDescription": "Denies the install_transcript_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-install-update",
+          "markdownDescription": "Denies the install_update command without any pre-configured scope."
         },
         {
           "description": "Denies the library_assign_meeting_folder command without any pre-configured scope.",
@@ -1113,6 +1149,12 @@
           "markdownDescription": "Denies the select_transcription_engine command without any pre-configured scope."
         },
         {
+          "description": "Denies the set_automatic_update_check command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-automatic-update-check",
+          "markdownDescription": "Denies the set_automatic_update_check command without any pre-configured scope."
+        },
+        {
           "description": "Denies the set_desktop_layout command without any pre-configured scope.",
           "type": "string",
           "const": "deny-set-desktop-layout",
@@ -1159,6 +1201,12 @@
           "type": "string",
           "const": "deny-unlock-meeting",
           "markdownDescription": "Denies the unlock_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-status",
+          "markdownDescription": "Denies the update_status command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
@@ -3241,6 +3289,60 @@
           "type": "string",
           "const": "global-shortcut:deny-unregister-all",
           "markdownDescription": "Denies the unregister_all command without any pre-configured scope."
+        },
+        {
+          "description": "This permission set configures which kind of\nupdater functions are exposed to the frontend.\n\n#### Granted Permissions\n\nThe full workflow from checking for updates to installing them\nis enabled.\n\n\n#### This default permission set includes:\n\n- `allow-check`\n- `allow-download`\n- `allow-install`\n- `allow-download-and-install`",
+          "type": "string",
+          "const": "updater:default",
+          "markdownDescription": "This permission set configures which kind of\nupdater functions are exposed to the frontend.\n\n#### Granted Permissions\n\nThe full workflow from checking for updates to installing them\nis enabled.\n\n\n#### This default permission set includes:\n\n- `allow-check`\n- `allow-download`\n- `allow-install`\n- `allow-download-and-install`"
+        },
+        {
+          "description": "Enables the check command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:allow-check",
+          "markdownDescription": "Enables the check command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the download command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:allow-download",
+          "markdownDescription": "Enables the download command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the download_and_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:allow-download-and-install",
+          "markdownDescription": "Enables the download_and_install command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the install command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:allow-install",
+          "markdownDescription": "Enables the install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:deny-check",
+          "markdownDescription": "Denies the check command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the download command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:deny-download",
+          "markdownDescription": "Denies the download command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the download_and_install command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:deny-download-and-install",
+          "markdownDescription": "Denies the download_and_install command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the install command without any pre-configured scope.",
+          "type": "string",
+          "const": "updater:deny-install",
+          "markdownDescription": "Denies the install command without any pre-configured scope."
         }
       ]
     },

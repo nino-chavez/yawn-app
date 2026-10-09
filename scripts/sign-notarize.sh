@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Developer ID signing -> notarized app -> signed, notarized, stapled DMG.
+# Developer ID signing -> notarized app -> signed, notarized, stapled DMG
+# -> signed in-app update package (scripts/build-update-artifact.sh).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -198,3 +199,10 @@ spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG
 # never retype the hash by hand.
 shasum -a 256 "$DMG" | tee "$DMG.sha256"
 echo "DONE: $DMG"
+
+# The in-app update is packaged from the same stapled app. A failure here
+# leaves the DMG complete; re-run build-update-artifact.sh on its own rather
+# than this lane, which would re-sign and resubmit everything.
+echo "== packaging the in-app update"
+"$ROOT/scripts/build-update-artifact.sh" "$APP" "$ADMISSION" \
+  || die "the DMG is done, but the update package was not built; re-run scripts/build-update-artifact.sh alone"

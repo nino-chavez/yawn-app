@@ -31,6 +31,8 @@ import {
   pendingTranscriptRefreshDue,
   finishedMeetingStep,
   FINISHED_MEETING_ROW_ATTEMPTS,
+  updatePresentation,
+  updateAvailableNotice,
   libraryRowPreview,
   libraryStallTransition,
   localVocabularyPresentation,
@@ -2229,4 +2231,67 @@ test("a just-finished recording is re-read into the library and opened, not left
   assert.equal(finishedMeetingStep({ ...base, filtered: true }), "refresh");
   assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, lastAttemptMs: 0 }), "give-up");
   assert.equal(finishedMeetingStep({ ...base, filtered: true, attempts: 1, libraryRows: [{ meetingId: "m-new" }] }), "open");
+});
+
+test("the update row says what Yawn is doing, and offers the install only when there is one", () => {
+  const base = { automatic: true, currentVersion: "0.6.15", state: "idle", availableVersion: null, notes: null, message: null, downloadedBytes: 0, totalBytes: null, installBlocked: null };
+  // Before the backend answers: nothing to act on, and keep asking.
+  const loading = updatePresentation(null);
+  assert.equal(loading.action, null);
+  assert.equal(loading.poll, true);
+
+  const idle = updatePresentation(base);
+  assert.equal(idle.action, null);
+  assert.equal(idle.canCheck, true);
+  assert.equal(idle.automatic, true);
+  assert.equal(updatePresentation({ ...base, automatic: false }).automatic, false);
+  // The disclosure under the switch follows the switch.
+  assert.notEqual(updatePresentation({ ...base, automatic: false }).disclosure, idle.disclosure);
+  assert.equal(loading.disclosure, idle.disclosure);
+
+  const checking = updatePresentation({ ...base, state: "checking" });
+  assert.equal(checking.canCheck, false);
+  assert.equal(checking.poll, true);
+
+  assert.equal(updatePresentation({ ...base, state: "up-to-date" }).tone, "ready");
+
+  // An update the operator can install now.
+  const available = updatePresentation({ ...base, state: "available", availableVersion: "0.6.16" });
+  assert.deepEqual(available.action, { action: "install-update", label: available.action.label, disabled: false });
+  assert.match(available.detail, /0\.6\.16/);
+  // The same update while a recording runs: shown, reason given, not clickable.
+  const blocked = updatePresentation({ ...base, state: "available", availableVersion: "0.6.16", installBlocked: "Finish the current recording first." });
+  assert.equal(blocked.action.disabled, true);
+  assert.match(blocked.detail, /Finish the current recording first\./);
+
+  // Download progress is a number only when the size is known.
+  const halfway = updatePresentation({ ...base, state: "downloading", availableVersion: "0.6.16", downloadedBytes: 50, totalBytes: 100 });
+  assert.match(halfway.detail, /50%/);
+  assert.equal(halfway.action, null);
+  assert.equal(halfway.canCheck, false);
+  assert.doesNotMatch(updatePresentation({ ...base, state: "downloading", availableVersion: "0.6.16", downloadedBytes: 50 }).detail, /%/);
+
+  const installing = updatePresentation({ ...base, state: "installing", availableVersion: "0.6.16" });
+  assert.equal(installing.action, null);
+  assert.equal(installing.poll, true);
+
+  // A failed check reports the backend's reason and has nothing to retry
+  // but the check; a failed download keeps the found update retryable.
+  const failedCheck = updatePresentation({ ...base, state: "failed", message: "Yawn could not check for updates: offline" });
+  assert.equal(failedCheck.tone, "attention");
+  assert.match(failedCheck.detail, /offline/);
+  assert.equal(failedCheck.action, null);
+  const failedDownload = updatePresentation({ ...base, state: "failed", availableVersion: "0.6.16", message: "The update could not be downloaded: timed out" });
+  assert.equal(failedDownload.action.action, "install-update");
+  // A failed check and a failed install are told apart, and both say the
+  // installed version did not change.
+  assert.notEqual(failedCheck.statusLabel, failedDownload.statusLabel);
+  assert.match(failedCheck.detail, /0\.6\.15/);
+  assert.equal(failedDownload.action.disabled, false);
+});
+
+test("the main window's update notice names the version and leads to Settings", () => {
+  const notice = updateAvailableNotice("0.6.16");
+  assert.match(notice.text, /0\.6\.16/);
+  assert.equal(notice.action.action, "open-update-settings");
 });

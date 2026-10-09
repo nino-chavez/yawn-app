@@ -268,6 +268,30 @@
     };
   }
 
+  // `?update=<state>` drives the Settings Updates row (updater.rs's
+  // `update_status`): up-to-date (default), available, blocked, downloading,
+  // failed, off. Versions are synthetic.
+  function updateStatusFixture() {
+    const kind = params.get("update") || "up-to-date";
+    const base = {
+      automatic: kind !== "off",
+      currentVersion: "0.6.15",
+      state: "up-to-date",
+      availableVersion: null,
+      notes: null,
+      message: null,
+      downloadedBytes: 0,
+      totalBytes: null,
+      installBlocked: null,
+    };
+    if (kind === "available") return { ...base, state: "available", availableVersion: "0.6.16" };
+    if (kind === "blocked") return { ...base, state: "available", availableVersion: "0.6.16", installBlocked: "Finish the current recording first." };
+    if (kind === "downloading") return { ...base, state: "downloading", availableVersion: "0.6.16", downloadedBytes: 251658240, totalBytes: 603979776 };
+    if (kind === "failed") return { ...base, state: "failed", message: "Yawn could not check for updates: the release server did not answer." };
+    if (kind === "off") return { ...base, state: "idle" };
+    return base;
+  }
+
   // ---- dispatch ------------------------------------------------------------
 
   function respond(command, args) {
@@ -312,6 +336,12 @@
         return noteModelSettingsFixture();
       case "dismiss_first_run_sheet":
         return null;
+      case "update_status":
+      case "check_for_updates":
+      case "install_update":
+        return updateStatusFixture();
+      case "set_automatic_update_check":
+        return { ...updateStatusFixture(), automatic: Boolean(args?.enabled) };
       default:
         // Unstubbed command for the states this harness captures -- logged,
         // not thrown, so an unrelated interaction never crashes the render.
@@ -331,9 +361,14 @@
       },
     },
     event: {
-      // Only consumer is main.js's note-capture-hotkey listener; a resolved
-      // no-op unlisten function is all it needs.
-      listen: function () {
+      // Listeners resolve to a no-op unlisten. `?update-notice=<version>`
+      // fires main.js's update-available listener once, as a background
+      // update check would.
+      listen: function (name, handler) {
+        const version = params.get("update-notice");
+        if (name === "update-available" && version) {
+          setTimeout(() => handler({ payload: version }), 300);
+        }
         return Promise.resolve(function unlisten() {});
       },
     },

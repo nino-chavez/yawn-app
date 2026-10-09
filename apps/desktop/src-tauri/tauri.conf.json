@@ -61,5 +61,13 @@
       "signingIdentity": "-",
       "entitlements": "capture-entitlements.plist"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzOTMyNDUzRjgzMTdENTgKUldSWWZUSDRVeVNUMHdRVzJVNHFML3lUK09wWXJORW9BNXQ2NkRQUjlWK21xRGJ1ZksyckdHYTMK",
+      "endpoints": [
+        "https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/updates/latest.json"
+      ]
+    }
   }
 }

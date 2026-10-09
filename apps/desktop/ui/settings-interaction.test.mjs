@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { updatePresentation } from "./view-model.mjs";
 
 test("Settings switches speech options and does not invoke retired note setup", async () => {
   const nodes = new Map();
@@ -32,9 +33,11 @@ test("Settings switches speech options and does not invoke retired note setup", 
       if (command === "install_transcript_model") { selected = "whisper"; return {}; }
       if (command === "transcript_model_settings") return { ...structuredClone(models), canChange: !restarting, unavailableReason: restarting ? "Startup pending" : null };
       if (command === "first_run_permissions") return { microphone: "authorized", systemAudio: "authorized" };
+      if (command === "update_status") return { automatic: true, currentVersion: "0.6.15", state: "up-to-date", availableVersion: null, notes: null, message: null, downloadedBytes: 0, totalBytes: null, installBlocked: null };
       throw new Error(`Unexpected command ${command}`);
     } } }, confirm: () => true },
     mergePermissions: (_, value) => value,
+    updatePresentation,
     setTimeout: (callback) => { timers.set(++timerId, callback); return timerId; },
     clearTimeout: (id) => timers.delete(id), console,
   };
@@ -46,6 +49,10 @@ test("Settings switches speech options and does not invoke retired note setup", 
     await settle();
   };
   await settle();
+  // The Updates row renders from update_status: an up-to-date build shows a
+  // ready state and offers no install.
+  assert.match(node("#update-status").innerHTML, /data-tone="ready"/);
+  assert.doesNotMatch(node("#update-status").innerHTML, /data-action="install-update"/);
   assert.match(node("#models").innerHTML, /Selected/);
   await click("use-apple-speech");
   assert.equal(selected, "apple-native");

@@ -17,6 +17,7 @@
           <a href="#recording">Recording</a>
           <a href="#transcription">Transcription</a>
           <a href="#speakers">Speakers</a>
+          <a href="#updates">Updates</a>
           <a href="#storage">Storage</a>
         </nav>
       </header>
@@ -56,6 +57,24 @@
           <p class="card-message">Model: <a href="https://huggingface.co/nvidia/Nemotron-3-Diarization" target="_blank" rel="noreferrer">NVIDIA Nemotron-3-Diarization</a> (openmdw-1.1).</p>
         </div>
       </section>
+      <section id="updates" class="settings-group" tabindex="-1" aria-labelledby="updates-title">
+        <div class="settings-group-title">
+          <div>
+            <h2 id="updates-title">Updates</h2>
+            <p>New versions of Yawn, from the Yawn release server.</p>
+          </div>
+          <button class="quiet-button" type="button" data-action="check-updates">Check now</button>
+        </div>
+        <div class="settings-group-box">
+          <div id="update-status" class="permission-list" aria-live="polite"></div>
+          <label class="update-automatic">
+            <input id="update-automatic" type="checkbox" checked />
+            <span>Check for updates automatically</span>
+          </label>
+          <p id="update-disclosure" class="card-message">Once a day, Yawn downloads a small file from the release server that names the newest version. It sends no meeting data or account details; like any download, the server can see this Mac’s internet address.</p>
+          <p id="update-message" class="card-message" role="status"></p>
+        </div>
+      </section>
       <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">
         <div class="settings-group-title">
           <div>
@@ -67,7 +86,7 @@
           <dl class="privacy-rows">
             <div class="privacy-row">
               <dt>What leaves this Mac</dt>
-              <dd>Nothing. Recording and transcription run and stay here. Personal notes, transcripts, and saved drafts stay on this Mac. Yawn has no account and makes no network calls with meeting data.</dd>
+              <dd>Nothing from your meetings. Recording and transcription run and stay here. Personal notes, transcripts, and saved drafts stay on this Mac. Yawn has no account and makes no network calls with meeting data. Its only automatic connection is the optional update check described under Updates.</dd>
             </div>
             <div class="privacy-row">
               <dt>Where transcription runs</dt>

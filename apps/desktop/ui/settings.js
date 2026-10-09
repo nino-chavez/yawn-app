@@ -1,4 +1,4 @@
-import { mergePermissions } from "./view-model.mjs";
+import { mergePermissions, updatePresentation } from "./view-model.mjs";
 
 // tokens.css keys dark-appearance values off `[data-theme="dark"]` (it has
 // no `prefers-color-scheme` fallback of its own — see tokens.css's header),
@@ -22,6 +22,11 @@ const modelMessage = document.querySelector("#model-message");
 const speakerModelRoot = document.querySelector("#speaker-model");
 const speakerModelMessage = document.querySelector("#speaker-model-message");
 const message = document.querySelector("#message");
+const updateRoot = document.querySelector("#update-status");
+const updateAutomatic = document.querySelector("#update-automatic");
+const updateMessage = document.querySelector("#update-message");
+const updateCheckButton = document.querySelector('[data-action="check-updates"]');
+const updateDisclosure = document.querySelector("#update-disclosure");
 
 let permissions = null;
 let models = null;
@@ -42,6 +47,8 @@ let modelBuiltIn = false;
 let modelPoll = null;
 let speakerModel = null;
 let speakerModelPoll = null;
+let updateStatus = null;
+let updatePoll = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -383,6 +390,83 @@ async function request(kind) {
   render();
 }
 
+// Updates (updater.rs). The row's state can move on its own -- a background
+// check, a download, an install -- so this window re-reads it: every second
+// while something is moving, every half minute otherwise. The read is a
+// local command; only Check now and the daily check go to the network.
+function renderUpdates() {
+  if (!updateRoot) return;
+  const view = updatePresentation(updateStatus);
+  const action = view.action
+    ? `<button class="allow-button" type="button" data-action="${escapeHtml(view.action.action)}"${view.action.disabled ? " disabled" : ""}>${escapeHtml(view.action.label)}</button>`
+    : `<span class="state" data-tone="${escapeHtml(view.tone)}">${escapeHtml(view.statusLabel)}</span>`;
+  updateRoot.innerHTML = `
+    <div class="permission-line">
+      <div class="permission-copy"><strong>${escapeHtml(view.title)}</strong><p>${escapeHtml(view.detail)}</p></div>
+      ${action}
+    </div>
+  `;
+  updateRoot.setAttribute("aria-busy", view.poll ? "true" : "false");
+  if (updateAutomatic) updateAutomatic.checked = view.automatic;
+  if (updateDisclosure) updateDisclosure.textContent = view.disclosure;
+  if (updateCheckButton) updateCheckButton.disabled = !view.canCheck;
+}
+
+function scheduleUpdatePoll() {
+  clearTimeout(updatePoll);
+  updatePoll = setTimeout(() => void refreshUpdates(), updatePresentation(updateStatus).poll ? 1000 : 30000);
+}
+
+async function refreshUpdates() {
+  if (!invoke) return;
+  try {
+    updateStatus = await invoke("update_status");
+  } catch {
+    updateMessage.textContent = "Yawn could not read its update status.";
+  }
+  renderUpdates();
+  scheduleUpdatePoll();
+}
+
+async function checkForUpdates() {
+  if (!invoke) return;
+  updateMessage.textContent = "";
+  try {
+    updateStatus = await invoke("check_for_updates");
+  } catch (error) {
+    updateMessage.textContent = String(error || "Yawn could not check for updates.");
+  }
+  renderUpdates();
+  scheduleUpdatePoll();
+}
+
+async function installUpdate() {
+  if (!invoke) return;
+  updateMessage.textContent = "";
+  try {
+    updateStatus = await invoke("install_update");
+  } catch (error) {
+    updateMessage.textContent = String(error || "Yawn could not start the update.");
+  }
+  renderUpdates();
+  scheduleUpdatePoll();
+}
+
+async function setAutomaticUpdateCheck(enabled) {
+  if (!invoke) return;
+  updateMessage.textContent = "";
+  try {
+    updateStatus = await invoke("set_automatic_update_check", { enabled });
+  } catch (error) {
+    updateMessage.textContent = String(error || "Yawn could not save this setting.");
+  }
+  renderUpdates();
+}
+
+document.addEventListener("change", (event) => {
+  if (event.target?.id === "update-automatic") void setAutomaticUpdateCheck(event.target.checked);
+});
+
 document.addEventListener("click", (event) => {
   const control = event.target.closest("[data-action]");
   const action = control?.dataset.action;
@@ -393,9 +477,12 @@ document.addEventListener("click", (event) => {
   if (action === "use-apple-speech") void useAppleSpeech();
   if (action === "remove-model") void removeModel(control.dataset.modelId, control.dataset.modelTitle);
   if (action === "install-speaker-model") void installSpeakerModel();
+  if (action === "check-updates") void checkForUpdates();
+  if (action === "install-update") void installUpdate();
 });
 
 void refresh();
 void refreshModels();
 void refreshTranscriptionEngine();
 void refreshSpeakerModel();
+void refreshUpdates();
