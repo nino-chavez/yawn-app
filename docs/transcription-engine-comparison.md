@@ -1131,3 +1131,76 @@ This record changes no product source, contract, release state, or ASR
 decision. The content-free receipt is
 [`docs/evidence/voz-fluidaudio-same-day-2026-10-09.json`](evidence/voz-fluidaudio-same-day-2026-10-09.json).
 Raw outputs, including derived transcript text, remain owner-local.
+
+## Pause-aligned windowing in the FluidAudio probe — 2026-10-09
+
+The same-machine replay above left one question: does changing how the FluidAudio
+probe splits long audio recover Voz's accuracy from the same Parakeet model? This
+adds a research-only `--windowing` option to the native probe and to
+`run_comparison.py`. The default, `fluidaudio`, is FluidAudio's own chunking and is
+unchanged; it reproduced 20.00% edits, 106/123, 122/132, and 231/293 exactly. The
+other arms decode windows of at most 14.88 s, short enough for FluidAudio's
+single-pass path, each from a fresh decoder state:
+
+- `fixed`: non-overlapping 14.88 s windows.
+- `pause`: each window ends at the quietest 200 ms between 10 s and 14.88 s.
+- `pause-context`: pause cuts with cores of at most 12.88 s, decoded with 1 s of
+  audio on each side and joined on a word both windows agree on.
+- `pause-overlap`: windows start and end at quiet points. Each next window starts
+  at the quietest point 1 to 4 s before the previous one ends, and the two are
+  joined on an agreeing word.
+
+Quiet points come from short-time energy, not a voice-activity detector. All arms
+ran in one sequence on the same Mac, scored on word segments. Every arm produced
+identical text on both passes.
+
+| Arm | Edits / 7,084 | Deletions / substitutions / insertions | Decision terms | Entity terms | Final-tenth terms | Seconds per pass |
+|---|---:|---:|---:|---:|---:|---:|
+| `fluidaudio` (default) | 20.00% | 1,080 / 283 / 54 | 106/123 | 122/132 | 231/293 | 14.3, 18.0 |
+| `fixed` | 23.90% | 1,372 / 255 / 66 | 108/123 | 114/132 | 220/293 | 20.4, 21.1 |
+| `pause` | 17.45% | 866 / 297 / 73 | 97/123 | 123/132 | 258/293 | 24.9, 26.4 |
+| `pause-context` | 26.81% | 1,619 / 238 / 42 | 74/123 | 107/132 | 212/293 | 26.3, 29.1 |
+| `pause-overlap` | 19.71% | 1,076 / 268 / 52 | 106/123 | 117/132 | 247/293 | 35.0, 43.8 |
+| Voz | 17.12% | 854 / 295 / 64 | 110/123 | 122/132 | 251/293 | 9.1, 10.0 |
+
+Unrelated work held the load average at 13 to 24, so the seconds compare arms
+within this run only. The single-pass arms decode one padded 15 s window at a time.
+FluidAudio's `ChunkProcessor` decodes its windows concurrently in a task group sized
+by `parallelChunkConcurrency`, which likely accounts for most of the difference.
+
+The join was not the cause of `pause-context`'s losses. Turning off its agreement
+join and splitting at the cut gave the same result (27.19% edits, 1,617
+deletions). Its windows lost words throughout, not only at their edges: it had
+fewer words than `pause` at every second of its windows, for example 455 versus 626
+in the first second after a cut. That is consistent with windows that begin and end
+mid-speech decoding worse, but it does not establish the cause. `pause-overlap`
+starts and ends at energy-quiet points and still produced about 230 fewer words
+than `pause`. Whether energy cuts miss real pauses was not tested.
+
+`pause` came closest to Voz overall and kept the most final-tenth terms, but lost
+decision evidence. The 30:50–30:58 passage kept 18 of 22 terms instead of 21, and
+the 32:16–32:21 passage kept 6 of 16 instead of 14. The missing words are absent
+from the output, not mistimed: none appears within 15 s of its passage. In the
+first passage, "that means we have to cut down" is missing, 0.5 to 1.7 s before the
+window's end. In the second, a 3 s run of overlapping speech is missing, 3.5 to 6 s
+before the window's end. `pause-overlap` recovered decision terms to the default's
+106 but gave back most of the edit gain and lost five entity terms. Decision terms
+come from only nine passages, so that row moves in large steps; the edit row covers
+the whole meeting.
+
+On 10 s of synthetic silence and 10 s of low-level noise, `fluidaudio` and
+`pause-overlap` produced no text.
+
+**What it means:** pause-aligned cuts improve whole-meeting word retention, but on
+this meeting they dropped two runs of decision words near the ends of windows, and
+those words are lost, not mistimed. Overlapping the windows recovered the decision
+terms but not the whole-meeting gain. No arm matches Voz on every diagnostic, so
+energy-cut pause windows do not explain Voz's remaining advantage. A bounded next test is cutting with FluidAudio's own
+voice-activity detector (`VadManager`, Silero) instead of energy, through the same
+option and harness. The default stays `fluidaudio`. This changes no product source,
+contract, release state, or ASR decision; Yawn still transcribes with Whisper.
+
+Reproduce with `run_comparison.py --engine parakeet --windowing <arm>` and a probe
+built from this commit. The content-free receipt is
+[`docs/evidence/fluidaudio-windowing-2026-10-09.json`](evidence/fluidaudio-windowing-2026-10-09.json).
+Raw outputs, including derived transcript text, remain owner-local.
