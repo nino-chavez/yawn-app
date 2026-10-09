@@ -1129,17 +1129,16 @@ impl LibraryProjection {
             SealedHit::Meeting {
                 normalized_query, ..
             } => {
-                if let Some(normalized_query) = normalized_query {
-                    if row
+                if let Some(normalized_query) = normalized_query
+                    && row
                         .title
                         .as_ref()
                         .is_none_or(|title| normalized_matches(title, &normalized_query).is_empty())
-                        && row.folder.as_ref().is_none_or(|folder| {
-                            normalized_matches(folder, &normalized_query).is_empty()
-                        })
-                    {
-                        return Err(LibraryReadError::SnapshotStale);
-                    }
+                    && row.folder.as_ref().is_none_or(|folder| {
+                        normalized_matches(folder, &normalized_query).is_empty()
+                    })
+                {
+                    return Err(LibraryReadError::SnapshotStale);
                 }
                 Ok(OpenedLibraryHit::Meeting {
                     meeting_id: row.meeting_id.clone(),
@@ -1373,10 +1372,10 @@ fn inspect_meeting(
                 let mut primed = Some(bytes);
                 let mut chain_allowance = limits.max_transcript_bytes.saturating_mul(2);
                 let mut read = |digest: &str| {
-                    if digest == current.sha256 {
-                        if let Some(head) = primed.take() {
-                            return Ok(head);
-                        }
+                    if digest == current.sha256
+                        && let Some(head) = primed.take()
+                    {
+                        return Ok(head);
                     }
                     if chain_allowance == 0 {
                         read_failure = Some(MeetingInspectionError::Quarantine);

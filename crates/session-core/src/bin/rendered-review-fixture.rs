@@ -937,7 +937,7 @@ fn install_model(
     let storage = StorageRoot::create(root, &repository)?;
     let active_path = storage
         .resolve(Path::new("models/active-model.json"))
-        .map_err(|error| FixtureError::Storage(error))?;
+        .map_err(FixtureError::Storage)?;
     if fs::symlink_metadata(&active_path).is_ok() {
         return Err(FixtureError::ExistingModel);
     }
@@ -945,7 +945,7 @@ fn install_model(
         .resolve(&Path::new("models").join(&entry.id).join(&entry.revision))
         .map_err(FixtureError::Storage)?;
     if fs::symlink_metadata(&target).is_ok()
-        || fs::symlink_metadata(&storage.path().join("MODEL_FIXTURE.json")).is_ok()
+        || fs::symlink_metadata(storage.path().join("MODEL_FIXTURE.json")).is_ok()
     {
         return Err(FixtureError::ExistingModel);
     }
@@ -955,7 +955,7 @@ fn install_model(
     let _writer_lock = AppDataWriterLock::acquire(&storage)?;
     if fs::symlink_metadata(&active_path).is_ok()
         || fs::symlink_metadata(&target).is_ok()
-        || fs::symlink_metadata(&storage.path().join("MODEL_FIXTURE.json")).is_ok()
+        || fs::symlink_metadata(storage.path().join("MODEL_FIXTURE.json")).is_ok()
     {
         return Err(FixtureError::ExistingModel);
     }

@@ -1220,7 +1220,7 @@ mod tests {
                     "a refused restore must never write a library row for a meeting that is not there"
                 );
             }
-            other => panic!(
+            _ => panic!(
                 "expected a valid, empty record, got {other:?}",
                 other = "unavailable"
             ),

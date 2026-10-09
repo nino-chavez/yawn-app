@@ -795,10 +795,10 @@ pub fn resolve_stored_transcript_primed(
     let mut primed = Some(head_bytes);
     let head_digest = transcript_sha256.to_owned();
     let mut read = |digest: &str| {
-        if digest == head_digest {
-            if let Some(bytes) = primed.take() {
-                return Ok(bytes);
-            }
+        if digest == head_digest
+            && let Some(bytes) = primed.take()
+        {
+            return Ok(bytes);
         }
         read_revision(meeting_dir, digest)
     };

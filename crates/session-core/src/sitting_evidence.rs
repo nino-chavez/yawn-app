@@ -731,7 +731,7 @@ pub(crate) fn store_derived_material(
         ));
     }
     let stride = embedding_dim as usize * 4;
-    if embeddings.len() % stride != 0 {
+    if !embeddings.len().is_multiple_of(stride) {
         return Err(SittingEvidenceError::Refused(
             "embedding bytes do not divide into whole vectors",
         ));

@@ -379,12 +379,11 @@ fn drive_bridge_child(
         })?;
     let _ = ready_thread.join();
     let ready = ready.map_err(|_| trace_unavailable("ready frame read"))?;
-    parse_ready(&ready, &runtime.manifest.digest, role).map_err(|outcome| {
+    parse_ready(&ready, &runtime.manifest.digest, role).inspect_err(|_| {
         if note_trace_enabled() {
             let head = String::from_utf8_lossy(&ready[..ready.len().min(400)]);
             eprintln!("[note-trace] ready frame rejected: {head}");
         }
-        outcome
     })?;
     runtime.require_unchanged().map_err(|o| match o {
         InternalOutcome::Unavailable => trace_unavailable("runtime changed after ready"),
@@ -2410,10 +2409,8 @@ impl StderrMonitor {
     fn start(mut stderr: impl Read + Send + 'static) -> Self {
         let (sender, receiver) = mpsc::sync_channel(1);
         let trace = note_trace_enabled();
-        if trace {
-            if let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
-                tail.clear();
-            }
+        if trace && let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
+            tail.clear();
         }
         let thread = std::thread::spawn(move || {
             let mut total = 0_usize;

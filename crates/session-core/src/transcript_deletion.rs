@@ -346,8 +346,8 @@ fn validate_initial_binding(
     {
         return Err(TranscriptDeletionError::MalformedReceipt);
     }
-    if let Some(note) = meeting.artifacts.current_note.as_ref() {
-        if !inventory_contains(
+    if let Some(note) = meeting.artifacts.current_note.as_ref()
+        && (!inventory_contains(
             &receipt.artifacts,
             &note.json.relative_path,
             &note.json.sha256,
@@ -355,9 +355,9 @@ fn validate_initial_binding(
             &receipt.artifacts,
             &note.markdown.relative_path,
             &note.markdown.sha256,
-        ) {
-            return Err(TranscriptDeletionError::MalformedReceipt);
-        }
+        ))
+    {
+        return Err(TranscriptDeletionError::MalformedReceipt);
     }
     Ok(())
 }

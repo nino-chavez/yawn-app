@@ -438,7 +438,7 @@ impl<'a> TranscriptRetryAuthority<'a> {
             Err(error) => return Err(error.into()),
         }
         let path = root.join(operation_id.to_string());
-        if let Ok(_) = fs::symlink_metadata(&path) {
+        if fs::symlink_metadata(&path).is_ok() {
             require_private_directory(&path)?;
         }
         Ok(path)
