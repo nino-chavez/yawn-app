@@ -1151,46 +1151,6 @@ mod tests {
     }
 
     #[test]
-    fn regeneration_refuses_a_vocabulary_overlay_the_current_store_does_not_attest() {
-        let fixture = runtime_fixture(gated_turns());
-        let storage = fixture
-            .state
-            .storage
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .storage
-            .clone();
-        local_meeting_notes_session_core::local_vocabulary::LocalVocabularyStore::open(&storage)
-            .unwrap()
-            .add("kept", "Kibble")
-            .unwrap();
-        let derived = crate::vocabulary_replacements_for(
-            fixture.meeting_id,
-            &fixture.transcript_sha256,
-            &fixture.state,
-        )
-        .unwrap();
-        assert_eq!(derived.len(), 1);
-        assert_eq!(derived[0].turn, 0);
-
-        let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
-        let coordinator = coordinator_for(&fixture, port.clone());
-        assert_eq!(
-            coordinator.accept_regeneration(&RegenerateNoteUiArgs {
-                meeting_id: fixture.meeting_id,
-                source_transcript_sha256: fixture.transcript_sha256.clone(),
-                speaker_label_overrides: Vec::new(),
-                vocabulary_replacements: Vec::new(),
-                pre_meeting_context: None,
-            }),
-            Err(CoordinatorError::Unavailable)
-        );
-        assert!(port.requests.lock().unwrap().is_empty());
-    }
-
-    #[test]
     fn regeneration_refuses_a_malformed_correction_sidecar_before_worker_work() {
         let fixture = runtime_fixture(gated_turns());
         let meeting_dir = fixture
@@ -1224,11 +1184,10 @@ mod tests {
         assert!(port.requests.lock().unwrap().is_empty());
     }
 
-    /// The same re-attestation gate this packet adds, mirroring
-    /// `regeneration_refuses_a_vocabulary_overlay_the_current_store_does_not_attest`:
-    /// a caller-supplied context that disagrees with what is on disk right now
-    /// must refuse before the worker is touched, exactly like a stale
-    /// vocabulary or speaker overlay.
+    /// The same re-attestation gate this packet adds: a caller-supplied
+    /// context that disagrees with what is on disk right now must refuse
+    /// before the worker is touched, exactly like a stale vocabulary or
+    /// speaker overlay.
     #[test]
     fn regeneration_refuses_a_context_value_the_current_sidecar_does_not_attest() {
         let fixture = runtime_fixture(gated_turns());

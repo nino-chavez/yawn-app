@@ -9,7 +9,6 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use local_meeting_notes_session_core::meeting::read_private_bytes;
-use local_meeting_notes_session_core::operations::SpeakerLabelOverride;
 use local_meeting_notes_session_core::storage::durable_replace;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -132,25 +131,6 @@ pub(crate) fn current_labels(
     Ok(labels)
 }
 
-/// The exact label overlay a note-generation request may carry. This derives
-/// from the validated sidecar each time; it does not turn the sidecar into a
-/// transcript or give it a digest of its own.
-pub(crate) fn current_label_overrides(
-    meeting_dir: &Path,
-    meeting_id: Uuid,
-    source_transcript_sha256: &str,
-) -> Result<Vec<SpeakerLabelOverride>, ()> {
-    Ok(
-        current_labels(meeting_dir, meeting_id, source_transcript_sha256)?
-            .into_iter()
-            .map(|(source_speaker, replacement)| SpeakerLabelOverride {
-                source_speaker,
-                replacement,
-            })
-            .collect(),
-    )
-}
-
 pub(crate) fn append(
     meeting_dir: &Path,
     meeting_id: Uuid,
@@ -260,25 +240,6 @@ mod tests {
                 .operations
                 .len(),
             2
-        );
-    }
-
-    #[test]
-    fn note_overlay_keeps_the_source_digest_and_exact_source_group() {
-        let (_temporary, directory, meeting_id) = fixture();
-        append(&directory, meeting_id, operation(Some("Them"), "Alex")).unwrap();
-
-        assert_eq!(
-            current_label_overrides(&directory, meeting_id, &"a".repeat(64)).unwrap(),
-            vec![SpeakerLabelOverride {
-                source_speaker: Some("Them".into()),
-                replacement: "Alex".into(),
-            }]
-        );
-        assert!(
-            current_label_overrides(&directory, meeting_id, &"b".repeat(64))
-                .unwrap()
-                .is_empty()
         );
     }
 
