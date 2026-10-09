@@ -52,7 +52,9 @@ pub fn write_private_diagnostic(directory: &Path, code: &str, detail: &str) -> i
         .map(|elapsed| elapsed.as_secs())
         .unwrap_or(0);
 
-    let _guard = WRITE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let previous = match fs::read(&path) {
         Ok(bytes) => Some(previous_occurrences(&bytes)),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -212,7 +214,11 @@ mod tests {
 
         write_private_diagnostic(temp.path(), "worker_failed", "exit 1").unwrap();
         let body = fs::read_to_string(&path).unwrap();
-        assert!(body.lines().any(|line| line == "first_seen_epoch_seconds=1"), "{body}");
+        assert!(
+            body.lines()
+                .any(|line| line == "first_seen_epoch_seconds=1"),
+            "{body}"
+        );
         assert!(body.lines().any(|line| line == "count=2"), "{body}");
     }
 

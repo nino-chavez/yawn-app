@@ -357,8 +357,9 @@ fn bind_interrupted_artifacts(
             .map(|artifact| artifact.relative_path.as_str()),
         Some(SYSTEM_PARTIAL_AUDIO_PATH)
     );
-    let discard_stranded_completion_receipt =
-        inventory.session_present && audio_is_partial && receipt_is_stranded_completion(meeting_dir);
+    let discard_stranded_completion_receipt = inventory.session_present
+        && audio_is_partial
+        && receipt_is_stranded_completion(meeting_dir);
     meeting.artifacts.capture_session = if meeting.retention.state == AudioState::Retained {
         if inventory.session_present && !discard_stranded_completion_receipt {
             Some(artifact_ref(meeting_dir, "capture/session.json")?)
@@ -598,11 +599,7 @@ mod tests {
     #[test]
     fn finder_metadata_does_not_block_a_valid_meeting() {
         let (_temp, storage) = make_storage();
-        let directory = write_incomplete(
-            &storage,
-            "valid",
-            Some(ownership(identity(44, 10))),
-        );
+        let directory = write_incomplete(&storage, "valid", Some(ownership(identity(44, 10))));
         let finder_file = storage.resolve(Path::new("meetings/.DS_Store")).unwrap();
         fs::write(&finder_file, b"finder metadata").unwrap();
 
@@ -625,7 +622,11 @@ mod tests {
     #[test]
     fn other_unexpected_files_still_block_recovery() {
         let (_temp, storage) = make_storage();
-        fs::write(storage.resolve(Path::new("meetings/unexpected")).unwrap(), b"unknown").unwrap();
+        fs::write(
+            storage.resolve(Path::new("meetings/unexpected")).unwrap(),
+            b"unknown",
+        )
+        .unwrap();
 
         let report = scan_and_recover(
             &storage,
@@ -1290,8 +1291,11 @@ mod tests {
         )
         .unwrap();
         durable_create_new(&directory.join("capture/.mic.wav.partial"), &private_wav(6)).unwrap();
-        durable_create_new(&directory.join("capture/.system.wav.partial"), &private_wav(7))
-            .unwrap();
+        durable_create_new(
+            &directory.join("capture/.system.wav.partial"),
+            &private_wav(7),
+        )
+        .unwrap();
 
         let report = scan_and_recover(
             &storage,
@@ -1312,11 +1316,21 @@ mod tests {
         assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
         assert_eq!(meeting.retention.state, AudioState::Retained);
         assert_eq!(
-            meeting.artifacts.microphone_audio.clone().unwrap().relative_path,
+            meeting
+                .artifacts
+                .microphone_audio
+                .clone()
+                .unwrap()
+                .relative_path,
             "capture/.mic.wav.partial"
         );
         assert_eq!(
-            meeting.artifacts.system_audio.clone().unwrap().relative_path,
+            meeting
+                .artifacts
+                .system_audio
+                .clone()
+                .unwrap()
+                .relative_path,
             "capture/.system.wav.partial"
         );
         // The stale complete-session receipt is replaced with an honest

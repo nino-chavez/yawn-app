@@ -1243,16 +1243,22 @@ mod tests {
 
         assert!(matches!(
             coordinator.regenerate_note_with(&fixture.arguments(), |_| {
-                Err(NoteGenerationCoordinatorError::Ambiguous("source admission refused"))
+                Err(NoteGenerationCoordinatorError::Ambiguous(
+                    "source admission refused",
+                ))
             }),
-            Err(NoteGenerationCoordinatorError::Ambiguous("source admission refused"))
+            Err(NoteGenerationCoordinatorError::Ambiguous(
+                "source admission refused"
+            ))
         ));
         assert_eq!(worker.calls(), 0);
-        assert!(OperationStore::open(&fixture.storage)
-            .unwrap()
-            .scan()
-            .unwrap()
-            .is_empty());
+        assert!(
+            OperationStore::open(&fixture.storage)
+                .unwrap()
+                .scan()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]

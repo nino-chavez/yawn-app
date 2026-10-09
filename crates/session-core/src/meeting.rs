@@ -209,10 +209,10 @@ impl MeetingRecord {
             self.artifacts.microphone_audio.is_some() || self.artifacts.system_audio.is_some();
         let transcript = self.artifacts.current_transcript.is_some();
         let note = self.artifacts.current_note.is_some();
-        let audio_deletion_pending = self.pending_storage_operation
-            == Some(PendingStorageOperation::AudioDeletionV1);
-        let transcript_deletion_pending = self.pending_storage_operation
-            == Some(PendingStorageOperation::TranscriptDeletionV1);
+        let audio_deletion_pending =
+            self.pending_storage_operation == Some(PendingStorageOperation::AudioDeletionV1);
+        let transcript_deletion_pending =
+            self.pending_storage_operation == Some(PendingStorageOperation::TranscriptDeletionV1);
 
         match self.lifecycle {
             MeetingLifecycle::Incomplete => {
@@ -280,9 +280,7 @@ impl MeetingRecord {
                 }
             }
             AudioState::Retained => {
-                if !any_audio
-                    || self.retention.deletion_receipt.is_some()
-                    || audio_deletion_pending
+                if !any_audio || self.retention.deletion_receipt.is_some() || audio_deletion_pending
                 {
                     return Err(MeetingError::Malformed("invalid retained audio state"));
                 }
@@ -489,11 +487,13 @@ pub(crate) fn captured_capture_is_finalized(
     if value.get("schema").and_then(Value::as_str) != Some("capture-session/2") {
         return Ok(false);
     }
-    Ok(value.get("status").and_then(Value::as_str) == Some("complete")
-        && value.get("started_at").is_some_and(Value::is_string)
-        && value.get("finalized_at").is_some_and(Value::is_string)
-        && value.get("health").is_some_and(Value::is_object)
-        && value.get("reconciliation").is_some_and(Value::is_object))
+    Ok(
+        value.get("status").and_then(Value::as_str) == Some("complete")
+            && value.get("started_at").is_some_and(Value::is_string)
+            && value.get("finalized_at").is_some_and(Value::is_string)
+            && value.get("health").is_some_and(Value::is_object)
+            && value.get("reconciliation").is_some_and(Value::is_object),
+    )
 }
 
 fn verify_recovered_capture_receipt(

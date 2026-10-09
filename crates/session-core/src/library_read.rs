@@ -2914,11 +2914,7 @@ mod tests {
         let excluded = HashSet::from(["meeting-a".to_owned()]);
 
         let transcript = projection
-            .search_filtered_excluding(
-                "shared secret",
-                &LibraryFilter::default(),
-                &excluded,
-            )
+            .search_filtered_excluding("shared secret", &LibraryFilter::default(), &excluded)
             .unwrap();
         assert_eq!(
             transcript.total, 1,
@@ -2932,11 +2928,7 @@ mod tests {
         }
 
         let withheld = projection
-            .search_filtered_excluding(
-                "withheld secret",
-                &LibraryFilter::default(),
-                &excluded,
-            )
+            .search_filtered_excluding("withheld secret", &LibraryFilter::default(), &excluded)
             .unwrap();
         assert_eq!(
             withheld.total, 0,
@@ -2954,11 +2946,7 @@ mod tests {
         // Lifting the exclusion restores every one of them -- unlocking
         // re-admits on the next search, with no separate re-admission path.
         let restored = projection
-            .search_filtered_excluding(
-                "shared secret",
-                &LibraryFilter::default(),
-                &HashSet::new(),
-            )
+            .search_filtered_excluding("shared secret", &LibraryFilter::default(), &HashSet::new())
             .unwrap();
         assert_eq!(restored.total, 2);
     }
@@ -2989,7 +2977,10 @@ mod tests {
         let found = projection
             .search_filtered_excluding("claim-a", &LibraryFilter::default(), &excluded)
             .unwrap();
-        assert!(!found.hits.is_empty(), "meeting-b's own claim hit vanished too");
+        assert!(
+            !found.hits.is_empty(),
+            "meeting-b's own claim hit vanished too"
+        );
         for hit in &found.hits {
             assert!(matches!(
                 projection.open(&fixture.storage, hit).unwrap(),

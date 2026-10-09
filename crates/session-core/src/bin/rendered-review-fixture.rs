@@ -19,9 +19,8 @@ use local_meeting_notes_session_core::meeting::{
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::model_store::{
-    ModelVerification,
-    ModelCatalog, ModelStoreError, TranscriptModelFileRole, activate_model, install_receipt_bytes,
-    verify_model_directory,
+    ModelCatalog, ModelStoreError, ModelVerification, TranscriptModelFileRole, activate_model,
+    install_receipt_bytes, verify_model_directory,
 };
 use local_meeting_notes_session_core::retention::{AppDataWriterLock, AppDataWriterLockError};
 use local_meeting_notes_session_core::runtime::{RuntimeError, RuntimeManifest};
@@ -543,8 +542,14 @@ fn write_meeting_record(
 /// side — the "No word-level differences found." legend.
 fn seed_diff_identical_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     let turns: &[(&str, &str)] = &[
-        ("Me", "Fixture: the diff comparison turns are identical on both sides."),
-        ("Them", "Fixture: nothing was changed between the current transcript and this retry."),
+        (
+            "Me",
+            "Fixture: the diff comparison turns are identical on both sides.",
+        ),
+        (
+            "Them",
+            "Fixture: nothing was changed between the current transcript and this retry.",
+        ),
     ];
     let source = transcript_bytes_tagged(turns, "synthetic-fixture-diff-identical-current");
     let shell = seed_plain_meeting(
@@ -645,7 +650,10 @@ fn seed_diff_skipped_meeting(storage: &StorageRoot) -> Result<(), FixtureError> 
 /// `meeting_trash_authority`).
 fn seed_trash_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     let turns: &[(&str, &str)] = &[
-        ("Me", "Fixture: this meeting was moved to trash for the review fixture."),
+        (
+            "Me",
+            "Fixture: this meeting was moved to trash for the review fixture.",
+        ),
         ("Them", "Fixture: it can be restored from the Trash list."),
     ];
     let source = transcript_bytes_tagged(turns, "synthetic-fixture-trash");
@@ -681,8 +689,14 @@ fn seed_trash_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
 /// exercises the ordinary "Export available" state (a verified transcript).
 fn seed_export_tampered_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     let turns: &[(&str, &str)] = &[
-        ("Me", "Fixture: this transcript will be tampered with after the meeting record is written."),
-        ("Them", "Fixture: exporting this meeting must withhold transcript.md and name why."),
+        (
+            "Me",
+            "Fixture: this transcript will be tampered with after the meeting record is written.",
+        ),
+        (
+            "Them",
+            "Fixture: exporting this meeting must withhold transcript.md and name why.",
+        ),
     ];
     let source = transcript_bytes_tagged(turns, "synthetic-fixture-export-tampered");
     let shell = seed_plain_meeting(storage, EXPORT_TAMPERED_MEETING_ID, CREATED_AT + 4, source)?;
@@ -762,7 +776,9 @@ fn seed_note_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
         .into());
     }
     write_new(
-        &shell.meeting_dir.join(format!("notes/{NOTE_JSON_SHA256}.json")),
+        &shell
+            .meeting_dir
+            .join(format!("notes/{NOTE_JSON_SHA256}.json")),
         NOTE_JSON_BYTES,
     )?;
     write_new(
@@ -943,8 +959,12 @@ fn install_model(
     {
         return Err(FixtureError::ExistingModel);
     }
-    verify_model_directory(&canonical_source_model_dir, &entry, ModelVerification::Contents)
-        .map_err(|_| FixtureError::SourceChanged)?;
+    verify_model_directory(
+        &canonical_source_model_dir,
+        &entry,
+        ModelVerification::Contents,
+    )
+    .map_err(|_| FixtureError::SourceChanged)?;
     create_private_dir(&target)?;
     for file in &entry.files {
         if !matches!(
@@ -967,8 +987,12 @@ fn install_model(
     )?;
     sync_directory(&target)?;
     verify_model_directory(&target, &entry, ModelVerification::Contents)?;
-    verify_model_directory(&canonical_source_model_dir, &entry, ModelVerification::Contents)
-        .map_err(|_| FixtureError::SourceChanged)?;
+    verify_model_directory(
+        &canonical_source_model_dir,
+        &entry,
+        ModelVerification::Contents,
+    )
+    .map_err(|_| FixtureError::SourceChanged)?;
     activate_model(&storage, &entry)?;
 
     let model_marker = json!({
@@ -1611,7 +1635,10 @@ mod tests {
     }
 
     fn diff_inputs(texts: &[String]) -> Vec<DiffTurnInput<'_>> {
-        texts.iter().map(|text| DiffTurnInput::visible(text)).collect()
+        texts
+            .iter()
+            .map(|text| DiffTurnInput::visible(text))
+            .collect()
     }
 
     /// Reads a pending retry's candidate turn texts by following its
@@ -1664,7 +1691,12 @@ mod tests {
         let candidate = candidate_texts(&meeting_dir, OPERATION_ID);
         let current_texts = turn_texts(
             &meeting_dir,
-            &meeting.artifacts.current_transcript.as_ref().unwrap().relative_path,
+            &meeting
+                .artifacts
+                .current_transcript
+                .as_ref()
+                .unwrap()
+                .relative_path,
         );
         let diff = diff_transcript_turns(&diff_inputs(&current_texts), &diff_inputs(&candidate));
         assert_eq!(diff.state, TranscriptRetryDiffState::Computed);
@@ -1697,14 +1729,23 @@ mod tests {
         );
         assert_eq!(identical_diff.state, TranscriptRetryDiffState::Computed);
         assert!(
-            identical_diff.current.iter().all(|turn| turn.spans.is_empty())
-                && identical_diff.candidate.iter().all(|turn| turn.spans.is_empty()),
+            identical_diff
+                .current
+                .iter()
+                .all(|turn| turn.spans.is_empty())
+                && identical_diff
+                    .candidate
+                    .iter()
+                    .all(|turn| turn.spans.is_empty()),
             "identical turn text on both sides must diff to zero spans"
         );
 
         // W3-B: the over-budget meeting's pending retry actually exceeds the
         // diff engine's edit budget and skips, rather than merely being long.
-        let skipped_dir = storage.path().join("meetings").join(DIFF_SKIPPED_MEETING_ID);
+        let skipped_dir = storage
+            .path()
+            .join("meetings")
+            .join(DIFF_SKIPPED_MEETING_ID);
         let skipped_meeting = load_meeting(&skipped_dir).unwrap();
         let skipped_current = turn_texts(
             &skipped_dir,
@@ -1747,7 +1788,11 @@ mod tests {
         assert!(
             verify_artifact_ref(
                 &tampered_dir,
-                tampered_meeting.artifacts.current_transcript.as_ref().unwrap()
+                tampered_meeting
+                    .artifacts
+                    .current_transcript
+                    .as_ref()
+                    .unwrap()
             )
             .is_err(),
             "the tampered transcript must fail verification"
@@ -1762,7 +1807,12 @@ mod tests {
         note.validate().unwrap();
         assert_eq!(
             note.source_transcript_sha256,
-            note_meeting.artifacts.current_transcript.as_ref().unwrap().sha256
+            note_meeting
+                .artifacts
+                .current_transcript
+                .as_ref()
+                .unwrap()
+                .sha256
         );
         verify_artifact_ref(&note_dir, &note.json).unwrap();
         verify_artifact_ref(&note_dir, &note.markdown).unwrap();
@@ -1813,7 +1863,11 @@ mod tests {
         // Title visible: run the real turn text through the real
         // `derived_title`, rather than asserting the fixture "looks long
         // enough" by eye.
-        let transcript = locked_meeting.artifacts.current_transcript.as_ref().unwrap();
+        let transcript = locked_meeting
+            .artifacts
+            .current_transcript
+            .as_ref()
+            .unwrap();
         let turns = turn_texts(&locked_dir, &transcript.relative_path);
         let title = derived_title(turns.iter().map(|text| (text.as_str(), false)));
         assert!(

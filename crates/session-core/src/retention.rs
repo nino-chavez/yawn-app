@@ -10,23 +10,23 @@ use thiserror::Error;
 
 use crate::library_metadata::{OrganizationError, OrganizationOutcome};
 use crate::meeting::{
-    artifact_ref, load_meeting, open_private_file, read_private_bytes, require_private_directory,
-    resolve_artifact, valid_opaque_id, verify_artifact_ref, verify_record_artifacts,
-    verify_record_static_artifacts, write_meeting, ArtifactRef, AudioState, MeetingError,
-    MeetingLifecycle, MeetingRecord, PendingStorageOperation, AUDIO_ARTIFACT_PATHS,
-    MAX_RECEIPT_BYTES,
+    AUDIO_ARTIFACT_PATHS, ArtifactRef, AudioState, MAX_RECEIPT_BYTES, MeetingError,
+    MeetingLifecycle, MeetingRecord, PendingStorageOperation, artifact_ref, load_meeting,
+    open_private_file, read_private_bytes, require_private_directory, resolve_artifact,
+    valid_opaque_id, verify_artifact_ref, verify_record_artifacts, verify_record_static_artifacts,
+    write_meeting,
 };
 use crate::meeting_coordination::{MeetingCoordinationError, MeetingStorageCoordination};
 use crate::operation_store::{OperationStore, OperationStoreError, StoredOperationRequest};
 #[cfg(target_os = "macos")]
 use crate::profile_lifecycle::{
+    ProfileEnrollmentOutcome, ProfileLifecycleBaseline, ProfileLifecycleError, ProfileResetOutcome,
     enroll_profile_lifecycle_bound, initialize_profile_lifecycle_bound,
-    preserve_legacy_profile_bound, reset_profile_lifecycle_bound, ProfileEnrollmentOutcome,
-    ProfileLifecycleBaseline, ProfileLifecycleError, ProfileResetOutcome,
+    preserve_legacy_profile_bound, reset_profile_lifecycle_bound,
 };
 use crate::storage::{
-    create_private_dir, durable_create_new, durable_replace, sync_directory, BoundPrivateDirectory,
-    BoundPrivateFile, StorageRoot,
+    BoundPrivateDirectory, BoundPrivateFile, StorageRoot, create_private_dir, durable_create_new,
+    durable_replace, sync_directory,
 };
 use crate::transcript_retry::TranscriptRetryAuthority;
 use crate::transcription_queue::{
@@ -210,7 +210,7 @@ pub enum ProfileEnrollmentWorkerError {
 #[cfg(target_os = "macos")]
 pub trait ProfileEnrollmentWorker: Send + Sync {
     fn inspect_candidate(&self, operation_id: &str)
-        -> Result<String, ProfileEnrollmentWorkerError>;
+    -> Result<String, ProfileEnrollmentWorkerError>;
 
     fn discard_candidate(
         &self,
@@ -1118,9 +1118,9 @@ fn execute_due_retention_in_trash(
     };
     let mut outcomes = Vec::new();
     for entry in entries {
-        let meeting_dir = match storage.resolve(
-            &Path::new(crate::meeting_trash::TRASH_DIR).join(&entry.meeting_id),
-        ) {
+        let meeting_dir = match storage
+            .resolve(&Path::new(crate::meeting_trash::TRASH_DIR).join(&entry.meeting_id))
+        {
             Ok(path) => path,
             Err(_) => continue,
         };
@@ -1599,8 +1599,8 @@ mod tests {
 
     use super::*;
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule,
-        MeetingArtifacts, MeetingLifecycle, MeetingSchema,
+        AudioRetention, AudioRetentionRule, MeetingArtifacts, MeetingLifecycle, MeetingSchema,
+        artifact_ref, retention_policy_sha256,
     };
     use crate::meeting_coordination::MeetingStorageCoordination;
     use crate::operation_store::StoredOperationResult;
@@ -2261,7 +2261,9 @@ mod tests {
         // all recording (D-LOCK).
         assert_eq!(
             execute_due_retention(&storage, 10).unwrap(),
-            vec![RetentionOutcome::DeferredTranscription("captured-orphan".into())]
+            vec![RetentionOutcome::DeferredTranscription(
+                "captured-orphan".into()
+            )]
         );
         assert!(directory.join("capture/mic.wav").exists());
         assert!(directory.join("capture/system.wav").exists());
@@ -2412,9 +2414,11 @@ mod tests {
         assert!(!directory.join("capture/.mic.wav.partial").exists());
         assert!(!directory.join("capture/.system.wav.partial").exists());
         assert!(!directory.join("deletion/.mic.wav.partial.staged").exists());
-        assert!(!directory
-            .join("deletion/.system.wav.partial.staged")
-            .exists());
+        assert!(
+            !directory
+                .join("deletion/.system.wav.partial.staged")
+                .exists()
+        );
         let meeting = load_meeting(&directory).unwrap();
         assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
         assert_eq!(meeting.retention.state, AudioState::Released);
@@ -2447,9 +2451,11 @@ mod tests {
         assert!(directory.join("capture/.mic.wav.partial").exists());
         assert!(directory.join("capture/.system.wav.partial").exists());
         assert!(!directory.join("deletion/.mic.wav.partial.staged").exists());
-        assert!(!directory
-            .join("deletion/.system.wav.partial.staged")
-            .exists());
+        assert!(
+            !directory
+                .join("deletion/.system.wav.partial.staged")
+                .exists()
+        );
         assert!(!directory.join("deletion/audio-deletion.json").exists());
     }
 
@@ -2499,10 +2505,12 @@ mod tests {
             Err(ProfileLifecycleAdmissionError::ActiveMeeting)
         ));
         assert!(!storage.path().join("profile/voiceprint.json").exists());
-        assert!(!storage
-            .path()
-            .join("profile/.lifecycle.initializing")
-            .exists());
+        assert!(
+            !storage
+                .path()
+                .join("profile/.lifecycle.initializing")
+                .exists()
+        );
     }
 
     #[cfg(target_os = "macos")]
@@ -2740,9 +2748,11 @@ mod tests {
             Err(ProfileLifecycleAdmissionError::AuthorityLost)
         ));
         assert!(!storage.path().join("profile/voiceprint.json").exists());
-        assert!(!storage
-            .path()
-            .join("profile/.lifecycle.initializing")
-            .exists());
+        assert!(
+            !storage
+                .path()
+                .join("profile/.lifecycle.initializing")
+                .exists()
+        );
     }
 }

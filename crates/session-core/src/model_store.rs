@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::storage::{durable_replace, sync_directory, StorageRoot};
+use crate::storage::{StorageRoot, durable_replace, sync_directory};
 
 const MAX_CATALOG_BYTES: u64 = 128 * 1024;
 const MAX_RECEIPT_BYTES: u64 = 32 * 1024;
@@ -708,10 +708,7 @@ pub fn verify_model_directory(
             return Err(ModelStoreError::InvalidReceipt);
         }
         let path = directory.join(&expected.name);
-        if path.is_symlink()
-            || !path.is_file()
-            || path.metadata()?.len() != expected.bytes
-        {
+        if path.is_symlink() || !path.is_file() || path.metadata()?.len() != expected.bytes {
             return Err(ModelStoreError::InvalidModel);
         }
         if verification == ModelVerification::Contents && file_sha256(&path)? != expected.sha256 {
@@ -911,10 +908,7 @@ pub fn verify_note_model_directory(
             return Err(ModelStoreError::InvalidReceipt);
         }
         let path = directory.join(&expected.name);
-        if path.is_symlink()
-            || !path.is_file()
-            || path.metadata()?.len() != expected.bytes
-        {
+        if path.is_symlink() || !path.is_file() || path.metadata()?.len() != expected.bytes {
             return Err(ModelStoreError::InvalidModel);
         }
         if verification == ModelVerification::Contents && file_sha256(&path)? != expected.sha256 {
@@ -1353,7 +1347,9 @@ mod tests {
         let (_temp, storage, mut catalog) = fixture();
         let note = push_note_fixture(&mut catalog);
         let directory = write_installed_note_model(&storage, &note);
-        assert!(verify_note_model_directory(&directory, &note, ModelVerification::Contents).is_ok());
+        assert!(
+            verify_note_model_directory(&directory, &note, ModelVerification::Contents).is_ok()
+        );
 
         // Tampering with one shard of a multi-shard weight set is caught,
         // exactly as a single-file whisper weight tamper is above.
@@ -1366,7 +1362,11 @@ mod tests {
             verify_note_model_directory(&directory, &note, ModelVerification::Contents),
             Err(ModelStoreError::InvalidModel)
         ));
-        fs::write(directory.join("model-00002-of-00002.safetensors"), b"shard-1").unwrap();
+        fs::write(
+            directory.join("model-00002-of-00002.safetensors"),
+            b"shard-1",
+        )
+        .unwrap();
         durable_create_new(&directory.join("extra"), b"unexpected").unwrap();
         assert!(matches!(
             verify_note_model_directory(&directory, &note, ModelVerification::Contents),
@@ -1478,7 +1478,10 @@ mod tests {
             model.files().iter().map(|file| file.bytes).sum()
         }
 
-        assert_eq!(total_declared_bytes(&transcript), transcript.download_bytes());
+        assert_eq!(
+            total_declared_bytes(&transcript),
+            transcript.download_bytes()
+        );
         assert_eq!(total_declared_bytes(&note), note.download_bytes());
         assert_eq!(transcript.id(), transcript.id.as_str());
         assert_eq!(note.revision(), note.revision.as_str());
@@ -1507,9 +1510,13 @@ mod tests {
             for (name, bytes) in files {
                 durable_create_new(&directory.join(name), bytes).unwrap();
             }
-            durable_create_new(&directory.join(INSTALL_RECEIPT_NAME), &model.receipt_bytes())
-                .unwrap();
-            model.verify_directory(&directory, ModelVerification::Contents)
+            durable_create_new(
+                &directory.join(INSTALL_RECEIPT_NAME),
+                &model.receipt_bytes(),
+            )
+            .unwrap();
+            model
+                .verify_directory(&directory, ModelVerification::Contents)
                 .unwrap();
             model.activate(storage).unwrap();
         }
@@ -1517,10 +1524,7 @@ mod tests {
         install_like(
             &storage,
             &transcript,
-            &[
-                ("config.json", b"config"),
-                ("weights.npz", b"weights"),
-            ],
+            &[("config.json", b"config"), ("weights.npz", b"weights")],
         );
         install_like(
             &storage,
