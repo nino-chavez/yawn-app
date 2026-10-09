@@ -296,8 +296,14 @@ impl<'a> TranscriptionQueue<'a> {
         Ok(discovery)
     }
 
-    /// The verified requests in one meeting's queue folder, or `None` when
-    /// the meeting has no queue folder.
+    /// The requests in one meeting's queue folder, or `None` when the meeting
+    /// has no queue folder.
+    ///
+    /// Every request's receipts are read and checked. Only a request that can
+    /// still run has its source rehashed: once it has a commit or terminal
+    /// receipt, no caller acts on its audio again, and the executor discovers
+    /// on every pass, so rehashing it would reread retained recordings for as
+    /// long as the app stays open.
     fn listed_meeting_items(
         &self,
         meeting_dir: &Path,
@@ -322,9 +328,11 @@ impl<'a> TranscriptionQueue<'a> {
             let request_id = Uuid::parse_str(&item.file_name().to_string_lossy())
                 .map_err(|_| TranscriptionQueueError::Malformed("request directory id"))?;
             let queue_item = self.load_item(&item.path(), request_id)?;
-            verify_source(meeting_dir, meeting, &queue_item.request)?;
-            if let Some(result) = &queue_item.result {
-                verify_artifact_ref(meeting_dir, &result.transcript)?;
+            if queue_item.commit.is_none() && queue_item.terminal.is_none() {
+                verify_source(meeting_dir, meeting, &queue_item.request)?;
+                if let Some(result) = &queue_item.result {
+                    verify_artifact_ref(meeting_dir, &result.transcript)?;
+                }
             }
             items.push(queue_item);
         }
@@ -814,11 +822,11 @@ fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>, serde_json::Error> {
 /// records it as an orphan capture when it has no queue folder.
 ///
 /// Trash and deletion move or remove a meeting folder without waiting for a
-/// scan, and the scan rereads every queued source, so a meeting can leave
-/// between its listing and its last read. A meeting that no longer loads once
-/// its scan ends is read as absent, whatever the scan returned, as a listing
-/// taken a moment later would read it. A file missing from a meeting that
-/// still loads fails closed.
+/// scan, and the scan rereads every source that can still run, so a meeting
+/// can leave between its listing and its last read. A meeting that no longer
+/// loads once its scan ends is read as absent, whatever the scan returned, as
+/// a listing taken a moment later would read it. A file missing from a
+/// meeting that still loads fails closed.
 fn add_listed_meeting(
     discovery: &mut QueueDiscovery,
     id: String,
@@ -911,6 +919,13 @@ mod tests {
     }
 
     fn fixture() -> (TempDir, StorageRoot, TranscriptionRequest) {
+        fixture_with_audio(b"mic", b"system")
+    }
+
+    fn fixture_with_audio(
+        mic: &[u8],
+        system: &[u8],
+    ) -> (TempDir, StorageRoot, TranscriptionRequest) {
         let temp = TempDir::new().unwrap();
         let repository = temp.path().join("repo");
         fs::create_dir(&repository).unwrap();
@@ -922,8 +937,8 @@ mod tests {
             ("attempt.json", b"attempt".as_slice()),
             ("ownership.json", b"ownership".as_slice()),
             ("capture/session.json", b"session".as_slice()),
-            ("capture/mic.wav", b"mic".as_slice()),
-            ("capture/system.wav", b"system".as_slice()),
+            ("capture/mic.wav", mic),
+            ("capture/system.wav", system),
         ] {
             durable_create_new(&meeting_dir.join(path), bytes).unwrap();
         }
@@ -1493,5 +1508,131 @@ mod tests {
             queue.discover(),
             Err(TranscriptionQueueError::Malformed(_))
         ));
+    }
+
+    /// Leaves the fixture's meeting `TranscriptReady` with two settled
+    /// requests: one committed, and a duplicate that failed after it. This is
+    /// the shape an idle library holds once its transcripts are done.
+    fn settle_two_requests(queue: &TranscriptionQueue<'_>, request: &TranscriptionRequest) {
+        let duplicate = TranscriptionRequest {
+            request_id: Uuid::new_v4(),
+            ..request.clone()
+        };
+        queue.enqueue(request.clone()).unwrap();
+        queue.enqueue(duplicate.clone()).unwrap();
+        let bytes = br#"{"schema":"transcript/1","turns":[]}"#;
+        let reference = ArtifactRef {
+            relative_path: format!("transcript/{}.json", digest_bytes(bytes)),
+            sha256: digest_bytes(bytes),
+        };
+        queue
+            .admit_result(request.request_id, bytes, reference, 4)
+            .unwrap();
+        queue.commit(request.request_id, 5).unwrap();
+        queue
+            .fail(duplicate.request_id, TranscriptionTerminalKind::Failed, 6)
+            .unwrap();
+    }
+
+    // An idle library is all settled requests, and the executor discovers
+    // three times a pass. Re-reading their retained audio every pass kept a
+    // core busy hashing recordings no request could run against again. A
+    // changed file under a settled request is therefore not read, and does
+    // not stop discovery for every other meeting.
+    #[test]
+    fn discovery_does_not_reread_the_audio_of_settled_requests() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        settle_two_requests(&queue, &request);
+        durable_replace(
+            &storage.path().join("meetings/meeting-a/capture/mic.wav"),
+            b"changed",
+        )
+        .unwrap();
+
+        let discovery = queue.discover().unwrap();
+        assert_eq!(discovery.items.len(), 2);
+        assert!(discovery
+            .items
+            .iter()
+            .all(|item| item.commit.is_some() || item.terminal.is_some()));
+    }
+
+    // The same change under a request that can still run fails discovery,
+    // even when the meeting also holds a settled request.
+    #[test]
+    fn a_changed_source_under_a_request_that_can_still_run_fails_discovery() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        let waiting = TranscriptionRequest {
+            request_id: Uuid::new_v4(),
+            ..request.clone()
+        };
+        queue.enqueue(request.clone()).unwrap();
+        queue.enqueue(waiting).unwrap();
+        queue
+            .fail(request.request_id, TranscriptionTerminalKind::Failed, 5)
+            .unwrap();
+        durable_replace(
+            &storage.path().join("meetings/meeting-a/capture/mic.wav"),
+            b"changed",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            queue.discover(),
+            Err(TranscriptionQueueError::Meeting(MeetingError::ArtifactMismatch))
+        ));
+    }
+
+    // An admitted result awaiting its commit is not settled: recovery still
+    // commits it, so its source is still checked.
+    #[test]
+    fn a_changed_source_under_an_uncommitted_result_fails_discovery() {
+        let (_temp, storage, request) = fixture();
+        let queue = queue(&storage);
+        queue.enqueue(request.clone()).unwrap();
+        let bytes = br#"{"schema":"transcript/1","turns":[]}"#;
+        let reference = ArtifactRef {
+            relative_path: format!("transcript/{}.json", digest_bytes(bytes)),
+            sha256: digest_bytes(bytes),
+        };
+        queue
+            .admit_result(request.request_id, bytes, reference, 4)
+            .unwrap();
+        durable_replace(
+            &storage.path().join("meetings/meeting-a/capture/mic.wav"),
+            b"changed",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            queue.discover(),
+            Err(TranscriptionQueueError::Meeting(MeetingError::ArtifactMismatch))
+        ));
+    }
+
+    /// Wall time of one `discover()` over a ready meeting that still retains
+    /// two 71 MB recordings. Run with
+    /// `cargo test --release -p local-meeting-notes-session-core -- --ignored --nocapture discovery_cost`.
+    #[test]
+    #[ignore = "measurement: writes 142 MB and prints timings"]
+    fn discovery_cost_with_retained_audio() {
+        let audio = vec![0x5a_u8; 71_000_000];
+        let (_temp, storage, request) = fixture_with_audio(&audio, &audio);
+        let queue = queue(&storage);
+        settle_two_requests(&queue, &request);
+        let runs = 20;
+        let started = std::time::Instant::now();
+        for _ in 0..runs {
+            let discovery = queue.discover().unwrap();
+            assert_eq!(discovery.items.len(), 2);
+        }
+        let each = started.elapsed() / runs;
+        eprintln!(
+            "discover(): {each:?} per call; the executor makes 3 calls per idle pass, \
+             so about {:?} of discovery before each 250 ms sleep",
+            each * 3
+        );
     }
 }
