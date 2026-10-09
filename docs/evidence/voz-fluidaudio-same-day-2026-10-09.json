@@ -1,0 +1,89 @@
+{
+ "schema": "voz-fluidaudio-same-day/1",
+ "date": "2026-10-09",
+ "machine": {
+  "chip": "Apple M3 Max",
+  "os": "macOS 27.0",
+  "load_average_during_runs": "10-14 (unrelated work)"
+ },
+ "input": {
+  "audio": "AMI ES2004c.Mix-Headset.wav, 2334.368 s",
+  "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+  "reference_sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010"
+ },
+ "fluidaudio": {
+  "probe_source_commit": "57d5fc6",
+  "fluidaudio": "0.15.6 (4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b)",
+  "encoder": "int8",
+  "model": "parakeet-tdt-0.6b-v3 Core ML, cached by Yawn setup",
+  "probe_binary_sha256": "1088f16ac5a4cc5f56ea054b66bf400335b902fb514c03c567038fbd524bd36f",
+  "setup_seconds": [
+   22.89,
+   0.14
+  ],
+  "process_seconds": [
+   14.3,
+   13.43,
+   13.11,
+   16.2
+  ],
+  "segments": "word (FluidAudio buildWordTimings)"
+ },
+ "voz": {
+  "tool": "desertant 0.2.1 (desert-ant-core 3.5.0)",
+  "processingSec": [
+   6.14,
+   6.42,
+   6.31,
+   6.94
+  ],
+  "loadSec": [
+   0.44,
+   0.4
+  ],
+  "invocation_wall_seconds": [
+   7.07,
+   7.25,
+   7.15,
+   7.71
+  ],
+  "segments": "word"
+ },
+ "order": "FluidAudio x2, Voz x2, FluidAudio x2, Voz x2",
+ "determinism": "each engine identical text across its four passes; Voz identical to the earlier same-day Voz runs",
+ "scores_word_segments": {
+  "fluidaudio": {
+   "edit": 0.2,
+   "deletions": 1080,
+   "substitutions": 283,
+   "insertions": 54,
+   "decision": "106/123",
+   "entity": "122/132",
+   "tail": "231/293",
+   "gap_tokens": 1
+  },
+  "voz": {
+   "edit": 0.1712,
+   "deletions": 854,
+   "substitutions": 295,
+   "insertions": 64,
+   "decision": "110/123",
+   "entity": "122/132",
+   "tail": "251/293",
+   "gap_tokens": 9
+  }
+ },
+ "reproduces_2026_09_07_parakeet": true,
+ "output_holes_ge_5s_with_ge_5_manual_tokens": {
+  "fluidaudio": {
+   "count": 7,
+   "manual_tokens": 180
+  },
+  "voz": {
+   "count": 2,
+   "manual_tokens": 63
+  }
+ },
+ "not_established": "whether FluidAudio's holes align with its ~15 s / 2 s-overlap window grid",
+ "contains_transcript_text": false
+}
