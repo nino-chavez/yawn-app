@@ -1,0 +1,127 @@
+{
+ "schema": "voz-ami-replay/1",
+ "date": "2026-10-09",
+ "engine": {
+  "tool": "desertant 0.2.1 (desert-ant-core 3.5.0)",
+  "model": "voz = NVIDIA Parakeet TDT 0.6B v3, converted/compressed",
+  "model_cache_bytes_on_disk": "475M (du)"
+ },
+ "machine": {
+  "chip": "Apple M3 Max",
+  "os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "load_note": "load average 11-19 during Voz runs; timings inflated"
+ },
+ "inputs": {
+  "audio": "AMI ES2004c.Mix-Headset.wav (CC BY 4.0), 2334.368 s",
+  "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+  "annotations_zip_sha256": "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d",
+  "reference_sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010",
+  "reference_builder": "yawn-app spike/speech-engine-comparison/prepare_ami.py @ d78116c",
+  "reference_denominators": {
+   "lexical_tokens": 7084,
+   "decision_terms": 123,
+   "entity_terms": 132,
+   "tail_terms": 293
+  },
+  "ami_partition": "ES2004 is in the official AMI test set (unseen evaluation data)",
+  "reference_match_basis": "denominators match the 2026-09-07 run; that run's reference hash is not in Git, so equality is structural, not by hash"
+ },
+ "timing_seconds": {
+  "run0_wall_incl_model_download": 40.38,
+  "processingSec": [
+   6.1,
+   9.75,
+   13.25
+  ],
+  "run1_wall": 12.25,
+  "run2_wall": 15.65
+ },
+ "determinism": "runs 0-2 identical text; with the model cached, a run with network denied (sandbox-exec) gave identical text",
+ "scores_sentence_segments": {
+  "normalized_edit_distance": 0.1712,
+  "edits": {
+   "deletions": 854,
+   "substitutions": 295,
+   "insertions": 64
+  },
+  "decision_terms": 112,
+  "entity_terms": 123,
+  "tail_terms": 251,
+  "sentence_timing_aligned": "380/386",
+  "tokens_in_manual_gaps": 8
+ },
+ "word_timestamps": {
+  "unique_tokens": 386,
+  "median_abs_start_offset_s": 0.07,
+  "p90_s": 0.19,
+  "within_0_5s": 385
+ },
+ "silence_controls": {
+  "digital_silence_10s": "no speech found, exit 1, no text",
+  "low_noise_10s": "no speech found, exit 1, no text"
+ },
+ "scorer_sanity": {
+  "perfect_reference_transcript": "0.00% edits, 123/123, 132/132, 293/293",
+  "voz_minus_every_third_sentence": "44.35% edits, 76/123, 85/132, 198/293"
+ },
+ "prior_results_from_yawn_doc_2026_09_07": {
+  "whisper_q4": {
+   "edit": 0.2566,
+   "decision": 101,
+   "entity": 114,
+   "tail": 240,
+   "seconds": 46.37
+  },
+  "apple": {
+   "edit": 0.222,
+   "decision": 100,
+   "entity": 102,
+   "tail": 245,
+   "seconds": 31.56
+  },
+  "parakeet_fluidaudio": {
+   "edit": 0.2,
+   "decision": 106,
+   "entity": 122,
+   "tail": 231,
+   "seconds": 11.74
+  }
+ },
+ "not_done": [
+  "same-machine Whisper baseline: bundled runtime's `import numba` exited 137 (SIGKILL); cause not established",
+  "same-day FluidAudio Parakeet rerun",
+  "private two-leg captures",
+  "note generation from the Voz transcript"
+ ],
+ "network": "online cached run: 0 of 54 lsof samples (~0.1 s apart) showed an open socket; sampling can miss brief connections",
+ "scores_by_granularity": {
+  "sentences(primary)": {
+   "decision": 112,
+   "entity": 123
+  },
+  "captions": {
+   "decision": 110,
+   "entity": 122
+  },
+  "words": {
+   "decision": 110,
+   "entity": 122
+  },
+  "all": {
+   "edit": 0.1712,
+   "tail": 251
+  }
+ },
+ "timing_comparability": "unmeasured: different day/machine than 2026-09-07 doc, load average 11-19, processingSec rose 6.1 -> 9.8 -> 13.3 s",
+ "identity_note": "Voz is Parakeet TDT 0.6B v3 (model card: weights otherwise unchanged) - same model as the doc's Parakeet column; differences are windowing/stitching, not model",
+ "fluidaudio_license": "Apache-2.0 (gh api, 2026-10-09)",
+ "integration_note": "on silence Voz exits 1 'no speech found' and writes no file; Yawn must map that to an empty leg, not a failed run",
+ "harness": {
+  "git_commit": "d78116c (identical to 116870a for spike/speech-engine-comparison/ and this doc)",
+  "prepare_ami_py_sha256": "eb2e8dba5189117edc3256e9f3d6348f06a5c93ed6109102fdd25afd90026079",
+  "scoring_py_sha256": "af6f7ce2893ed26792a1ef2adcf2ff3a8c45453879f6f516969dcba9bf5d6efe",
+  "rapidfuzz": "3.14.3"
+ },
+ "private_outputs": "~/Library/Application Support/yawn-research/voz-ami-2026-10-09 (owner-local; contains derived transcript text)",
+ "contains_transcript_text": false
+}

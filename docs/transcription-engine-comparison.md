@@ -981,3 +981,86 @@ dispatch constraints, not model-quality findings.
 This trial changes no product source, contract, release state, or ASR decision.
 The raw private outputs, audio, transcripts, names, and private input locations
 remain ignored local artifacts and are not reproduced in Git.
+
+## Desert Ant Voz on the public AMI meeting — 2026-10-09
+
+A [video demo](https://www.youtube.com/watch?v=-89RZXTvY1k) of Desert Ant Labs'
+on-device models prompted one bounded check: run its speech model, Voz, through
+this comparison's AMI diagnostics. The video is the reason for the check, not
+its evidence. Voz's [model card](https://huggingface.co/desert-ant-labs/voz)
+states that Voz is NVIDIA's Parakeet TDT 0.6B v3, converted and compressed, with
+the weights otherwise unchanged. It is the same model as the Parakeet column
+above, delivered through a different runtime. That runtime cuts audio into
+15-second windows at pauses and joins neighboring windows where their words
+agree. Any difference below comes from conversion, windowing, and joining, not
+from a different model.
+
+The run used `desertant` 0.2.1 (desert-ant-core 3.5.0) from the vendor's
+Homebrew tap, on an Apple M3 Max running macOS 27.0. The input was the same
+public `ES2004c.Mix-Headset.wav` (2334.368 s). ES2004 is in AMI's official
+[unseen evaluation partition](https://groups.inf.ed.ac.uk/ami/corpus/datasets.shtml).
+The reference was rebuilt from `ami_public_manual_1.6.2.zip` with the unchanged
+`prepare_ami.py` and scored with the unchanged `scoring.py`. The rebuilt
+reference reproduces every denominator below. The 2026-09-07 reference hash is
+not in Git, so the match is structural rather than byte-for-byte. Voz's
+sentence segments were the primary scoring input.
+
+| AMI diagnostic | Whisper | Apple | Parakeet (FluidAudio, 09-07) | Voz (10-09) |
+|---|---:|---:|---:|---:|
+| Edits divided by 7,084 manual lexical tokens; lower is better | 25.66% | 22.20% | 20.00% | 17.12% |
+| Local terms retained in annotated decision evidence | 101/123 | 100/123 | 106/123 | 112/123 |
+| Local terms retained in annotated entities | 114/132 | 102/132 | 122/132 | 123/132 |
+| Distinct terms retained in the final tenth of the meeting | 240/293 | 245/293 | 231/293 | 251/293 |
+
+Scored on Voz's finer caption or word segments, decision and entity retention
+fell to 110/123 and 122/132. Edits and tail retention did not change. Voz's
+three runs produced identical text. The scorer separated a perfect transcript
+(0.00% edits, every term retained) from Voz output with every third sentence
+removed (44.35% edits, 76/123 decision terms).
+
+Other observations:
+
+- On 10 seconds of synthetic silence and 10 seconds of low-level noise, Voz
+  printed `no speech found`, exited with status 1, and wrote no file. It
+  invented no text. An adapter would have to treat that exit as an empty leg,
+  not a failed run, because a quiet system leg is normal.
+- With network access denied, a run with the model already cached produced
+  identical text. During an ordinary online run, 54 socket samples found no
+  open network connection. Sampling can miss a brief connection, so this is
+  evidence, not proof.
+- For the 386 tokens that occur exactly once in both the manual words and
+  Voz's word timestamps, the median start offset was 0.07 s and the 90th
+  percentile 0.19 s; 385 fell within 0.5 s. This comes from the Parakeet
+  model, not from Desert Ant's packaging.
+- The model cache occupied 475 MB on disk.
+
+Not measured:
+
+- Speed. Unrelated work held the machine at a load average of 11 to 19, and
+  Voz's reported processing time rose from 6.1 s to 9.8 s to 13.3 s across
+  identical runs. These figures are not comparable with the timing table above.
+- A same-machine Whisper baseline. The installed runtime's `import numba`
+  exited with SIGKILL when launched from this session's command environment.
+  The cause was not established.
+- A same-day FluidAudio rerun, the private two-leg captures, note generation,
+  and any approval. Only the accuracy columns are compared with the earlier run.
+
+Voz ships under the Desert Ant Labs Source-Available License 1.0. It is free
+below 100,000 monthly active devices per platform for each model, requires
+in-app attribution, and prohibits training a competing model. FluidAudio is
+Apache-2.0, and the Parakeet weights are CC BY 4.0.
+
+**What it means:** Voz does not add a new engine to the open decision. It shows
+the same Parakeet weights scoring better on this meeting under different
+windowing and joining, most visibly in the final tenth (251 versus 231 terms).
+That points at the FluidAudio path's chunking as the thing to test. Adopting
+Desert Ant would add a device cap and an attribution requirement for weights
+already available under CC BY 4.0.
+
+The bounded next step is one same-day, same-machine replay of the FluidAudio
+Parakeet path and Voz on this meeting. If the gap holds, try pause-aligned
+windows with agreement-based joining in the FluidAudio adapter and rescore.
+This record changes no product source, contract, release state, or ASR
+decision. The content-free receipt is
+[`docs/evidence/voz-ami-2026-10-09.json`](evidence/voz-ami-2026-10-09.json).
+Raw outputs, including derived transcript text, remain owner-local.
