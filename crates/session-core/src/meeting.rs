@@ -1113,4 +1113,74 @@ mod tests {
         meeting.artifacts.system_audio = Some(reference("capture/.system.wav.partial", 'e'));
         assert!(meeting.validate("meeting-a").is_err());
     }
+
+    fn private_file_at(directory: &Path, name: &str, bytes: &[u8]) -> PathBuf {
+        let path = directory.join(name);
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        path
+    }
+
+    /// Published FIPS 180-2 vectors, through the same file path every artifact
+    /// hash takes. Stored meeting records hold digests from whichever sha2
+    /// backend was compiled in, so changing the backend must not move a byte.
+    #[test]
+    fn hash_private_file_matches_published_sha256_vectors() {
+        let temporary = tempfile::TempDir::new().unwrap();
+        let million_a = vec![b'a'; 1_000_000];
+        let vectors: [(&[u8], &str); 4] = [
+            (
+                b"",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+            (
+                b"abc",
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+            ),
+            (
+                &million_a,
+                "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+            ),
+        ];
+        for (index, (bytes, expected)) in vectors.into_iter().enumerate() {
+            let path = private_file_at(temporary.path(), &format!("vector-{index}"), bytes);
+            assert_eq!(
+                hash_private_file(&path).unwrap(),
+                expected,
+                "vector {index}"
+            );
+        }
+    }
+
+    /// Per-file cost of hashing a recording-sized file, checked against a
+    /// digest computed outside Rust (`shasum -a 256` over the same bytes). Run
+    /// with `cargo test --release -p local-meeting-notes-session-core --lib --
+    /// --ignored --nocapture hash_private_file_cost`.
+    #[test]
+    #[ignore = "measurement: writes 71 MB and prints timings"]
+    fn hash_private_file_cost() {
+        // A prime cycle keeps neighbouring blocks distinct, and the odd length
+        // ends on a partial block and a partial 64 KiB read.
+        let length = 71_000_037_usize;
+        let bytes: Vec<u8> = (0..length).map(|index| (index % 251) as u8).collect();
+        let temporary = tempfile::TempDir::new().unwrap();
+        let path = private_file_at(temporary.path(), "system.wav", &bytes);
+        let expected = "5b9332f97550c5a98e7dd7cc23bfe0318f98a2f51f99f1caa8fa40d7bb1a2920";
+        assert_eq!(hash_private_file(&path).unwrap(), expected);
+
+        let runs = 10;
+        let mut fastest = std::time::Duration::MAX;
+        let started = std::time::Instant::now();
+        for _ in 0..runs {
+            let one = std::time::Instant::now();
+            assert_eq!(hash_private_file(&path).unwrap(), expected);
+            fastest = fastest.min(one.elapsed());
+        }
+        let mean = started.elapsed() / runs;
+        eprintln!("hash_private_file: {mean:?} mean, {fastest:?} fastest per {length}-byte file");
+    }
 }

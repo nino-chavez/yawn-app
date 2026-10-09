@@ -20,7 +20,11 @@ libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "=0.37.0", features = ["bundled"] }
-sha2 = "0.10"
+# `asm` selects sha2 0.10's Apple Silicon SHA-256 instructions. Without it
+# every artifact hash runs the software compressor: 168 ms against 35 ms for
+# a 71 MB recording on an M3 Max. On aarch64 the feature also builds sha2-asm,
+# which nothing links. sha2 0.11 uses the hardware path by default.
+sha2 = { version = "0.10", features = ["asm"] }
 sysinfo = "0.37"
 tempfile = "3"
 thiserror = "2"
