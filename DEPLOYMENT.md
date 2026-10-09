@@ -11,14 +11,16 @@ version: inspect the built artifact and public URL instead.
 
 ## What counts as released
 
-There are four separate states:
+There are five separate states:
 
 1. The source commit is on the intended Git branch.
 2. The exact app and DMG are signed, notarized, stapled, and locally verified.
 3. The DMG is reachable from the versioned public R2 URL.
 4. The live landing page links to that verified URL and checksum.
+5. The in-app update feed (`updates/latest.json`) names this version, and its
+   package URL serves the verified, signed update package.
 
-Do not call a build released until all four are true. A successful local build,
+Do not call a build released until all five are true. A successful local build,
 an Apple `Accepted` result, or a pushed landing-page commit is not enough on its
 own.
 
@@ -48,11 +50,13 @@ Stop and report the blocker instead of improvising when any of these is true:
   immutable catalog URL;
 - the host cannot see the Developer ID identity or `filmroom-notary` profile;
 - the signed verifier or Gatekeeper rejects the app or DMG;
+- `scripts/build-update-artifact.sh` cannot read the `Tauri yawn-app` key, or
+  the unpacked update package or its signature fails verification;
 - a suitable R2 S3 credential is unavailable for the large DMG upload; or
 - GitHub authentication is invalid, so a branch cannot be pushed or merged.
 
-Never put Apple credentials, Cloudflare credentials, meeting audio, transcript
-text, notes, or user data in Git or deployment logs.
+Never put Apple credentials, Cloudflare credentials, the updater private key,
+meeting audio, transcript text, notes, or user data in Git or deployment logs.
 
 ## Build and notarize the internal-alpha app
 
@@ -213,6 +217,93 @@ Then verify the public URL returns `200` and the expected `Content-Length` befor
 landing page. A byte range request is enough to prove public reachability; do
 not download the full image merely to test the link.
 
+## Publish the in-app update
+
+Installed copies of Yawn from the build with the updater onward check
+`https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/updates/latest.json` at
+launch and once a day, unless the operator turned the check off in Settings.
+That address is `plugins.updater.endpoints` in `tauri.conf.json`. Everything
+an installed copy will run comes through this section, so it is the release
+step with the least room for error.
+
+The signing lane already produced the package from the stapled app. It
+proved that the package unpacks into an app that still verifies, and that its
+signature verifies against the public key in `tauri.conf.json`:
+
+```text
+target/release/bundle/macos/Yawn-<version>-macos-arm64.app.tar.gz
+target/release/bundle/macos/Yawn-<version>-macos-arm64.app.tar.gz.sig
+```
+
+If the lane stopped after the DMG, run `scripts/build-update-artifact.sh` on
+its own. It never re-signs or re-notarizes. Its key is the `Tauri yawn-app`
+item in 1Password's `Developer Secrets` vault (`credential`, `password`;
+`public_key` matches `tauri.conf.json`). Losing that private key means no
+installed copy can be updated again. Every user would have to reinstall from
+a DMG built with a new key.
+
+### Prove the first update end to end
+
+Before the first `updates/latest.json` ever goes live, run one real update on
+this Mac against a test feed. Nothing before this has exercised the bundle
+swap, the relaunch against the data-directory lock and single-instance
+plugin, or helpers from the old bundle on a real install:
+
+1. Install the first updater build (version N) by hand from its DMG.
+2. Build version N+1 the same way, and upload its package and `.sig` under
+   `updates-test/`. Then write a feed with `prepare-update-feed.py --prefix
+   updates-test` and upload it as `updates-test/latest.json`.
+3. Point the installed app at the test feed. A GUI app reads launchd's
+   environment, not the shell's, so run
+   `launchctl setenv YAWN_UPDATE_FEED_URL https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev/updates-test/latest.json`,
+   then quit and reopen Yawn.
+4. Settings › Updates › Check now. Confirm it offers N+1, refuses while a
+   recording runs, and on "Update and restart" downloads, swaps, and reopens
+   as N+1. Then confirm the library and a past meeting open, and that no
+   process from the old bundle is still running.
+5. Repeat from a fresh N install with the test package altered by one byte.
+   The update must be refused, and N must keep running.
+6. Run `launchctl unsetenv YAWN_UPDATE_FEED_URL`, delete the `updates-test/`
+   objects, and record the result in the release receipt.
+
+Only then publish N+1 through the real feed below.
+
+### Publish the release
+
+Publish in this order, because an installed copy acts on `latest.json` the
+moment it changes:
+
+1. Upload the package and its `.sig` to `updates/` under their versioned
+   names, with immutable cache control, using the same S3 client and scoped
+   R2 key as the DMG. Verify the package URL returns `200` and the expected
+   `Content-Length`.
+2. Write the feed with the reviewed release notes as plain text:
+
+   ```sh
+   scripts/prepare-update-feed.py \
+     --package target/release/bundle/macos/Yawn-<version>-macos-arm64.app.tar.gz \
+     --base-url https://pub-91cec3695eaf486bbfaaa114df6f2268.r2.dev \
+     --notes-file <reviewed-notes.txt> \
+     --output <scratch>/latest.json
+   ```
+
+3. Upload `latest.json` last, to `updates/latest.json`, with content type
+   `application/json` and `Cache-Control: no-cache`. It is the only mutable
+   object in the bucket; never give it immutable caching.
+4. Re-fetch the live `latest.json` with `Cache-Control: no-cache`. Confirm it
+   names the new version and package URL, and that its signature equals the
+   `.sig` file's text.
+
+To withdraw a bad release, upload the previous release's `latest.json` again.
+Copies that already installed the bad version are not rolled back. Publish a
+fixed, higher version instead. Never move the feed to a lower version: copies
+on the bad version will not take a downgrade.
+
+The first build with the updater must be installed by hand from its DMG.
+Copies older than that never check the feed. A local-only build (not
+published) never goes in the feed. Its version number is then spent, so the
+next published version must be higher.
+
 ## Update and deploy the landing page
 
 The site source is `/Users/nino/Workspace/dev/sites/ventures/yawn-site`. Its
@@ -289,5 +380,6 @@ backfilled only when a recorded release receipt identifies the build commit.
 
 Record only these delivery facts: source commit, app version, DMG filename and
 SHA-256, Apple app/DMG acceptance, installed-app version, public download URL,
+update package filename and SHA-256, the live `latest.json` version,
 landing-page deployment result, and retired object keys. The human hardware
 test remains separate from packaging evidence.
