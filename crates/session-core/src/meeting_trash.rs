@@ -46,11 +46,18 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::library_metadata;
-use crate::meeting::{load_meeting, read_private_bytes, require_private_directory, valid_opaque_id, MeetingError, MAX_RECEIPT_BYTES};
+use crate::meeting::{
+    MAX_RECEIPT_BYTES, MeetingError, load_meeting, read_private_bytes, require_private_directory,
+    valid_opaque_id,
+};
 use crate::meeting_coordination::{MeetingCoordinationError, MeetingStorageCoordination};
-use crate::meeting_deletion::{self, DeletedArtifact, MeetingDeletionError, MeetingDeletionOutcome};
+use crate::meeting_deletion::{
+    self, DeletedArtifact, MeetingDeletionError, MeetingDeletionOutcome,
+};
 use crate::operation_store::{OperationStore, OperationStoreError, StoredOperationRequest};
-use crate::storage::{create_private_dir, durable_create_new, durable_replace, sync_directory, StorageRoot};
+use crate::storage::{
+    StorageRoot, create_private_dir, durable_create_new, durable_replace, sync_directory,
+};
 use crate::transcription_queue::TranscriptionQueueError;
 
 /// Directory holding both trash receipts (`<id>.json`) and the trashed
@@ -252,7 +259,12 @@ impl MeetingTrashAuthority<'_> {
         meeting_id: &str,
         now_epoch_seconds: u64,
     ) -> Result<MeetingTrashOutcome, MeetingTrashError> {
-        trash_meeting_wholly(self.storage, self.coordination, meeting_id, now_epoch_seconds)
+        trash_meeting_wholly(
+            self.storage,
+            self.coordination,
+            meeting_id,
+            now_epoch_seconds,
+        )
     }
 
     pub fn restore_meeting(
@@ -260,7 +272,12 @@ impl MeetingTrashAuthority<'_> {
         meeting_id: &str,
         now_epoch_seconds: u64,
     ) -> Result<MeetingRestoreOutcome, MeetingRestoreError> {
-        restore_meeting_from_trash(self.storage, self.coordination, meeting_id, now_epoch_seconds)
+        restore_meeting_from_trash(
+            self.storage,
+            self.coordination,
+            meeting_id,
+            now_epoch_seconds,
+        )
     }
 }
 
@@ -471,14 +488,16 @@ pub(crate) fn restore_meeting_from_trash(
         return Err(MeetingError::Malformed("meeting identifier mismatch").into());
     }
 
-    let _lease = coordination.acquire(meeting_id).map_err(|error| match error {
-        // A meeting that is somehow both active and sitting in trash cannot
-        // happen through this crate's own entry points, but refusing rather
-        // than assuming keeps this consistent with every other
-        // storage-mutating path here.
-        MeetingCoordinationError::AlreadyActive => MeetingRestoreError::TrashInProgress,
-        other => other.into(),
-    })?;
+    let _lease = coordination
+        .acquire(meeting_id)
+        .map_err(|error| match error {
+            // A meeting that is somehow both active and sitting in trash cannot
+            // happen through this crate's own entry points, but refusing rather
+            // than assuming keeps this consistent with every other
+            // storage-mutating path here.
+            MeetingCoordinationError::AlreadyActive => MeetingRestoreError::TrashInProgress,
+            other => other.into(),
+        })?;
     let _sequence = coordination.lock_sequence()?;
 
     let receipt_path = receipt_path(storage, meeting_id).map_err(MeetingRestoreError::Io)?;
@@ -581,7 +600,8 @@ pub(crate) fn restore_meeting_from_trash(
 }
 
 fn load_restore_receipt(path: &Path) -> Result<TrashEntryReceipt, MeetingRestoreError> {
-    let bytes = read_private_bytes(path, MAX_RECEIPT_BYTES).map_err(MeetingRestoreError::Meeting)?;
+    let bytes =
+        read_private_bytes(path, MAX_RECEIPT_BYTES).map_err(MeetingRestoreError::Meeting)?;
     serde_json::from_slice(&bytes).map_err(|_| MeetingRestoreError::MalformedReceipt)
 }
 
@@ -625,7 +645,9 @@ fn write_restore_audit_receipt(
 /// Identity-only rows for the quiet "Trash" list. A read, and behaves like
 /// one: an absent `trash/` directory means nothing has ever been trashed, so
 /// it reports an empty list rather than creating the directory.
-pub fn list_trash_entries(storage: &StorageRoot) -> Result<Vec<TrashEntrySummary>, MeetingTrashError> {
+pub fn list_trash_entries(
+    storage: &StorageRoot,
+) -> Result<Vec<TrashEntrySummary>, MeetingTrashError> {
     let directory = storage
         .resolve(Path::new(TRASH_DIR))
         .map_err(|error| io::Error::other(error.to_string()))?;
@@ -646,12 +668,18 @@ pub fn list_trash_entries(storage: &StorageRoot) -> Result<Vec<TrashEntrySummary
         }
         entries.push(TrashEntrySummary {
             meeting_id: receipt.meeting_id,
-            title: receipt.organization.and_then(|organization| organization.title),
+            title: receipt
+                .organization
+                .and_then(|organization| organization.title),
             deleted_at_epoch_seconds: receipt.deleted_at_epoch_seconds,
             purge_after_epoch_seconds: receipt.purge_after_epoch_seconds,
         });
     }
-    entries.sort_by(|left, right| right.deleted_at_epoch_seconds.cmp(&left.deleted_at_epoch_seconds));
+    entries.sort_by(|left, right| {
+        right
+            .deleted_at_epoch_seconds
+            .cmp(&left.deleted_at_epoch_seconds)
+    });
     Ok(entries)
 }
 
@@ -693,9 +721,15 @@ pub fn reconcile_pending_trash(
         };
         match receipt.state {
             TrashEntryState::Trashing => {
-                match trash_meeting_wholly(storage, coordination, &receipt.meeting_id, now_epoch_seconds)
-                {
-                    Ok(MeetingTrashOutcome::RecoveredTrash | MeetingTrashOutcome::MeetingTrashed) => {
+                match trash_meeting_wholly(
+                    storage,
+                    coordination,
+                    &receipt.meeting_id,
+                    now_epoch_seconds,
+                ) {
+                    Ok(
+                        MeetingTrashOutcome::RecoveredTrash | MeetingTrashOutcome::MeetingTrashed,
+                    ) => {
                         completed.push(receipt.meeting_id);
                     }
                     Ok(_) => {}
@@ -802,8 +836,8 @@ pub fn execute_due_trash_purge(
 mod tests {
     use super::*;
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule, AudioState,
-        MeetingArtifacts, MeetingLifecycle, MeetingRecord, MeetingSchema,
+        AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts, MeetingLifecycle,
+        MeetingRecord, MeetingSchema, artifact_ref, retention_policy_sha256,
     };
     use crate::storage::durable_create_new as durable_create_new_fixture;
     use tempfile::TempDir;
@@ -912,7 +946,9 @@ mod tests {
             restore_meeting_from_trash(&storage, &coordination, "titled", 2_000).unwrap(),
             MeetingRestoreOutcome::Restored
         );
-        let live = storage.resolve(&Path::new("meetings").join("titled")).unwrap();
+        let live = storage
+            .resolve(&Path::new("meetings").join("titled"))
+            .unwrap();
         assert!(live.join("meeting.json").exists());
         match library_metadata::read_library_metadata(&storage) {
             library_metadata::MetadataState::Valid(document) => {
@@ -936,7 +972,9 @@ mod tests {
 
         // Simulate the impossible-in-practice case: something occupies the
         // live slot again before restore runs.
-        let live = storage.resolve(&Path::new("meetings").join("collides")).unwrap();
+        let live = storage
+            .resolve(&Path::new("meetings").join("collides"))
+            .unwrap();
         create_private_dir(&live).unwrap();
         durable_create_new_fixture(&live.join("marker.json"), b"not the trashed meeting").unwrap();
 
@@ -944,7 +982,9 @@ mod tests {
             restore_meeting_from_trash(&storage, &coordination, "collides", 2_000),
             Err(MeetingRestoreError::DestinationExists)
         ));
-        let trashed = storage.resolve(&Path::new(TRASH_DIR).join("collides")).unwrap();
+        let trashed = storage
+            .resolve(&Path::new(TRASH_DIR).join("collides"))
+            .unwrap();
         assert!(
             trashed.exists(),
             "a refused restore must not have moved or merged the trashed copy"
@@ -972,8 +1012,13 @@ mod tests {
         let outcomes =
             execute_due_trash_purge(&storage, &coordination, 1_000 + TRASH_WINDOW_SECONDS).unwrap();
         assert_eq!(outcomes, vec![TrashPurgeOutcome::Purged("aged-out".into())]);
-        let trashed = storage.resolve(&Path::new(TRASH_DIR).join("aged-out")).unwrap();
-        assert!(!trashed.exists(), "the trashed directory survived its purge");
+        let trashed = storage
+            .resolve(&Path::new(TRASH_DIR).join("aged-out"))
+            .unwrap();
+        assert!(
+            !trashed.exists(),
+            "the trashed directory survived its purge"
+        );
         assert!(
             list_trash_entries(&storage).unwrap().is_empty(),
             "a purged entry must disappear from the quiet list, not linger"
@@ -1007,7 +1052,12 @@ mod tests {
             artifacts: meeting_deletion::take_inventory(&live).unwrap(),
         };
         trash_dir_lazy(&storage).unwrap();
-        write_receipt(&receipt_path(&storage, "interrupted-trash").unwrap(), &receipt, true).unwrap();
+        write_receipt(
+            &receipt_path(&storage, "interrupted-trash").unwrap(),
+            &receipt,
+            true,
+        )
+        .unwrap();
 
         let completed = reconcile_pending_trash(&storage, &coordination, 600).unwrap();
         assert_eq!(completed, vec!["interrupted-trash".to_string()]);
@@ -1051,7 +1101,10 @@ mod tests {
             }
             _ => panic!("expected the reinstated title after resumed restore"),
         }
-        assert!(!path.exists(), "the trash receipt must be gone after restore");
+        assert!(
+            !path.exists(),
+            "the trash receipt must be gone after restore"
+        );
     }
 
     #[test]
@@ -1154,7 +1207,10 @@ mod tests {
             "the ghost receipt must not survive a refused restore"
         );
         assert!(
-            !storage.resolve(&Path::new("meetings").join("ghost")).unwrap().exists(),
+            !storage
+                .resolve(&Path::new("meetings").join("ghost"))
+                .unwrap()
+                .exists(),
             "a refused restore must not have created anything at meetings/<id>"
         );
         match library_metadata::read_library_metadata(&storage) {
@@ -1164,7 +1220,10 @@ mod tests {
                     "a refused restore must never write a library row for a meeting that is not there"
                 );
             }
-            other => panic!("expected a valid, empty record, got {other:?}", other = "unavailable"),
+            _ => panic!(
+                "expected a valid, empty record, got {other:?}",
+                other = "unavailable"
+            ),
         }
     }
 
@@ -1177,7 +1236,9 @@ mod tests {
         fixture(&storage, "mid-purge");
         let coordination = MeetingStorageCoordination::default();
         trash_meeting_wholly(&storage, &coordination, "mid-purge", 1_000).unwrap();
-        let trashed = storage.resolve(&Path::new(TRASH_DIR).join("mid-purge")).unwrap();
+        let trashed = storage
+            .resolve(&Path::new(TRASH_DIR).join("mid-purge"))
+            .unwrap();
         assert!(trashed.join("meeting.json").exists());
 
         // Hand-write the exact `meeting-deletion/1` receipt shape
@@ -1220,7 +1281,11 @@ mod tests {
         // `reconcile_pending_meeting_deletions` would do at startup for an
         // interrupted one) without this file's own receipt being told.
         meeting_deletion::purge_trashed_meeting(&storage, &coordination, "swept").unwrap();
-        assert_eq!(list_trash_entries(&storage).unwrap().len(), 1, "precondition: the ghost still lists");
+        assert_eq!(
+            list_trash_entries(&storage).unwrap().len(),
+            1,
+            "precondition: the ghost still lists"
+        );
 
         reconcile_pending_trash(&storage, &coordination, 2_000).unwrap();
 

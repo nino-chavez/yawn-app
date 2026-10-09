@@ -38,13 +38,11 @@ use crate::local_vocabulary::{
 };
 use crate::meeting::valid_opaque_id;
 use crate::model_store::{
-    ModelVerification,
-    DownloadableModel, ModelCatalog, NoteModel, NoteModelFile, NoteModelFileRole,
+    DownloadableModel, ModelCatalog, ModelVerification, NoteModel, NoteModelFile, NoteModelFileRole,
 };
 use crate::note_projection::{
     MAX_PROJECTION_FRAME_BYTES, NoteProjector, ProjectRequest, ProjectTransportError,
-    ProjectionCancellation, StrictJson, array, exact_object, strict_json,
-    string, u64_value,
+    ProjectionCancellation, StrictJson, array, exact_object, strict_json, string, u64_value,
 };
 use crate::operations::SpeakerLabelOverride;
 use crate::storage::StorageRoot;
@@ -283,8 +281,15 @@ fn drive_bridge_child(
     result_deadline: Duration,
     cancellation: &ProjectionCancellation,
 ) -> Result<Vec<u8>, InternalOutcome> {
-    let prepared_admission = prepare_interpreter_admission(runtime, admission).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("interpreter admission"), o => o })?;
-    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed before spawn"), o => o })?;
+    let prepared_admission =
+        prepare_interpreter_admission(runtime, admission).map_err(|o| match o {
+            InternalOutcome::Unavailable => trace_unavailable("interpreter admission"),
+            o => o,
+        })?;
+    runtime.require_unchanged().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("runtime changed before spawn"),
+        o => o,
+    })?;
 
     let mut sources = vec![
         runtime.manifest.file.as_raw_fd(),
@@ -301,9 +306,14 @@ fn drive_bridge_child(
             .ok_or_else(|| trace_unavailable("manifest has no generator descriptor"))?;
         sources.push(generator.file.as_raw_fd());
     } else if runtime.generator.is_some() {
-        return Err(trace_unavailable("project role with a generator descriptor"));
+        return Err(trace_unavailable(
+            "project role with a generator descriptor",
+        ));
     }
-    let staged = stage_descriptors(&sources).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("stage descriptors"), o => o })?;
+    let staged = stage_descriptors(&sources).map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("stage descriptors"),
+        o => o,
+    })?;
     let mut inherited = [ABSENT_DESCRIPTOR_MAPPING; 4];
     for (index, target) in [MANIFEST_FD, BRIDGE_FD, VALIDATOR_FD, GENERATOR_FD]
         .into_iter()
@@ -348,7 +358,10 @@ fn drive_bridge_child(
         )?),
         None => None,
     };
-    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after spawn"), o => o })?;
+    runtime.require_unchanged().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("runtime changed after spawn"),
+        o => o,
+    })?;
 
     let ready_deadline = Instant::now() + ready_deadline;
     let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -359,34 +372,56 @@ fn drive_bridge_child(
     });
     let (ready, reader) = wait_receiver(&ready_receiver, ready_deadline, cancellation, &mut guard)
         .map_err(|outcome| match outcome {
-            InternalOutcome::Unavailable => trace_unavailable("ready wait (deadline or child exit)"),
+            InternalOutcome::Unavailable => {
+                trace_unavailable("ready wait (deadline or child exit)")
+            }
             other => other,
         })?;
     let _ = ready_thread.join();
     let ready = ready.map_err(|_| trace_unavailable("ready frame read"))?;
-    parse_ready(&ready, &runtime.manifest.digest, role).map_err(|outcome| {
+    parse_ready(&ready, &runtime.manifest.digest, role).inspect_err(|_| {
         if note_trace_enabled() {
             let head = String::from_utf8_lossy(&ready[..ready.len().min(400)]);
             eprintln!("[note-trace] ready frame rejected: {head}");
         }
-        outcome
     })?;
-    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after ready"), o => o })?;
+    runtime.require_unchanged().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("runtime changed after ready"),
+        o => o,
+    })?;
     if let Some(binding) = live_code.as_ref() {
-        binding.require_same_process(
-            guard.pid(),
-            &SystemProcessStartTimeInspector,
-            &runtime.executable,
-        ).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("process identity after ready"), o => o })?;
+        binding
+            .require_same_process(
+                guard.pid(),
+                &SystemProcessStartTimeInspector,
+                &runtime.executable,
+            )
+            .map_err(|o| match o {
+                InternalOutcome::Unavailable => trace_unavailable("process identity after ready"),
+                o => o,
+            })?;
     }
-    guard.require_unexited().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("child exited after ready"), o => o })?;
-    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed before command"), o => o })?;
+    guard.require_unexited().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("child exited after ready"),
+        o => o,
+    })?;
+    runtime.require_unchanged().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("runtime changed before command"),
+        o => o,
+    })?;
     if let Some(binding) = live_code.as_ref() {
-        binding.require_same_process(
-            guard.pid(),
-            &SystemProcessStartTimeInspector,
-            &runtime.executable,
-        ).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("process identity before command"), o => o })?;
+        binding
+            .require_same_process(
+                guard.pid(),
+                &SystemProcessStartTimeInspector,
+                &runtime.executable,
+            )
+            .map_err(|o| match o {
+                InternalOutcome::Unavailable => {
+                    trace_unavailable("process identity before command")
+                }
+                o => o,
+            })?;
     }
 
     let mut stdin = stdin;
@@ -401,12 +436,20 @@ fn drive_bridge_child(
         let _ = result_sender.send(read_to_exact_eof(reader));
     });
     let result = wait_receiver(&result_receiver, result_deadline, cancellation, &mut guard)
-        .map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("result wait"), o => o })?;
+        .map_err(|o| match o {
+            InternalOutcome::Unavailable => trace_unavailable("result wait"),
+            o => o,
+        })?;
     let _ = result_thread.join();
     let result = result.map_err(|_| trace_unavailable("result read"))?;
-    runtime.require_unchanged().map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("runtime changed after result"), o => o })?;
+    runtime.require_unchanged().map_err(|o| match o {
+        InternalOutcome::Unavailable => trace_unavailable("runtime changed after result"),
+        o => o,
+    })?;
     if !guard.finish_success(result_deadline, cancellation)? {
-        return Err(trace_unavailable("child did not exit cleanly (status, deadline, or stderr overflow)"));
+        return Err(trace_unavailable(
+            "child did not exit cleanly (status, deadline, or stderr overflow)",
+        ));
     }
     Ok(result)
 }
@@ -647,16 +690,23 @@ impl ProcessNoteGenerator {
         if cancellation.is_cancelled() {
             return Err(InternalOutcome::Cancelled);
         }
-        validate_storage_root(&self.storage_root).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("storage root"), o => o })?;
-        validate_generate_request(request).map_err(|o| match o { InternalOutcome::Unavailable => trace_unavailable("request validation"), o => o })?;
+        validate_storage_root(&self.storage_root).map_err(|o| match o {
+            InternalOutcome::Unavailable => trace_unavailable("storage root"),
+            o => o,
+        })?;
+        validate_generate_request(request).map_err(|o| match o {
+            InternalOutcome::Unavailable => trace_unavailable("request validation"),
+            o => o,
+        })?;
         if !valid_relative_path(&self.model_directory) {
             return Err(trace_unavailable("model directory path"));
         }
-        let mut runtime = verify_manifest(&self.manifest_path, GENERATE_ROLE)
-            .map_err(|outcome| match outcome {
+        let mut runtime = verify_manifest(&self.manifest_path, GENERATE_ROLE).map_err(
+            |outcome| match outcome {
                 InternalOutcome::Unavailable => trace_unavailable("manifest verification"),
                 other => other,
-            })?;
+            },
+        )?;
         drive_bridge_child(
             &mut runtime,
             &self.storage_root,
@@ -746,7 +796,9 @@ pub fn parse_note_generation_result(
             // The envelope binds the payload to the request's pinned
             // transcript; every deeper field is the worker contract's to
             // judge.
-            if fields.get("transcript_sha256").and_then(serde_json::Value::as_str)
+            if fields
+                .get("transcript_sha256")
+                .and_then(serde_json::Value::as_str)
                 != Some(request.transcript_sha256.as_str())
             {
                 return Err(ProjectTransportError::Unavailable);
@@ -2100,9 +2152,9 @@ fn pre_meeting_context_is_valid(value: &Option<String>) -> bool {
         Some(text) => {
             !text.is_empty()
                 && text.len() <= 16 * 1024
-                && !text
-                    .chars()
-                    .any(|character| character.is_control() && character != '\n' && character != '\t')
+                && !text.chars().any(|character| {
+                    character.is_control() && character != '\n' && character != '\t'
+                })
         }
     }
 }
@@ -2357,10 +2409,8 @@ impl StderrMonitor {
     fn start(mut stderr: impl Read + Send + 'static) -> Self {
         let (sender, receiver) = mpsc::sync_channel(1);
         let trace = note_trace_enabled();
-        if trace {
-            if let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
-                tail.clear();
-            }
+        if trace && let Ok(mut tail) = LAST_STDERR_TAIL.lock() {
+            tail.clear();
         }
         let thread = std::thread::spawn(move || {
             let mut total = 0_usize;
@@ -2629,15 +2679,20 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         fn install_note_model(&self) {
             let entry = &self.catalog.note_models[0];
             let directory = self.model_directory();
-            for ancestor in directory.ancestors().skip(1).collect::<Vec<_>>().iter().rev() {
+            for ancestor in directory
+                .ancestors()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .iter()
+                .rev()
+            {
                 if ancestor.starts_with(self.storage.path()) && !ancestor.exists() {
                     create_private_dir(ancestor).unwrap();
                 }
             }
             create_private_dir(&directory).unwrap();
             durable_create_new(&directory.join("config.json"), NOTE_CONFIG_FIXTURE).unwrap();
-            durable_create_new(&directory.join("model.safetensors"), NOTE_WEIGHTS_FIXTURE)
-                .unwrap();
+            durable_create_new(&directory.join("model.safetensors"), NOTE_WEIGHTS_FIXTURE).unwrap();
             durable_create_new(
                 &directory.join(INSTALL_RECEIPT_NAME),
                 &note_install_receipt_bytes(entry),
@@ -2820,7 +2875,11 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             sandboxed.pre_exec(deny_network_in_child);
         }
         let output = sandboxed.output().unwrap();
-        assert_eq!(output.status.code(), Some(7), "sandboxed connect must be denied");
+        assert_eq!(
+            output.status.code(),
+            Some(7),
+            "sandboxed connect must be denied"
+        );
     }
 
     fn current_python() -> PathBuf {
@@ -3075,11 +3134,8 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         assert_eq!(result, b"{}\n");
         let bound = fs::read(fixture.storage_root.join("bound-command")).unwrap();
         let entry = &fixture.catalog.note_models[0];
-        let expected = generate_command(
-            &generate_request(),
-            entry.relative_path().to_str().unwrap(),
-        )
-        .unwrap();
+        let expected =
+            generate_command(&generate_request(), entry.relative_path().to_str().unwrap()).unwrap();
         assert_eq!(bound, expected);
     }
 
@@ -3901,9 +3957,18 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
             installed_bytes: 6,
             files: vec![
                 file(NoteModelFileRole::Config, "config.json"),
-                file(NoteModelFileRole::Weights, "model-00001-of-00002.safetensors"),
-                file(NoteModelFileRole::Weights, "model-00002-of-00002.safetensors"),
-                file(NoteModelFileRole::WeightsIndex, "model.safetensors.index.json"),
+                file(
+                    NoteModelFileRole::Weights,
+                    "model-00001-of-00002.safetensors",
+                ),
+                file(
+                    NoteModelFileRole::Weights,
+                    "model-00002-of-00002.safetensors",
+                ),
+                file(
+                    NoteModelFileRole::WeightsIndex,
+                    "model.safetensors.index.json",
+                ),
                 file(NoteModelFileRole::Tokenizer, "tokenizer.json"),
                 file(NoteModelFileRole::TokenizerConfig, "tokenizer_config.json"),
             ],
@@ -4069,7 +4134,11 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         assert!(!fixture.storage_root.join("bound-command").exists());
     }
 
-    fn generation_frame(outcome: &str, generation: serde_json::Value, failure: serde_json::Value) -> Vec<u8> {
+    fn generation_frame(
+        outcome: &str,
+        generation: serde_json::Value,
+        failure: serde_json::Value,
+    ) -> Vec<u8> {
         let mut bytes = serde_json::to_vec(&serde_json::json!({
             "schema": "note-generation-result/1",
             "request_id": "11111111-1111-4111-8111-111111111111",
@@ -4143,12 +4212,36 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
 
         // Outcome/payload disagreements and malformed envelopes.
         for frame in [
-            generation_frame("generated", generation_payload(), serde_json::json!({"code": "x", "recoverable": false, "receipt": {}})),
-            generation_frame("generated", serde_json::Value::Null, serde_json::Value::Null),
-            generation_frame("transcript-only", generation_payload(), serde_json::Value::Null),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::Value::Null),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::json!({"code": "", "recoverable": true, "receipt": {}})),
-            generation_frame("transcript-only", serde_json::Value::Null, serde_json::json!({"code": "x", "recoverable": true})),
+            generation_frame(
+                "generated",
+                generation_payload(),
+                serde_json::json!({"code": "x", "recoverable": false, "receipt": {}}),
+            ),
+            generation_frame(
+                "generated",
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                generation_payload(),
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::Value::Null,
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::json!({"code": "", "recoverable": true, "receipt": {}}),
+            ),
+            generation_frame(
+                "transcript-only",
+                serde_json::Value::Null,
+                serde_json::json!({"code": "x", "recoverable": true}),
+            ),
             generation_frame("refused", serde_json::Value::Null, serde_json::Value::Null),
             ok[..ok.len() - 1].to_vec(),
             b"not json\n".to_vec(),
@@ -4163,7 +4256,10 @@ def main_from_fds(manifest_fd,bridge_fd,validator_fd,storage_root,expected_paren
         }
 
         // A schema or operation swap refuses.
-        for (key, value) in [("schema", "note-projection-result/1"), ("operation", "note.project")] {
+        for (key, value) in [
+            ("schema", "note-projection-result/1"),
+            ("operation", "note.project"),
+        ] {
             let mut root: serde_json::Value = serde_json::from_slice(&ok[..ok.len() - 1]).unwrap();
             root[key] = serde_json::Value::String(value.into());
             let mut bytes = serde_json::to_vec(&root).unwrap();

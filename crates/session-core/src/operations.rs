@@ -998,9 +998,9 @@ fn validate_pre_meeting_context(value: &Option<String>) -> Result<(), OperationC
     };
     if text.is_empty()
         || text.len() > MAX_PRE_MEETING_CONTEXT_BYTES
-        || text.chars().any(|character| {
-            character.is_control() && character != '\n' && character != '\t'
-        })
+        || text
+            .chars()
+            .any(|character| character.is_control() && character != '\n' && character != '\t')
     {
         return Err(OperationContractError::Malformed(
             "pre-meeting context is invalid",

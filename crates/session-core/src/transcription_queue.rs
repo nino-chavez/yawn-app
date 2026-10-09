@@ -15,11 +15,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::meeting::{
-    load_meeting, read_private_bytes, require_private_directory, resolve_artifact, valid_opaque_id,
-    verify_artifact_ref, verify_record_artifacts, write_meeting, ArtifactRef, AudioState,
-    MeetingError, MeetingLifecycle,
+    ArtifactRef, AudioState, MeetingError, MeetingLifecycle, load_meeting, read_private_bytes,
+    require_private_directory, resolve_artifact, valid_opaque_id, verify_artifact_ref,
+    verify_record_artifacts, write_meeting,
 };
-use crate::storage::{create_private_dir, durable_create_new, StorageError, StorageRoot};
+use crate::storage::{StorageError, StorageRoot, create_private_dir, durable_create_new};
 
 const QUEUE_DIRECTORY: &str = "transcription-queue";
 const REQUEST_FILE: &str = "request.json";
@@ -56,7 +56,9 @@ pub struct TranscriptionRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "engine", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum TranscriptionProducer {
-    Whisper { model_identity: String },
+    Whisper {
+        model_identity: String,
+    },
     AppleNative {
         locale: String,
         helper_sha256: String,
@@ -73,12 +75,18 @@ impl TranscriptionProducer {
     pub fn validates(&self) -> bool {
         match self {
             Self::Whisper { model_identity } => valid_identity(model_identity, 256),
-            Self::AppleNative { locale, helper_sha256, asset_identity, os_version } => {
+            Self::AppleNative {
+                locale,
+                helper_sha256,
+                asset_identity,
+                os_version,
+            } => {
                 valid_identity(locale, 64)
                     && helper_sha256.len() == 64
                     && helper_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
                     && asset_identity == "os-managed"
-                    && !os_version.is_empty() && os_version.len() <= 1024
+                    && !os_version.is_empty()
+                    && os_version.len() <= 1024
             }
         }
     }
@@ -87,7 +95,9 @@ impl TranscriptionProducer {
 fn valid_identity(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_.@".contains(&byte))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"-_.@".contains(&byte))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -778,7 +788,11 @@ fn validate_request(request: &TranscriptionRequest) -> Result<(), TranscriptionQ
     {
         return Err(TranscriptionQueueError::Malformed("request identity"));
     }
-    if request.producer.as_ref().is_some_and(|producer| !producer.validates()) {
+    if request
+        .producer
+        .as_ref()
+        .is_some_and(|producer| !producer.validates())
+    {
         return Err(TranscriptionQueueError::Malformed("transcription producer"));
     }
     for digest in [
@@ -894,8 +908,8 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule,
-        MeetingArtifacts, MeetingRecord, MeetingSchema,
+        AudioRetention, AudioRetentionRule, MeetingArtifacts, MeetingRecord, MeetingSchema,
+        artifact_ref, retention_policy_sha256,
     };
     use crate::storage::{create_private_dir, durable_replace};
 
@@ -1047,8 +1061,13 @@ mod tests {
         let (_temp, storage, request) = fixture();
         let queue = queue(&storage);
         queue.enqueue(request.clone()).unwrap();
-        queue.claim(request.request_id, "worker/a".into(), 2).unwrap();
-        let item_dir = format!("meetings/meeting-a/{QUEUE_DIRECTORY}/{}", request.request_id);
+        queue
+            .claim(request.request_id, "worker/a".into(), 2)
+            .unwrap();
+        let item_dir = format!(
+            "meetings/meeting-a/{QUEUE_DIRECTORY}/{}",
+            request.request_id
+        );
         for folder in [
             "meetings".to_string(),
             format!("meetings/meeting-a/{QUEUE_DIRECTORY}"),
@@ -1077,8 +1096,11 @@ mod tests {
         ));
         fs::remove_file(meetings.join("unexpected")).unwrap();
 
-        std::os::unix::fs::symlink(meetings.join("meeting-a/meeting.json"), meetings.join(".DS_Store"))
-            .unwrap();
+        std::os::unix::fs::symlink(
+            meetings.join("meeting-a/meeting.json"),
+            meetings.join(".DS_Store"),
+        )
+        .unwrap();
         assert!(matches!(
             queue.discover(),
             Err(TranscriptionQueueError::InvalidPrivateStorage)
@@ -1205,7 +1227,11 @@ mod tests {
         let queue = queue(&storage);
         queue.enqueue(request.clone()).unwrap();
         queue
-            .fail(request.request_id, TranscriptionTerminalKind::Quarantined, 5)
+            .fail(
+                request.request_id,
+                TranscriptionTerminalKind::Quarantined,
+                5,
+            )
             .unwrap();
         assert!(!queue.meeting_transcript_pending("meeting-a").unwrap());
     }
@@ -1240,10 +1266,17 @@ mod tests {
         create_private_dir(&meeting_dir.join("transcript")).unwrap();
         // Transcript artifacts are content-addressed: transcript/<sha256>.json.
         durable_create_new(&meeting_dir.join("transcript/staged"), b"transcript").unwrap();
-        let sha256 = artifact_ref(&meeting_dir, "transcript/staged").unwrap().sha256;
+        let sha256 = artifact_ref(&meeting_dir, "transcript/staged")
+            .unwrap()
+            .sha256;
         let transcript = format!("transcript/{sha256}.json");
-        fs::rename(meeting_dir.join("transcript/staged"), meeting_dir.join(&transcript)).unwrap();
-        meeting.artifacts.current_transcript = Some(artifact_ref(&meeting_dir, &transcript).unwrap());
+        fs::rename(
+            meeting_dir.join("transcript/staged"),
+            meeting_dir.join(&transcript),
+        )
+        .unwrap();
+        meeting.artifacts.current_transcript =
+            Some(artifact_ref(&meeting_dir, &transcript).unwrap());
         meeting.lifecycle = MeetingLifecycle::TranscriptReady;
         durable_replace(&meeting_path, &serde_json::to_vec_pretty(&meeting).unwrap()).unwrap();
 
@@ -1251,10 +1284,15 @@ mod tests {
             .fail(duplicate.request_id, TranscriptionTerminalKind::Failed, 5)
             .unwrap();
 
-        assert_eq!(failed.terminal.unwrap().kind, TranscriptionTerminalKind::Failed);
-        assert!(queue
-            .claim(duplicate.request_id, "worker/a".into(), 6)
-            .is_err());
+        assert_eq!(
+            failed.terminal.unwrap().kind,
+            TranscriptionTerminalKind::Failed
+        );
+        assert!(
+            queue
+                .claim(duplicate.request_id, "worker/a".into(), 6)
+                .is_err()
+        );
     }
 
     #[test]
@@ -1320,7 +1358,11 @@ mod tests {
         );
 
         let released = queue
-            .release_claim(request.request_id, claim.claim.as_ref().unwrap().claim_id, 6)
+            .release_claim(
+                request.request_id,
+                claim.claim.as_ref().unwrap().claim_id,
+                6,
+            )
             .unwrap();
         assert!(
             released.claim.is_none(),
@@ -1552,10 +1594,12 @@ mod tests {
 
         let discovery = queue.discover().unwrap();
         assert_eq!(discovery.items.len(), 2);
-        assert!(discovery
-            .items
-            .iter()
-            .all(|item| item.commit.is_some() || item.terminal.is_some()));
+        assert!(
+            discovery
+                .items
+                .iter()
+                .all(|item| item.commit.is_some() || item.terminal.is_some())
+        );
     }
 
     // The same change under a request that can still run fails discovery,
@@ -1581,7 +1625,9 @@ mod tests {
 
         assert!(matches!(
             queue.discover(),
-            Err(TranscriptionQueueError::Meeting(MeetingError::ArtifactMismatch))
+            Err(TranscriptionQueueError::Meeting(
+                MeetingError::ArtifactMismatch
+            ))
         ));
     }
 
@@ -1608,7 +1654,9 @@ mod tests {
 
         assert!(matches!(
             queue.discover(),
-            Err(TranscriptionQueueError::Meeting(MeetingError::ArtifactMismatch))
+            Err(TranscriptionQueueError::Meeting(
+                MeetingError::ArtifactMismatch
+            ))
         ));
     }
 

@@ -11,8 +11,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::meeting::{
-    read_private_bytes, resolve_artifact, verify_artifact_ref, MeetingError, MeetingRecord,
-    MAX_RECEIPT_BYTES,
+    MAX_RECEIPT_BYTES, MeetingError, MeetingRecord, read_private_bytes, resolve_artifact,
+    verify_artifact_ref,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -398,7 +398,10 @@ pub fn project_capture_pauses(
     // A receipt written before pause existed describes a capture that could not
     // have been paused. It reads as an uninterrupted recording, which is true,
     // rather than as missing evidence.
-    let Some(pauses) = receipt_object.get("pauses").filter(|value| !value.is_null()) else {
+    let Some(pauses) = receipt_object
+        .get("pauses")
+        .filter(|value| !value.is_null())
+    else {
         return Ok(CapturePauseProjection::not_paused());
     };
     let Some(pauses) = pauses.as_object() else {
@@ -475,9 +478,7 @@ fn clock_label(seconds: u64) -> String {
 }
 
 fn malformed_pause_projection() -> CapturePauseProjection {
-    CapturePauseProjection::unavailable(
-        "Yawn could not verify whether this recording was paused.",
-    )
+    CapturePauseProjection::unavailable("Yawn could not verify whether this recording was paused.")
 }
 
 fn malformed_projection() -> CaptureQualityProjection {
@@ -501,8 +502,8 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule, AudioState,
-        MeetingArtifacts, MeetingLifecycle, MeetingRecord, MeetingSchema,
+        AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts, MeetingLifecycle,
+        MeetingRecord, MeetingSchema, artifact_ref, retention_policy_sha256,
     };
 
     fn private_directory(path: &Path) {
@@ -717,9 +718,11 @@ mod tests {
             Some(artifact_ref(&meeting_dir, "capture/session.json").unwrap());
         let canonical = project_recording_device(&meeting_dir, &meeting).unwrap();
         assert_eq!(canonical.state, RecordingDeviceState::Identified);
-        assert!(!serde_json::to_string(&canonical)
-            .unwrap()
-            .contains("hostapi"));
+        assert!(
+            !serde_json::to_string(&canonical)
+                .unwrap()
+                .contains("hostapi")
+        );
 
         receipt["microphone"]["unrecognized"] = serde_json::json!(true);
         private_file(&session_path, &serde_json::to_vec(&receipt).unwrap());
@@ -727,9 +730,11 @@ mod tests {
             Some(artifact_ref(&meeting_dir, "capture/session.json").unwrap());
         let extra = project_recording_device(&meeting_dir, &meeting).unwrap();
         assert_eq!(extra.state, RecordingDeviceState::Unknown);
-        assert!(!serde_json::to_string(&extra)
-            .unwrap()
-            .contains("unrecognized"));
+        assert!(
+            !serde_json::to_string(&extra)
+                .unwrap()
+                .contains("unrecognized")
+        );
     }
 
     /// Rewrites the fixture receipt and returns the meeting bound to the new
@@ -775,8 +780,7 @@ mod tests {
         // that knows about pause. It must not read differently.
         let mut empty = meeting.clone();
         with_receipt(&meeting_dir, &mut empty, |receipt| {
-            receipt["pauses"] =
-                serde_json::json!({"schema": "capture-pauses/1", "spans": []});
+            receipt["pauses"] = serde_json::json!({"schema": "capture-pauses/1", "spans": []});
         });
         assert_eq!(
             project_capture_pauses(&meeting_dir, &empty).unwrap(),
@@ -883,8 +887,7 @@ mod tests {
                     })
                 })
                 .collect::<Vec<_>>();
-            receipt["pauses"] =
-                serde_json::json!({"schema": "capture-pauses/1", "spans": spans});
+            receipt["pauses"] = serde_json::json!({"schema": "capture-pauses/1", "spans": spans});
         });
         assert_eq!(
             project_capture_pauses(&meeting_dir, &too_many)

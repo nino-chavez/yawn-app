@@ -596,7 +596,10 @@ impl CorpusIndex {
     /// today, but would stop doing so the day two different exclusion sets
     /// happened to produce the same marker sequence -- skipping the row entirely
     /// has no such coincidence to worry about.
-    fn corpus_digest(projection: &LibraryProjection, excluded_meeting_ids: &HashSet<String>) -> String {
+    fn corpus_digest(
+        projection: &LibraryProjection,
+        excluded_meeting_ids: &HashSet<String>,
+    ) -> String {
         let mut hasher = Sha256::new();
         hasher.update(CORPUS_INDEX_SCHEMA.as_bytes());
         for row in projection.rows() {
@@ -1903,9 +1906,11 @@ pub(crate) mod tests {
         assert_eq!(index.meeting_count().unwrap(), 1);
         let turns: i64 = index
             .connection
-            .query_row("SELECT COUNT(*) FROM turn WHERE meeting_id = 'meeting-a'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM turn WHERE meeting_id = 'meeting-a'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(turns, 0, "meeting-a's turns outlived its exclusion");
 

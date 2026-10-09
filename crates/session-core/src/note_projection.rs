@@ -608,7 +608,7 @@ mod tests {
         };
         assert_eq!(non_ascii.len(), 1);
         assert_eq!(non_ascii[0].text, turns()[3]);
-        assert!(non_ascii[0].text.chars().any(|c| !c.is_ascii()));
+        assert!(!non_ascii[0].text.is_ascii());
     }
 
     #[test]

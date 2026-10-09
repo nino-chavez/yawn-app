@@ -119,7 +119,11 @@ impl RuntimeManifest {
         verify_resource(&root, &manifest.tap)?;
         verify_resource(&root, &manifest.encoder)?;
         verify_resource(&root, &manifest.permission_probe)?;
-        match (&manifest.schema, &manifest.model_catalog, &manifest.apple_speech) {
+        match (
+            &manifest.schema,
+            &manifest.model_catalog,
+            &manifest.apple_speech,
+        ) {
             (RuntimeSchema::V1, None, None) => {}
             (RuntimeSchema::V2, Some(catalog), None) => verify_resource(&root, catalog)?,
             (RuntimeSchema::V3, Some(catalog), Some(apple_speech)) => {
@@ -271,7 +275,9 @@ impl RuntimeManifest {
     /// The selective verifier mirrors the permission probe path: a Settings
     /// readiness refresh must prove the executable it will run, without
     /// rehashing an installed Whisper model.
-    pub fn verified_apple_speech_helper(manifest_path: &Path) -> Result<Option<PathBuf>, RuntimeError> {
+    pub fn verified_apple_speech_helper(
+        manifest_path: &Path,
+    ) -> Result<Option<PathBuf>, RuntimeError> {
         if manifest_path.is_symlink() || !manifest_path.is_file() {
             return Err(RuntimeError::Malformed);
         }

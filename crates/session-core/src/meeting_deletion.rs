@@ -41,12 +41,12 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::meeting::{
-    load_meeting, open_private_file, read_private_bytes, require_private_directory,
-    valid_opaque_id, MeetingError, MAX_RECEIPT_BYTES,
+    MAX_RECEIPT_BYTES, MeetingError, load_meeting, open_private_file, read_private_bytes,
+    require_private_directory, valid_opaque_id,
 };
 use crate::meeting_coordination::{MeetingCoordinationError, MeetingStorageCoordination};
 use crate::operation_store::{OperationStore, OperationStoreError, StoredOperationRequest};
-use crate::storage::{create_private_dir, durable_create_new, durable_replace, StorageRoot};
+use crate::storage::{StorageRoot, create_private_dir, durable_create_new, durable_replace};
 use crate::transcription_queue::{
     TranscriptionQueue, TranscriptionQueueError, TranscriptionTerminalKind,
 };
@@ -350,7 +350,12 @@ pub(crate) fn purge_trashed_meeting(
     coordination: &MeetingStorageCoordination,
     meeting_id: &str,
 ) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
-    remove_meeting_directory(storage, coordination, meeting_id, crate::meeting_trash::TRASH_DIR)
+    remove_meeting_directory(
+        storage,
+        coordination,
+        meeting_id,
+        crate::meeting_trash::TRASH_DIR,
+    )
 }
 
 /// `default_root` names where a *fresh* removal (no receipt on disk yet) looks
@@ -561,8 +566,8 @@ pub fn reconcile_pending_meeting_deletions(
 mod tests {
     use super::*;
     use crate::meeting::{
-        artifact_ref, retention_policy_sha256, AudioRetention, AudioRetentionRule, AudioState,
-        MeetingArtifacts, MeetingLifecycle, MeetingRecord, MeetingSchema,
+        AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts, MeetingLifecycle,
+        MeetingRecord, MeetingSchema, artifact_ref, retention_policy_sha256,
     };
     use crate::storage::durable_create_new;
     use tempfile::TempDir;

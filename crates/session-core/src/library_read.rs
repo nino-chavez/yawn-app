@@ -1129,17 +1129,16 @@ impl LibraryProjection {
             SealedHit::Meeting {
                 normalized_query, ..
             } => {
-                if let Some(normalized_query) = normalized_query {
-                    if row
+                if let Some(normalized_query) = normalized_query
+                    && row
                         .title
                         .as_ref()
                         .is_none_or(|title| normalized_matches(title, &normalized_query).is_empty())
-                        && row.folder.as_ref().is_none_or(|folder| {
-                            normalized_matches(folder, &normalized_query).is_empty()
-                        })
-                    {
-                        return Err(LibraryReadError::SnapshotStale);
-                    }
+                    && row.folder.as_ref().is_none_or(|folder| {
+                        normalized_matches(folder, &normalized_query).is_empty()
+                    })
+                {
+                    return Err(LibraryReadError::SnapshotStale);
                 }
                 Ok(OpenedLibraryHit::Meeting {
                     meeting_id: row.meeting_id.clone(),
@@ -1373,10 +1372,10 @@ fn inspect_meeting(
                 let mut primed = Some(bytes);
                 let mut chain_allowance = limits.max_transcript_bytes.saturating_mul(2);
                 let mut read = |digest: &str| {
-                    if digest == current.sha256 {
-                        if let Some(head) = primed.take() {
-                            return Ok(head);
-                        }
+                    if digest == current.sha256
+                        && let Some(head) = primed.take()
+                    {
+                        return Ok(head);
                     }
                     if chain_allowance == 0 {
                         read_failure = Some(MeetingInspectionError::Quarantine);
@@ -2914,11 +2913,7 @@ mod tests {
         let excluded = HashSet::from(["meeting-a".to_owned()]);
 
         let transcript = projection
-            .search_filtered_excluding(
-                "shared secret",
-                &LibraryFilter::default(),
-                &excluded,
-            )
+            .search_filtered_excluding("shared secret", &LibraryFilter::default(), &excluded)
             .unwrap();
         assert_eq!(
             transcript.total, 1,
@@ -2932,11 +2927,7 @@ mod tests {
         }
 
         let withheld = projection
-            .search_filtered_excluding(
-                "withheld secret",
-                &LibraryFilter::default(),
-                &excluded,
-            )
+            .search_filtered_excluding("withheld secret", &LibraryFilter::default(), &excluded)
             .unwrap();
         assert_eq!(
             withheld.total, 0,
@@ -2954,11 +2945,7 @@ mod tests {
         // Lifting the exclusion restores every one of them -- unlocking
         // re-admits on the next search, with no separate re-admission path.
         let restored = projection
-            .search_filtered_excluding(
-                "shared secret",
-                &LibraryFilter::default(),
-                &HashSet::new(),
-            )
+            .search_filtered_excluding("shared secret", &LibraryFilter::default(), &HashSet::new())
             .unwrap();
         assert_eq!(restored.total, 2);
     }
@@ -2989,7 +2976,10 @@ mod tests {
         let found = projection
             .search_filtered_excluding("claim-a", &LibraryFilter::default(), &excluded)
             .unwrap();
-        assert!(!found.hits.is_empty(), "meeting-b's own claim hit vanished too");
+        assert!(
+            !found.hits.is_empty(),
+            "meeting-b's own claim hit vanished too"
+        );
         for hit in &found.hits {
             assert!(matches!(
                 projection.open(&fixture.storage, hit).unwrap(),
