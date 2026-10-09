@@ -1,0 +1,145 @@
+{
+ "schema": "fluidaudio-windowing/1",
+ "date": "2026-10-09",
+ "machine": {
+  "chip": "Apple M3 Max",
+  "os": "macOS 27.0",
+  "load_average_during_final_round": "13-24 (unrelated work)"
+ },
+ "input": {
+  "audio": "AMI ES2004c.Mix-Headset.wav, 2334.368 s",
+  "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+  "reference_sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010"
+ },
+ "probe": {
+  "fluidaudio": "0.15.6 (4dbf4f9f9a5ff3a53ade848d7ba4e3df13db859b)",
+  "encoder": "int8",
+  "binary_sha256": "4da568c1ca7da8286cfed55093d509f6421fab1ac0ff2fb2049e5e84c6463d9a",
+  "runner_sha256": "8312f4d6d2b4b2ba94bc9bf2d268e9cb9afd640e6fdac72c882b13d0fd95ef51",
+  "parameters": {
+   "window_max_s": 14.88,
+   "pause_search_s": [
+    10,
+    14.88
+   ],
+   "quiet_span_ms": 200,
+   "energy_frame_ms": 20,
+   "min_tail_s": 2,
+   "context_s": 1,
+   "context_core_max_s": 12.88,
+   "context_search_start_s": 8,
+   "overlap_next_start_s_before_end": [
+    1,
+    4
+   ],
+   "agreement_tolerance_s": 0.25
+  }
+ },
+ "arms": {
+  "fluidaudio": {
+   "edit": 0.2,
+   "del": 1080,
+   "sub": 283,
+   "ins": 54,
+   "decision": 106,
+   "entity": 122,
+   "tail": 231,
+   "process_s": [
+    14.3,
+    18.0
+   ]
+  },
+  "fixed": {
+   "windows": 157,
+   "edit": 0.239,
+   "del": 1372,
+   "sub": 255,
+   "ins": 66,
+   "decision": 108,
+   "entity": 114,
+   "tail": 220,
+   "process_s": [
+    20.4,
+    21.1
+   ]
+  },
+  "pause": {
+   "windows": 189,
+   "edit": 0.1745,
+   "del": 866,
+   "sub": 297,
+   "ins": 73,
+   "decision": 97,
+   "entity": 123,
+   "tail": 258,
+   "process_s": [
+    24.9,
+    26.4
+   ]
+  },
+  "pause-context": {
+   "windows": 223,
+   "agreed_joins": "148/222",
+   "edit": 0.2681,
+   "del": 1619,
+   "sub": 238,
+   "ins": 42,
+   "decision": 74,
+   "entity": 107,
+   "tail": 212,
+   "process_s": [
+    26.3,
+    29.1
+   ]
+  },
+  "pause-overlap": {
+   "windows": 233,
+   "agreed_joins": "193/232",
+   "edit": 0.1971,
+   "del": 1076,
+   "sub": 268,
+   "ins": 52,
+   "decision": 106,
+   "entity": 117,
+   "tail": 247,
+   "process_s": [
+    35.0,
+    43.8
+   ]
+  },
+  "voz": {
+   "edit": 0.1712,
+   "del": 854,
+   "sub": 295,
+   "ins": 64,
+   "decision": 110,
+   "entity": 122,
+   "tail": 251,
+   "processingSec": [
+    9.05,
+    10.0
+   ]
+  }
+ },
+ "isolation": {
+  "pause-context_with_agreement_disabled": {
+   "edit": 0.2719,
+   "del": 1617,
+   "decision": 74
+  }
+ },
+ "determinism": "every arm identical text on both passes",
+ "silence_controls": {
+  "fluidaudio": "no text on 10 s silence and 10 s low noise",
+  "pause-overlap": "no text on both"
+ },
+ "tests": "52 of 54 speech-engine-comparison tests pass; 2 errors are numpy missing from the scoring venv; no test imports the changed files",
+ "contains_transcript_text": false,
+ "pause_decision_loss_check": {
+  "result": "missing words absent from pause output within \u00b115 s, not mistimed",
+  "30:50-30:58": "'that means we have to cut down' missing, 0.5-1.7 s before window end",
+  "32:16-32:21": "3 s run of overlapping speech missing, 3.5-6 s before window end"
+ },
+ "mechanism": "not established; pause-context loss is consistent with mid-speech window edges, but pause-overlap (energy-quiet edges) still produced ~230 fewer words than pause",
+ "speed_note": "FluidAudio ChunkProcessor decodes windows concurrently (withThrowingTaskGroup, parallelChunkConcurrency); research arms decode serially"
+}

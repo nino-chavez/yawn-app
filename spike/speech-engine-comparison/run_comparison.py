@@ -26,10 +26,14 @@ def digest(path: Path) -> str:
 
 def run(manifest_path: Path, out: Path, engine: str, native: Path | None,
         python: Path, model: Path, catalog: Path, timeout: int, repeats: int,
-        only_case: str | None) -> int:
+        only_case: str | None, windowing: str = 'fluidaudio') -> int:
     manifest = json.loads(manifest_path.read_text())
     if manifest.get('schema') != 'speech-engine-corpus/1':
         raise ValueError('unrecognized corpus manifest')
+    if windowing != 'fluidaudio' and engine != 'parakeet':
+        raise ValueError('--windowing applies only to --engine parakeet')
+    # The default keeps the original attempt names, so earlier results stay comparable.
+    label = engine if windowing == 'fluidaudio' else engine + '-' + windowing
     out = out.resolve()
     forbidden = [HERE.parents[1], Path('/Applications'),
                  Path.home() / 'Library/Application Support/com.ninochavez.local-meeting-notes',
@@ -45,7 +49,7 @@ def run(manifest_path: Path, out: Path, engine: str, native: Path | None,
         source = Path(case['audio'])
         if digest(source) != case['audio_sha256']:
             raise ValueError('source does not match frozen corpus')
-        target = out / (case['id'] + '.' + engine + '.json')
+        target = out / (case['id'] + '.' + label + '.json')
         receipt = target.with_suffix('.receipt.json')
         if target.exists() or receipt.exists():
             raise ValueError(f'refusing to overwrite existing attempt: {target.name}')
@@ -57,9 +61,11 @@ def run(manifest_path: Path, out: Path, engine: str, native: Path | None,
             if not native:
                 raise ValueError('native probe executable required')
             command = [str(native), '--engine', engine, *args]
+            if windowing != 'fluidaudio':
+                command += ['--windowing', windowing]
         environment = dict(os.environ, HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
                            PYTHONUNBUFFERED='1')
-        print(f"running {case['id']} {engine}", flush=True)
+        print(f"running {case['id']} {label}", flush=True)
         started = time.monotonic()
         reason = None
         with target.with_suffix('.log').open('x') as log:
@@ -78,6 +84,7 @@ def run(manifest_path: Path, out: Path, engine: str, native: Path | None,
             success = data.get('status') == 'ok' and len(data.get('runs', [])) == repeats
         receipt.write_text(json.dumps({
             'schema': 'speech-engine-attempt/1', 'case': case['id'], 'engine': engine,
+            'windowing': windowing if engine == 'parakeet' else None,
             'audio_sha256': case['audio_sha256'], 'source_unchanged': unchanged,
             'manifest_sha256': digest(manifest_path), 'status': 'ok' if success else 'error',
             'returncode': code, 'reason': reason, 'process_wall_seconds': elapsed,
@@ -87,7 +94,7 @@ def run(manifest_path: Path, out: Path, engine: str, native: Path | None,
             'os': platform.platform(), 'python': sys.version.split()[0],
             'memory_caveat': 'process RSS excludes Apple speech service; not total engine memory',
         }, indent=2))
-        print(f"{'ok' if success else 'error'} {case['id']} {engine} {elapsed:.2f}s", flush=True)
+        print(f"{'ok' if success else 'error'} {case['id']} {label} {elapsed:.2f}s", flush=True)
         failures += not success
     return int(bool(failures))
 
@@ -104,9 +111,14 @@ def main() -> int:
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--repeats', type=int, default=2)
     parser.add_argument('--case')
+    parser.add_argument('--windowing', choices=['fluidaudio', 'fixed', 'pause', 'pause-context', 'pause-overlap'],
+                        default='fluidaudio',
+                        help='Parakeet only: FluidAudio chunking (default); fixed or pause-cut single-pass '
+                             'windows; pause cuts padded with 1 s context; or windows bounded by quiet '
+                             'points that overlap their neighbor. Overlapping arms join on an agreeing word.')
     args = parser.parse_args()
     return run(args.manifest, args.out, args.engine, args.native, args.python,
-               args.model, args.catalog, args.timeout, args.repeats, args.case)
+               args.model, args.catalog, args.timeout, args.repeats, args.case, args.windowing)
 
 
 if __name__ == '__main__':
