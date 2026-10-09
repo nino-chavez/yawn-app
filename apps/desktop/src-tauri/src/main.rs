@@ -4337,49 +4337,6 @@ fn library_snapshot_attempt(
     Ok(snapshot)
 }
 
-/// One §K retention row: content-free retention facts joined to the rendered
-/// library list by meeting id. No handle is minted here — the overview must
-/// never invalidate the snapshot generation the operator is navigating —
-/// and no title or transcript-derived value crosses this surface: a date, a
-/// size, a deadline, and the store's own state vocabulary.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewRetentionRow {
-    meeting_id: String,
-    created_at_epoch_seconds: u64,
-    audio_state: &'static str,
-    policy: &'static str,
-    deadline_epoch_seconds: Option<u64>,
-    retained_bytes: Option<u64>,
-}
-
-/// The standing §K statement: what is held, how much of it, and until when.
-/// `holding` and `nothing-held` are the spec's own states; deletion itself
-/// stays behind each meeting's reviewed two-step path.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PreviewRetentionOverview {
-    state: &'static str,
-    total_retained_bytes: u64,
-    retained_count: usize,
-    unavailable_count: usize,
-    rows: Vec<PreviewRetentionRow>,
-    message: String,
-}
-
-impl PreviewRetentionOverview {
-    fn unavailable() -> Self {
-        Self {
-            state: "unavailable",
-            total_retained_bytes: 0,
-            retained_count: 0,
-            unavailable_count: 0,
-            rows: Vec::new(),
-            message: "Retention status is unavailable. Reopen Meetings and try again.".into(),
-        }
-    }
-}
-
 /// The manifest path, or `None` before storage exists.
 ///
 /// First run's commands are reachable from the startup-failure screen, where
@@ -4688,86 +4645,6 @@ fn refresh_current_transcript(state: State<'_, ApplicationState>) -> Result<(), 
     model.current_transcript_sha256 = Some(transcript.sha256);
     model.warnings = warnings;
     Ok(())
-}
-
-#[tauri::command]
-fn preview_retention_overview(state: State<'_, ApplicationState>) -> PreviewRetentionOverview {
-    preview_retention_overview_for(&state)
-}
-
-fn preview_retention_overview_for(state: &ApplicationState) -> PreviewRetentionOverview {
-    let Ok(storage) = preview_storage_clone(state) else {
-        return PreviewRetentionOverview::unavailable();
-    };
-    state.with_preview_library(PreviewRetentionOverview::unavailable, |reader, active| {
-        let Some(identities) = reader.retention_identities(active) else {
-            return PreviewRetentionOverview::unavailable();
-        };
-        let mut rows = Vec::new();
-        let mut total_retained_bytes: u64 = 0;
-        let mut retained_count = 0_usize;
-        let mut unavailable_count = 0_usize;
-        for (meeting_id, created_at_epoch_seconds) in identities {
-            if active.contains(&meeting_id) {
-                continue;
-            }
-            let retention =
-                library_reader::LibraryReader::read_audio_retention(&storage, &meeting_id);
-            if retention.state == "unavailable" {
-                unavailable_count += 1;
-                continue;
-            }
-            if retention.state == "retained" {
-                retained_count += 1;
-                total_retained_bytes = total_retained_bytes
-                    .saturating_add(retention.retained_bytes.unwrap_or_default());
-            }
-            rows.push(PreviewRetentionRow {
-                meeting_id,
-                created_at_epoch_seconds,
-                audio_state: retention.state,
-                policy: retention.policy,
-                deadline_epoch_seconds: retention.deadline_epoch_seconds,
-                retained_bytes: retention.retained_bytes,
-            });
-        }
-        // Soonest deadline first, then newest capture: the §K promise is
-        // that deletion is never a surprise, so what expires next leads.
-        rows.sort_by_key(|row| {
-            (
-                row.deadline_epoch_seconds.is_none(),
-                row.deadline_epoch_seconds,
-                u64::MAX - row.created_at_epoch_seconds,
-            )
-        });
-        let (state, message) = if retained_count > 0 {
-            (
-                "holding",
-                "Recording audio held on this Mac, deleted on the schedule below.".to_string(),
-            )
-        } else if rows.is_empty() && unavailable_count == 0 {
-            (
-                "nothing-held",
-                "No recording audio is held. Meetings you record keep their audio here until \
-                 their chosen deletion time."
-                    .to_string(),
-            )
-        } else {
-            (
-                "nothing-held",
-                "No recording audio is held. Retained transcripts and notes remain readable."
-                    .to_string(),
-            )
-        };
-        PreviewRetentionOverview {
-            state,
-            total_retained_bytes,
-            retained_count,
-            unavailable_count,
-            rows,
-            message,
-        }
-    })
 }
 
 #[tauri::command]
