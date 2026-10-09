@@ -1756,3 +1756,70 @@ export function meetingDeletionConfirmationCopy(kind) {
     label: "Delete meeting",
   };
 }
+
+// In-app updates (updater.rs). Settings renders one status row from the
+// backend's `update_status` facts; the wording lives here so it is tested and
+// listed in DIRECTION.md's content reads. `poll` asks Settings to re-read
+// soon because the state is moving on its own (a check, a download, an
+// install); `canCheck` is false while a check or install is already running.
+// The check is a plain HTTPS download of the feed: no Yawn version, account
+// or meeting data rides on it, but the server sees the Mac's address, as for
+// any download. The disclosure says exactly that, and follows the switch.
+const UPDATE_DISCLOSURE_ON = "Once a day, Yawn downloads a small file from the release server that names the newest version. It sends no meeting data or account details; like any download, the server can see this Mac’s internet address.";
+const UPDATE_DISCLOSURE_OFF = "Automatic checks are off. Yawn contacts the release server only when you choose Check now.";
+
+export function updatePresentation(status) {
+  if (!status) {
+    return { title: "Updates", statusLabel: "Checking", tone: "neutral", detail: "Yawn is reading its update settings.", action: null, canCheck: false, poll: true, automatic: true, disclosure: UPDATE_DISCLOSURE_ON };
+  }
+  const version = status.availableVersion;
+  const automatic = status.automatic !== false;
+  const base = { title: `Yawn ${status.currentVersion}`, automatic, disclosure: automatic ? UPDATE_DISCLOSURE_ON : UPDATE_DISCLOSURE_OFF, action: null, canCheck: true, poll: false };
+  const install = (label) => ({ action: "install-update", label, disabled: Boolean(status.installBlocked) });
+  switch (status.state) {
+    case "checking":
+      return { ...base, statusLabel: "Checking", tone: "neutral", detail: "Asking the Yawn release server for the newest version.", canCheck: false, poll: true };
+    case "up-to-date":
+      return { ...base, statusLabel: "Up to date", tone: "ready", detail: "This is the newest version of Yawn." };
+    case "available":
+      return {
+        ...base,
+        statusLabel: "Update available",
+        tone: "neutral",
+        detail: status.installBlocked
+          ? `Yawn ${version} is available. ${status.installBlocked}`
+          : `Yawn ${version} is available. Updating closes and reopens Yawn. Your meetings and notes stay as they are.`,
+        action: install("Update and restart"),
+      };
+    case "downloading": {
+      const total = Number(status.totalBytes) || 0;
+      const percent = total > 0 ? Math.min(100, Math.floor((Number(status.downloadedBytes) || 0) * 100 / total)) : null;
+      const progress = percent === null ? `Downloading Yawn ${version}…` : `Downloading Yawn ${version}… ${percent}%.`;
+      return { ...base, statusLabel: "Downloading", tone: "neutral", detail: `${progress} When it finishes, Yawn closes and reopens. If a recording is running by then, Yawn keeps recording and doesn’t install.`, canCheck: false, poll: true };
+    }
+    case "installing":
+      return { ...base, statusLabel: "Installing", tone: "neutral", detail: `Installing Yawn ${version}. Yawn will close and reopen.`, canCheck: false, poll: true };
+    case "failed":
+      return {
+        ...base,
+        statusLabel: version ? "Not installed" : "Check failed",
+        tone: "attention",
+        detail: `${status.message || "Yawn could not check for updates."} You’re still on Yawn ${status.currentVersion}.`,
+        action: version ? install("Try again") : null,
+      };
+    default:
+      return {
+        ...base,
+        statusLabel: "Not checked",
+        tone: "neutral",
+        detail: "Yawn hasn’t checked for a newer version since it opened.",
+      };
+  }
+}
+
+// The main window's notice when a background check finds a newer version.
+// It only points at Settings, where the install, its gate and its progress
+// live.
+export function updateAvailableNotice(version) {
+  return { text: `Yawn ${version} is available.`, action: { action: "open-update-settings", label: "Update…" } };
+}

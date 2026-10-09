@@ -166,6 +166,26 @@ header > p:last-child,
 
 .model-list { padding: 0 18px; }
 
+/* Updates (updater.rs): the automatic-check switch sits under the status
+   row, separated by the same hairline the rows use, with its disclosure
+   sentence directly below it. */
+.update-automatic {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 18px;
+  padding: 14px 0 6px;
+  border-top: 1px solid var(--separator);
+  color: var(--label);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}
+
+.update-automatic input { accent-color: var(--accent); margin: 0; }
+
+#update-status .allow-button,
+#update-status .state { white-space: nowrap; flex-shrink: 0; }
+
 .privacy-rows { margin: 0; padding: 0 18px 18px; }
 
 .privacy-row {

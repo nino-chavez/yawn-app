@@ -88,6 +88,11 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "transcript_retry_pending",
     "transcript_retry_decide",
     "analyze_speakers",
+    // In-app updates (`updater.rs`), called only from Settings.
+    "update_status",
+    "set_automatic_update_check",
+    "check_for_updates",
+    "install_update",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

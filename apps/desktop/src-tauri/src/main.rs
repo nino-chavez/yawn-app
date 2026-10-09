@@ -84,6 +84,7 @@ mod capture_timing;
 // JS array. See the module docs for the two transports this covers.
 mod error_codes;
 mod apple_speech;
+mod updater;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -8336,6 +8337,9 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             show_and_focus_active_window(app);
         }))
+        // In-app updates. The webview has no updater permission; the four
+        // `updater::` commands below are its only way in.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // § A: the menubar item is the primary UI and must survive the most
         // ordinary window action. Closing the window hides it instead of
         // destroying it — a destroyed last window exits the process and
@@ -8350,6 +8354,7 @@ fn main() {
         })
         .manage(state)
         .manage(product_operations)
+        .manage(updater::UpdaterState::default())
         .invoke_handler(tauri::generate_handler![
             app_snapshot,
             open_settings_window,
@@ -8422,7 +8427,11 @@ fn main() {
             // about today's behavior until the operator creates that file by
             // hand.
             preview_library_search,
-            preview_library_open_search_result
+            preview_library_open_search_result,
+            updater::update_status,
+            updater::set_automatic_update_check,
+            updater::check_for_updates,
+            updater::install_update
         ])
         .setup(|app| {
             // Only teaches the plugin what to do if the note-capture
@@ -8432,8 +8441,12 @@ fn main() {
             let settings = tauri::menu::MenuItemBuilder::with_id("open-settings", "Settings…")
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
+            let check_for_updates =
+                tauri::menu::MenuItemBuilder::with_id("check-for-updates", "Check for Updates…")
+                    .build(app)?;
             let app_menu = tauri::menu::SubmenuBuilder::new(app, "Yawn")
                 .about(None)
+                .item(&check_for_updates)
                 .separator()
                 .item(&settings)
                 .separator()
@@ -8532,6 +8545,10 @@ fn main() {
                     let _ = show_settings_window(app);
                     return;
                 }
+                if id == "check-for-updates" {
+                    updater::check_from_menu(app);
+                    return;
+                }
                 if let Some(name) = menu_event_name(id) {
                     let _ = app.emit(name, ());
                 }
@@ -8614,6 +8631,7 @@ fn main() {
                 stop,
                 file_stop_recording,
             );
+            updater::start_background_checks(app.handle().clone());
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("meeting-runtime-startup".into())

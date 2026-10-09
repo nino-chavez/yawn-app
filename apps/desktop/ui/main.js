@@ -26,6 +26,7 @@ import {
   meetingTranscribingPresentation,
   pendingTranscriptRefreshDue,
   finishedMeetingStep,
+  updateAvailableNotice,
   modelSetupOptionsPresentation,
   transcriptionEnginePresentation,
   meetingNotePresentation,
@@ -96,6 +97,9 @@ const state = {
   meetingManagementOpen: false,
   modal: "",
   notice: "",
+  // The version a background check found (updater.rs), until the operator
+  // opens Settings from the notice or dismisses it.
+  updateNotice: "",
   noteDraft: "",
   noteLoadedFor: "",
   noteLoading: false,
@@ -423,6 +427,7 @@ function render() {
       ${["delete-recording", "delete-transcript", "delete-meeting"].includes(state.modal) ? renderMeetingDeletionSheet() : ""}
       ${["lock-meeting", "unlock-meeting"].includes(state.modal) ? renderMeetingLockSheet() : ""}
       ${state.notice ? `<aside id="toast-notice" class="toast toast-notice" role="status"><button type="button" data-action="clear-notice" aria-label="Dismiss">×</button>${escapeHtml(state.notice)}</aside>` : ""}
+      ${state.updateNotice && !state.notice && !state.error ? renderUpdateNotice() : ""}
       ${state.error ? `<aside id="toast-error" class="toast" role="alert"><button type="button" data-action="clear-error" aria-label="Dismiss">×</button><span>${escapeHtml(state.error.message)}</span>${state.error.action ? `<button class="button button-quiet button-small" type="button" data-action="${escapeHtml(state.error.action.action)}">${escapeHtml(state.error.action.label)}</button>` : ""}</aside>` : ""}
     </div>
   `);
@@ -531,6 +536,23 @@ function listenForNoteCaptureHotkey() {
 // the exact same path as the toolbar Stop control -- `stopRecording` already
 // guards on capture being recording/paused, so a Stop with nothing recording
 // is a harmless no-op either way it's reached.
+// Shares the notice toast's place and look; render() shows it only when no
+// other notice or error is up, so the two never stack.
+function renderUpdateNotice() {
+  const notice = updateAvailableNotice(state.updateNotice);
+  return `<aside id="toast-update" class="toast toast-notice" role="status"><button type="button" data-action="clear-update-notice" aria-label="Dismiss">×</button><span>${escapeHtml(notice.text)}</span><button class="button button-quiet button-small" type="button" data-action="${escapeHtml(notice.action.action)}">${escapeHtml(notice.action.label)}</button></aside>`;
+}
+
+// A background update check found a newer version. The notice only leads to
+// Settings, which owns the install, its idle gate and its progress.
+function listenForUpdateNotices() {
+  if (!tauriListen) return;
+  tauriListen("update-available", (event) => {
+    state.updateNotice = String(event?.payload || "");
+    render();
+  }).catch(() => {});
+}
+
 function listenForMenuEvents() {
   if (!tauriListen) return;
   tauriListen("menu:new-recording", () => openStart()).catch(() => {});
@@ -3672,6 +3694,12 @@ function handleClick(event) {
   }
   else if (action === "clear-error") { state.error = ""; render(); }
   else if (action === "clear-notice") { state.notice = ""; render(); }
+  else if (action === "clear-update-notice") { state.updateNotice = ""; render(); }
+  else if (action === "open-update-settings") {
+    state.updateNotice = "";
+    render();
+    if (invoke) void invoke("open_settings_window").catch(reportError);
+  }
 }
 
 function handleInput(event) {
@@ -3981,6 +4009,7 @@ async function initialize() {
   if (!invoke) return;
   listenForNoteCaptureHotkey();
   listenForMenuEvents();
+  listenForUpdateNotices();
   try {
     await Promise.all([
       refreshSnapshot({ shouldRender: false }),
