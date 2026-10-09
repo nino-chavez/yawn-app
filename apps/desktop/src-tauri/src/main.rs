@@ -30,7 +30,6 @@ mod speaker_suggestion;
 // First run's permission surface (§ H). Runs the manifest-verified permission
 // probe and parses its output as untrusted input; holds no storage authority and
 // reads no operator content.
-mod corpus_embedder;
 mod first_run;
 // § D. The operator's own note, typed during the meeting. Interpretation, not
 // evidence: a fixed path in the meeting directory, replaced atomically, with the
@@ -1588,13 +1587,6 @@ struct RuntimeIdentity {
     /// enrolment compares derived material against exactly this value, so a
     /// build without a real encoder truthfully refuses rather than guessing.
     encoder_sha256: String,
-    /// Every `models[]` entry the verified manifest records, as `(id, sha256)`.
-    ///
-    /// Carried so the embedding pass can ask whether the model this build
-    /// packages is the model its vectors describe. That comparison is the whole
-    /// reason `EmbedderIdentity` holds digests, and until 2026-08-08 nothing
-    /// made it — the identity asserted a fact instead of testing one.
-    packaged_models: Vec<(String, String)>,
     /// Whether the manifest names a real encoder resource at all.
     /// `worker/build_runtime.sh` deliberately records the
     /// `encoder-unavailable.identity` placeholder file when no speaker
@@ -4025,396 +4017,6 @@ fn with_library_organization(
         }
     }
     response
-}
-
-/// One invocation's ceiling. At the measured 32 ms per 24-window batch this is
-/// well under a second of work, and a corpus larger than it simply takes another
-/// call — which is the honest shape while nothing shows progress.
-const CORPUS_EMBED_BUDGET_WINDOWS: usize = 512;
-
-/// What one embedding pass did. Counts and a reason; never a meeting ID, never
-/// text.
-#[derive(serde::Serialize)]
-struct CorpusEmbedResponse {
-    requested: usize,
-    embedded: usize,
-    batches: usize,
-    /// Windows in the corpus, and how many this embedder has answered for.
-    windows: usize,
-    covered: usize,
-    /// Why the pass ended, in a fixed vocabulary.
-    stop: &'static str,
-}
-
-impl CorpusEmbedResponse {
-    fn unavailable(stop: &'static str) -> Self {
-        Self {
-            requested: 0,
-            embedded: 0,
-            batches: 0,
-            windows: 0,
-            covered: 0,
-            stop,
-        }
-    }
-}
-
-/// Fills the corpus's vector column from the packaged embedding model.
-///
-/// Registered rather than run automatically, and that is a decision rather than
-/// a stopgap: **no surface asks a semantic question yet**, so there is nothing to
-/// keep warm for. Wiring it into the library-read path would put 34 worker round
-/// trips on a path a person waits on, and `ProcessWorkerPort` holds the worker
-/// mutex for each one — capture would queue behind search-index work nobody
-/// asked for.
-///
-/// It refuses during a take for the same reason every mutating command does.
-///
-/// `(async)` because it waits on a child process. The default execution context
-/// is `Blocking`, which runs the body inline in the IPC handler — and one pass
-/// is up to twenty-one worker round trips, which left blocking would freeze the
-/// window for seconds at a time. It was registered without the attribute on
-/// 2026-08-08 and nothing called it, so nothing froze; the defect became
-/// reachable the moment a control rendered for it.
-#[tauri::command(async)]
-fn corpus_embed_pending(state: State<'_, ApplicationState>) -> CorpusEmbedResponse {
-    use local_meeting_notes_session_core::corpus_embedding::{FillStop, fill_vectors};
-    use local_meeting_notes_session_core::corpus_index::CorpusIndex;
-    use local_meeting_notes_session_core::corpus_window::EmbedderIdentity;
-
-    let Ok(_command) = state.command_lock.lock() else {
-        return CorpusEmbedResponse::unavailable("unavailable");
-    };
-    if sitting_task_active(&state) {
-        return CorpusEmbedResponse::unavailable("busy");
-    }
-    let storage = {
-        let guard = state.storage.lock().expect("storage context lock");
-        match guard.as_ref().map(|context| context.storage.clone()) {
-            Some(storage) => storage,
-            None => return CorpusEmbedResponse::unavailable("unavailable"),
-        }
-    };
-    let packaged: Vec<(String, String)> = {
-        let guard = state.runtime.lock().expect("runtime identity lock");
-        match guard.as_ref() {
-            Some(runtime) => runtime.packaged_models.clone(),
-            None => return CorpusEmbedResponse::unavailable("unavailable"),
-        }
-    };
-    let borrowed: Vec<(&str, &str)> = packaged
-        .iter()
-        .map(|(id, digest)| (id.as_str(), digest.as_str()))
-        .collect();
-
-    let Ok(mut index) = CorpusIndex::open(&storage) else {
-        return CorpusEmbedResponse::unavailable("unavailable");
-    };
-    let identity = EmbedderIdentity::measured();
-    let embedder = corpus_embedder::WorkerWindowEmbedder::new(
-        Arc::new(product_coordinator::ProcessWorkerPort::new(
-            state.worker.clone(),
-        )),
-        identity.dimension,
-    );
-    let Ok(outcome) = fill_vectors(
-        &mut index,
-        &identity,
-        &embedder,
-        &borrowed,
-        CORPUS_EMBED_BUDGET_WINDOWS,
-    ) else {
-        return CorpusEmbedResponse::unavailable("unavailable");
-    };
-    let coverage = index.vector_coverage(&identity).unwrap_or(
-        local_meeting_notes_session_core::corpus_index::VectorCoverage {
-            windows: 0,
-            embedded: 0,
-        },
-    );
-    CorpusEmbedResponse {
-        requested: outcome.requested,
-        embedded: outcome.embedded,
-        batches: outcome.batches,
-        windows: coverage.windows,
-        covered: coverage.embedded,
-        // Deliberately not the error text. `EmbedderUnavailable` carries a
-        // transport message, and a transport message can name a path.
-        stop: match outcome.stop {
-            FillStop::Complete => "complete",
-            FillStop::BudgetReached => "budget",
-            FillStop::EmbedderUnavailable(_) => "worker-unavailable",
-            FillStop::ReplyIncomplete => "reply-incomplete",
-            FillStop::ModelMismatch => "model-mismatch",
-        },
-    }
-}
-
-/// One meeting's best passage for a question, as the shell renders it.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CorpusSearchAnswer {
-    meeting_id: String,
-    title: Option<String>,
-    folder: Option<String>,
-    /// An untitled meeting is named by when it happened, exactly as the Library
-    /// names it. The shell formats it; Rust sends no second, UTC copy.
-    created_at_epoch_seconds: u64,
-    /// The words the vector was computed from. This is the evidence, and it is
-    /// why a hit is a passage rather than a percentage.
-    quote: String,
-    similarity: f32,
-    /// Store-numbered turns, from zero. The shell adds one, exactly as it does
-    /// for an exact hit, so the two searches never number the same transcript
-    /// differently.
-    first_turn_index: u64,
-    last_turn_index: u64,
-    /// Single-use, minted against the current projection. `None` for a meeting
-    /// the library cannot currently open — the row renders unopenable rather
-    /// than failing when it is clicked.
-    transcript_handle: Option<String>,
-}
-
-/// A ranking, what it searched, and why it stopped where it did.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CorpusSearchResponse {
-    /// Fixed vocabulary, never a transport message — the same rule
-    /// `corpus_embed_pending` follows, for the same reason: an
-    /// `EmbedderUnavailable` reason can name a path.
-    state: &'static str,
-    answers: Vec<CorpusSearchAnswer>,
-    /// Windows in the corpus against windows this model has answered for.
-    /// Reported in **every** state, including the failures: "we searched
-    /// nothing" and "nothing matched" are different sentences and the shell
-    /// cannot tell them apart without these two numbers.
-    windows: usize,
-    covered: usize,
-    /// Meetings within the measured tie band of the top score, counted before
-    /// [`ANSWER_LIMIT`] truncated anything.
-    near_ties: usize,
-    /// Whether transcript handles were mintable at all: `"minted"` or
-    /// `"unavailable"`. Two words rather than a bare absence, because a row with
-    /// no handle would otherwise render "No transcript to open" — which tells
-    /// the operator these meetings have no transcript when the truth is the
-    /// library reader was gone. A row does not claim something untrue.
-    handles: &'static str,
-    message: String,
-}
-
-impl CorpusSearchResponse {
-    fn stopped(state: &'static str, message: &str) -> Self {
-        Self {
-            state,
-            answers: Vec::new(),
-            windows: 0,
-            covered: 0,
-            near_ties: 0,
-            handles: "unavailable",
-            message: message.into(),
-        }
-    }
-}
-
-/// Asks the corpus a question in words and answers with quoted passages.
-///
-/// # What it searches, and when that stopped being true
-///
-/// The corpus index is synced by `LibraryReader::rebuild`, so this searches the
-/// corpus as of the last time the library was opened or invalidated. The shell
-/// initialises the reader before it reaches this command, and a meeting
-/// recorded since then arrives as an unembedded window — which shows up
-/// honestly as `covered` below `windows` rather than as a meeting that
-/// silently does not match.
-///
-/// # Lock order
-///
-/// `command_lock` first, then `with_preview_library`'s storage sequence and
-/// reader mutex. That is the order every other command in this file takes —
-/// checked, not assumed: all thirteen acquisitions of `command_lock` are at the
-/// top of their function and none sits inside a `with_preview_library` closure.
-/// The reader's own doc names the sequence-before-reader half; this is the tier
-/// above it, and this is the first command to hold both.
-///
-/// The ask itself happens **outside** that closure, deliberately. Minting
-/// handles takes the meeting-storage sequence, and holding it across a worker
-/// round trip would make a question block capture for as long as the model
-/// takes.
-///
-/// # Why it refuses during a take
-///
-/// One question is one worker round trip of about 30 ms, which sounds harmless.
-/// It is not: `ProcessWorkerPort` holds the worker mutex for it, and during a
-/// sitting that worker is transcribing. Search is a convenience and capture is
-/// the product.
-///
-/// `(async)` for the same reason as [`corpus_embed_pending`]: it waits on a
-/// child process, and the default `Blocking` context would run that wait inside
-/// the IPC handler.
-#[tauri::command(async)]
-fn corpus_search(question: String, state: State<'_, ApplicationState>) -> CorpusSearchResponse {
-    use local_meeting_notes_session_core::corpus_index::CorpusIndex;
-    use local_meeting_notes_session_core::corpus_question::{ANSWER_LIMIT, AskStop, ask};
-    use local_meeting_notes_session_core::corpus_window::EmbedderIdentity;
-
-    let unavailable = "Semantic search is unavailable right now. Reopen the app and try again.";
-    let Ok(_command) = state.command_lock.lock() else {
-        return CorpusSearchResponse::stopped("unavailable", unavailable);
-    };
-    if sitting_task_active(&state) {
-        return CorpusSearchResponse::stopped(
-            "busy",
-            "Finish the current recording before searching by meaning. \
-             Exact word search still works.",
-        );
-    }
-    let storage = {
-        let guard = state.storage.lock().expect("storage context lock");
-        match guard.as_ref().map(|context| context.storage.clone()) {
-            Some(storage) => storage,
-            None => return CorpusSearchResponse::stopped("unavailable", unavailable),
-        }
-    };
-    let packaged: Vec<(String, String)> = {
-        let guard = state.runtime.lock().expect("runtime identity lock");
-        match guard.as_ref() {
-            Some(runtime) => runtime.packaged_models.clone(),
-            None => return CorpusSearchResponse::stopped("unavailable", unavailable),
-        }
-    };
-    let borrowed: Vec<(&str, &str)> = packaged
-        .iter()
-        .map(|(id, digest)| (id.as_str(), digest.as_str()))
-        .collect();
-    let Ok(index) = CorpusIndex::open(&storage) else {
-        return CorpusSearchResponse::stopped("unavailable", unavailable);
-    };
-    let identity = EmbedderIdentity::measured();
-    let embedder = corpus_embedder::WorkerWindowEmbedder::new(
-        Arc::new(product_coordinator::ProcessWorkerPort::new(
-            state.worker.clone(),
-        )),
-        identity.dimension,
-    );
-    let Ok(outcome) = ask(
-        &index,
-        &identity,
-        &embedder,
-        &borrowed,
-        &question,
-        ANSWER_LIMIT,
-    ) else {
-        return CorpusSearchResponse::stopped("unavailable", unavailable);
-    };
-
-    let windows = outcome.coverage.windows;
-    let covered = outcome.coverage.embedded;
-    let (state_name, message) = match &outcome.stop {
-        AskStop::Answered if outcome.answers.is_empty() => (
-            "empty",
-            "No meeting was close enough to that description.".to_string(),
-        ),
-        AskStop::Answered => (
-            "answered",
-            format!(
-                "{} {} from {} of {} passages.",
-                outcome.answers.len(),
-                if outcome.answers.len() == 1 {
-                    "meeting"
-                } else {
-                    "meetings"
-                },
-                covered,
-                windows,
-            ),
-        ),
-        AskStop::NothingToSearch => (
-            "nothing-to-search",
-            "There are no retained transcripts to search yet.".to_string(),
-        ),
-        AskStop::NothingPrepared => (
-            "nothing-prepared",
-            format!(
-                "None of your {windows} passages are prepared for meaning search yet. \
-                 Preparing runs entirely on this Mac.",
-            ),
-        ),
-        AskStop::QuestionBlank => ("blank", "Describe what the meeting was about.".to_string()),
-        AskStop::QuestionTooLong => (
-            "too-long",
-            "That description is longer than any passage it could match. \
-             Shorten it to a sentence or two."
-                .to_string(),
-        ),
-        AskStop::QuestionUnanswered | AskStop::EmbedderUnavailable(_) => (
-            "worker-unavailable",
-            "The local model did not answer. Reopen the app and try again.".to_string(),
-        ),
-        AskStop::ModelMismatch => (
-            "model-mismatch",
-            "This installation packages a different model than the stored passages were \
-             prepared with. Reinstall to search by meaning."
-                .to_string(),
-        ),
-    };
-
-    // Handles are minted in a second pass, deliberately. `with_preview_library`
-    // holds the meeting-storage sequence, and the ask above is a worker round
-    // trip — holding that sequence across it would make a question block
-    // capture for as long as the model takes.
-    let handles: Option<HashMap<String, String>> = if outcome.answers.is_empty() {
-        Some(HashMap::new())
-    } else {
-        let ids: Vec<String> = outcome
-            .answers
-            .iter()
-            .map(|answer| answer.meeting_id.clone())
-            .collect();
-        state.with_preview_library(
-            || None,
-            |reader, _active| {
-                Some(
-                    ids.iter()
-                        .filter_map(|id| {
-                            reader
-                                .retain_transcript_handle(id)
-                                .map(|handle| (id.clone(), handle))
-                        })
-                        .collect(),
-                )
-            },
-        )
-    };
-    let handles_state = if handles.is_some() {
-        "minted"
-    } else {
-        "unavailable"
-    };
-    let handles = handles.unwrap_or_default();
-
-    CorpusSearchResponse {
-        state: state_name,
-        answers: outcome
-            .answers
-            .into_iter()
-            .map(|answer| CorpusSearchAnswer {
-                transcript_handle: handles.get(&answer.meeting_id).cloned(),
-                meeting_id: answer.meeting_id,
-                title: answer.title,
-                folder: answer.folder,
-                created_at_epoch_seconds: answer.created_at_epoch_seconds,
-                quote: answer.quote,
-                similarity: answer.similarity,
-                first_turn_index: answer.first_turn_index,
-                last_turn_index: answer.last_turn_index,
-            })
-            .collect(),
-        windows,
-        covered,
-        near_ties: outcome.near_ties,
-        handles: handles_state,
-        message,
-    }
 }
 
 #[tauri::command]
@@ -9636,12 +9238,6 @@ fn initialize_application(app: AppHandle, retry: bool) {
         return;
     }
 
-    let mut packaged_models: Vec<(String, String)> = manifest
-        .models
-        .iter()
-        .map(|model| (model.id.clone(), model.sha256.clone()))
-        .collect();
-    packaged_models.extend(external_models.clone());
     let selected_engine = state
         .transcription_engine
         .lock()
@@ -9692,7 +9288,6 @@ fn initialize_application(app: AppHandle, retry: bool) {
         tap_build_sha256: manifest.tap.sha256.clone(),
         tap_path: storage_context.resource_root.join(&manifest.tap.path),
         encoder_sha256: manifest.encoder.sha256.clone(),
-        packaged_models,
         encoder_available: manifest.encoder.path.file_name()
             != Some(std::ffi::OsStr::new("encoder-unavailable.identity")),
     };
@@ -12881,7 +12476,6 @@ mod tests {
             transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
-            packaged_models: Vec::new(),
             encoder_sha256: encoder.into(),
             encoder_available: false,
         });
@@ -13211,7 +12805,6 @@ mod tests {
             transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
-            packaged_models: Vec::new(),
             encoder_sha256: "0575cb64845e6b9a10db9bcb74d5ac32b326b8dc90352671d345e2ee3d0126a2"
                 .into(),
             encoder_available: true,
@@ -13382,7 +12975,6 @@ mod tests {
             transcription_producer: TranscriptionProducer::whisper("model/v1".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
-            packaged_models: Vec::new(),
             encoder_sha256: "0575cb64845e6b9a10db9bcb74d5ac32b326b8dc90352671d345e2ee3d0126a2"
                 .into(),
             encoder_available: false,
@@ -16099,7 +15691,6 @@ exit 0"#
             transcription_producer: TranscriptionProducer::whisper("whisper-model".into()),
             tap_build_sha256: "tap-build".into(),
             tap_path: PathBuf::from("/nonexistent/tap"),
-            packaged_models: Vec::new(),
             encoder_sha256: "encoder".into(),
             encoder_available: false,
         }
