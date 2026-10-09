@@ -15491,6 +15491,7 @@ exit 0"#);
         assert_eq!(discovery.items.len(), 1, "the next launch enqueues it");
     }
 
+    #[test]
     fn view_current_transcript_resolves_with_restored_turn_visible() {
         use local_meeting_notes_session_core::operations::{TranscriptView, TranscriptViewSchema};
         use local_meeting_notes_session_core::storage::{create_private_dir, durable_create_new};
