@@ -26,6 +26,8 @@ use local_meeting_notes_session_core::transcript_deletion::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AudioDeletionReview {
     Reviewed,
+    // The app builds only reviewed values; the facade still refuses this one, as tested.
+    #[allow(dead_code)]
     NotReviewed,
 }
 

@@ -3434,6 +3434,7 @@ fn dismiss_first_run_sheet_for(state: &ApplicationState) {
     }
 }
 
+#[cfg(test)]
 fn library_snapshot_for(state: &ApplicationState) -> library_reader::LibrarySnapshot {
     library_snapshot_with(library_reader::LibraryFilterArgs::default(), false, state)
 }
