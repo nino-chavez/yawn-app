@@ -27,15 +27,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use local_meeting_notes_session_core::meeting::{
-    AudioState, NoteRevisionRef, load_meeting, read_private_bytes, verify_record_artifacts,
+    AudioState, load_meeting, read_private_bytes, verify_record_artifacts,
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
-use local_meeting_notes_session_core::note_generation::{
-    NoteArtifactError, NoteArtifactInspector, NoteGenerationCoordinator, NoteGenerationWorker,
-    NoteGenerationWorkerError, NoteWorkerResult,
-};
 use local_meeting_notes_session_core::operations::{
-    NoteCreateWorkerArgs, TranscriptRestoreWorkerArgs, TranscriptRetryUiArgs,
+    TranscriptRestoreWorkerArgs, TranscriptRetryUiArgs,
 };
 use local_meeting_notes_session_core::protocol::{
     CaptureProgressState, Operation, ProgressEvent, ProtocolError, WorkerCommand, WorkerProgress,
@@ -190,84 +186,6 @@ impl TranscriptRestoreWorker for WorkerProcessRestoreBridge {
     }
 }
 
-/// Runs the two-step note generation behind the session-core coordinator's
-/// `NoteGenerationWorker` seam: admit and run the sandboxed generate child,
-/// then hand its validated points to the worker's `note.create` assembler.
-///
-/// Compatibility seam: new generation always refuses before runtime or storage I/O.
-pub(crate) struct WorkerProcessNoteGenerationBridge {
-    port: Arc<dyn WorkerPort>,
-    storage: Arc<Mutex<Option<StorageContext>>>,
-}
-
-impl WorkerProcessNoteGenerationBridge {
-    pub(crate) fn new(
-        port: Arc<dyn WorkerPort>,
-        storage: Arc<Mutex<Option<StorageContext>>>,
-    ) -> Self {
-        Self { port, storage }
-    }
-
-    /// New generation is unavailable regardless of cached model state.
-    pub(crate) fn admission_check(&self) -> (bool, Option<String>) {
-        // Do not inspect the manifest or installed weights for a retired
-        // operation. It is unavailable regardless of local model state.
-        (
-            false,
-            Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into()),
-        )
-    }
-}
-
-impl NoteGenerationWorker for WorkerProcessNoteGenerationBridge {
-    fn create(
-        &self,
-        _arguments: &NoteCreateWorkerArgs,
-    ) -> Result<NoteWorkerResult, NoteGenerationWorkerError> {
-        // Defensive production seam: no admission, child process, or
-        // note.create request is permitted after retirement.
-        Err(NoteGenerationWorkerError::Unavailable)
-    }
-}
-
-/// Fresh `note.inspect` across the process boundary: the published pair must
-/// re-verify content-addressed and semantically passing before the meeting
-/// record advances. The worker's refusal is deliberately reasonless; either
-/// artifact fault maps to "changed", and only a dead port reads as missing.
-pub(crate) struct WorkerProcessNoteInspectBridge {
-    port: Arc<dyn WorkerPort>,
-}
-
-impl WorkerProcessNoteInspectBridge {
-    pub(crate) fn new(port: Arc<dyn WorkerPort>) -> Self {
-        Self { port }
-    }
-}
-
-impl NoteArtifactInspector for WorkerProcessNoteInspectBridge {
-    fn inspect(
-        &self,
-        _meeting_dir: &Path,
-        meeting_id: Uuid,
-        note: &NoteRevisionRef,
-    ) -> Result<HashMap<String, String>, NoteArtifactError> {
-        let arguments = serde_json::json!({
-            "meeting_id": meeting_id.to_string(),
-            "note_id": note.json.sha256,
-            "transcript_id": note.source_transcript_sha256,
-        });
-        let result = self
-            .port
-            .request(Operation::NoteInspect, arguments, WORKER_REQUEST_TIMEOUT)
-            .map_err(|_| NoteArtifactError::Missing)?;
-        if result.ok {
-            Ok(result.artifact_digests)
-        } else {
-            Err(NoteArtifactError::Changed)
-        }
-    }
-}
-
 /// The storage-backed `ProductOperationCoordinator`. Holds live handles to the
 /// application's storage, writer-lock, and worker slots so every call reads
 /// the current runtime state instead of a startup snapshot.
@@ -325,19 +243,6 @@ impl DesktopProductCoordinator {
             self.coordination()?,
             Arc::new(WorkerProcessRestoreBridge::new(self.port.clone())),
             Arc::new(StoredTranscriptArtifactInspector),
-        )
-        .map_err(|_| CoordinatorError::Unavailable)
-    }
-
-    fn generation_coordinator(&self) -> Result<NoteGenerationCoordinator, CoordinatorError> {
-        NoteGenerationCoordinator::new(
-            self.storage_root()?,
-            self.coordination()?,
-            Arc::new(WorkerProcessNoteGenerationBridge::new(
-                self.port.clone(),
-                self.storage.clone(),
-            )),
-            Arc::new(WorkerProcessNoteInspectBridge::new(self.port.clone())),
         )
         .map_err(|_| CoordinatorError::Unavailable)
     }
@@ -785,22 +690,6 @@ mod tests {
             absent.restore(&restore_args(Uuid::new_v4(), &"e".repeat(64), 0)),
             Err(TranscriptRestoreWorkerError::Unavailable)
         );
-    }
-
-    #[test]
-    fn retired_generation_bridge_never_sends_a_worker_request() {
-        let port = Arc::new(FakePort::new(FakeOutcome::Accept(HashMap::new())));
-        let bridge =
-            WorkerProcessNoteGenerationBridge::new(port.clone(), Arc::new(Mutex::new(None)));
-        let result = bridge.create(&NoteCreateWorkerArgs {
-            meeting_id: Uuid::new_v4(),
-            source_transcript_sha256: "a".repeat(64),
-            speaker_label_overrides: Vec::new(),
-            vocabulary_replacements: Vec::new(),
-            pre_meeting_context: None,
-        });
-        assert_eq!(result, Err(NoteGenerationWorkerError::Unavailable));
-        assert!(port.requests.lock().unwrap().is_empty());
     }
 
     fn empty_runtime_coordinator() -> DesktopProductCoordinator {
@@ -1368,32 +1257,5 @@ mod tests {
             Err(CoordinatorError::Unavailable)
         );
         assert!(port.requests.lock().unwrap().is_empty());
-    }
-
-    #[test]
-    fn note_generation_admission_is_retired_without_runtime_or_model_checks() {
-        let bridge = WorkerProcessNoteGenerationBridge::new(
-            Arc::new(FakePort::new(FakeOutcome::Refuse)),
-            Arc::new(Mutex::new(None)),
-        );
-        assert_eq!(
-            bridge.admission_check(),
-            (
-                false,
-                Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into())
-            )
-        );
-        let fixture = runtime_fixture(gated_turns());
-        let bridge = WorkerProcessNoteGenerationBridge::new(
-            Arc::new(FakePort::new(FakeOutcome::Refuse)),
-            fixture.state.storage.clone(),
-        );
-        assert_eq!(
-            bridge.admission_check(),
-            (
-                false,
-                Some(crate::product_facade::NOTE_GENERATION_RETIRED_COPY.into())
-            )
-        );
     }
 }
