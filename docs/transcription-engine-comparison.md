@@ -1012,6 +1012,11 @@ sentence segments were the primary scoring input.
 | Local terms retained in annotated entities | 114/132 | 102/132 | 122/132 | 123/132 |
 | Distinct terms retained in the final tenth of the meeting | 240/293 | 245/293 | 231/293 | 251/293 |
 
+**Correction, same day:** the Parakeet column was scored on FluidAudio's word
+segments, so the matched Voz term figures are the word-segment ones, 110/123 and
+122/132, not the sentence-segment figures in the table. The same-machine replay
+below uses matched segments.
+
 Scored on Voz's finer caption or word segments, decision and entity retention
 fell to 110/123 and 122/132. Edits and tail retention did not change. Voz's
 three runs produced identical text. The scorer separated a perfect transcript
@@ -1063,4 +1068,66 @@ windows with agreement-based joining in the FluidAudio adapter and rescore.
 This record changes no product source, contract, release state, or ASR
 decision. The content-free receipt is
 [`docs/evidence/voz-ami-2026-10-09.json`](evidence/voz-ami-2026-10-09.json).
+Raw outputs, including derived transcript text, remain owner-local.
+
+## FluidAudio Parakeet and Voz on the same machine — 2026-10-09
+
+The previous section compared Voz with the 2026-09-07 FluidAudio run. This
+replay ran both engines on the same Apple M3 Max on the same day, alternating
+them so both saw the same background load. FluidAudio ran through the
+unchanged `run_comparison.py` and the native probe built from `57d5fc6` with
+FluidAudio 0.15.6 (revision `4dbf4f9`). It used the int8 encoder and the
+Parakeet v3 Core ML models already cached by Yawn's setup. Voz ran through
+`desertant` 0.2.1. Each engine made four passes over the meeting in two rounds.
+
+The FluidAudio passes reproduced the 2026-09-07 Parakeet results exactly. That
+confirms the rebuilt reference matches the original for scoring, not only in
+its denominators. Each engine produced identical text on every pass. Both
+columns are scored on word segments, so the term checks use the same
+granularity.
+
+| AMI diagnostic, same machine and day | Parakeet via FluidAudio | Voz |
+|---|---:|---:|
+| Edits divided by 7,084 manual lexical tokens; lower is better | 20.00% | 17.12% |
+| Deletions / substitutions / insertions | 1,080 / 283 / 54 | 854 / 295 / 64 |
+| Local terms retained in annotated decision evidence | 106/123 | 110/123 |
+| Local terms retained in annotated entities | 122/132 | 122/132 |
+| Distinct terms retained in the final tenth of the meeting | 231/293 | 251/293 |
+| Output tokens wholly inside manual annotation gaps of 10 s or more | 1 | 9 |
+| Transcription time per pass, four passes | 13.1–16.2 s | 6.1–6.9 s |
+| Model load | 22.9 s first, 0.1 s cached | 0.4 s per invocation |
+
+Unrelated work held the load average at 10 to 14 during these runs. Both
+engines saw the same conditions, so the ratio is the useful figure: Voz took
+about half as long. FluidAudio's pass time includes opening and validating the
+WAV. Voz's excludes its model load; a whole Voz invocation took 7.1 to 7.7 s.
+Neither changes the larger wait: the earlier note replay took 95 to 147 s.
+Manual annotation gaps are not verified silence, so the gap-token row is a
+diagnostic, not a hallucination count.
+
+Voz's advantage is almost entirely fewer deletions. FluidAudio's output went
+silent for at least five seconds in seven places where the manual words show
+speech, covering 180 manual tokens. Voz had two such gaps, covering 63. Five of
+FluidAudio's six largest gaps fall between 34:09 and 38:19, the dense,
+overlapping close of the meeting. That is why the final tenth shows the largest
+difference.
+
+FluidAudio's `ChunkProcessor` decodes fixed windows of about 15 s with 2 s of
+overlap and merges them by token timing. Voz's model card describes 15-second
+windows cut at pauses and joined where neighbors agree. The gap positions were
+not checked against FluidAudio's exact window grid, so this replay shows where
+words are lost, not why.
+
+**What it means:** the gap from the previous section holds under matched
+conditions. It is a deletion problem concentrated in dense speech, worth about
+20 terms in the final tenth of this meeting. At matched granularity the
+decision-evidence difference is small (110 versus 106) and entities tie. The
+next step is unchanged: adjust the FluidAudio adapter's windowing, or
+FluidAudio's own long-audio options, and rescore against this replay. Getting
+Voz's behavior does not require adopting Desert Ant, because the model is the
+same.
+
+This record changes no product source, contract, release state, or ASR
+decision. The content-free receipt is
+[`docs/evidence/voz-fluidaudio-same-day-2026-10-09.json`](evidence/voz-fluidaudio-same-day-2026-10-09.json).
 Raw outputs, including derived transcript text, remain owner-local.
