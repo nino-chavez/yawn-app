@@ -1,0 +1,174 @@
+{
+  "schema": "fluidaudio-diarization-ami/1",
+  "date": "2026-10-12",
+  "machine": "Apple M3 Max, macOS 27; load average about 7 during the cached pass",
+  "input": {
+    "audio": "AMI ES2004c Mix-Headset",
+    "audio_sha256": "47dc9bd2e3b1d174842091ae9e1fe765218f0c87658b17d6469c404e03ec2ac5",
+    "annotation_archive": "ami_public_manual_1.6.2.zip",
+    "annotation_archive_sha256": "b56e5babb2496b8795deeeda7e71178d7fbc9963f94276cf2a3f4b56ebbc9f9d",
+    "reference_builder": "spike/speech-engine-comparison/prepare_ami.py",
+    "reference_json_sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010"
+  },
+  "engine": {
+    "fluidaudio_tag": "v0.17.7",
+    "fluidaudio_commit": "503b4bd1bbf7220882de39fe8ae6716aae4132da",
+    "package_platforms": "macOS 14, iOS 17",
+    "models": {
+      "nemotron3-offline": {
+        "repo": "FluidInference/nemotron-3-diarization-coreml",
+        "repo_sha": "25a90f97f254428d4b30374b76af9c74fdee8327",
+        "weights_marker": "ga-2026-09-23",
+        "local_bytes_approx": "193 MB"
+      },
+      "sortformer-offline": {
+        "repo": "FluidInference/diar-streaming-sortformer-coreml",
+        "repo_sha": "ae9a27ab45dc0aa3abede7d2d6bad2b7a69aa6d1",
+        "model": "SortformerOffline_v2.1 (fp16)",
+        "local_bytes_approx": "242 MB"
+      },
+      "pipeline-offline": {
+        "repo": "FluidInference/speaker-diarization-coreml",
+        "artifact_snapshot": "1ed7a662fdc7109e36d822db793ee6eebdaf8594",
+        "local_bytes_approx": "21 MB"
+      }
+    }
+  },
+  "checks": {
+    "nemotron_gguf_baseline_reproduced": {
+      "correct": 5691,
+      "denominator": 6151,
+      "strict_midpoint_proxy": 0.9252,
+      "same_mapping": true,
+      "wrong_speaker_words": 25,
+      "uncovered": 229,
+      "predicted_overlap": 206
+    },
+    "scorer_can_fail": {
+      "reference_as_prediction": 1.0,
+      "shifted_3_seconds": 0.6877,
+      "random_speaker_per_word": 0.2518,
+      "one_speaker_for_everyone": 0.3347
+    }
+  },
+  "arms": {
+    "nemotron3-offline": {
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1101,
+      "predicted_overlap_intervals": 278,
+      "predicted_overlap_seconds": 125.31,
+      "proxy": {
+        "correct": 5570,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9055,
+        "uncovered_words_counted_incorrect": 534,
+        "predicted_overlap_words_counted_incorrect": 36,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 11,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "C"
+        }
+      ],
+      "output_sha256": "ff4efd3ef3fe454047d987930d024c20cfef00ccdb0bc2a7f3f4a703b153dc80",
+      "second_pass_output_identical": true,
+      "wall_seconds_first_pass_including_model_download": 23.4,
+      "wall_seconds_second_pass_cached": 5.61,
+      "mapping_stability": "same best mapping in all eight 5-minute windows"
+    },
+    "sortformer-offline": {
+      "command": "fluidaudiocli sortformer {audio} --offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1130,
+      "predicted_overlap_intervals": 257,
+      "predicted_overlap_seconds": 116.32,
+      "proxy": {
+        "correct": 2300,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.3739,
+        "uncovered_words_counted_incorrect": 584,
+        "predicted_overlap_words_counted_incorrect": 35,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 3232,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "C"
+        }
+      ],
+      "output_sha256": "746e6abb31a7b903d2fb7efb7b38272aa5fd8545165ab8089048565b3848b200",
+      "second_pass_output_identical": true,
+      "wall_seconds_first_pass_including_model_download": 33.14,
+      "wall_seconds_second_pass_cached": 6.13,
+      "mapping_stability": "best per-5-minute mapping changed in every window from 5 to 35 minutes; identities are not stable across the meeting"
+    },
+    "pipeline-offline": {
+      "command": "fluidaudiocli process {audio} --mode offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 173,
+      "predicted_overlap_intervals": 0,
+      "predicted_overlap_seconds": 0,
+      "proxy": {
+        "correct": 5913,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9613,
+        "uncovered_words_counted_incorrect": 119,
+        "predicted_overlap_words_counted_incorrect": 0,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 119,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "A"
+        }
+      ],
+      "output_sha256": "4385618e4f2cd7e90a3938d08091f1fbf7f18711e9d05a65a77960923f1127ed",
+      "second_pass_output_identical": true,
+      "wall_seconds_first_pass_including_model_download": 23.85,
+      "wall_seconds_second_pass_cached": 11.34,
+      "mapping_stability": "same best mapping in every 5-minute window from 5 to 35 minutes"
+    }
+  },
+  "limit": "Proxy only; not DER or word-attribution accuracy. Mixed headset audio from one public four-person meeting; not an iPad or two-person recording. Timing is this Mac only."
+}

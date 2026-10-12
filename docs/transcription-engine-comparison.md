@@ -1244,3 +1244,61 @@ used.
 AMI's audio is a mix of four headset microphones. It is cleaner than an iPad
 on a table, with more speakers and more overlap than a two-person meeting. A
 result here measures the labeler, not an iPad recording.
+
+### Results
+
+All three arms ran to completion on this Apple M3 Max. A second pass produced
+byte-identical outputs for every arm. Wall times are from that second pass,
+with models cached; the first pass added model download and compilation.
+
+| AMI ES2004c, strict midpoint proxy | Nemotron GGUF (2026-09-28) | FluidAudio Nemotron 3 port | Sortformer v2.1 | Segmentation + VBx pipeline |
+|---|---:|---:|---:|---:|
+| Words with the right speaker, of 6,151 | 5,691 | 5,570 | 2,300 | 5,913 |
+| Proxy | 0.9252 | 0.9055 | 0.3739 | 0.9613 |
+| Words with the wrong speaker | 25 | 11 | 3,232 | 119 |
+| Words with no speaker | 229 | 534 | 584 | 119 |
+| Words where it predicted two speakers | 206 | 36 | 35 | 0 |
+| Estimated speakers | 4 | 4 | 4 | 4 |
+| Predicted overlap | 220.6 s | 125.3 s | 116.3 s | none |
+| Wall time, 38:54 of audio | 9.2 s | 5.6 s | 6.1 s | 11.3 s |
+| Model on disk | 107 MB GGUF | 193 MB | 242 MB | 21 MB |
+
+"Wrong speaker" is the scorer's incorrect count minus its no-speaker and
+predicted-overlap counts. For comparison, one speaker for everyone scores
+0.3347 here, with about 4,100 words on the wrong person.
+
+**Sortformer's speakers drift.** Its best mapping to the four AMI speakers was
+different in every five-minute window from 5 to 35 minutes, so one global map
+cannot fit. The Nemotron port and the pipeline kept the same mapping in every
+window. This is FluidAudio's offline Sortformer path on a 39-minute meeting;
+its streaming path, which keeps a speaker cache, was not tested.
+
+**The pipeline's lead is coverage, not precision.** It gives almost every word
+a speaker and never predicts overlap, which this proxy never penalizes. It
+also puts about ten times as many words on the wrong person as the Nemotron
+port. The port is the most cautious: it leaves more words unlabeled and
+rarely names the wrong person.
+
+**The port is close to, not equal to, the GGUF run.** It labeled 121 fewer
+words correctly, almost all of them words it left without a speaker. Its
+threshold (0.5) and variant (`offline`) were FluidAudio's defaults and were not
+tuned.
+
+**What it means:** two engines that run on iPad, through one Swift package
+that supports iOS 17, label AMI's speakers with stable identities. The
+Nemotron port rarely names the wrong person and leaves more words unlabeled,
+which matches Yawn's rule to withhold rather than guess. The pipeline labels
+more words and makes more wrong guesses. Sortformer's offline path is not
+usable as tested. None of this is an iPad measurement: the audio is a clean
+headset mix, the timing is this Mac, and a two-person table recording on an M1
+iPad remains untested. A product choice would also need a rule for words with
+no speaker and for predicted overlap, since those are where the two leading
+engines differ most.
+
+Reproduce with `run_fluidaudio_diarization.py` against a `fluidaudiocli` built
+from the v0.17.7 tag, then `score_diarization.py` per arm. The content-free
+receipt is
+[`docs/evidence/fluidaudio-diarization-ami-2026-10-12.json`](evidence/fluidaudio-diarization-ami-2026-10-12.json).
+Outputs and the rebuilt reference, which contains manual transcript text,
+remain owner-local. This changes no product source, contract, release state,
+or ASR decision.
