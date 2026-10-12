@@ -1,0 +1,39 @@
+# iPad Ink research spike
+
+This is a research spike, not the Yawn product. It tests whether in-person note
+taking works on an iPad: microphone-only audio, Apple Pencil strokes timed to
+that audio, after-Stop on-device transcription, and replay.
+
+All meeting data stays on the iPad. The app has no account, cloud service,
+analytics, or network calls. The only network use is an explicit Apple
+on-device speech-model download when the selected locale does not have its
+speech model installed.
+
+## Install on an iPad
+
+Open `IPadInk.xcodeproj` in Xcode 27 or later. In Signing, choose a development
+team. Connect an iPad running iPadOS 26 or later with Developer Mode enabled,
+then build and run the `IPadInk` scheme.
+
+Before recording, confirm that everyone who can be heard agreed and choose an
+audio keep period: 1, 7, or 30 days. The next launch deletes only `audio.wav`
+for expired meetings; strokes, transcript, and drawing remain.
+
+## Exports
+
+Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/`:
+
+- `audio.wav` — local microphone recording.
+- `strokes.json` — `[{index, start_seconds, end_seconds}]`; untimed strokes use
+  `null` for both time values.
+- `transcript.json` — `[{start, end, text, final}]`; turns are deliberately
+  unlabeled.
+- `meeting.json` — `schema`, `created_at`, consent, keep period, and sample rate.
+- `drawing.data` — PencilKit’s `PKDrawing.dataRepresentation()`.
+
+## Limits of simulator evidence
+
+The simulator can exercise ordinary touch ink and compile the app, but it
+cannot establish Apple Pencil latency, a real microphone recording, the local
+speech model’s availability or download, or device replay behavior. Those need
+an iPad review.
