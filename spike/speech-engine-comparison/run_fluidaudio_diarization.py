@@ -21,6 +21,9 @@ from typing import Any
 CASE_ID = "ami-full"
 ARMS: dict[str, list[str]] = {
     "nemotron3-offline": ["nemotron3-diarize", "{audio}", "--variant", "offline", "--output", "{raw}"],
+    # FluidAudio's documented iPhone/iPad picks: Neural Engine only, W8A8, 95 MB.
+    "nemotron3-fast32-split-w8a8": ["nemotron3-diarize", "{audio}", "--variant", "fast32-split-w8a8", "--output", "{raw}"],
+    "nemotron3-c128-split-w8a8": ["nemotron3-diarize", "{audio}", "--variant", "c128-split-w8a8", "--output", "{raw}"],
     "sortformer-offline": ["sortformer", "{audio}", "--offline", "--output", "{raw}"],
     "pipeline-offline": ["process", "{audio}", "--mode", "offline", "--output", "{raw}"],
 }

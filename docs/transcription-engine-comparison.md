@@ -1284,8 +1284,9 @@ words correctly, almost all of them words it left without a speaker. Its
 threshold (0.5) and variant (`offline`) were FluidAudio's defaults and were not
 tuned.
 
-**What it means:** two engines that run on iPad, through one Swift package
-that supports iOS 17, label AMI's speakers with stable identities. The
+**What it means:** two engines in a Swift package whose manifest declares
+iOS 17 label AMI's speakers with stable identities. Neither was built for iOS
+or run on an iPad in this test. The
 Nemotron port rarely names the wrong person and leaves more words unlabeled,
 which matches Yawn's rule to withhold rather than guess. The pipeline labels
 more words and makes more wrong guesses. Sortformer's offline path is not
@@ -1302,3 +1303,35 @@ receipt is
 Outputs and the rebuilt reference, which contains manual transcript text,
 remain owner-local. This changes no product source, contract, release state,
 or ASR decision.
+
+### Extra arms: FluidAudio's iPad variants — added after the results above
+
+FluidAudio's Nemotron 3 guide recommends the `offline` variant tested above
+for recorded files on a Mac; it runs on the GPU only. For iPhone and iPad it
+recommends the two 95 MB split-graph variants instead, which run wholly on the
+Neural Engine with 8-bit weights and activations. These two arms were added
+after the first results, so they are not part of the fixed design. They use
+the same input, scorer, defaults and FluidAudio build:
+
+4. `nemotron3-diarize --variant fast32-split-w8a8`: the live-use pick.
+5. `nemotron3-diarize --variant c128-split-w8a8`: the batch pick.
+
+| AMI ES2004c, strict midpoint proxy | `offline` (above) | `fast32-split-w8a8` | `c128-split-w8a8` |
+|---|---:|---:|---:|
+| Words with the right speaker, of 6,151 | 5,570 | 5,417 | 5,554 |
+| Proxy | 0.9055 | 0.8807 | 0.9029 |
+| Words with the wrong speaker | 11 | 26 | 11 |
+| Words with no speaker | 534 | 674 | 550 |
+| Words where it predicted two speakers | 36 | 34 | 36 |
+| Wall time on this Mac, cached | 5.6 s | 13.5 s | 6.7 s |
+| Model on disk | 193 MB | 97 MB | 97 MB |
+
+Both runs were byte-identical on a second pass and kept one speaker mapping in
+every scorable five-minute window.
+
+**What it means:** the batch variant FluidAudio recommends for iPad gives
+almost the same result as the Mac variant at half the size: 16 more words
+left without a speaker, and the same 11 wrong-speaker words. The live variant leaves more
+words unlabeled and names the wrong person more than twice as often. These
+ran on this Mac's Neural Engine; an M1 iPad's speed and memory remain
+unmeasured.
