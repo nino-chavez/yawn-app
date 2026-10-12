@@ -60,6 +60,16 @@ func lateVolatileDoesNotDuplicateFinal() {
     #expect(merged == [final])
 }
 
+@Test("in-progress text that straddles a final's end still replaces older in-progress text")
+func straddlingVolatileIsKept() {
+    let final = TranscriptSegment(start: 2, end: 4.2, text: "Good morning", isFinal: true)
+    let older = TranscriptSegment(start: 4.2, end: 5, text: "and", isFinal: false)
+    let newer = TranscriptSegment(start: 4.1, end: 6, text: "and then we", isFinal: false)
+    let merged = TranscriptTimeline.merging([final, older], with: newer)
+
+    #expect(merged == [final, newer])
+}
+
 @Test("replay includes strokes at the playhead and untimed strokes")
 func replayVisibilityUsesInclusivePlayhead() {
     let strokes = [
