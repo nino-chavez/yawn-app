@@ -1330,8 +1330,8 @@ Both runs were byte-identical on a second pass and kept one speaker mapping in
 every scorable five-minute window.
 
 **What it means:** the batch variant FluidAudio recommends for iPad gives
-almost the same result as the Mac variant at half the size: 16 fewer words
-labeled, and the same 11 wrong-speaker words. The live variant leaves more
+almost the same result as the Mac variant at half the size: 16 more words
+left without a speaker, and the same 11 wrong-speaker words. The live variant leaves more
 words unlabeled and names the wrong person more than twice as often. These
 ran on this Mac's Neural Engine; an M1 iPad's speed and memory remain
 unmeasured.
