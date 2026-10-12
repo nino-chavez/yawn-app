@@ -30,6 +30,28 @@ func finalTranscriptReplacesVolatileResult() {
     #expect(merged == [final])
 }
 
+@Test("a final result replaces in-progress text whose range differs")
+func finalReplacesOverlappingVolatileWithDifferentRange() {
+    var merged: [TranscriptSegment] = []
+    merged = TranscriptTimeline.merging(merged, with: TranscriptSegment(start: 2, end: 3.1, text: "Good", isFinal: false))
+    merged = TranscriptTimeline.merging(merged, with: TranscriptSegment(start: 2, end: 3.9, text: "Good morn", isFinal: false))
+    let final = TranscriptSegment(start: 2, end: 4.2, text: "Good morning", isFinal: true)
+    merged = TranscriptTimeline.merging(merged, with: final)
+
+    #expect(merged == [final])
+}
+
+@Test("newer in-progress text replaces older in-progress text and keeps earlier finals")
+func volatileReplacesVolatileAndKeepsFinals() {
+    let firstFinal = TranscriptSegment(start: 0, end: 1.8, text: "Hello there.", isFinal: true)
+    var merged = TranscriptTimeline.merging([], with: firstFinal)
+    merged = TranscriptTimeline.merging(merged, with: TranscriptSegment(start: 2, end: 2.5, text: "We", isFinal: false))
+    let newest = TranscriptSegment(start: 2, end: 3.4, text: "We should", isFinal: false)
+    merged = TranscriptTimeline.merging(merged, with: newest)
+
+    #expect(merged == [firstFinal, newest])
+}
+
 @Test("replay includes strokes at the playhead and untimed strokes")
 func replayVisibilityUsesInclusivePlayhead() {
     let strokes = [
