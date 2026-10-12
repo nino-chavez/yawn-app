@@ -1315,3 +1315,23 @@ the same input, scorer, defaults and FluidAudio build:
 
 4. `nemotron3-diarize --variant fast32-split-w8a8`: the live-use pick.
 5. `nemotron3-diarize --variant c128-split-w8a8`: the batch pick.
+
+| AMI ES2004c, strict midpoint proxy | `offline` (above) | `fast32-split-w8a8` | `c128-split-w8a8` |
+|---|---:|---:|---:|
+| Words with the right speaker, of 6,151 | 5,570 | 5,417 | 5,554 |
+| Proxy | 0.9055 | 0.8807 | 0.9029 |
+| Words with the wrong speaker | 11 | 26 | 11 |
+| Words with no speaker | 534 | 674 | 550 |
+| Words where it predicted two speakers | 36 | 34 | 36 |
+| Wall time on this Mac, cached | 5.6 s | 13.5 s | 6.7 s |
+| Model on disk | 193 MB | 97 MB | 97 MB |
+
+Both runs were byte-identical on a second pass and kept one speaker mapping in
+every scorable five-minute window.
+
+**What it means:** the batch variant FluidAudio recommends for iPad gives
+almost the same result as the Mac variant at half the size: 16 fewer words
+labeled, and the same 11 wrong-speaker words. The live variant leaves more
+words unlabeled and names the wrong person more than twice as often. These
+ran on this Mac's Neural Engine; an M1 iPad's speed and memory remain
+unmeasured.

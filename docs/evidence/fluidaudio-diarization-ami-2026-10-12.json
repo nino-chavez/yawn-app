@@ -32,7 +32,8 @@
         "artifact_snapshot": "1ed7a662fdc7109e36d822db793ee6eebdaf8594",
         "local_bytes_approx": "21 MB"
       }
-    }
+    },
+    "ios_status": "Package manifest declares iOS 17. No arm was built for iOS or run on an iPad; all ran on this Mac."
   },
   "checks": {
     "nemotron_gguf_baseline_reproduced": {
@@ -169,6 +170,90 @@
       "wall_seconds_first_pass_including_model_download": 23.85,
       "wall_seconds_second_pass_cached": 11.34,
       "mapping_stability": "same best mapping in every 5-minute window from 5 to 35 minutes"
+    },
+    "nemotron3-fast32-split-w8a8": {
+      "added_after_first_results": true,
+      "reason": "FluidAudio's Nemotron 3 guide names the split-graph W8A8 variants, not offline, for iPhone and iPad",
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant fast32-split-w8a8 --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1081,
+      "predicted_overlap_intervals": 257,
+      "predicted_overlap_seconds": 115.56,
+      "proxy": {
+        "correct": 5417,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.8807,
+        "uncovered_words_counted_incorrect": 674,
+        "predicted_overlap_words_counted_incorrect": 34,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 26,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "C"
+        }
+      ],
+      "output_sha256": "2ab529b13a6b49577aa7a5a8e7184eac6f7790a72c8dcabf44543d5c57fc0547",
+      "second_pass_output_identical": true,
+      "wall_seconds_first_pass_including_model_download": 57.16,
+      "wall_seconds_second_pass_cached": 13.49,
+      "mapping_stability": "one mapping across all six scorable 5-minute windows",
+      "model_on_disk": "97 MB"
+    },
+    "nemotron3-c128-split-w8a8": {
+      "added_after_first_results": true,
+      "reason": "FluidAudio's Nemotron 3 guide names the split-graph W8A8 variants, not offline, for iPhone and iPad",
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant c128-split-w8a8 --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1098,
+      "predicted_overlap_intervals": 275,
+      "predicted_overlap_seconds": 125.03,
+      "proxy": {
+        "correct": 5554,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9029,
+        "uncovered_words_counted_incorrect": 550,
+        "predicted_overlap_words_counted_incorrect": 36,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 11,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "C"
+        }
+      ],
+      "output_sha256": "cba6fac4cc3313f5d8bc3895e16d406889037fdb9e1cafc17b2cd0f35dd9e491",
+      "second_pass_output_identical": true,
+      "wall_seconds_first_pass_including_model_download": 18.79,
+      "wall_seconds_second_pass_cached": 6.71,
+      "mapping_stability": "same mapping in all eight 5-minute windows",
+      "model_on_disk": "97 MB"
     }
   },
   "limit": "Proxy only; not DER or word-attribution accuracy. Mixed headset audio from one public four-person meeting; not an iPad or two-person recording. Timing is this Mac only."
