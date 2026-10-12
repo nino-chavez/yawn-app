@@ -1335,3 +1335,68 @@ left without a speaker, and the same 11 wrong-speaker words. The live variant le
 words unlabeled and names the wrong person more than twice as often. These
 ran on this Mac's Neural Engine; an M1 iPad's speed and memory remain
 unmeasured.
+
+## Speaker labeling on AMI's far-field room microphone — 2026-10-12
+
+The two AMI sections above used a mix of four headset microphones. An iPad on
+a table hears the room instead, so this repeats the test on one microphone
+from the same meeting's tabletop array.
+
+### Design, fixed before any far-field run
+
+- **Input:** `ES2004c.Array1-01.wav` from the AMI corpus mirror, 74,699,820
+  bytes, SHA-256 `dc11abf7…0cb7`: one 16 kHz mono microphone, 2,334.368 s,
+  the same length as the headset mix. The human reference, scorer, and scorer
+  checks are unchanged from the sections above.
+- **Arms:** the five FluidAudio v0.17.7 arms above with the same defaults
+  (`nemotron3-offline`, `nemotron3-fast32-split-w8a8`,
+  `nemotron3-c128-split-w8a8`, `sortformer-offline`, `pipeline-offline`), plus
+  the Nemotron trial's own NeMo-Speech.cpp build (source `97a15af`, the same
+  GGUF, `--device metal --preset v3-offline`).
+- **GGUF runtime check:** that build's library path pointed at a removed
+  checkout; with `DYLD_LIBRARY_PATH` set to its own `bin/` folder, it
+  reproduced all 711 of the 2026-09-28 headset segments exactly before this run.
+- **Reported per arm:** the same fields as above, a second pass for identical
+  output, and whether one speaker mapping holds across five-minute windows.
+
+The array microphone is one capsule of eight in a meeting-room array, not an
+iPad microphone, and the meeting still has four people.
+
+### Far-field results
+
+The scorer first rejected five arms: on the room microphone, sound runs to the
+end of the file, and each model's last segment ended 0.002 to 0.032 s past it
+on its output grid. The headset mix ended in quiet, so this never arose there.
+The runner now trims an ending at most 0.08 s (one frame) past the audio to
+the audio's length and records it; a 0.2 s overshoot is still left for the
+scorer to reject. Each arm here had one trimmed segment except the pipeline,
+which had none. The scorer is unchanged.
+
+| AMI ES2004c, strict midpoint proxy | Headset | Far-field | Wrong speaker, headset → far-field | No speaker, headset → far-field |
+|---|---:|---:|---:|---:|
+| Nemotron GGUF (NeMo-Speech.cpp) | 0.9252 | 0.9122 | 25 → 74 | 229 → 271 |
+| FluidAudio Nemotron 3 `offline` | 0.9055 | 0.9039 | 11 → 10 | 534 → 541 |
+| FluidAudio `c128-split-w8a8` (iPad batch) | 0.9029 | 0.8927 | 11 → 17 | 550 → 600 |
+| FluidAudio `fast32-split-w8a8` (iPad live) | 0.8807 | 0.8953 | 26 → 28 | 674 → 576 |
+| Segmentation + VBx pipeline | 0.9613 | 0.9473 | 119 → 187 | 119 → 137 |
+| Sortformer v2.1 offline | 0.3739 | 0.5186 | 3,232 → 2,320 | 584 → 604 |
+
+Every arm produced byte-identical output on a second pass. Every arm except
+Sortformer kept one speaker mapping across its scorable five-minute windows;
+Sortformer's changed in every window again. All arms estimated four speakers.
+
+**What it means:** moving from headset microphones to one room microphone
+moved each usable engine's score by less than two points: four fell, by 0.2
+to 1.4, and the iPad live variant rose by 1.5. The FluidAudio Nemotron ports
+stayed the most cautious: 10 to 28 words on the wrong person, while the GGUF
+runtime rose to 74 and the pipeline to 187. The iPad batch variant named the
+wrong person for 17 words, and left 600 words without a speaker, about one in
+ten. AMI's array sits in a treated meeting room and this meeting has four
+people, so a two-person conversation over an iPad on a table remains the test
+that would settle the product question.
+
+Reproduce with `run_fluidaudio_diarization.py --audio ES2004c.Array1-01.wav`
+plus `--nemo-cli` and `--gguf` for the GGUF arm, then `score_diarization.py`
+per arm. The content-free receipt is
+[`docs/evidence/fluidaudio-diarization-ami-far-field-2026-10-12.json`](evidence/fluidaudio-diarization-ami-far-field-2026-10-12.json).
+This changes no product source, contract, release state, or ASR decision.
