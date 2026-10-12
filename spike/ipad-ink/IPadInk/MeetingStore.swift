@@ -247,9 +247,10 @@ final class MeetingStore: NSObject, ObservableObject {
                 } else {
                     await analyzer.cancelAndFinishNow()
                 }
-                let segments = try await readResults.value
+                let segments = TranscriptTimeline.completed(try await readResults.value)
                 // Saved to the meeting this run belongs to, even after New meeting.
                 try write(segments, to: folder.appendingPathComponent("transcript.json"))
+                if generation == meetingGeneration { transcript = segments }
                 if generation == meetingGeneration { recordingState = .stopped }
             } catch {
                 readResults.cancel()

@@ -70,6 +70,23 @@ func straddlingVolatileIsKept() {
     #expect(merged == [final, newer])
 }
 
+@Test("late in-progress text spanning two finals is dropped")
+func lateVolatileSpanningFinalsIsDropped() {
+    let first = TranscriptSegment(start: 2, end: 4.2, text: "Good morning", isFinal: true)
+    let second = TranscriptSegment(start: 4.2, end: 6, text: "and then we", isFinal: true)
+    let merged = TranscriptTimeline.merging([first, second], with: TranscriptSegment(start: 2, end: 6, text: "Good morning and then we", isFinal: false))
+
+    #expect(merged == [first, second])
+}
+
+@Test("a finished transcript keeps final text only")
+func completedTranscriptKeepsFinalsOnly() {
+    let final = TranscriptSegment(start: 0, end: 2, text: "Hello there.", isFinal: true)
+    let leftover = TranscriptSegment(start: 2, end: 3, text: "We sh", isFinal: false)
+
+    #expect(TranscriptTimeline.completed([final, leftover]) == [final])
+}
+
 @Test("replay includes strokes at the playhead and untimed strokes")
 func replayVisibilityUsesInclusivePlayhead() {
     let strokes = [

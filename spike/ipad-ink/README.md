@@ -36,7 +36,8 @@ Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/` (`UIFil
 - `strokes.json` — `[{index, start_seconds, end_seconds}]`; untimed strokes use
   `null` for both time values.
 - `transcript.json` — `[{start, end, text, final}]`; turns are deliberately
-  unlabeled.
+  unlabeled. A finished run saves final text only; in-progress text is shown
+  while transcribing but never saved.
 - `meeting.json` — `schema`, `created_at`, consent, keep period, and sample rate.
 - `drawing.data` — PencilKit’s `PKDrawing.dataRepresentation()`.
 

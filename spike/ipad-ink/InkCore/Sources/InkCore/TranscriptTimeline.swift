@@ -3,24 +3,33 @@ import Foundation
 public enum TranscriptTimeline {
     /// Merges one speech result into the transcript.
     ///
-    /// In-progress (volatile) text is provisional and its range grows as audio
-    /// arrives, so a later result rarely has the same range. Any in-progress
-    /// segment that overlaps or follows the incoming result is superseded by
-    /// it. Final segments stay, except a final with the exact same range,
-    /// which the incoming final replaces.
+    /// Final text is authoritative. In-progress (volatile) text is the
+    /// provisional tail of audio after the last final, and its range grows as
+    /// audio arrives:
+    /// - an in-progress result replaces all earlier in-progress text, and is
+    ///   dropped when the finals already reach its end;
+    /// - a final result replaces in-progress text it overlaps or precedes, and
+    ///   a final with the exact same range.
     public static func merging(_ existing: [TranscriptSegment], with incoming: TranscriptSegment) -> [TranscriptSegment] {
-        // Final text wins: in-progress text lying wholly within a final is dropped.
-        // Text that only touches or straddles a final's edge is newer audio and stays.
-        if !incoming.isFinal, existing.contains(where: { $0.isFinal && $0.start <= incoming.start && incoming.end <= $0.end }) {
-            return existing
+        let finals = existing.filter(\.isFinal)
+        guard incoming.isFinal else {
+            let lastFinalEnd = finals.map(\.end).max() ?? -.infinity
+            guard incoming.end > lastFinalEnd else { return existing }
+            return sorted(finals + [incoming])
         }
-        let kept = existing.filter { segment in
-            if segment.isFinal {
-                return !(incoming.isFinal && segment.start == incoming.start && segment.end == incoming.end)
-            }
-            return !(overlaps(segment, incoming) || segment.start >= incoming.start)
-        }
-        return (kept + [incoming]).sorted { ($0.start, $0.end) < ($1.start, $1.end) }
+        let keptFinals = finals.filter { !($0.start == incoming.start && $0.end == incoming.end) }
+        let keptInProgress = existing.filter { !$0.isFinal && !(overlaps($0, incoming) || $0.start >= incoming.start) }
+        return sorted(keptFinals + keptInProgress + [incoming])
+    }
+
+    /// The transcript of a finished run: final text only. In-progress text left
+    /// over at the end is a guess and is not saved.
+    public static func completed(_ segments: [TranscriptSegment]) -> [TranscriptSegment] {
+        segments.filter(\.isFinal)
+    }
+
+    private static func sorted(_ segments: [TranscriptSegment]) -> [TranscriptSegment] {
+        segments.sorted { ($0.start, $0.end) < ($1.start, $1.end) }
     }
 
     private static func overlaps(_ a: TranscriptSegment, _ b: TranscriptSegment) -> Bool {
