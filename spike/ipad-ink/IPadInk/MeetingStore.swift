@@ -278,6 +278,7 @@ final class MeetingStore: NSObject, ObservableObject {
             let startedAt = Date()
             let meeting = MeetingExport(createdAt: startedAt, consentEveryoneAudible: true, keepDays: keepDays, audioSampleRate: Int(Self.fileSampleRate))
             try write(meeting, to: meetingFolder.appendingPathComponent("meeting.json"))
+            try recordRetention(meetingID: meetingFolder.lastPathComponent, createdAt: startedAt, keepDays: keepDays)
 
             let destination = meetingFolder.appendingPathComponent("audio.wav")
             let settings: [String: Any] = [
@@ -367,20 +368,38 @@ final class MeetingStore: NSObject, ObservableObject {
         try MeetingExportEncoder.data(for: value).write(to: url, options: .atomic)
     }
 
+    /// The keep period lives in Application Support, which the Files app cannot
+    /// reach. meeting.json in the shared folder is an export, not the authority:
+    /// editing or deleting it in Files must not stop audio deletion.
+    private struct RetentionEntry: Codable {
+        let meetingID: String
+        let createdAt: Date
+        let keepDays: Int
+    }
+
+    private static func retentionLedgerURL() throws -> URL {
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        return support.appendingPathComponent("retention-ledger.json")
+    }
+
+    private static func readRetentionLedger() -> [RetentionEntry] {
+        guard let url = try? retentionLedgerURL(), let data = try? Data(contentsOf: url) else { return [] }
+        return (try? MeetingExportEncoder.decode([RetentionEntry].self, from: data)) ?? []
+    }
+
+    private func recordRetention(meetingID: String, createdAt: Date, keepDays: Int) throws {
+        let entries = Self.readRetentionLedger() + [RetentionEntry(meetingID: meetingID, createdAt: createdAt, keepDays: keepDays)]
+        try write(entries, to: Self.retentionLedgerURL())
+    }
+
     private func removeExpiredAudio() {
         guard let documents = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return }
         let meetings = documents.appendingPathComponent("meetings", isDirectory: true)
-        let folders = (try? FileManager.default.contentsOfDirectory(at: meetings, includingPropertiesForKeys: nil)) ?? []
-        let records = folders.compactMap { folder -> MeetingRetentionRecord? in
-            guard let data = try? Data(contentsOf: folder.appendingPathComponent("meeting.json")),
-                  let meeting = try? MeetingExportEncoder.decode(MeetingExport.self, from: data) else {
-                return nil
-            }
-            return MeetingRetentionRecord(meetingID: folder.lastPathComponent, createdAt: meeting.createdAt, keepDays: meeting.keepDays)
+        let records = Self.readRetentionLedger().map {
+            MeetingRetentionRecord(meetingID: $0.meetingID, createdAt: $0.createdAt, keepDays: $0.keepDays)
         }
-        let expired = Set(AudioRetentionSweep.meetingIDsToDeleteAudio(for: records, now: Date()))
-        for folder in folders where expired.contains(folder.lastPathComponent) {
-            try? FileManager.default.removeItem(at: folder.appendingPathComponent("audio.wav"))
+        for meetingID in AudioRetentionSweep.meetingIDsToDeleteAudio(for: records, now: Date()) {
+            try? FileManager.default.removeItem(at: meetings.appendingPathComponent(meetingID, isDirectory: true).appendingPathComponent("audio.wav"))
         }
     }
 }

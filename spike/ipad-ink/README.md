@@ -17,11 +17,14 @@ then build and run the `IPadInk` scheme.
 
 Before recording, confirm that everyone who can be heard agreed and choose an
 audio keep period: 1, 7, or 30 days. The next launch deletes only `audio.wav`
-for expired meetings; strokes, transcript, and drawing remain.
+for expired meetings; strokes, transcript, and drawing remain. The keep period is
+recorded in a private ledger in the app's Application Support folder, so editing
+or deleting `meeting.json` in Files does not stop audio deletion. A folder you
+rename or move out of `meetings/` in Files is yours and leaves the sweep.
 
 ## Exports
 
-Files are saved under Files > On My iPad > IPadInk > `meetings/<uuid>/` (`UIFileSharingEnabled` comes from `IPadInk-Info.plist`, merged with the generated Info.plist):
+Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/` (`UIFileSharingEnabled` comes from `IPadInk-Info.plist`, merged with the generated Info.plist):
 
 - `audio.wav` — local microphone recording.
 - `strokes.json` — `[{index, start_seconds, end_seconds}]`; untimed strokes use
