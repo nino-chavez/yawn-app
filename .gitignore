@@ -7,6 +7,8 @@ target/
 .venv/
 __pycache__/
 .build/
+spike/ipad-ink/.derived/
+spike/ipad-ink/InkCore/.build/
 apps/desktop/runtime/
 apps/desktop/vendor/
 .ruff_cache/
