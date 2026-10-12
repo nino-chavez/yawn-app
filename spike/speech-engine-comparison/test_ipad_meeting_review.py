@@ -126,6 +126,48 @@ class IpadMeetingReviewTests(unittest.TestCase):
             self.assertEqual(review.score(type("Args", (), {"packet_dir": packet, "labels": path, "out": out})), 1)
             self.assertEqual(json.loads(out.read_text()), {"status": "identity_unresolved"})
 
+    def test_identity_windows_allow_short_pauses_within_one_speaker(self):
+        # Diarizers fragment speech: each speaker's turn is split by short silences.
+        fragmented = [
+            {"start": 0.0, "end": 2.0, "speaker": "p1"}, {"start": 2.3, "end": 4.0, "speaker": "p1"}, {"start": 4.2, "end": 7.0, "speaker": "p1"},
+            {"start": 8.0, "end": 10.0, "speaker": "p2"}, {"start": 10.4, "end": 13.5, "speaker": "p2"},
+            {"start": 16.0, "end": 18.0, "speaker": "p1"}, {"start": 18.2, "end": 22.0, "speaker": "p1"},
+            {"start": 23.0, "end": 25.5, "speaker": "p2"}, {"start": 25.8, "end": 29.0, "speaker": "p2"},
+        ]
+        windows = review.identity_windows(fragmented, 30.0)
+        self.assertEqual(sorted({speaker for speaker, _, _ in windows}), ["p1", "p2"])
+        self.assertEqual(len(windows), 4)
+        for speaker, start, end in windows:
+            others = [item for item in fragmented if item["speaker"] != speaker and item["start"] < end and start < item["end"]]
+            self.assertEqual(others, [])
+
+    def test_seed_changes_which_turns_are_sampled(self):
+        if True:
+            turns = [{"start": float(start), "end": float(start) + 3.0, "text": "made up", "final": True} for start in range(0, 27, 3)]
+            picks = set()
+            groups = {("p1", "p2"): [{"start": t["start"], "end": t["end"], "predicted_set": ["p1", "p2"]} for t in turns]}
+            for seed in range(6):
+                chosen = review.sample_groups(groups, seed)
+                self.assertEqual(len(chosen), 3)
+                self.assertEqual(chosen, review.sample_groups(groups, seed))
+                starts = [item["start"] for item in chosen]
+                self.assertTrue(starts[0] < 9 <= starts[1] < 18 <= starts[2])
+                picks.add(tuple(starts))
+            self.assertGreater(len(picks), 1)
+
+    def test_unmapped_third_speaker_never_matches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            packet = Path(temporary)
+            manifest = {"schema": "ipad-ink-blind-review/1", "clips": [
+                {"label": "I1", "kind": "identity", "predicted_set": ["p1"]}, {"label": "I2", "kind": "identity", "predicted_set": ["p2"]},
+                {"label": "A", "kind": "balanced", "predicted_set": ["p1", "p3"], "selection_group": "p1|p3"},
+            ]}
+            (packet / "manifest.json").write_text(json.dumps(manifest))
+            labels = {"I1": {"speaker_set": ["me"]}, "I2": {"speaker_set": ["other"]}, "A": {"speaker_set": ["me"]}}
+            path = packet / "labels.json"; path.write_text(json.dumps(labels)); out = packet / "score.json"
+            self.assertEqual(review.score(type("Args", (), {"packet_dir": packet, "labels": path, "out": out})), 0)
+            self.assertEqual(json.loads(out.read_text())["model_matches"], 0)
+
     def test_sweep_removes_expired_and_keeps_unexpired(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

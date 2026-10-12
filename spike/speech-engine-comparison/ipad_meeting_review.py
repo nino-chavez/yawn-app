@@ -198,14 +198,32 @@ def predicted_set(segments: list[dict[str, Any]], start: float, end: float) -> s
 
 
 def exclusive_intervals(segments: list[dict[str, Any]], speaker: str, duration: float) -> list[tuple[float, float]]:
+    """Runs of at least 5 s in which no other speaker is ever active.
+
+    Short silences inside a run are allowed: conversational speech is full of
+    them. A run also needs at least 3 s of the speaker's own speech in its
+    first 8 s, the part an identity clip uses.
+    """
     points = {0.0, duration}
     for segment in segments:
         points.update((max(0.0, segment["start"]), min(duration, segment["end"])))
     ordered = sorted(points)
-    intervals: list[tuple[float, float]] = []
+    runs: list[list[float]] = []
     for start, end in zip(ordered, ordered[1:]):
         active = {item["speaker"] for item in segments if item["start"] <= start + EPSILON and item["end"] >= end - EPSILON}
-        if active == {speaker} and end - start >= 5.0:
+        if active <= {speaker}:
+            if runs and abs(runs[-1][1] - start) <= EPSILON:
+                runs[-1][1] = end
+            else:
+                runs.append([start, end])
+    own = [(item["start"], item["end"]) for item in segments if item["speaker"] == speaker]
+    intervals: list[tuple[float, float]] = []
+    for start, end in runs:
+        if end - start < 5.0:
+            continue
+        window_end = min(end, start + 8.0)
+        spoken = union_seconds([(max(start, low), min(window_end, high)) for low, high in own])
+        if spoken + EPSILON >= 3.0:
             intervals.append((start, end))
     return intervals
 
@@ -241,6 +259,24 @@ def identity_windows(segments: list[dict[str, Any]], duration: float) -> list[tu
     return windows
 
 
+def sample_groups(groups: dict[tuple[str, ...], list[dict[str, Any]]], seed: int | None) -> list[dict[str, Any]]:
+    """Up to three turns per predicted group: one seeded pick from each third of
+    the group's turns in time order, so the sample is reproducible and spread
+    across the meeting."""
+    picker = random.Random(seed)
+    chosen: list[dict[str, Any]] = []
+    for group, candidates in sorted(groups.items()):
+        candidates = sorted(candidates, key=lambda item: item["start"])
+        if len(candidates) > 3:
+            thirds = [candidates[len(candidates) * part // 3 : len(candidates) * (part + 1) // 3] for part in range(3)]
+            pool = [picker.choice(third) for third in thirds]
+        else:
+            pool = candidates[:]
+        for item in sorted(pool, key=lambda value: value["start"]):
+            chosen.append({**item, "selection_group": "|".join(group) if group else "neither"})
+    return chosen
+
+
 def cut_wav(source: Path, destination: Path, start: float, end: float) -> None:
     with wave.open(str(source), "rb") as input_audio:
         rate = input_audio.getframerate()
@@ -274,20 +310,7 @@ def packet(args: argparse.Namespace) -> int:
         if 2.5 <= end - start <= 9.0:
             speakers = tuple(sorted(predicted_set(segments, start, end)))
             groups.setdefault(speakers, []).append({"start": start, "end": end, "predicted_set": list(speakers)})
-    picker = random.Random(args.seed)
-    chosen: list[dict[str, Any]] = []
-    for group, candidates in sorted(groups.items()):
-        # Shuffle then take time-spaced candidates, giving an even deterministic sample.
-        candidates = sorted(candidates, key=lambda item: item["start"])
-        if len(candidates) > 3:
-            slots = [round(index * (len(candidates) - 1) / 2) for index in range(3)]
-            pool = [candidates[index] for index in slots]
-        else:
-            pool = candidates[:]
-        picker.shuffle(pool)
-        for item in sorted(pool[:3], key=lambda value: value["start"]):
-            item["selection_group"] = "|".join(group) if group else "neither"
-            chosen.append(item)
+    chosen = sample_groups(groups, args.seed)
     order = random.Random(args.order_seed)
     order.shuffle(chosen)
     for number, item in enumerate(chosen):
@@ -335,7 +358,9 @@ def score(args: argparse.Namespace) -> int:
         if not isinstance(answer, list) or not set(answer).issubset({"me", "other"}):
             continue
         actual = set(answer)
-        predicted = {mapping[speaker] for speaker in clip.get("predicted_set", []) if speaker in mapping}
+        # A predicted speaker with no identity mapping (a third cluster) stays
+        # in the set, so it can never match the operator's label.
+        predicted = {mapping.get(speaker, f"unmapped:{speaker}") for speaker in clip.get("predicted_set", [])}
         group = str(clip.get("selection_group", "neither"))
         row = outcome["groups"].setdefault(group, {"labelled": 0, "model_matches": 0, "baseline_matches": 0})
         outcome["labelled"] += 1
