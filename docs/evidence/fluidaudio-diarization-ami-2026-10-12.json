@@ -49,7 +49,8 @@
       "shifted_3_seconds": 0.6877,
       "random_speaker_per_word": 0.2518,
       "one_speaker_for_everyone": 0.3347
-    }
+    },
+    "second_pass_fresh_output": "The second pass wrote into a new directory created at 11:07:27 local; each arm's raw CLI output there was written after that (11:07:33-11:07:50), so the identical-output result cannot come from a reused file. The runner now deletes earlier outputs before each run and fails an arm whose CLI writes nothing."
   },
   "arms": {
     "nemotron3-offline": {

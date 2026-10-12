@@ -94,16 +94,22 @@ def run_arm(cli: Path, arm: str, audio: Path, root: Path) -> None:
     arm_dir = root / arm
     arm_dir.mkdir(parents=True, exist_ok=True)
     raw = arm_dir / ("raw.rttm" if arm.startswith("nemotron3") else "raw.json")
+    output = arm_dir / f"{CASE_ID}.json"
+    # A re-run into the same directory must not reuse an earlier pass's files:
+    # a CLI that exits 0 without writing would otherwise reproduce the old hash.
+    for stale in (raw, output):
+        stale.unlink(missing_ok=True)
     command = [str(cli)] + [part.format(audio=audio, raw=raw) for part in ARMS[arm]]
     started = time.monotonic()
     with (arm_dir / "run.log").open("w") as log:
         completed = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, timeout=3600)
     wall = time.monotonic() - started
     receipt: dict[str, Any] = {"exit_code": completed.returncode, "wall_seconds_approx": round(wall, 2)}
-    if completed.returncode == 0:
+    if completed.returncode == 0 and not raw.is_file():
+        receipt["exit_code"] = "missing-output"
+    if receipt["exit_code"] == 0:
         text = raw.read_text(encoding="utf-8")
         segments = rttm_segments(text) if raw.suffix == ".rttm" else json_segments(json.loads(text))
-        output = arm_dir / f"{CASE_ID}.json"
         output.write_text(json.dumps({"segments": segments}, indent=1) + "\n", encoding="utf-8")
         receipt |= {"output_sha256": sha256(output), "output_bytes": output.stat().st_size}
     corpus = {"cases": [{"id": CASE_ID, "audio": str(audio), "audio_sha256": sha256(audio), "duration": wav_seconds(audio)}]}
@@ -118,7 +124,7 @@ def run_arm(cli: Path, arm: str, audio: Path, root: Path) -> None:
         "cases": {CASE_ID: receipt},
     }
     (arm_dir / "run-receipt.json").write_text(json.dumps(run_receipt, indent=1) + "\n", encoding="utf-8")
-    print(f"{arm}: exit {completed.returncode}, {wall:.1f} s")
+    print(f"{arm}: exit {receipt['exit_code']}, {wall:.1f} s")
 
 
 def main() -> int:
