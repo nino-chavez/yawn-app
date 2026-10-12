@@ -52,6 +52,14 @@ func volatileReplacesVolatileAndKeepsFinals() {
     #expect(merged == [firstFinal, newest])
 }
 
+@Test("a late in-progress result never duplicates final text for the same audio")
+func lateVolatileDoesNotDuplicateFinal() {
+    let final = TranscriptSegment(start: 2, end: 4.2, text: "Good morning", isFinal: true)
+    let merged = TranscriptTimeline.merging([final], with: TranscriptSegment(start: 2, end: 4.2, text: "Good morn", isFinal: false))
+
+    #expect(merged == [final])
+}
+
 @Test("replay includes strokes at the playhead and untimed strokes")
 func replayVisibilityUsesInclusivePlayhead() {
     let strokes = [

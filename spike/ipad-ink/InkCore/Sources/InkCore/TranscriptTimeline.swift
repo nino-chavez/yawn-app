@@ -9,6 +9,10 @@ public enum TranscriptTimeline {
     /// it. Final segments stay, except a final with the exact same range,
     /// which the incoming final replaces.
     public static func merging(_ existing: [TranscriptSegment], with incoming: TranscriptSegment) -> [TranscriptSegment] {
+        // Final text wins: in-progress text for audio already final is dropped.
+        if !incoming.isFinal, existing.contains(where: { $0.isFinal && overlaps($0, incoming) }) {
+            return existing
+        }
         let kept = existing.filter { segment in
             if segment.isFinal {
                 return !(incoming.isFinal && segment.start == incoming.start && segment.end == incoming.end)
