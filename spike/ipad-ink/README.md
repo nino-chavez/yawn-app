@@ -41,6 +41,16 @@ Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/` (`UIFil
 - `meeting.json` — `schema`, `created_at`, consent, keep period, and sample rate.
 - `drawing.data` — PencilKit’s `PKDrawing.dataRepresentation()`.
 
+## Scoring a recording on the Mac
+
+The private Mac review kit lives in `spike/speech-engine-comparison`. First run
+`ipad_meeting_review.py check` against an exported meeting folder. Then run
+`label-speakers` with a local FluidAudio CLI, build a private blind `packet`,
+listen and fill in `labels.json`, and run `score`. The JSON summaries contain
+only counts, durations, hashes, and labels; the packet folder is the only place
+clip audio is written. Run `sweep` regularly against the private packet root so
+clips are deleted when the meeting's audio keep period expires.
+
 ## Limits of simulator evidence
 
 The simulator can exercise ordinary touch ink and compile the app, but it
