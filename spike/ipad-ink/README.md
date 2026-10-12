@@ -20,7 +20,10 @@ audio keep period: 1, 7, or 30 days. The next launch deletes only `audio.wav`
 for expired meetings; strokes, transcript, and drawing remain. The keep period is
 recorded in a private ledger in the app's Application Support folder, so editing
 or deleting `meeting.json` in Files does not stop audio deletion. A folder you
-rename or move out of `meetings/` in Files is yours and leaves the sweep.
+rename, duplicate or move out of `meetings/` in Files is yours and leaves the
+sweep. If the ledger is ever unreadable, it is set aside and rebuilt once from
+the `meeting.json` files of folders still named by their meeting ID; in that one
+case the exported `meeting.json` is the only record left.
 
 ## Exports
 
