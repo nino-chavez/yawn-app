@@ -18,4 +18,11 @@ public struct TimedStroke: Codable, Equatable, Identifiable, Sendable {
         case startSeconds = "start_seconds"
         case endSeconds = "end_seconds"
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(index, forKey: .index)
+        try container.encode(startSeconds, forKey: .startSeconds)
+        try container.encode(endSeconds, forKey: .endSeconds)
+    }
 }
