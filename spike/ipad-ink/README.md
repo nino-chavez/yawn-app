@@ -21,7 +21,7 @@ for expired meetings; strokes, transcript, and drawing remain.
 
 ## Exports
 
-Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/`:
+Files are saved under Files > On My iPad > IPadInk > `meetings/<uuid>/` (`UIFileSharingEnabled` comes from `IPadInk-Info.plist`, merged with the generated Info.plist):
 
 - `audio.wav` — local microphone recording.
 - `strokes.json` — `[{index, start_seconds, end_seconds}]`; untimed strokes use
