@@ -901,8 +901,10 @@ Nemotron represents both voices and their main order in those four selected
 turns, but E shows why its output cannot be applied blindly. F does not
 resolve whether its predicted overlap is real. The listening reports describe
 whole turns and rough order, not precise word or boundary timestamps; no
-diarization error rate can be calculated from them. The local review clips
-and content-free labels stay in the ignored research directory.
+diarization error rate can be calculated from them. The content-free labels
+stay in the ignored research directory. The 24 review clips were moved out of
+it to the Trash on 2026-10-12 at Nino's request, after both source recordings
+had left Yawn's storage; no copy remains in the research folders.
 
 A second, ten-turn listening packet broadened the check on September 28.
 Before hearing Nino's labels, the selection used a fixed seed and picked,
@@ -1215,7 +1217,7 @@ wrong for everyone but the operator.
 The two retained in-person recordings were the intended test. Neither is in
 Yawn's meeting storage or trash any more, so this test uses the public AMI
 meeting instead. The 24 short review clips cut from those recordings were not
-used.
+used, and were removed the same day.
 
 ### Design, fixed before any FluidAudio run
 
