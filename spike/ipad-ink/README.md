@@ -37,3 +37,15 @@ The simulator can exercise ordinary touch ink and compile the app, but it
 cannot establish Apple Pencil latency, a real microphone recording, the local
 speech model’s availability or download, or device replay behavior. Those need
 an iPad review.
+
+## Known limits of this spike
+
+- Transcription runs after Stop, not live. Live transcription was cut to fit.
+- Stroke times come from PencilKit's stroke creation date and its last point's
+  time offset. Undoing or erasing strokes is not supported: stroke records are
+  matched to the drawing by position.
+- Replay owns the canvas after Stop: drawing is off, strokes later than the
+  playhead are dimmed, and tapping a stroke seeks to it. "New meeting" asks for
+  consent and a keep period again and starts a fresh canvas.
+- Audio is converted from the microphone's own format to 16 kHz mono and stored
+  as 16-bit PCM WAV, with voice processing off (measurement mode).

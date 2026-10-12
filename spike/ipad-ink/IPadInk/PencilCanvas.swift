@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PencilCanvas: UIViewRepresentable {
     let drawing: PKDrawing
+    let isEditable: Bool
     let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
     let onStrokeTapped: (Int) -> Void
 
@@ -16,8 +17,8 @@ struct PencilCanvas: UIViewRepresentable {
         canvas.backgroundColor = .secondarySystemBackground
         canvas.isOpaque = true
         canvas.delegate = context.coordinator
-        canvas.drawing = drawing
-        context.coordinator.knownStrokeCount = drawing.strokes.count
+        context.coordinator.apply(drawing, to: canvas)
+        canvas.drawingGestureRecognizer.isEnabled = isEditable
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.didTapCanvas(_:)))
         tap.cancelsTouchesInView = false
@@ -26,13 +27,14 @@ struct PencilCanvas: UIViewRepresentable {
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        canvas.drawingGestureRecognizer.isEnabled = isEditable
         guard canvas.drawing.dataRepresentation() != drawing.dataRepresentation() else { return }
-        canvas.drawing = drawing
-        context.coordinator.knownStrokeCount = drawing.strokes.count
+        context.coordinator.apply(drawing, to: canvas)
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
-        var knownStrokeCount = 0
+        private var knownStrokeCount = 0
+        private var applyingDrawing = false
         private let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
         private let onStrokeTapped: (Int) -> Void
 
@@ -41,7 +43,17 @@ struct PencilCanvas: UIViewRepresentable {
             self.onStrokeTapped = onStrokeTapped
         }
 
+        /// Sets a drawing from the store. The canvas reports that change through
+        /// its delegate, and it must not be read back as newly drawn strokes.
+        func apply(_ drawing: PKDrawing, to canvas: PKCanvasView) {
+            applyingDrawing = true
+            canvas.drawing = drawing
+            knownStrokeCount = drawing.strokes.count
+            applyingDrawing = false
+        }
+
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+            guard !applyingDrawing else { return }
             let strokes = canvasView.drawing.strokes
             let additions = Array(strokes.dropFirst(knownStrokeCount))
             knownStrokeCount = strokes.count

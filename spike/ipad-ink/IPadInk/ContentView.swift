@@ -49,6 +49,14 @@ struct ContentView: View {
                         Button("Stop recording", action: store.stopRecording)
                             .buttonStyle(.bordered)
                     }
+                    if store.canStartNewMeeting {
+                        Button("New meeting", action: store.startNewMeeting)
+                            .buttonStyle(.bordered)
+                    }
+                    if store.recordingState == .needsSpeechModel, !store.speechModelInstallable {
+                        Button("Transcribe", action: store.transcribeSavedAudio)
+                            .buttonStyle(.bordered)
+                    }
                 }
 
                 stateText
@@ -56,7 +64,7 @@ struct ContentView: View {
                     Text(store.speechModelStatus)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                    if store.speechModelStatus.contains("available to install") {
+                    if store.speechModelInstallable {
                         Button("Install", action: store.installSpeechModel)
                             .font(.footnote)
                     }
@@ -68,7 +76,12 @@ struct ContentView: View {
     private var stateText: some View {
         Text(stateDescription)
             .font(.footnote)
-            .foregroundStyle(store.recordingState == .failed("") ? .red : .secondary)
+            .foregroundStyle(isFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+    }
+
+    private var isFailed: Bool {
+        if case .failed = store.recordingState { return true }
+        return false
     }
 
     private var stateDescription: String {
@@ -77,7 +90,7 @@ struct ContentView: View {
         case .recording: "Recording microphone audio locally. New pencil strokes are timed against this recording."
         case .stopped: "Recording stopped. Audio, strokes, transcript, and drawing are in this meeting’s Files folder."
         case .transcribing: "Transcribing the saved audio on this iPad. Results may still change."
-        case .needsSpeechModel: "The recording is saved. Install Apple’s on-device speech model, then record again to transcribe."
+        case .needsSpeechModel: "The recording is saved. Install Apple’s on-device speech model to transcribe it."
         case .failed(let message): message
         }
     }
@@ -86,6 +99,7 @@ struct ContentView: View {
         GroupBox("Ink") {
             PencilCanvas(
                 drawing: store.displayedDrawing,
+                isEditable: !store.isReplaying,
                 onStrokesAdded: store.addStrokes,
                 onStrokeTapped: store.seekToStroke(at:)
             )
@@ -124,7 +138,7 @@ struct ContentView: View {
                             HStack(alignment: .firstTextBaseline) {
                                 Text(segment.isFinal ? "Final" : "In progress")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(segment.isFinal ? .secondary : .orange)
+                                    .foregroundStyle(segment.isFinal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
                                 Text(segment.text)
                                     .multilineTextAlignment(.leading)
                             }
