@@ -1335,3 +1335,29 @@ left without a speaker, and the same 11 wrong-speaker words. The live variant le
 words unlabeled and names the wrong person more than twice as often. These
 ran on this Mac's Neural Engine; an M1 iPad's speed and memory remain
 unmeasured.
+
+## Speaker labeling on AMI's far-field room microphone — 2026-10-12
+
+The two AMI sections above used a mix of four headset microphones. An iPad on
+a table hears the room instead, so this repeats the test on one microphone
+from the same meeting's tabletop array.
+
+### Design, fixed before any far-field run
+
+- **Input:** `ES2004c.Array1-01.wav` from the AMI corpus mirror, 74,699,820
+  bytes, SHA-256 `dc11abf7…0cb7`: one 16 kHz mono microphone, 2,334.368 s,
+  the same length as the headset mix. The human reference, scorer, and scorer
+  checks are unchanged from the sections above.
+- **Arms:** the five FluidAudio v0.17.7 arms above with the same defaults
+  (`nemotron3-offline`, `nemotron3-fast32-split-w8a8`,
+  `nemotron3-c128-split-w8a8`, `sortformer-offline`, `pipeline-offline`), plus
+  the Nemotron trial's own NeMo-Speech.cpp build (source `97a15af`, the same
+  GGUF, `--device metal --preset v3-offline`).
+- **GGUF runtime check:** that build's library path pointed at a removed
+  checkout; with `DYLD_LIBRARY_PATH` set to its own `bin/` folder, it
+  reproduced all 711 of the 2026-09-28 headset segments exactly before this run.
+- **Reported per arm:** the same fields as above, a second pass for identical
+  output, and whether one speaker mapping holds across five-minute windows.
+
+The array microphone is one capsule of eight in a meeting-room array, not an
+iPad microphone, and the meeting still has four people.
