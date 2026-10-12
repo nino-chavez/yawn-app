@@ -23,7 +23,10 @@ or deleting `meeting.json` in Files does not stop audio deletion. A folder you
 rename, duplicate or move out of `meetings/` in Files is yours and leaves the
 sweep. If the ledger is ever unreadable, it is set aside and rebuilt once from
 the `meeting.json` files of folders still named by their meeting ID; in that one
-case the exported `meeting.json` is the only record left.
+case the exported `meeting.json` is the only record left, and a keep period other
+than 1, 7 or 30 days, or a future date, is read as the shortest period. The
+ledger existed before this app first launched on any device, so no meeting
+predates it.
 
 ## Exports
 

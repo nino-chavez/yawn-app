@@ -395,7 +395,9 @@ final class MeetingStore: NSObject, ObservableObject {
     private static func loadRetentionLedger() throws -> [RetentionEntry] {
         let url = try retentionLedgerURL()
         if FileManager.default.fileExists(atPath: url.path) {
-            if let entries = try? MeetingExportEncoder.decode([RetentionEntry].self, from: Data(contentsOf: url)) {
+            // A failed read throws; only a ledger that reads but will not decode is set aside.
+            let data = try Data(contentsOf: url)
+            if let entries = try? MeetingExportEncoder.decode([RetentionEntry].self, from: data) {
                 return entries
             }
             let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -406,7 +408,10 @@ final class MeetingStore: NSObject, ObservableObject {
             guard UUID(uuidString: folder.lastPathComponent) != nil,
                   let data = try? Data(contentsOf: folder.appendingPathComponent("meeting.json")),
                   let meeting = try? MeetingExportEncoder.decode(MeetingExport.self, from: data) else { return nil }
-            return RetentionEntry(meetingID: folder.lastPathComponent, createdAt: meeting.createdAt, keepDays: meeting.keepDays)
+            // meeting.json can be edited in Files. A keep period outside 1, 7 or 30
+            // days becomes 1, and a future date becomes now: bad data deletes sooner.
+            let keepDays = [1, 7, 30].contains(meeting.keepDays) ? meeting.keepDays : 1
+            return RetentionEntry(meetingID: folder.lastPathComponent, createdAt: min(meeting.createdAt, Date()), keepDays: keepDays)
         }
         if !rebuilt.isEmpty {
             try MeetingExportEncoder.data(for: rebuilt).write(to: url, options: .atomic)
@@ -415,7 +420,9 @@ final class MeetingStore: NSObject, ObservableObject {
     }
 
     private func recordRetention(meetingID: String, createdAt: Date, keepDays: Int) throws {
-        let entries = try Self.loadRetentionLedger() + [RetentionEntry(meetingID: meetingID, createdAt: createdAt, keepDays: keepDays)]
+        // A rebuild can already include this meeting from its meeting.json.
+        let entries = try Self.loadRetentionLedger().filter { $0.meetingID != meetingID }
+            + [RetentionEntry(meetingID: meetingID, createdAt: createdAt, keepDays: keepDays)]
         try write(entries, to: Self.retentionLedgerURL())
     }
 
