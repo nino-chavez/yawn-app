@@ -1204,3 +1204,43 @@ Reproduce with `run_comparison.py --engine parakeet --windowing <arm>` and a pro
 built from this commit. The content-free receipt is
 [`docs/evidence/fluidaudio-windowing-2026-10-09.json`](evidence/fluidaudio-windowing-2026-10-09.json).
 Raw outputs, including derived transcript text, remain owner-local.
+
+## FluidAudio speaker labeling on the public AMI meeting — 2026-10-12
+
+This asks whether a speaker labeler that also runs on iPad can match the
+Nemotron result above. It is groundwork for a possible in-person iPad mode,
+where every voice reaches one microphone and Yawn's current `Me` label is
+wrong for everyone but the operator.
+
+The two retained in-person recordings were the intended test. Neither is in
+Yawn's meeting storage or trash any more, so this test uses the public AMI
+meeting instead. The 24 short review clips cut from those recordings were not
+used.
+
+### Design, fixed before any FluidAudio run
+
+- **Input:** `ES2004c.Mix-Headset.wav`, SHA-256 `47dc9bd2…2ac5`, the same file
+  the Nemotron trial scored. The human reference is rebuilt from
+  `ami_public_manual_1.6.2.zip` with `prepare_ami.py`.
+- **Baseline check:** the rebuilt reference must reproduce the Nemotron
+  trial's 5,691 of 6,151 (0.9252) from its saved output before any new
+  number counts. It did, with the same speaker mapping.
+- **Scorer check:** a perfect answer scored 1.0; shifting it 3 s scored 0.6877;
+  a random speaker per word scored 0.2518; one speaker for everyone scored
+  0.3347. That last figure is AMI's equivalent of labeling every turn `Me`.
+- **Scorer:** `score_diarization.py`, unchanged: one global one-to-one speaker
+  map and a strict word-midpoint proxy. It is not a diarization error rate.
+- **Engine:** FluidAudio v0.17.7, built from its release tag. The ASR probe's
+  0.15.6 pin is unchanged; 0.15.6 has no Nemotron 3 diarizer.
+- **Arms**, each with defaults and no speaker count given:
+  1. `nemotron3-diarize --variant offline`: FluidAudio's Core ML port of the
+     same Nemotron 3 Diarization model the trial above ran through GGUF.
+  2. `sortformer --offline`: NVIDIA Streaming Sortformer 4-speaker v2.1.
+  3. `process --mode offline`: FluidAudio's segmentation, embedding and VBx
+     clustering pipeline.
+- **Reported per arm:** proxy score, its counts, estimated speakers, segments,
+  predicted overlap, and approximate wall time on this Mac.
+
+AMI's audio is a mix of four headset microphones. It is cleaner than an iPad
+on a table, with more speakers and more overlap than a two-person meeting. A
+result here measures the labeler, not an iPad recording.
