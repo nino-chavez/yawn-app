@@ -1284,8 +1284,9 @@ words correctly, almost all of them words it left without a speaker. Its
 threshold (0.5) and variant (`offline`) were FluidAudio's defaults and were not
 tuned.
 
-**What it means:** two engines that run on iPad, through one Swift package
-that supports iOS 17, label AMI's speakers with stable identities. The
+**What it means:** two engines in a Swift package whose manifest declares
+iOS 17 label AMI's speakers with stable identities. Neither was built for iOS
+or run on an iPad in this test. The
 Nemotron port rarely names the wrong person and leaves more words unlabeled,
 which matches Yawn's rule to withhold rather than guess. The pipeline labels
 more words and makes more wrong guesses. Sortformer's offline path is not
@@ -1302,3 +1303,15 @@ receipt is
 Outputs and the rebuilt reference, which contains manual transcript text,
 remain owner-local. This changes no product source, contract, release state,
 or ASR decision.
+
+### Extra arms: FluidAudio's iPad variants — added after the results above
+
+FluidAudio's Nemotron 3 guide recommends the `offline` variant tested above
+for recorded files on a Mac; it runs on the GPU only. For iPhone and iPad it
+recommends the two 95 MB split-graph variants instead, which run wholly on the
+Neural Engine with 8-bit weights and activations. These two arms were added
+after the first results, so they are not part of the fixed design. They use
+the same input, scorer, defaults and FluidAudio build:
+
+4. `nemotron3-diarize --variant fast32-split-w8a8`: the live-use pick.
+5. `nemotron3-diarize --variant c128-split-w8a8`: the batch pick.
