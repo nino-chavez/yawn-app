@@ -274,7 +274,8 @@ final class MeetingStore: NSObject, ObservableObject {
 
             let meetingFolder = try makeMeetingFolder()
             folder = meetingFolder
-            // meeting.json comes first: the keep-period sweep finds audio through it.
+            // The ledger entry and meeting.json exist before any audio does, so the
+            // keep-period sweep can always find what this meeting records.
             let startedAt = Date()
             let meeting = MeetingExport(createdAt: startedAt, consentEveryoneAudible: true, keepDays: keepDays, audioSampleRate: Int(Self.fileSampleRate))
             try write(meeting, to: meetingFolder.appendingPathComponent("meeting.json"))
@@ -382,21 +383,34 @@ final class MeetingStore: NSObject, ObservableObject {
         return support.appendingPathComponent("retention-ledger.json")
     }
 
-    private static func readRetentionLedger() -> [RetentionEntry] {
-        guard let url = try? retentionLedgerURL(), let data = try? Data(contentsOf: url) else { return [] }
-        return (try? MeetingExportEncoder.decode([RetentionEntry].self, from: data)) ?? []
+    /// A missing ledger is empty. Any other failure throws, so a damaged ledger
+    /// is never read as empty and overwritten.
+    private static func readRetentionLedger() throws -> [RetentionEntry] {
+        let url = try retentionLedgerURL()
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try MeetingExportEncoder.decode([RetentionEntry].self, from: Data(contentsOf: url))
     }
 
     private func recordRetention(meetingID: String, createdAt: Date, keepDays: Int) throws {
-        let entries = Self.readRetentionLedger() + [RetentionEntry(meetingID: meetingID, createdAt: createdAt, keepDays: keepDays)]
+        let entries = try Self.readRetentionLedger() + [RetentionEntry(meetingID: meetingID, createdAt: createdAt, keepDays: keepDays)]
         try write(entries, to: Self.retentionLedgerURL())
     }
 
     private func removeExpiredAudio() {
         guard let documents = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return }
         let meetings = documents.appendingPathComponent("meetings", isDirectory: true)
-        let records = Self.readRetentionLedger().map {
+        let ledger = (try? Self.readRetentionLedger()) ?? []
+        var records = ledger.map {
             MeetingRetentionRecord(meetingID: $0.meetingID, createdAt: $0.createdAt, keepDays: $0.keepDays)
+        }
+        // A meeting folder with no ledger entry (recorded before the ledger, or
+        // while the ledger was unreadable) falls back to its own meeting.json.
+        let known = Set(ledger.map(\.meetingID))
+        let folders = (try? FileManager.default.contentsOfDirectory(at: meetings, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where !known.contains(folder.lastPathComponent) {
+            guard let data = try? Data(contentsOf: folder.appendingPathComponent("meeting.json")),
+                  let meeting = try? MeetingExportEncoder.decode(MeetingExport.self, from: data) else { continue }
+            records.append(MeetingRetentionRecord(meetingID: folder.lastPathComponent, createdAt: meeting.createdAt, keepDays: meeting.keepDays))
         }
         for meetingID in AudioRetentionSweep.meetingIDsToDeleteAudio(for: records, now: Date()) {
             try? FileManager.default.removeItem(at: meetings.appendingPathComponent(meetingID, isDirectory: true).appendingPathComponent("audio.wav"))
