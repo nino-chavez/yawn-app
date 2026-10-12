@@ -99,7 +99,7 @@ struct ContentView: View {
         GroupBox("Ink") {
             PencilCanvas(
                 drawing: store.displayedDrawing,
-                isEditable: !store.isReplaying,
+                isEditable: store.canDraw,
                 onStrokesAdded: store.addStrokes,
                 onStrokeTapped: store.seekToStroke(at:)
             )

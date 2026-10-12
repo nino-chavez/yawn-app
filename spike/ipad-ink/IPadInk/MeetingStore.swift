@@ -31,6 +31,9 @@ final class MeetingStore: NSObject, ObservableObject {
     private var audioURL: URL?
     private var recordingStartedAt: Date?
     private var player: AVAudioPlayer?
+    /// Bumped by New meeting. A transcription run that outlives its meeting
+    /// still saves to that meeting's folder but no longer touches the screen.
+    private var meetingGeneration = 0
 
     private static let fileSampleRate = 16_000.0
 
@@ -52,6 +55,12 @@ final class MeetingStore: NSObject, ObservableObject {
     /// strokes later than the playhead are dimmed rather than removed.
     var isReplaying: Bool {
         player != nil && !isRecording
+    }
+
+    /// Ink is accepted only before and during a recording. After Stop the
+    /// canvas belongs to replay, and after a failure it stays read-only.
+    var canDraw: Bool {
+        recordingState == .ready || recordingState == .recording
     }
 
     var canStartNewMeeting: Bool {
@@ -104,6 +113,7 @@ final class MeetingStore: NSObject, ObservableObject {
                 player?.prepareToPlay()
             } catch {
                 recordingState = .failed("The audio was saved, but replay could not open it: \(error.localizedDescription)")
+                return
             }
         }
         transcribeSavedAudio()
@@ -113,6 +123,7 @@ final class MeetingStore: NSObject, ObservableObject {
     /// asked again; the previous meeting stays in its Files folder.
     func startNewMeeting() {
         guard canStartNewMeeting else { return }
+        meetingGeneration += 1
         player?.stop()
         player = nil
         consentConfirmed = false
@@ -128,7 +139,7 @@ final class MeetingStore: NSObject, ObservableObject {
     }
 
     func addStrokes(_ strokes: [PKStroke], drawing: PKDrawing) {
-        guard !isReplaying else { return }
+        guard canDraw else { return }
         self.drawing = drawing
         let recordingStart = recordingStartedAt
         let additions = strokes.enumerated().map { offset, stroke in
@@ -202,40 +213,48 @@ final class MeetingStore: NSObject, ObservableObject {
     /// Transcribes the saved audio after Stop. Live transcription was cut from
     /// this spike; see README.
     func transcribeSavedAudio() {
-        guard let audioURL, FileManager.default.fileExists(atPath: audioURL.path) else { return }
+        guard let audioURL, let folder = meetingURL, FileManager.default.fileExists(atPath: audioURL.path) else { return }
+        let generation = meetingGeneration
+        recordingState = .transcribing
         Task {
             let transcriber = Self.makeTranscriber()
             guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-                recordingState = .needsSpeechModel
+                if generation == meetingGeneration { recordingState = .needsSpeechModel }
                 return
             }
 
+            let readResults = Task { () throws -> [TranscriptSegment] in
+                var segments: [TranscriptSegment] = []
+                for try await result in transcriber.results {
+                    let segment = TranscriptSegment(
+                        start: result.range.start.seconds,
+                        end: result.range.end.seconds,
+                        text: String(result.text.characters),
+                        isFinal: result.isFinal
+                    )
+                    segments = TranscriptTimeline.merging(segments, with: segment)
+                    if generation == self.meetingGeneration { self.transcript = segments }
+                }
+                return segments
+            }
             do {
-                recordingState = .transcribing
-                transcript = []
+                if generation == meetingGeneration { transcript = [] }
                 let audioFile = try AVAudioFile(forReading: audioURL)
                 let analyzer = SpeechAnalyzer(modules: [transcriber])
-                let readResults = Task {
-                    for try await result in transcriber.results {
-                        let segment = TranscriptSegment(
-                            start: result.range.start.seconds,
-                            end: result.range.end.seconds,
-                            text: String(result.text.characters),
-                            isFinal: result.isFinal
-                        )
-                        self.merge(segment)
-                    }
-                }
                 if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
                     try await analyzer.finalizeAndFinish(through: lastSample)
                 } else {
                     await analyzer.cancelAndFinishNow()
                 }
-                try await readResults.value
-                recordingState = .stopped
-                writeExports()
+                let segments = try await readResults.value
+                // Saved to the meeting this run belongs to, even after New meeting.
+                try write(segments, to: folder.appendingPathComponent("transcript.json"))
+                if generation == meetingGeneration { recordingState = .stopped }
             } catch {
-                recordingState = .failed("Transcription could not finish: \(error.localizedDescription)")
+                readResults.cancel()
+                if generation == meetingGeneration {
+                    recordingState = .failed("Transcription could not finish: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -245,14 +264,21 @@ final class MeetingStore: NSObject, ObservableObject {
     }
 
     private func beginRecording(keepDays: Int) {
+        var folder: URL?
         do {
             // Measurement mode turns off voice processing so the room is
             // recorded as the microphone hears it.
             try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement)
             try AVAudioSession.sharedInstance().setActive(true)
 
-            let folder = try makeMeetingFolder()
-            let destination = folder.appendingPathComponent("audio.wav")
+            let meetingFolder = try makeMeetingFolder()
+            folder = meetingFolder
+            // meeting.json comes first: the keep-period sweep finds audio through it.
+            let startedAt = Date()
+            let meeting = MeetingExport(createdAt: startedAt, consentEveryoneAudible: true, keepDays: keepDays, audioSampleRate: Int(Self.fileSampleRate))
+            try write(meeting, to: meetingFolder.appendingPathComponent("meeting.json"))
+
+            let destination = meetingFolder.appendingPathComponent("audio.wav")
             let settings: [String: Any] = [
                 AVFormatIDKey: kAudioFormatLinearPCM,
                 AVSampleRateKey: Self.fileSampleRate,
@@ -272,17 +298,16 @@ final class MeetingStore: NSObject, ObservableObject {
             audioEngine.prepare()
             try audioEngine.start()
 
-            meetingURL = folder
+            meetingURL = meetingFolder
             audioURL = destination
             audioFile = file
-            let startedAt = Date()
             recordingStartedAt = startedAt
             recordingState = .recording
-            let meeting = MeetingExport(createdAt: startedAt, consentEveryoneAudible: true, keepDays: keepDays, audioSampleRate: Int(Self.fileSampleRate))
-            try write(meeting, to: folder.appendingPathComponent("meeting.json"))
         } catch {
             audioEngine.inputNode.removeTap(onBus: 0)
             audioEngine.stop()
+            // A meeting that never started keeps no audio behind.
+            if let folder { try? FileManager.default.removeItem(at: folder) }
             recordingState = .failed("Recording could not start: \(error.localizedDescription)")
         }
     }
