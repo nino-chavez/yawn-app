@@ -1361,3 +1361,42 @@ from the same meeting's tabletop array.
 
 The array microphone is one capsule of eight in a meeting-room array, not an
 iPad microphone, and the meeting still has four people.
+
+### Far-field results
+
+The scorer first rejected five arms: on the room microphone, sound runs to the
+end of the file, and each model's last segment ended 0.002 to 0.032 s past it
+on its output grid. The headset mix ended in quiet, so this never arose there.
+The runner now trims an ending at most 0.08 s (one frame) past the audio to
+the audio's length and records it; a 0.2 s overshoot is still left for the
+scorer to reject. Each arm here had one trimmed segment except the pipeline,
+which had none. The scorer is unchanged.
+
+| AMI ES2004c, strict midpoint proxy | Headset | Far-field | Wrong speaker, headset → far-field | No speaker, headset → far-field |
+|---|---:|---:|---:|---:|
+| Nemotron GGUF (NeMo-Speech.cpp) | 0.9252 | 0.9122 | 25 → 74 | 229 → 271 |
+| FluidAudio Nemotron 3 `offline` | 0.9055 | 0.9039 | 11 → 10 | 534 → 541 |
+| FluidAudio `c128-split-w8a8` (iPad batch) | 0.9029 | 0.8927 | 11 → 17 | 550 → 600 |
+| FluidAudio `fast32-split-w8a8` (iPad live) | 0.8807 | 0.8953 | 26 → 28 | 674 → 576 |
+| Segmentation + VBx pipeline | 0.9613 | 0.9473 | 119 → 187 | 119 → 137 |
+| Sortformer v2.1 offline | 0.3739 | 0.5186 | 3,232 → 2,320 | 584 → 604 |
+
+Every arm produced byte-identical output on a second pass. Every arm except
+Sortformer kept one speaker mapping across its scorable five-minute windows;
+Sortformer's changed in every window again. All arms estimated four speakers.
+
+**What it means:** moving from headset microphones to one room microphone
+moved each usable engine's score by less than two points: four fell, by 0.2
+to 1.4, and the iPad live variant rose by 1.5. The FluidAudio Nemotron ports
+stayed the most cautious: 10 to 28 words on the wrong person, while the GGUF
+runtime rose to 74 and the pipeline to 187. The iPad batch variant named the
+wrong person for 17 words, and left 600 words without a speaker, about one in
+ten. AMI's array sits in a treated meeting room and this meeting has four
+people, so a two-person conversation over an iPad on a table remains the test
+that would settle the product question.
+
+Reproduce with `run_fluidaudio_diarization.py --audio ES2004c.Array1-01.wav`
+plus `--nemo-cli` and `--gguf` for the GGUF arm, then `score_diarization.py`
+per arm. The content-free receipt is
+[`docs/evidence/fluidaudio-diarization-ami-far-field-2026-10-12.json`](evidence/fluidaudio-diarization-ami-far-field-2026-10-12.json).
+This changes no product source, contract, release state, or ASR decision.

@@ -1,0 +1,276 @@
+{
+  "schema": "fluidaudio-diarization-ami-far-field/1",
+  "date": "2026-10-12",
+  "machine": "Apple M3 Max, macOS 27",
+  "input": {
+    "audio": "AMI ES2004c Array1-01 (one tabletop-array microphone)",
+    "source": "https://groups.inf.ed.ac.uk/ami/AMICorpusMirror/amicorpus/ES2004c/audio/ES2004c.Array1-01.wav",
+    "bytes": 74699820,
+    "audio_sha256": "dc11abf7f87d1ca14a4d08f31d2356ec06541a19bae63700d6e64951d69c0cb7",
+    "seconds": 2334.368,
+    "reference_json_sha256": "c323875bc6c680ad89d4cb38311fd04fa45d7c73ad5c046715876f3da39e0010"
+  },
+  "engines": {
+    "fluidaudio": "v0.17.7 (503b4bd1bbf7220882de39fe8ae6716aae4132da), models as in fluidaudio-diarization-ami-2026-10-12.json",
+    "nemotron_gguf": "NeMo-Speech.cpp 97a15afa5caa9bce5baaa86c1184103877af4101, GGUF 08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1, --device metal --preset v3-offline"
+  },
+  "checks": {
+    "gguf_runtime_reproduced_2026_09_28_headset_output": "all 711 segments identical, with DYLD_LIBRARY_PATH set to the build's bin folder",
+    "end_overshoot_trim": "Added at run time after the scorer rejected five arms whose final segment ended 0.002-0.032 s past the audio on the frame grid. Segments ending at most 0.08 s past the audio are trimmed to its length; a 0.03 s overshoot was shown trimmed and a 0.2 s overshoot left for the scorer to reject. No headset output overshot, so the headset results are unaffected."
+  },
+  "arms": {
+    "nemotron-gguf": {
+      "command": "{nemo} diarize {audio} --model {gguf} --device metal --preset v3-offline --format json --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 701,
+      "predicted_overlap_seconds": 204.338,
+      "proxy": {
+        "correct": 5611,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9122,
+        "uncovered_words_counted_incorrect": 271,
+        "predicted_overlap_words_counted_incorrect": 195,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 74,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "D"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "cca81b1276a8884dbf0bb4ac2ef573e225c7f3c874084870c38be3abeaf4870f",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 11.2,
+      "trimmed_end_overshoot": {
+        "segments": 1,
+        "max_seconds": 0.002
+      },
+      "mapping_stability": "one mapping in all 7 scorable 5-minute windows"
+    },
+    "nemotron3-offline": {
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1085,
+      "predicted_overlap_seconds": 123.1,
+      "proxy": {
+        "correct": 5560,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9039,
+        "uncovered_words_counted_incorrect": 541,
+        "predicted_overlap_words_counted_incorrect": 40,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 10,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "A"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "605d7d6e7646a9358b390c6696ea88898d4aa100f90cc5e1029a3bafadc37e87",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 5.87,
+      "trimmed_end_overshoot": {
+        "segments": 1,
+        "max_seconds": 0.012
+      },
+      "mapping_stability": "one mapping in all 7 scorable windows"
+    },
+    "nemotron3-fast32-split-w8a8": {
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant fast32-split-w8a8 --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1089,
+      "predicted_overlap_seconds": 119.61,
+      "proxy": {
+        "correct": 5507,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.8953,
+        "uncovered_words_counted_incorrect": 576,
+        "predicted_overlap_words_counted_incorrect": 40,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 28,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "D"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "ea9becc9834c7d89cd181d4f03bd9d9148e3cd1ec896c30512f2eb018fd16191",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 14.17,
+      "trimmed_end_overshoot": {
+        "segments": 1,
+        "max_seconds": 0.012
+      },
+      "mapping_stability": "one mapping in all 8 scorable windows"
+    },
+    "nemotron3-c128-split-w8a8": {
+      "command": "fluidaudiocli nemotron3-diarize {audio} --variant c128-split-w8a8 --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1081,
+      "predicted_overlap_seconds": 117.53,
+      "proxy": {
+        "correct": 5491,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.8927,
+        "uncovered_words_counted_incorrect": 600,
+        "predicted_overlap_words_counted_incorrect": 43,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 17,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "C"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "472173fcf5a3e37c2659d34d8501bd06245b291e5356abc02fefae0cf4d293a7",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 6.65,
+      "trimmed_end_overshoot": {
+        "segments": 1,
+        "max_seconds": 0.012
+      },
+      "mapping_stability": "one mapping in all 7 scorable windows"
+    },
+    "sortformer-offline": {
+      "command": "fluidaudiocli sortformer {audio} --offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 1119,
+      "predicted_overlap_seconds": 109.359,
+      "proxy": {
+        "correct": 3190,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.5186,
+        "uncovered_words_counted_incorrect": 604,
+        "predicted_overlap_words_counted_incorrect": 37,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 2320,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "A"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "D"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "39e117e830bcea6b1cf4f3c6de15de7d8fbfb4eb91fb572e9e745d2d85a34470",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 6.33,
+      "trimmed_end_overshoot": {
+        "segments": 1,
+        "max_seconds": 0.0319
+      },
+      "mapping_stability": "a different mapping in each of 6 scorable windows"
+    },
+    "pipeline-offline": {
+      "command": "fluidaudiocli process {audio} --mode offline --output {raw}",
+      "estimated_speakers": 4,
+      "segments": 159,
+      "predicted_overlap_seconds": 0,
+      "proxy": {
+        "correct": 5827,
+        "denominator": 6151,
+        "strict_midpoint_proxy": 0.9473,
+        "uncovered_words_counted_incorrect": 137,
+        "predicted_overlap_words_counted_incorrect": 0,
+        "excluded_simultaneous_reference_words": 1699
+      },
+      "wrong_speaker_words": 187,
+      "global_mapping": [
+        {
+          "predicted_channel": "P1",
+          "reference_channel": "B"
+        },
+        {
+          "predicted_channel": "P2",
+          "reference_channel": "D"
+        },
+        {
+          "predicted_channel": "P3",
+          "reference_channel": "C"
+        },
+        {
+          "predicted_channel": "P4",
+          "reference_channel": "A"
+        }
+      ],
+      "timebase": "admissible",
+      "output_sha256": "a4446e08a8b513b28a8e72be4262702044d11762eaa1f497711bf6acd127e2eb",
+      "second_pass_output_identical": true,
+      "wall_seconds_second_pass": 16.85,
+      "trimmed_end_overshoot": {
+        "segments": 0,
+        "max_seconds": 0.0
+      },
+      "mapping_stability": "one mapping in all 6 scorable windows"
+    }
+  },
+  "limit": "Proxy only; not DER or word-attribution accuracy. One array microphone in a four-person meeting room, not an iPad microphone or a two-person recording. Timing is this Mac only."
+}
