@@ -102,7 +102,8 @@ final class MeetingStore: NSObject, ObservableObject {
         audioEngine.stop()
         audioFile = nil
         recordingState = .stopped
-        writeExports()
+        // A failed save stays on screen; replay and transcription would hide it.
+        guard writeExports() else { return }
 
         if let audioURL {
             do {
@@ -348,14 +349,17 @@ final class MeetingStore: NSObject, ObservableObject {
         return folder
     }
 
-    private func writeExports() {
-        guard let meetingURL else { return }
+    @discardableResult
+    private func writeExports() -> Bool {
+        guard let meetingURL else { return false }
         do {
             try drawing.dataRepresentation().write(to: meetingURL.appendingPathComponent("drawing.data"), options: .atomic)
             try write(timedStrokes, to: meetingURL.appendingPathComponent("strokes.json"))
             try write(transcript, to: meetingURL.appendingPathComponent("transcript.json"))
+            return true
         } catch {
             recordingState = .failed("The meeting could not be exported: \(error.localizedDescription)")
+            return false
         }
     }
 
