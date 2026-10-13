@@ -115,7 +115,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(alignment: .bottomTrailing) {
-            Text("The page grows as you write. Scroll for more room.")
+            Text("The page grows as you write. Scroll with two fingers.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(10)

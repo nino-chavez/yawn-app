@@ -37,20 +37,22 @@ struct PencilCanvas: UIViewRepresentable {
     let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
     let onStrokeTapped: (Int) -> Void
 
+    /// Who may write, per the iPad's "Only Draw with Apple Pencil" setting. With
+    /// it off, a finger or the Pencil writes and two fingers scroll; with it on,
+    /// only the Pencil writes and one finger scrolls. Not `.default`: that honors
+    /// the setting only while a tool picker shows, and this page has none, so a
+    /// finger could never write.
+    static var preferredDrawingPolicy: PKCanvasViewDrawingPolicy {
+        UIPencilInteraction.prefersPencilOnlyDrawing ? .pencilOnly : .anyInput
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(onStrokesAdded: onStrokesAdded, onStrokeTapped: onStrokeTapped)
     }
 
     func makeUIView(context: Context) -> GrowingCanvasView {
         let canvas = GrowingCanvasView()
-        // Follows the system "Only Draw with Apple Pencil" setting: with it on,
-        // the Pencil writes and a finger scrolls; with it off, two fingers scroll.
-        // The simulator has no Pencil, so there a finger always writes.
-        #if targetEnvironment(simulator)
-        canvas.drawingPolicy = .anyInput
-        #else
-        canvas.drawingPolicy = .default
-        #endif
+        context.coordinator.followPencilSetting(of: canvas)
         canvas.backgroundColor = .secondarySystemBackground
         canvas.isOpaque = true
         canvas.alwaysBounceVertical = true
@@ -76,12 +78,28 @@ struct PencilCanvas: UIViewRepresentable {
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private var knownStrokeCount = 0
         private var applyingDrawing = false
+        private weak var canvas: PKCanvasView?
         private let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
         private let onStrokeTapped: (Int) -> Void
 
         init(onStrokesAdded: @escaping ([PKStroke], PKDrawing) -> Void, onStrokeTapped: @escaping (Int) -> Void) {
             self.onStrokesAdded = onStrokesAdded
             self.onStrokeTapped = onStrokeTapped
+        }
+
+        /// Applies the Pencil setting now, and again each time the app comes back
+        /// to the front, because the setting is changed in the Settings app.
+        func followPencilSetting(of canvas: PKCanvasView) {
+            self.canvas = canvas
+            canvas.drawingPolicy = PencilCanvas.preferredDrawingPolicy
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(appDidBecomeActive),
+                name: UIApplication.didBecomeActiveNotification, object: nil
+            )
+        }
+
+        @objc private func appDidBecomeActive() {
+            canvas?.drawingPolicy = PencilCanvas.preferredDrawingPolicy
         }
 
         /// Sets a drawing from the store. The canvas reports that change through
