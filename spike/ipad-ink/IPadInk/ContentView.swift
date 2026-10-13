@@ -6,22 +6,29 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("iPad ink research")
-                        .font(.largeTitle.bold())
-                    Text("A local, in-person recording and Pencil note-taking experiment. This is not the Yawn product.")
-                        .foregroundStyle(.secondary)
-
-                    startGate
-                    canvas
-                    replay
-                    transcript
-                    exportNote
+            GeometryReader { proxy in
+                // The page gets the screen. Replay and the transcript sit beside it
+                // in landscape and below it in portrait; nothing around the page
+                // scrolls, so the page's own scrolling never competes with it.
+                let landscape = proxy.size.width > proxy.size.height
+                VStack(alignment: .leading, spacing: 12) {
+                    controls
+                    if landscape {
+                        HStack(alignment: .top, spacing: 12) {
+                            page
+                            sidePanel.frame(width: 340)
+                        }
+                    } else {
+                        VStack(spacing: 12) {
+                            page
+                            sidePanel.frame(height: 240)
+                        }
+                    }
                 }
                 .padding()
             }
             .navigationTitle("iPad Ink")
+            .navigationBarTitleDisplayMode(.inline)
             .task { await store.refreshSpeechModelStatus() }
             .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
                 store.refreshPlaybackTime()
@@ -29,19 +36,18 @@ struct ContentView: View {
         }
     }
 
-    private var startGate: some View {
-        GroupBox("Before recording") {
-            VStack(alignment: .leading, spacing: 12) {
+    private var controls: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
                 Toggle("Everyone who can be heard agreed to this recording", isOn: $store.consentConfirmed)
-                Picker("Keep audio for", selection: $store.keepDays) {
-                    Text("Choose a period").tag(nil as Int?)
-                    Text("1 day").tag(1 as Int?)
-                    Text("7 days").tag(7 as Int?)
-                    Text("30 days").tag(30 as Int?)
-                }
-                .pickerStyle(.menu)
-
-                HStack {
+                HStack(spacing: 12) {
+                    Picker("Keep audio for", selection: $store.keepDays) {
+                        Text("Choose a period").tag(nil as Int?)
+                        Text("1 day").tag(1 as Int?)
+                        Text("7 days").tag(7 as Int?)
+                        Text("30 days").tag(30 as Int?)
+                    }
+                    .pickerStyle(.menu)
                     Button("Start recording", action: store.startRecording)
                         .buttonStyle(.borderedProminent)
                         .disabled(!store.canStart)
@@ -57,8 +63,8 @@ struct ContentView: View {
                         Button("Transcribe", action: store.transcribeSavedAudio)
                             .buttonStyle(.bordered)
                     }
+                    Spacer(minLength: 0)
                 }
-
                 stateText
                 HStack(spacing: 8) {
                     Text(store.speechModelStatus)
@@ -68,6 +74,10 @@ struct ContentView: View {
                         Button("Install", action: store.installSpeechModel)
                             .font(.footnote)
                     }
+                    Spacer(minLength: 0)
+                    Text("Research spike, not the Yawn product.")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -95,16 +105,37 @@ struct ContentView: View {
         }
     }
 
-    private var canvas: some View {
-        GroupBox("Ink") {
-            PencilCanvas(
-                drawing: store.displayedDrawing,
-                isEditable: store.canDraw,
-                onStrokesAdded: store.addStrokes,
-                onStrokeTapped: store.seekToStroke(at:)
-            )
-            .frame(minHeight: 380)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+    private var page: some View {
+        PencilCanvas(
+            drawing: store.displayedDrawing,
+            isEditable: store.canDraw,
+            onStrokesAdded: store.addStrokes,
+            onStrokeTapped: store.seekToStroke(at:)
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .bottomTrailing) {
+            Text("The page grows as you write. Scroll for more room.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .padding(10)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var sidePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            replay
+            GroupBox("Transcript") {
+                ScrollView {
+                    transcript
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxHeight: .infinity)
+            Text("Exports stay in Files › On My iPad › iPad Ink › meetings.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -124,35 +155,28 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
     private var transcript: some View {
-        GroupBox("Transcript") {
-            if store.transcript.isEmpty {
-                Text("No transcript text is available yet.")
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(store.transcript) { segment in
-                        Button {
-                            store.seek(to: segment.start)
-                        } label: {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(segment.isFinal ? "Final" : "In progress")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(segment.isFinal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
-                                Text(segment.text)
-                                    .multilineTextAlignment(.leading)
-                            }
+        if store.transcript.isEmpty {
+            Text("No transcript text is available yet.")
+                .foregroundStyle(.secondary)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(store.transcript) { segment in
+                    Button {
+                        store.seek(to: segment.start)
+                    } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(segment.isFinal ? "Final" : "In progress")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(segment.isFinal ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                            Text(segment.text)
+                                .multilineTextAlignment(.leading)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
-    }
-
-    private var exportNote: some View {
-        Text("Exports stay in Files › On My iPad › iPad Ink › meetings. Each meeting contains audio.wav, strokes.json, transcript.json, meeting.json, and drawing.data.")
-            .font(.footnote)
-            .foregroundStyle(.secondary)
     }
 }

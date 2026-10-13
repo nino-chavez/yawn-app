@@ -58,6 +58,14 @@ cannot establish Apple Pencil latency, a real microphone recording, the local
 speech model’s availability or download, or device replay behavior. Those need
 an iPad review.
 
+## Writing on the page
+
+The page grows as you write: there is always room below the lowest stroke, so
+writing large never uses it up. With iPadOS's "Only Draw with Apple Pencil" on,
+the Pencil writes and a finger scrolls; with it off, two fingers scroll. Replay
+and the transcript sit beside the page in landscape and below it in portrait.
+In the simulator, which has no Pencil, a finger always writes.
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.
