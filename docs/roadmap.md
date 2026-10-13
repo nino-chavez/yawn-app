@@ -15,6 +15,34 @@ ran. The older release and evaluation entries below describe their dated states.
 
 See [the implementation verification](note-runtime-decision.md#implementation-verification--2026-09-30).
 
+## iPad in-person mode — proposed order, 2026-10-13
+
+The operator added an iPad in-person mode to
+[the product brief](product-brief.md#ipad-in-person-mode--decided-2026-10-13)
+on 2026-10-13: part of Yawn, consent and keep period before recording, native
+SwiftUI, finger first. Nothing is built for release. The research spike
+(`spike/ipad-ink/`, PRs #113, #116 and #117) runs on the operator's iPad: a
+finger writes on a page that grows, strokes are timed against the recording,
+and the transcript arrives after Stop.
+
+1. **Two-person table recording.** One consenting second person, 5 to 10
+   minutes, recorded on the iPad and scored with
+   `spike/speech-engine-comparison/ipad_meeting_review.py` as
+   `spike/ipad-ink/EVALUATION.md` describes. It decides whether the transcript
+   carries speaker labels. The earlier in-person recordings no longer exist,
+   and they used the Mac's microphone.
+2. **Structural gaps that shape every screen.** Erase and undo (the spike
+   matches stroke records to the drawing by position, so either one breaks the
+   timing), a list of past meetings, and a transcript that does not wait for
+   Stop.
+3. **Design as a new surface.** An experience brief with the iPad platform
+   strategy; comparables (Mobbin's iPhone screens plus captures of Goodnotes or
+   Notability running on the iPad); three divergent whole-screen concepts on
+   the same states; a selection record; the build; a cold review of iPad
+   captures.
+4. **Craft and distribution.** Critique, audit and polish passes, then
+   TestFlight. Release remains a separate state.
+
 ## Current release and next acceptance work — 2026-09-08
 
 Yawn 0.6.4 is released and installed from source `58e13a2`. It includes
