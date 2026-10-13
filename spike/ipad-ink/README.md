@@ -61,10 +61,11 @@ an iPad review.
 ## Writing on the page
 
 The page grows as you write: there is always room below the lowest stroke, so
-writing large never uses it up. With iPadOS's "Only Draw with Apple Pencil" on,
-the Pencil writes and a finger scrolls; with it off, two fingers scroll. Replay
-and the transcript sit beside the page in landscape and below it in portrait.
-In the simulator, which has no Pencil, a finger always writes.
+writing large never uses it up. A finger or the Pencil writes, and two fingers
+scroll. With iPadOS's "Only Draw with Apple Pencil" setting on, only the Pencil
+writes and one finger also scrolls; the app rechecks that setting each time it
+comes back to the front. Replay and the transcript sit beside the page in
+landscape and below it in portrait.
 
 ## Known limits of this spike
 
