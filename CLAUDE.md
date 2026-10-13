@@ -10,7 +10,7 @@ The source code is the authority for technical behavior. In particular:
 - The Mac app captures only after explicit participant-consent, headphone, and
   single-operator attestations. The accepted audio-retention choices are 1, 7,
   and 30 days.
-- Data must stay on the Mac. Do not imply an account, cloud sync, bot, calendar
+- Mac app data must stay on the Mac. Do not imply an account, cloud sync, bot, calendar
   integration, automatic sharing, or task creation that is not actually built.
 - The planned iPad in-person mode has its own capture and storage rules in the
   product brief's "iPad in-person mode" section. It is not built; do not
