@@ -1,7 +1,8 @@
 # Product brief — Yawn
 
 Status: reset on 2026-08-10; automatic note generation retired from the product
-contract on 2026-09-30. Implementation and release are separate states.
+contract on 2026-09-30; an iPad in-person mode added on 2026-10-13, not yet
+built. Implementation and release are separate states.
 
 Future sequencing lives in the [product roadmap](roadmap.md). The roadmap may
 propose work, but this brief remains the current product contract until amended.
@@ -16,6 +17,10 @@ The reader knows how to use a Mac. They should not need to understand audio
 routing, speech models, library handles, or internal product history.
 
 ## What must stay true
+
+These rules govern the Mac app. The
+[iPad in-person mode](#ipad-in-person-mode--decided-2026-10-13) replaces the
+first two on iPad only.
 
 - Capture, transcription, and retained meeting data stay on this Mac. The app
   does not imply an account, cloud sync, a meeting bot, calendar access, sharing,
@@ -113,6 +118,41 @@ a small auxiliary window.
   the category onboards; it stays out of Yawn not because labeling is
   dishonest but because a sample meeting either fabricates provenance or
   breaks the loop it exists to teach.)
+
+## iPad in-person mode — decided 2026-10-13
+
+Status: decided by the operator on 2026-10-13. Not built or released. The
+research spike at `spike/ipad-ink/` shows the pieces work on an M1 iPad Air; it
+is not this product.
+
+Yawn gains an iPad app for meetings held in one room. The operator writes by
+hand on the iPad while it records the room, and each stroke stays tied to the
+moment it was written. The Mac rules above still govern the Mac app. On iPad,
+these replace the first two of them:
+
+- Capture, transcription, and retained meeting data stay on the iPad that
+  recorded them. No account, no sync, no upload. Moving a meeting to the Mac is
+  an export the operator starts, through Files.
+- Recording starts only after the operator confirms that everyone who can be
+  heard agreed to it, and chooses to keep the audio 1, 7, or 30 days. There is
+  no headphone or one-person-near-the-microphone check: in a room, every voice
+  reaches the one microphone by design.
+
+And these are added:
+
+- Because every voice lands on one microphone, the transcript does not name or
+  number speakers until a two-person table recording shows the labels are
+  reliable. A turn is never assigned to a speaker by guess.
+- Finger first. One finger writes, two fingers scroll, and the page suits large
+  handwriting. When iPadOS's "Only Draw with Apple Pencil" setting is on, the
+  Pencil writes and one finger scrolls.
+- Built natively in SwiftUI with PencilKit and Apple's on-device speech, not on
+  the Mac app's Tauri shell. The two apps share product rules, not code.
+
+The three moments stay the same: one record action behind the consent check, a
+page that grows as the operator writes, then the handwriting with its audio and
+transcript, and a list of past meetings. Every other rule in this brief applies
+on iPad unchanged.
 
 ## Not part of this reset
 
