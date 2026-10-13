@@ -118,5 +118,9 @@ text in any summary or score.
 ```sh
 cd spike/speech-engine-comparison
 python3 -m unittest test_ipad_meeting_review -v
-python3 -m unittest test_scoring -v
+../../.venv/bin/python -m unittest test_scoring -v
 ```
+
+`test_scoring` needs RapidFuzz from `spike/speech-engine-comparison/requirements.txt`
+in the research `.venv`. Without it, the scorer tests skip, and `-v` shows
+the install command.

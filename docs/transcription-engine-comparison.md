@@ -279,7 +279,16 @@ Use `run_comparison.py --help` for the sequential engine runner and
 with `swift build -c release` in its `native` directory. Whisper runs with the
 installed Yawn Python runtime and the installed catalog/model paths. Results
 must go outside app and repository storage. `summarize_results.py` derives the
-content-free receipt from those saved artifacts; it needs `rapidfuzz==3.14.3`.
+content-free receipt from those saved artifacts; it needs `rapidfuzz==3.14.3`,
+pinned in that directory's `requirements.txt`. Layer it on the research `.venv`,
+whose numpy the replay tests also need, then run the research tests:
+
+```sh
+uv pip install --python .venv/bin/python -r spike/speech-engine-comparison/requirements.txt
+.venv/bin/python -m unittest discover -s spike/speech-engine-comparison -p 'test_*.py'
+```
+
+Without RapidFuzz the scorer tests skip; `-v` shows each reason and this install command.
 Note replay commands were bounded externally to 600 seconds each.
 
 The pre-inference AMI extraction incorrectly read only the first endpoint of
