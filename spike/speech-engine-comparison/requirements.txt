@@ -1,0 +1,11 @@
+# Research-only: scoring.py's exact transcript edit distance. Kept out of
+# spike/requirements.txt, which is the capture path's cost ledger — the same
+# call spike/encoder-packaging made for its ONNX dependencies.
+#
+# Layer it on the research .venv, which this directory's replay tests also
+# need for numpy. That venv is uv-built and has no pip:
+#   uv pip install --python .venv/bin/python -r spike/speech-engine-comparison/requirements.txt
+#
+# scoring.py refuses any other version, and the evidence receipts under
+# docs/evidence/ record this one.
+rapidfuzz==3.14.3
