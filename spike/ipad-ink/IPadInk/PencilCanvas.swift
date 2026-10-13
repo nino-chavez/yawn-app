@@ -21,6 +21,12 @@ final class GrowingCanvasView: PKCanvasView {
         let size = CGSize(width: bounds.width, height: height)
         if contentSize != size {
             contentSize = size
+            // A scroll view keeps its offset when the content shrinks; pull it
+            // back so the view never rests past the end of the page.
+            let lastOffset = max(0, size.height - bounds.height)
+            if contentOffset.y > lastOffset {
+                contentOffset.y = lastOffset
+            }
         }
     }
 }
@@ -81,11 +87,17 @@ struct PencilCanvas: UIViewRepresentable {
         /// Sets a drawing from the store. The canvas reports that change through
         /// its delegate, and it must not be read back as newly drawn strokes.
         func apply(_ drawing: PKDrawing, to canvas: GrowingCanvasView) {
+            // Fewer strokes than the canvas holds means a cleared page (New
+            // meeting); start it at the top rather than where the last one ended.
+            let cleared = drawing.strokes.count < canvas.drawing.strokes.count
             applyingDrawing = true
             canvas.drawing = drawing
             knownStrokeCount = drawing.strokes.count
             applyingDrawing = false
             canvas.fitContentToDrawing()
+            if cleared {
+                canvas.setContentOffset(.zero, animated: false)
+            }
         }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
