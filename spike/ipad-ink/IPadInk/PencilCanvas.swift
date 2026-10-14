@@ -1,5 +1,6 @@
 import PencilKit
 import SwiftUI
+import Combine
 
 /// A page that grows as you write. Its scrollable height follows the bottom of
 /// the drawing plus room to keep going, the pattern of Apple's "Drawing with
@@ -31,10 +32,36 @@ final class GrowingCanvasView: PKCanvasView {
     }
 }
 
+final class PencilCanvasController: ObservableObject {
+    fileprivate weak var canvas: PKCanvasView?
+
+    func undo() {
+        canvas?.undoManager?.undo()
+    }
+
+    func redo() {
+        canvas?.undoManager?.redo()
+    }
+}
+
 struct PencilCanvas: UIViewRepresentable {
+    enum Tool: Equatable {
+        case pen
+        case eraser
+
+        var canvasTool: PKTool {
+            switch self {
+            case .pen: PKInkingTool(.pen, color: .label)
+            case .eraser: PKEraserTool(.vector)
+            }
+        }
+    }
+
     let drawing: PKDrawing
     let isEditable: Bool
-    let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
+    let tool: Tool
+    let controller: PencilCanvasController
+    let onDrawingChanged: (PKDrawing) -> Void
     let onStrokeTapped: (Int) -> Void
 
     /// Who may write, per the iPad's "Only Draw with Apple Pencil" setting. With
@@ -47,7 +74,7 @@ struct PencilCanvas: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onStrokesAdded: onStrokesAdded, onStrokeTapped: onStrokeTapped)
+        Coordinator(controller: controller, onDrawingChanged: onDrawingChanged, onStrokeTapped: onStrokeTapped)
     }
 
     func makeUIView(context: Context) -> GrowingCanvasView {
@@ -61,6 +88,7 @@ struct PencilCanvas: UIViewRepresentable {
         canvas.delegate = context.coordinator
         context.coordinator.apply(drawing, to: canvas)
         canvas.drawingGestureRecognizer.isEnabled = isEditable
+        canvas.tool = tool.canvasTool
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.didTapCanvas(_:)))
         tap.cancelsTouchesInView = false
@@ -71,19 +99,21 @@ struct PencilCanvas: UIViewRepresentable {
     func updateUIView(_ canvas: GrowingCanvasView, context: Context) {
         // Replay turns drawing off but keeps scrolling, so earlier pages stay reachable.
         canvas.drawingGestureRecognizer.isEnabled = isEditable
+        canvas.tool = tool.canvasTool
         guard canvas.drawing.dataRepresentation() != drawing.dataRepresentation() else { return }
         context.coordinator.apply(drawing, to: canvas)
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
-        private var knownStrokeCount = 0
         private var applyingDrawing = false
         private weak var canvas: PKCanvasView?
-        private let onStrokesAdded: ([PKStroke], PKDrawing) -> Void
+        private let controller: PencilCanvasController
+        private let onDrawingChanged: (PKDrawing) -> Void
         private let onStrokeTapped: (Int) -> Void
 
-        init(onStrokesAdded: @escaping ([PKStroke], PKDrawing) -> Void, onStrokeTapped: @escaping (Int) -> Void) {
-            self.onStrokesAdded = onStrokesAdded
+        init(controller: PencilCanvasController, onDrawingChanged: @escaping (PKDrawing) -> Void, onStrokeTapped: @escaping (Int) -> Void) {
+            self.controller = controller
+            self.onDrawingChanged = onDrawingChanged
             self.onStrokeTapped = onStrokeTapped
         }
 
@@ -91,6 +121,7 @@ struct PencilCanvas: UIViewRepresentable {
         /// to the front, because the setting is changed in the Settings app.
         func followPencilSetting(of canvas: PKCanvasView) {
             self.canvas = canvas
+            controller.canvas = canvas
             canvas.drawingPolicy = PencilCanvas.preferredDrawingPolicy
             NotificationCenter.default.addObserver(
                 self, selector: #selector(appDidBecomeActive),
@@ -110,7 +141,6 @@ struct PencilCanvas: UIViewRepresentable {
             let cleared = drawing.strokes.count < canvas.drawing.strokes.count
             applyingDrawing = true
             canvas.drawing = drawing
-            knownStrokeCount = drawing.strokes.count
             applyingDrawing = false
             canvas.fitContentToDrawing()
             if cleared {
@@ -121,11 +151,7 @@ struct PencilCanvas: UIViewRepresentable {
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             (canvasView as? GrowingCanvasView)?.fitContentToDrawing()
             guard !applyingDrawing else { return }
-            let strokes = canvasView.drawing.strokes
-            let additions = Array(strokes.dropFirst(knownStrokeCount))
-            knownStrokeCount = strokes.count
-            guard !additions.isEmpty else { return }
-            onStrokesAdded(additions, canvasView.drawing)
+            onDrawingChanged(canvasView.drawing)
         }
 
         @objc func didTapCanvas(_ recognizer: UITapGestureRecognizer) {

@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = MeetingStore()
+    @StateObject private var canvasController = PencilCanvasController()
+    @State private var selectedTool: PencilCanvas.Tool = .pen
 
     var body: some View {
         NavigationStack {
@@ -110,11 +112,45 @@ struct ContentView: View {
         PencilCanvas(
             drawing: store.displayedDrawing,
             isEditable: store.canDraw,
-            onStrokesAdded: store.addStrokes,
+            tool: selectedTool,
+            controller: canvasController,
+            onDrawingChanged: store.drawingChanged,
             onStrokeTapped: store.seekToStroke(at:)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 8) {
+                Button("Pen", systemImage: "pencil.tip") {
+                    selectedTool = .pen
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(selectedTool == .pen ? .borderedProminent : .bordered)
+                .accessibilityLabel("Pen")
+
+                Button("Eraser", systemImage: "eraser") {
+                    selectedTool = .eraser
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(selectedTool == .eraser ? .borderedProminent : .bordered)
+                .accessibilityLabel("Eraser")
+
+                Button("Undo", systemImage: "arrow.uturn.backward", action: canvasController.undo)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Undo")
+
+                Button("Redo", systemImage: "arrow.uturn.forward", action: canvasController.redo)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Redo")
+            }
+            .controlSize(.large)
+            .padding(8)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+            .padding(12)
+            .disabled(!store.canDraw)
+        }
         .overlay(alignment: .bottomTrailing) {
             Text("The page grows as you write. Scroll with two fingers.")
                 .font(.caption)

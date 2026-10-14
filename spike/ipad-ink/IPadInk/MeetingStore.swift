@@ -31,6 +31,7 @@ final class MeetingStore: NSObject, ObservableObject {
     private var meetingURL: URL?
     private var audioURL: URL?
     private var recordingStartedAt: Date?
+    private var strokeLedger = StrokeLedger()
     private var player: AVAudioPlayer?
     private var audioSessionObservers: [NSObjectProtocol] = []
     /// Bumped by New meeting. A transcription run that outlives its meeting
@@ -134,6 +135,7 @@ final class MeetingStore: NSObject, ObservableObject {
         keepDays = nil
         drawing = PKDrawing()
         timedStrokes = []
+        strokeLedger = StrokeLedger()
         transcript = []
         meetingURL = nil
         audioURL = nil
@@ -142,16 +144,16 @@ final class MeetingStore: NSObject, ObservableObject {
         recordingState = .ready
     }
 
-    func addStrokes(_ strokes: [PKStroke], drawing: PKDrawing) {
+    func drawingChanged(_ drawing: PKDrawing) {
         guard canDraw else { return }
         self.drawing = drawing
-        let recordingStart = recordingStartedAt
-        let additions = strokes.enumerated().map { offset, stroke in
-            let start = recordingStart.map { StrokeTimeline.seconds(forStrokeCreatedAt: stroke.path.creationDate, recordingStartedAt: $0) }
-            let duration = stroke.path.last?.timeOffset ?? 0
-            return TimedStroke(index: timedStrokes.count + offset, startSeconds: start, endSeconds: start.map { $0 + duration })
+        let samples = drawing.strokes.map { stroke in
+            let creationDate = stroke.path.creationDate
+            let key = StrokeKey(creationDate: creationDate, randomSeed: stroke.randomSeed)
+            return StrokeSample(key: key, creationDate: creationDate, duration: stroke.path.last?.timeOffset ?? 0)
         }
-        timedStrokes.append(contentsOf: additions)
+        strokeLedger.reconcile(samples, recordingStartedAt: recordingStartedAt)
+        timedStrokes = strokeLedger.liveStrokes(order: samples.map(\.key))
         if !isRecording {
             writeExports()
         }
