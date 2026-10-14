@@ -98,6 +98,66 @@ func replayVisibilityUsesInclusivePlayhead() {
     #expect(StrokeTimeline.visibleStrokes(strokes, at: 2) == [0, 1, 2])
 }
 
+@Test("erasing, undoing, and redoing preserves each stroke's original timing")
+func eraseUndoRedoPreservesStrokeTiming() {
+    let recordingStartedAt = Date(timeIntervalSince1970: 1_000)
+    let first = strokeSample(offset: 1, seed: 11, duration: 0.2)
+    let middle = strokeSample(offset: 2, seed: 22, duration: 0.3)
+    let last = strokeSample(offset: 3, seed: 33, duration: 0.4)
+    var ledger = StrokeLedger()
+
+    ledger.reconcile([first, middle, last], recordingStartedAt: recordingStartedAt)
+    ledger.reconcile([first, last], recordingStartedAt: recordingStartedAt)
+    #expect(ledger.liveStrokes(order: [first.key, last.key]) == [
+        TimedStroke(index: 0, startSeconds: 1, endSeconds: 1.2),
+        TimedStroke(index: 1, startSeconds: 3, endSeconds: 3.4)
+    ])
+
+    ledger.reconcile([first, middle, last], recordingStartedAt: recordingStartedAt)
+    #expect(ledger.liveStrokes(order: [first.key, middle.key, last.key]) == [
+        TimedStroke(index: 0, startSeconds: 1, endSeconds: 1.2),
+        TimedStroke(index: 1, startSeconds: 2, endSeconds: 2.3),
+        TimedStroke(index: 2, startSeconds: 3, endSeconds: 3.4)
+    ])
+
+    ledger.reconcile([first, last], recordingStartedAt: recordingStartedAt)
+    #expect(ledger.liveStrokes(order: [first.key, last.key]) == [
+        TimedStroke(index: 0, startSeconds: 1, endSeconds: 1.2),
+        TimedStroke(index: 1, startSeconds: 3, endSeconds: 3.4)
+    ])
+}
+
+@Test("strokes drawn before recording remain untimed")
+func strokesBeforeRecordingRemainUntimed() {
+    let sample = strokeSample(offset: 1, seed: 11, duration: 0.2)
+    var ledger = StrokeLedger()
+
+    ledger.reconcile([sample], recordingStartedAt: nil)
+
+    #expect(ledger.liveStrokes(order: [sample.key]) == [
+        TimedStroke(index: 0, startSeconds: nil, endSeconds: nil)
+    ])
+}
+
+@Test("reconciling an unchanged drawing is idempotent")
+func reconcileIsIdempotent() {
+    let recordingStartedAt = Date(timeIntervalSince1970: 1_000)
+    let sample = strokeSample(offset: 1, seed: 11, duration: 0.2)
+    var ledger = StrokeLedger()
+
+    ledger.reconcile([sample], recordingStartedAt: recordingStartedAt)
+    let firstResult = ledger.liveStrokes(order: [sample.key])
+    ledger.reconcile([sample], recordingStartedAt: recordingStartedAt.addingTimeInterval(10))
+
+    #expect(ledger.liveStrokes(order: [sample.key]) == firstResult)
+}
+
+private func strokeSample(offset: TimeInterval, seed: UInt32, duration: Double) -> StrokeSample {
+    let creationDate = Date(timeIntervalSince1970: 1_000 + offset)
+    let key = StrokeKey(creationDate: creationDate, randomSeed: seed)
+    return StrokeSample(key: key, creationDate: creationDate, duration: duration)
+}
+
 @Test("export JSON has exactly the documented keys")
 func exportJSONKeysAreExact() throws {
     let meeting = MeetingExport(createdAt: .distantPast, consentEveryoneAudible: true, keepDays: 7, audioSampleRate: 16_000)

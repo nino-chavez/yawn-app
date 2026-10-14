@@ -3,6 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = MeetingStore()
+    @StateObject private var canvasController = PencilCanvasController()
+    @State private var selectedTool: PencilCanvas.Tool = .pen
 
     var body: some View {
         NavigationStack {
@@ -60,7 +62,7 @@ struct ContentView: View {
                             .buttonStyle(.bordered)
                     }
                     if store.recordingState == .needsSpeechModel, !store.speechModelInstallable {
-                        Button("Transcribe", action: store.transcribeSavedAudio)
+                        Button("Transcribe") { store.transcribeSavedAudio() }
                             .buttonStyle(.bordered)
                     }
                     Spacer(minLength: 0)
@@ -84,9 +86,17 @@ struct ContentView: View {
     }
 
     private var stateText: some View {
-        Text(stateDescription)
-            .font(.footnote)
-            .foregroundStyle(isFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+        VStack(alignment: .leading, spacing: 4) {
+            // Stays visible through transcription and replay until New meeting.
+            if let note = store.interruptionNote {
+                Text("Needs attention: \(note)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.orange)
+            }
+            Text(stateDescription)
+                .font(.footnote)
+                .foregroundStyle(isFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+        }
     }
 
     private var isFailed: Bool {
@@ -106,20 +116,56 @@ struct ContentView: View {
     }
 
     private var page: some View {
-        PencilCanvas(
-            drawing: store.displayedDrawing,
-            isEditable: store.canDraw,
-            onStrokesAdded: store.addStrokes,
-            onStrokeTapped: store.seekToStroke(at:)
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(alignment: .bottomTrailing) {
-            Text("The page grows as you write. Scroll with two fingers.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .padding(10)
-                .allowsHitTesting(false)
+        VStack(alignment: .leading, spacing: 8) {
+            // Above the page, not over it: the top-left corner is where writing starts.
+            HStack(spacing: 8) {
+                Button("Pen", systemImage: "pencil.tip") {
+                    selectedTool = .pen
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(.bordered)
+                .tint(selectedTool == .pen ? Color.accentColor : Color.secondary)
+                .accessibilityAddTraits(selectedTool == .pen ? .isSelected : [])
+                .accessibilityLabel("Pen")
+
+                Button("Eraser", systemImage: "eraser") {
+                    selectedTool = .eraser
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .buttonStyle(.bordered)
+                .tint(selectedTool == .eraser ? Color.accentColor : Color.secondary)
+                .accessibilityAddTraits(selectedTool == .eraser ? .isSelected : [])
+                .accessibilityLabel("Eraser")
+
+                Button("Undo", systemImage: "arrow.uturn.backward", action: canvasController.undo)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Undo")
+
+                Button("Redo", systemImage: "arrow.uturn.forward", action: canvasController.redo)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Redo")
+            }
+            .disabled(!store.canDraw)
+
+            PencilCanvas(
+                drawing: store.displayedDrawing,
+                isEditable: store.canDraw,
+                tool: selectedTool,
+                controller: canvasController,
+                onDrawingChanged: store.drawingChanged,
+                onStrokeTapped: store.seekToStroke(at:)
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(alignment: .bottomTrailing) {
+                Text("The page grows as you write. Scroll with two fingers.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
         }
     }
 

@@ -58,6 +58,22 @@ cannot establish Apple Pencil latency, a real microphone recording, the local
 speech model’s availability or download, or device replay behavior. Those need
 an iPad review.
 
+## Recording through a meeting
+
+While recording, the app keeps the iPad screen awake. Its audio background mode
+means locking the screen keeps the recording running. If a call, another app,
+an audio-system restart, or a microphone change interrupts recording, the app
+stops, saves the audio and ink already captured, and says why and when it
+stopped. That note stays on screen until New meeting, while everything after it
+works as after Stop: transcription, the speech-model prompt, and failures. Replay
+waits until the interruption ends (or the app comes back to the front), because
+iOS will not hand the audio session back during a call. After an audio-system
+restart the app rebuilds its audio engine. It does not resume recording
+automatically.
+
+Checked in the simulator: recording continued on the home screen and the lock
+screen. A real call or audio-system restart has not been tried.
+
 ## Writing on the page
 
 The page grows as you write: there is always room below the lowest stroke, so
@@ -66,6 +82,17 @@ scroll. With iPadOS's "Only Draw with Apple Pencil" setting on, only the Pencil
 writes and one finger also scrolls; the app rechecks that setting each time it
 comes back to the front. Replay and the transcript sit beside the page in
 landscape and below it in portrait.
+
+## Erase and undo
+
+The spike keys each stroke by its PencilKit path creation time
+and random seed. The vector eraser removes whole strokes, while undo and redo
+restore the same keys, so the saved stroke timing remains attached to the right
+stroke. `strokes.json` remains the same position-indexed export beside
+`drawing.data`. On iPadOS 27, `PKStroke.strokeID` can replace this key.
+
+The pen, eraser, undo and redo buttons sit above the page, so they never cover
+writing.
 
 ## Known limits of this spike
 
