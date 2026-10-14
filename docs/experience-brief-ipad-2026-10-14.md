@@ -24,8 +24,8 @@ the only thing the operator looks at. Others at the table can see it.
   recording, and stop with one control.
 - **After.** The operator rereads what they wrote. Where a note is unclear,
   they tap it and hear what was being said, with the transcript beside it.
-  Later, they find a past meeting by when it was and what the page looks
-  like.
+  They can still add to the page or erase. Later, they find a past meeting by
+  when it was, what the page looks like, or words in its transcript.
 
 ## The five job questions, per moment
 
@@ -33,7 +33,7 @@ the only thing the operator looks at. Others at the table can see it.
 |---|---|---|---|---|---|
 | Before | Not recording; speech model ready or not | Confirm consent, choose keep period, record | The operator and the people in the room | Now, this iPad | Record; open a past meeting |
 | During | Recording, for how long | Stop | Unlabeled voices in the room | Elapsed time | Write; scroll; erase; undo; stop |
-| After | Transcribing, transcript ready, or needs attention | Reread; tap a note to hear it | Unlabeled until speaker labels are proven | Meeting date and length | Replay; tap a stroke to jump; read the transcript; export to Files; start a new meeting |
+| After | Transcribing, transcript ready, or needs attention | Reread; tap a note to hear it | Unlabeled until speaker labels are proven | Meeting date and length | Replay; tap a stroke to jump; edit the page; read, search, and copy the transcript; export to Files; start a new meeting |
 
 ## What the spike already settled
 
@@ -74,8 +74,9 @@ Checked in spike source on 2026-10-14, not on the device:
 
 ## Content strategy
 
-- Status words: Ready, Recording, Transcribing, Transcript ready, Needs
-  attention. One status per screen.
+- Status words are the product brief's: preparing, recording, finishing
+  (which covers transcribing after Stop), transcript ready, needs attention.
+  One status per screen.
 - The consent line stays the spike's: "Everyone who can be heard agreed to this
   recording." Keep periods read 1 day, 7 days, 30 days.
 - Say "Stays on this iPad" once, in the before step. Not on every screen.
@@ -106,7 +107,7 @@ portrait, with a finger.
 | Pen, eraser, and undo only, with a thicker default pen | Finger-first and large handwriting (product brief); a full tool palette is not the job |
 | System font, system colors, light and dark, Dynamic Type for chrome | Quiet and native, like the Mac app |
 | Landscape and portrait, and resizing in Split View and Stage Manager | The iPad lies flat in either orientation at a table |
-| Export to Files as the only way out | Product brief: no sync, no upload |
+| Export to Files as the only transfer off the iPad; copying transcript text stays available | Product brief: no sync, no upload, but the transcript can be copied |
 
 **Decline**
 
@@ -122,7 +123,8 @@ portrait, with a finger.
 **Undecided, for the concepts to test**
 
 - Where the transcript lives after Stop: a panel beside the page, a strip
-  below it, or shown only when a stroke is tapped.
+  below it, or collapsed by default but always openable in the meeting view.
+  The full transcript stays available in the meeting view (product brief).
 - Where consent happens: a sheet before recording, or inline in the bar above
   the page.
 - Where replay controls sit: the bar above the page, a scrubber along the page
