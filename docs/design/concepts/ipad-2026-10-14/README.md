@@ -42,5 +42,31 @@ share an answer, the row says so.
 5. First run: no meetings yet
 6. Meeting list: today's meeting and three earlier ones
 
-Frames are named `<concept>-<state>-<appearance>.jpg`, with `-portrait` for
-state 2's portrait frames.
+## Frames
+
+Frames are named `<concept>-<state>-<appearance>.jpg`.
+
+- **Landscape** frames come from the operator's iPad (iPad Air, 5th
+  generation, iPadOS 27), captured over the cable with `devicectl`.
+- **Portrait** frames (`-portrait`) come from the iPad Air 11-inch (M4)
+  simulator, which could not be rotated here.
+- **Real-pace** frames (`C-3-*-real-pace.jpg`) show Concept C after the meeting
+  with about 140 transcript turns instead of 16. Run the app with `-dense 1` to
+  see them.
+
+## What the frames cannot show
+
+- **The transcript is far too sparse.** The invented transcript has 144 words
+  over 23 minutes, about 6 a minute. The iPad test recording ran at about 153
+  words a minute. At a real pace, Concept C's time-aligned column falls
+  minutes behind the ink beside it (see the real-pace frames). A's list and
+  B's ribbon just scroll.
+- **The notes run top to bottom in time order.** A real page may not: going
+  back up to add to an earlier note puts a later moment higher on the page.
+- **During fits one landscape screen.** Four minutes of notes at this
+  handwriting size fit, so the landscape frames of state 2 are not scrolled.
+
+## Selection
+
+Pending the operator's choice. The selection record will name who chose, what
+was taken from the other concepts, and what was left out.

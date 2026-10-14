@@ -212,7 +212,7 @@ struct ConceptC: View {
             afterStopStyle: .belowRail,
             leadingInset: 96,
             rail: rail,
-            alignedTranscript: state == .after ? Mock.transcript : nil,
+            alignedTranscript: state == .after ? (Mock.useDense ? Mock.denseTranscript : Mock.transcript) : nil,
             transcriptColumn: column
         )
     }

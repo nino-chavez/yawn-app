@@ -70,6 +70,15 @@ enum Mock {
         TranscriptTurn(id: 15, seconds: 1371, text: "Sounds good. Thanks, everyone."),
     ]
 
+    /// The same invented sentences at a realistic pace: one turn about every
+    /// ten seconds, about 140 over the meeting. The iPad test recording ran at
+    /// about 150 words a minute; the default transcript above runs at about 6.
+    static let denseTranscript: [TranscriptTurn] = (0..<138).map { i in
+        TranscriptTurn(id: 100 + i, seconds: 4 + i * 10, text: transcript[i % transcript.count].text)
+    }
+
+    static var useDense: Bool { UserDefaults.standard.bool(forKey: "dense") }
+
     static let pastMeetings: [PastMeeting] = [
         PastMeeting(id: 1, day: "Mon, Oct 13", time: "3:30 PM", minutes: 41, firstLines: ["Roof quote", "gutters too?"], group: "This week"),
         PastMeeting(id: 2, day: "Thu, Oct 9", time: "9:00 AM", minutes: 18, firstLines: ["Q4 schedule", "Ana out Nov"], group: "Last week"),

@@ -76,7 +76,7 @@ struct RootView: View {
                 ForEach(ConceptState.allCases) { Text("\($0.rawValue) · \($0.name)").tag($0) }
             }
         } label: {
-            Text("Concept \(concept.rawValue) · \(state.rawValue) \(state.name) · invented content")
+            Text("Concept \(concept.rawValue) · \(state.rawValue) \(state.name) · invented content\(Mock.useDense ? " at real pace" : "")")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
