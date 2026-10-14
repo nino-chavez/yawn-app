@@ -33,7 +33,7 @@ the only thing the operator looks at. Others at the table can see it.
 |---|---|---|---|---|---|
 | Before | Not recording; speech model ready or not | Confirm consent, choose keep period, record | The operator and the people in the room | Now, this iPad | Record; open a past meeting |
 | During | Recording, for how long | Stop | Unlabeled voices in the room | Elapsed time | Write; scroll; erase; undo; stop |
-| After | Transcribing, transcript ready, or needs attention | Reread; tap a note to hear it | Unlabeled until speaker labels are proven | Meeting date and length | Replay; tap a stroke to jump; edit the page; read, search, and copy the transcript; export to Files; start a new meeting |
+| After | Finishing, transcript ready, or needs attention | Reread; tap a note to hear it | Unlabeled until speaker labels are proven | Meeting date and length | Replay; tap a stroke to jump; edit the page; read, search, and copy the transcript; export to Files; start a new meeting |
 
 ## What the spike already settled
 
@@ -131,6 +131,9 @@ portrait, with a finger.
   edge, or in the sidebar.
 - What the app opens to: the meeting list, the last meeting's page, or a blank
   page ready to record.
+- How a stroke added after Stop looks. It has no audio moment, so it is never
+  dimmed during replay and tapping it does not jump the audio; the concepts
+  decide how the page shows that difference.
 
 ## Representative states for the concept comparison (§ 2c)
 
