@@ -68,5 +68,8 @@ Frames are named `<concept>-<state>-<appearance>.jpg`.
 
 ## Selection
 
-Pending the operator's choice. The selection record will name who chose, what
-was taken from the other concepts, and what was left out.
+The operator chose **C, Time rail**, with three changes, on 2026-10-14:
+fold the transcript between notes, open to a page instead of the meeting list,
+and test the rail against real writing first. The
+[selection record](../../../../decisions/ipad-concept-selection-2026-10-14.md)
+says what C keeps, what came from A and B, and what was left out.
