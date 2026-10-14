@@ -40,8 +40,9 @@ and the transcript arrives after Stop.
    platform strategy; comparables (Mobbin's iPhone screens, first pass in
    [evidence](evidence/comparables-ipad-ink-audio-2026-10-13.md), plus
    captures of Goodnotes or Notability running on the iPad); three divergent whole-screen concepts on
-   the same states; a selection record; the build; a cold review of iPad
-   captures.
+   the same states ([concepts](design/concepts/ipad-2026-10-14/README.md));
+   a selection record ([C, Time rail, with three changes](../decisions/ipad-concept-selection-2026-10-14.md));
+   the build; a cold review of iPad captures.
 4. **Craft and distribution.** Critique, audit and polish passes, then
    TestFlight. Release remains a separate state.
 
