@@ -101,6 +101,9 @@ struct PencilCanvas: UIViewRepresentable {
         // Replay turns drawing off but keeps scrolling, so earlier pages stay reachable.
         canvas.drawingGestureRecognizer.isEnabled = isEditable
         canvas.tool = tool.canvasTool
+        // With drawing off, system undo (three-finger swipe, Command-Z) must not
+        // change a page the store will not accept.
+        if !isEditable { canvas.undoManager?.removeAllActions() }
         guard canvas.drawing.dataRepresentation() != drawing.dataRepresentation() else { return }
         context.coordinator.apply(drawing, to: canvas)
     }

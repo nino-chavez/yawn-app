@@ -12,7 +12,6 @@ final class MeetingStore: NSObject, ObservableObject {
         case stopped
         case transcribing
         case needsSpeechModel
-        case interrupted(String)
         case failed(String)
     }
 
@@ -25,8 +24,11 @@ final class MeetingStore: NSObject, ObservableObject {
     @Published private(set) var speechModelStatus = "Checking speech model…"
     @Published private(set) var speechModelInstallable = false
     @Published private(set) var playbackTime = 0.0
+    /// Set when something other than Stop ended the recording. It stays on
+    /// screen beside the normal after-Stop states until New meeting.
+    @Published private(set) var interruptionNote: String?
 
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine = AVAudioEngine()
     private var audioFile: AVAudioFile?
     private var meetingURL: URL?
     private var audioURL: URL?
@@ -34,6 +36,7 @@ final class MeetingStore: NSObject, ObservableObject {
     private var strokeLedger = StrokeLedger()
     private var player: AVAudioPlayer?
     private var audioSessionObservers: [NSObjectProtocol] = []
+    private var engineObserver: NSObjectProtocol?
     /// Bumped by New meeting. A transcription run that outlives its meeting
     /// still saves to that meeting's folder but no longer touches the screen.
     private var meetingGeneration = 0
@@ -69,7 +72,7 @@ final class MeetingStore: NSObject, ObservableObject {
 
     var canStartNewMeeting: Bool {
         switch recordingState {
-        case .stopped, .needsSpeechModel, .interrupted, .failed: true
+        case .stopped, .needsSpeechModel, .failed: true
         case .ready, .recording, .transcribing: false
         }
     }
@@ -108,18 +111,7 @@ final class MeetingStore: NSObject, ObservableObject {
         // A failed save stays on screen; replay and transcription would hide it.
         guard writeExports() else { return }
 
-        if let audioURL {
-            do {
-                // A record-only session cannot play the replay.
-                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-                try AVAudioSession.sharedInstance().setActive(true)
-                player = try AVAudioPlayer(contentsOf: audioURL)
-                player?.prepareToPlay()
-            } catch {
-                recordingState = .failed("The audio was saved, but replay could not open it: \(error.localizedDescription)")
-                return
-            }
-        }
+        guard prepareReplay(reportFailure: true) else { return }
         transcribeSavedAudio()
     }
 
@@ -129,6 +121,7 @@ final class MeetingStore: NSObject, ObservableObject {
         guard canStartNewMeeting else { return }
         meetingGeneration += 1
         UIApplication.shared.isIdleTimerDisabled = false
+        interruptionNote = nil
         player?.stop()
         player = nil
         consentConfirmed = false
@@ -218,14 +211,14 @@ final class MeetingStore: NSObject, ObservableObject {
 
     /// Transcribes the saved audio after Stop. Live transcription was cut from
     /// this spike; see README.
-    func transcribeSavedAudio(preservingInterruptedState: Bool = false) {
+    func transcribeSavedAudio() {
         guard let audioURL, let folder = meetingURL, FileManager.default.fileExists(atPath: audioURL.path) else { return }
         let generation = meetingGeneration
-        if !preservingInterruptedState { recordingState = .transcribing }
+        recordingState = .transcribing
         Task {
             let transcriber = Self.makeTranscriber()
             guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-                if generation == meetingGeneration, !preservingInterruptedState { recordingState = .needsSpeechModel }
+                if generation == meetingGeneration { recordingState = .needsSpeechModel }
                 return
             }
 
@@ -256,10 +249,10 @@ final class MeetingStore: NSObject, ObservableObject {
                 // Saved to the meeting this run belongs to, even after New meeting.
                 try write(segments, to: folder.appendingPathComponent("transcript.json"))
                 if generation == meetingGeneration { transcript = segments }
-                if generation == meetingGeneration, !preservingInterruptedState { recordingState = .stopped }
+                if generation == meetingGeneration { recordingState = .stopped }
             } catch {
                 readResults.cancel()
-                if generation == meetingGeneration, !preservingInterruptedState {
+                if generation == meetingGeneration {
                     recordingState = .failed("Transcription could not finish: \(error.localizedDescription)")
                 }
             }
@@ -328,32 +321,67 @@ final class MeetingStore: NSObject, ObservableObject {
         audioSessionObservers = [
             center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
                 guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                      AVAudioSession.InterruptionType(rawValue: typeValue) == .began else { return }
+                      let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
                 Task { @MainActor [weak self] in
-                    self?.finishInterruptedRecording(reason: "a call or another app took the microphone")
+                    switch type {
+                    case .began: self?.finishInterruptedRecording(reason: "a call or another app took the microphone")
+                    // Replay could not take the audio session during the interruption.
+                    case .ended: self?.retryReplayIfNeeded()
+                    @unknown default: break
+                    }
                 }
             },
             center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.finishInterruptedRecording(reason: "the iPad’s audio system restarted")
+                    self?.recoverFromMediaServicesReset()
                 }
             },
-            center.addObserver(forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main) { [weak self] _ in
+            // .ended is not always delivered, so coming back to the app retries too.
+            center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.finishInterruptedRecording(reason: "the microphone changed")
+                    self?.retryReplayIfNeeded()
                 }
             },
         ]
+        observeEngineConfiguration()
     }
 
+    private func observeEngineConfiguration() {
+        if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
+        engineObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.finishInterruptedRecording(reason: "the microphone changed")
+            }
+        }
+    }
+
+    /// After a media-services reset every audio object is dead, so the engine
+    /// and the player are rebuilt rather than reused.
+    private func recoverFromMediaServicesReset() {
+        finishInterruptedRecording(reason: "the iPad’s audio system restarted")
+        audioEngine = AVAudioEngine()
+        observeEngineConfiguration()
+        player = nil
+        retryReplayIfNeeded()
+    }
+
+    /// An interruption ends the recording like Stop does, and the normal
+    /// after-Stop path (replay, transcription, a missing speech model, a
+    /// failure) carries on; the note says when and why it stopped.
     private func finishInterruptedRecording(reason: String) {
         guard isRecording else { return }
         let framesWritten = finishAudioCapture()
-        let message = "Recording stopped at \(Self.elapsedTime(framesWritten)) because \(reason). The audio up to then is saved."
-        recordingState = .interrupted(message)
+        interruptionNote = "Recording stopped at \(Self.elapsedTime(framesWritten)) because \(reason). The audio up to then is saved."
+        recordingState = .stopped
         guard writeExports() else { return }
-        prepareReplay(preservingInterruptedState: true)
-        transcribeSavedAudio(preservingInterruptedState: true)
+        // During a call the session cannot be reactivated; replay retries later.
+        prepareReplay(reportFailure: false)
+        transcribeSavedAudio()
+    }
+
+    private func retryReplayIfNeeded() {
+        guard player == nil, !isRecording, recordingState != .ready, audioURL != nil else { return }
+        prepareReplay(reportFailure: false)
     }
 
     @discardableResult
@@ -366,18 +394,21 @@ final class MeetingStore: NSObject, ObservableObject {
         return framesWritten
     }
 
-    private func prepareReplay(preservingInterruptedState: Bool = false) {
-        guard let audioURL else { return }
+    @discardableResult
+    private func prepareReplay(reportFailure: Bool) -> Bool {
+        guard let audioURL else { return false }
         do {
             // A record-only session cannot play the replay.
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
             player = try AVAudioPlayer(contentsOf: audioURL)
             player?.prepareToPlay()
+            return true
         } catch {
-            if !preservingInterruptedState {
+            if reportFailure {
                 recordingState = .failed("The audio was saved, but replay could not open it: \(error.localizedDescription)")
             }
+            return false
         }
     }
 
