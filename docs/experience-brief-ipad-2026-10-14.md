@@ -35,6 +35,20 @@ the only thing the operator looks at. Others at the table can see it.
 | During | Recording, for how long | Stop | Unlabeled voices in the room | Elapsed time | Write; scroll; erase; undo; stop |
 | After | Finishing, transcript ready, or needs attention | Reread; tap a note to hear it | Unlabeled until speaker labels are proven | Meeting date and length | Replay; tap a stroke to jump; edit the page; read, search, and copy the transcript; export to Files; start a new meeting |
 
+## Character
+
+Paper-first, quiet, glanceable, candid, unhurried. Paper-first: the page is the
+product, and the app is the margin around it. Candid: every state, including a
+recording that stopped, is said plainly.
+
+## Anti-goals
+
+- A notebook app with folders, covers, and paper styles.
+- A home feed: cards, tips, quotes, or anything to browse.
+- An AI product: summaries, generated titles, or suggested actions.
+- A recorder that can be recording without the screen saying so.
+- Chrome that competes with the page for the operator's eye or hand.
+
 ## What the spike already settled
 
 These came from the operator using the spike, and each one changed the build:
@@ -71,6 +85,15 @@ Checked in spike source on 2026-10-14, not on the device:
    on the page.
 5. Status is small and near its object. A full-width message is only for a
    condition that endangers the recording.
+
+## Density target
+
+- During: the page takes at least 85% of the screen in either orientation, with
+  one line of chrome above it.
+- After, in landscape: the page and at least six transcript turns are visible
+  together without scrolling either.
+- The meeting list shows at least eight meetings without scrolling in
+  landscape.
 
 ## Content strategy
 
@@ -135,10 +158,32 @@ portrait, with a finger.
   dimmed during replay and tapping it does not jump the audio; the concepts
   decide how the page shows that difference.
 
+## Object, action and state
+
+| Object | Owner | Valid actions | States | Reverse action |
+|---|---|---|---|---|
+| Meeting | Operator | Start, stop, open, export to Files, delete | Recording, finishing, transcript ready, needs attention | None for delete; export is a copy |
+| Page and strokes | Operator | Write, erase, undo, scroll, tap a stroke to replay | Timed (written while recording), added after Stop, dimmed during replay | Undo |
+| Audio | The iPad, for the chosen keep period | Play, pause, seek | Kept, released when the keep period ends | None; released audio is gone |
+| Transcript | On-device speech | Read, search, copy, export | Finishing, transcript ready, needs attention (no speech model, or failed) | Transcribe again |
+| Consent | Operator, stated to the room | Confirm before recording | Not confirmed, confirmed with the meeting | None; it is part of the meeting's record |
+
+## Surfaces
+
+- Meeting list
+- Before: the consent and keep-period step
+- During: the page while recording
+- After: the page with replay and the transcript
+- Needs attention: an interrupted recording
+- First run: no meetings yet
+- Export to Files
+
 ## Representative states for the concept comparison (§ 2c)
 
-Each of the three concepts renders these four, in landscape, light and dark;
-state 2 also in portrait:
+Each of the three concepts renders these six, in landscape, light and dark;
+state 2 also in portrait. The blind cold review of the current product that a
+rethink normally starts with does not apply: no iPad product has shipped, and
+the spike is a research harness.
 
 1. **Before:** three past meetings in the list, nothing recording, the consent
    step open.
@@ -148,6 +193,18 @@ state 2 also in portrait:
    tapped, the transcript turn at that moment visible.
 4. **Needs attention:** the recording was interrupted (the screen locked or a
    call came in), the audio up to that point kept, and one clear next action.
+5. **First run:** no meetings yet, which tests what the app opens to.
+6. **Meeting list:** today's meeting and three earlier ones, so each concept's
+   list is judged with meetings in it.
+
+Pruned from the pattern's canonical set, with the reason:
+
+- Changed by source: nothing outside the iPad changes a meeting.
+- Largest text and increased contrast: checked on the selected concept, not
+  across all three.
+- Dense: the long page in state 2 is the dense case; a long meeting list is
+  checked on the selected concept.
+- Upcoming: there is no calendar, so nothing is upcoming.
 
 ## Provenance
 
