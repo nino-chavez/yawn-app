@@ -12,6 +12,7 @@ final class MeetingStore: NSObject, ObservableObject {
         case stopped
         case transcribing
         case needsSpeechModel
+        case interrupted(String)
         case failed(String)
     }
 
@@ -31,6 +32,7 @@ final class MeetingStore: NSObject, ObservableObject {
     private var audioURL: URL?
     private var recordingStartedAt: Date?
     private var player: AVAudioPlayer?
+    private var audioSessionObservers: [NSObjectProtocol] = []
     /// Bumped by New meeting. A transcription run that outlives its meeting
     /// still saves to that meeting's folder but no longer touches the screen.
     private var meetingGeneration = 0
@@ -39,6 +41,7 @@ final class MeetingStore: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        registerAudioSessionObservers()
         removeExpiredAudio()
         Task { await refreshSpeechModelStatus() }
     }
@@ -65,7 +68,7 @@ final class MeetingStore: NSObject, ObservableObject {
 
     var canStartNewMeeting: Bool {
         switch recordingState {
-        case .stopped, .needsSpeechModel, .failed: true
+        case .stopped, .needsSpeechModel, .interrupted, .failed: true
         case .ready, .recording, .transcribing: false
         }
     }
@@ -89,6 +92,7 @@ final class MeetingStore: NSObject, ObservableObject {
         guard canStart, let keepDays else { return }
         Task {
             guard await AVAudioApplication.requestRecordPermission() else {
+                UIApplication.shared.isIdleTimerDisabled = false
                 recordingState = .failed("Microphone access was not allowed.")
                 return
             }
@@ -98,9 +102,7 @@ final class MeetingStore: NSObject, ObservableObject {
 
     func stopRecording() {
         guard isRecording else { return }
-        audioEngine.inputNode.removeTap(onBus: 0)
-        audioEngine.stop()
-        audioFile = nil
+        finishAudioCapture()
         recordingState = .stopped
         // A failed save stays on screen; replay and transcription would hide it.
         guard writeExports() else { return }
@@ -125,6 +127,7 @@ final class MeetingStore: NSObject, ObservableObject {
     func startNewMeeting() {
         guard canStartNewMeeting else { return }
         meetingGeneration += 1
+        UIApplication.shared.isIdleTimerDisabled = false
         player?.stop()
         player = nil
         consentConfirmed = false
@@ -213,14 +216,14 @@ final class MeetingStore: NSObject, ObservableObject {
 
     /// Transcribes the saved audio after Stop. Live transcription was cut from
     /// this spike; see README.
-    func transcribeSavedAudio() {
+    func transcribeSavedAudio(preservingInterruptedState: Bool = false) {
         guard let audioURL, let folder = meetingURL, FileManager.default.fileExists(atPath: audioURL.path) else { return }
         let generation = meetingGeneration
-        recordingState = .transcribing
+        if !preservingInterruptedState { recordingState = .transcribing }
         Task {
             let transcriber = Self.makeTranscriber()
             guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-                if generation == meetingGeneration { recordingState = .needsSpeechModel }
+                if generation == meetingGeneration, !preservingInterruptedState { recordingState = .needsSpeechModel }
                 return
             }
 
@@ -251,10 +254,10 @@ final class MeetingStore: NSObject, ObservableObject {
                 // Saved to the meeting this run belongs to, even after New meeting.
                 try write(segments, to: folder.appendingPathComponent("transcript.json"))
                 if generation == meetingGeneration { transcript = segments }
-                if generation == meetingGeneration { recordingState = .stopped }
+                if generation == meetingGeneration, !preservingInterruptedState { recordingState = .stopped }
             } catch {
                 readResults.cancel()
-                if generation == meetingGeneration {
+                if generation == meetingGeneration, !preservingInterruptedState {
                     recordingState = .failed("Transcription could not finish: \(error.localizedDescription)")
                 }
             }
@@ -306,14 +309,78 @@ final class MeetingStore: NSObject, ObservableObject {
             audioURL = destination
             audioFile = file
             recordingStartedAt = startedAt
+            UIApplication.shared.isIdleTimerDisabled = true
             recordingState = .recording
         } catch {
             audioEngine.inputNode.removeTap(onBus: 0)
             audioEngine.stop()
+            UIApplication.shared.isIdleTimerDisabled = false
             // A meeting that never started keeps no audio behind.
             if let folder { try? FileManager.default.removeItem(at: folder) }
             recordingState = .failed("Recording could not start: \(error.localizedDescription)")
         }
+    }
+
+    private func registerAudioSessionObservers() {
+        let center = NotificationCenter.default
+        audioSessionObservers = [
+            center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
+                guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      AVAudioSession.InterruptionType(rawValue: typeValue) == .began else { return }
+                Task { @MainActor [weak self] in
+                    self?.finishInterruptedRecording(reason: "a call or another app took the microphone")
+                }
+            },
+            center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.finishInterruptedRecording(reason: "the iPad’s audio system restarted")
+                }
+            },
+            center.addObserver(forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.finishInterruptedRecording(reason: "the microphone changed")
+                }
+            },
+        ]
+    }
+
+    private func finishInterruptedRecording(reason: String) {
+        guard isRecording else { return }
+        let framesWritten = finishAudioCapture()
+        let message = "Recording stopped at \(Self.elapsedTime(framesWritten)) because \(reason). The audio up to then is saved."
+        recordingState = .interrupted(message)
+        guard writeExports() else { return }
+        prepareReplay(preservingInterruptedState: true)
+        transcribeSavedAudio(preservingInterruptedState: true)
+    }
+
+    private func finishAudioCapture() -> AVAudioFramePosition {
+        audioEngine.inputNode.removeTap(onBus: 0)
+        audioEngine.stop()
+        let framesWritten = audioFile?.length ?? 0
+        audioFile = nil
+        UIApplication.shared.isIdleTimerDisabled = false
+        return framesWritten
+    }
+
+    private func prepareReplay(preservingInterruptedState: Bool = false) {
+        guard let audioURL else { return }
+        do {
+            // A record-only session cannot play the replay.
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            player = try AVAudioPlayer(contentsOf: audioURL)
+            player?.prepareToPlay()
+        } catch {
+            if !preservingInterruptedState {
+                recordingState = .failed("The audio was saved, but replay could not open it: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private static func elapsedTime(_ framesWritten: AVAudioFramePosition) -> String {
+        let seconds = max(0, Int(framesWritten / AVAudioFramePosition(fileSampleRate)))
+        return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
     }
 
     /// Built outside the main actor: the engine calls the tap on its audio

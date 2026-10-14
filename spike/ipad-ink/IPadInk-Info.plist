@@ -5,5 +5,10 @@
 	<!-- Not a generated-Info.plist key; without it the meetings folder is absent from Files. -->
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<!-- Lets an active meeting continue while the iPad is locked. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

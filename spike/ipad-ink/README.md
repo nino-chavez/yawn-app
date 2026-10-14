@@ -58,6 +58,15 @@ cannot establish Apple Pencil latency, a real microphone recording, the local
 speech model’s availability or download, or device replay behavior. Those need
 an iPad review.
 
+## Recording through a meeting
+
+While recording, the app keeps the iPad screen awake. Its audio background mode
+means locking the screen keeps the recording running. If a call, another app,
+an audio-system restart, or a microphone change interrupts recording, the app
+stops, saves the audio and ink already captured, and says why and when it
+stopped. It does not resume automatically. None of this has been checked on an
+iPad yet.
+
 ## Writing on the page
 
 The page grows as you write: there is always room below the lowest stroke, so

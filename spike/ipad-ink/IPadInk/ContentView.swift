@@ -101,6 +101,7 @@ struct ContentView: View {
         case .stopped: "Recording stopped. Audio, strokes, transcript, and drawing are in this meeting’s Files folder."
         case .transcribing: "Transcribing the saved audio on this iPad. Results may still change."
         case .needsSpeechModel: "The recording is saved. Install Apple’s on-device speech model to transcribe it."
+        case .interrupted(let message): "Needs attention: \(message)"
         case .failed(let message): message
         }
     }
