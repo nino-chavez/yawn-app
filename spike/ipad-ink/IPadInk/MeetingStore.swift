@@ -354,6 +354,7 @@ final class MeetingStore: NSObject, ObservableObject {
         transcribeSavedAudio(preservingInterruptedState: true)
     }
 
+    @discardableResult
     private func finishAudioCapture() -> AVAudioFramePosition {
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()

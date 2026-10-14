@@ -60,7 +60,7 @@ struct ContentView: View {
                             .buttonStyle(.bordered)
                     }
                     if store.recordingState == .needsSpeechModel, !store.speechModelInstallable {
-                        Button("Transcribe", action: store.transcribeSavedAudio)
+                        Button("Transcribe") { store.transcribeSavedAudio() }
                             .buttonStyle(.bordered)
                     }
                     Spacer(minLength: 0)
