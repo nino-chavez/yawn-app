@@ -53,9 +53,12 @@ struct ToolCluster: View {
     }
 }
 
+/// The consent and keep-period choices. Both start unmade, and Record stays
+/// off until both are made (product brief: recording starts only after the
+/// operator confirms consent).
 struct ConsentFields: View {
-    @State private var agreed = true
-    @State private var keep: KeepPeriod? = .seven
+    @Binding var agreed: Bool
+    @Binding var keep: KeepPeriod?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -81,6 +84,7 @@ struct ConsentFields: View {
 struct RecordButton: View {
     var title = "Record"
     var large = false
+    var enabled = true
     var body: some View {
         Button { } label: {
             Label(title, systemImage: "record.circle")
@@ -91,6 +95,7 @@ struct RecordButton: View {
         .buttonStyle(.borderedProminent)
         .tint(.red)
         .controlSize(large ? .large : .regular)
+        .disabled(!enabled)
     }
 }
 

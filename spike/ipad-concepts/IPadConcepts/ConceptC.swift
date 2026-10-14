@@ -6,6 +6,9 @@ import SwiftUI
 /// written at that moment.
 struct ConceptC: View {
     let state: ConceptState
+    @State private var agreed = false
+    @State private var keep: KeepPeriod?
+    @State private var showFullTranscript = false
 
     var body: some View {
         switch state {
@@ -85,8 +88,8 @@ struct ConceptC: View {
             Text("Before you record").font(.largeTitle.weight(.bold))
             Text("Say out loud that you're recording, and check that everyone in the room is okay with it.")
                 .font(.body).foregroundStyle(.secondary)
-            ConsentFields()
-            RecordButton(title: "Start recording", large: true)
+            ConsentFields(agreed: $agreed, keep: $keep)
+            RecordButton(title: "Start recording", large: true, enabled: agreed && keep != nil)
             Button("Not now") { }.frame(maxWidth: .infinity)
         }
         .padding(36)
@@ -118,6 +121,14 @@ struct ConceptC: View {
             }
         }
         .background(Color(.systemBackground))
+        .sheet(isPresented: $showFullTranscript) {
+            NavigationStack {
+                TranscriptList(playhead: Mock.pausedSeconds)
+                    .navigationTitle("Transcript")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showFullTranscript = false } } }
+            }
+        }
     }
 
     private var topBar: some View {
@@ -140,6 +151,7 @@ struct ConceptC: View {
                 case .during: StopButton()
                 case .after:
                     ToolCluster()
+                    Button { showFullTranscript = true } label: { Image(systemName: "text.quote") }.font(.title3).accessibilityLabel("Full transcript")
                     Button { } label: { Image(systemName: "magnifyingglass") }.font(.title3).accessibilityLabel("Search the transcript")
                     Button { } label: { Image(systemName: "square.and.arrow.up") }.font(.title3).accessibilityLabel("Export to Files")
                 default:

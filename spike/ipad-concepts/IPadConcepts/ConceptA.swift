@@ -7,6 +7,8 @@ struct ConceptA: View {
     @State private var columns: NavigationSplitViewVisibility
     @State private var showConsent: Bool
     @State private var showTranscript: Bool
+    @State private var agreed = false
+    @State private var keep: KeepPeriod?
 
     init(state: ConceptState) {
         self.state = state
@@ -178,14 +180,14 @@ struct ConceptA: View {
 
     private var consentSheet: some View {
         NavigationStack {
-            ConsentFields()
+            ConsentFields(agreed: $agreed, keep: $keep)
                 .padding(28)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .navigationTitle("Before you record")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showConsent = false } }
-                    ToolbarItem(placement: .confirmationAction) { RecordButton() }
+                    ToolbarItem(placement: .confirmationAction) { RecordButton(enabled: agreed && keep != nil) }
                 }
         }
         .presentationDetents([.medium])

@@ -5,6 +5,8 @@ import SwiftUI
 /// Meetings button; after Stop the transcript is a ribbon under the page.
 struct ConceptB: View {
     let state: ConceptState
+    @State private var agreed = false
+    @State private var keep: KeepPeriod?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -156,11 +158,11 @@ struct ConceptB: View {
 
     private var consentCard: some View {
         VStack(alignment: .leading, spacing: 20) {
-            ConsentFields()
+            ConsentFields(agreed: $agreed, keep: $keep)
             HStack {
                 Button("Cancel") { }
                 Spacer()
-                RecordButton(title: "Start recording")
+                RecordButton(title: "Start recording", enabled: agreed && keep != nil)
             }
         }
         .padding(24)
