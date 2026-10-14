@@ -81,14 +81,6 @@ cargo test -p local-meeting-notes-desktop
 | Package, install, or publish a release | [deployment guide](./DEPLOYMENT.md) |
 | Inspect packaging evidence and release history | [distribution runbook](./docs/distribution-runbook.md) |
 
-## iPad Ink spike: erase and undo
-
-The iPad Ink research spike keys each stroke by its PencilKit path creation time
-and random seed. The vector eraser removes whole strokes, while undo and redo
-restore the same keys, so the saved stroke timing remains attached to the right
-stroke. `strokes.json` remains the same position-indexed export beside
-`drawing.data`. On iPadOS 27, `PKStroke.strokeID` can replace this key.
-
 ## Evidence and deeper reading
 
 - [Product brief](./docs/product-brief.md) — the current product contract and

@@ -76,6 +76,17 @@ writes and one finger also scrolls; the app rechecks that setting each time it
 comes back to the front. Replay and the transcript sit beside the page in
 landscape and below it in portrait.
 
+## Erase and undo
+
+The spike keys each stroke by its PencilKit path creation time
+and random seed. The vector eraser removes whole strokes, while undo and redo
+restore the same keys, so the saved stroke timing remains attached to the right
+stroke. `strokes.json` remains the same position-indexed export beside
+`drawing.data`. On iPadOS 27, `PKStroke.strokeID` can replace this key.
+
+The pen, eraser, undo and redo buttons sit above the page, so they never cover
+writing.
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.

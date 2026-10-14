@@ -32,6 +32,7 @@ final class GrowingCanvasView: PKCanvasView {
     }
 }
 
+@MainActor
 final class PencilCanvasController: ObservableObject {
     fileprivate weak var canvas: PKCanvasView?
 
@@ -141,6 +142,9 @@ struct PencilCanvas: UIViewRepresentable {
             let cleared = drawing.strokes.count < canvas.drawing.strokes.count
             applyingDrawing = true
             canvas.drawing = drawing
+            // A drawing set from the store (New meeting, replay) starts a fresh
+            // history, so Undo cannot bring back another meeting's strokes.
+            canvas.undoManager?.removeAllActions()
             applyingDrawing = false
             canvas.fitContentToDrawing()
             if cleared {
