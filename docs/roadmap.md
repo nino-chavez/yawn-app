@@ -35,8 +35,9 @@ and the transcript arrives after Stop.
    matches stroke records to the drawing by position, so either one breaks the
    timing), a list of past meetings, and a transcript that does not wait for
    Stop.
-3. **Design as a new surface.** An experience brief with the iPad platform
-   strategy; comparables (Mobbin's iPhone screens, first pass in
+3. **Design as a new surface.** An
+   [experience brief](experience-brief-ipad-2026-10-14.md) with the iPad
+   platform strategy; comparables (Mobbin's iPhone screens, first pass in
    [evidence](evidence/comparables-ipad-ink-audio-2026-10-13.md), plus
    captures of Goodnotes or Notability running on the iPad); three divergent whole-screen concepts on
    the same states; a selection record; the build; a cold review of iPad
