@@ -60,6 +60,21 @@ Renditions: `Default`, `Dark`, `TintedLight`, `TintedDark`, `ClearLight`,
 renders exactly (RMSE 0), so per-look PNGs are not stored; each concept keeps
 its strip and small-size sheet.
 
+## Revision, 2026-10-14: B2 and C2
+
+The operator set A aside ("doesn't make sense") and narrowed the pick to B or
+C, reading C as writing on a timeline, which is its intent. C was read as a
+slider (one knob on a line) and its stroke as a cursive "e"; B's stroke read as
+"lm". [`comparison-revision.png`](comparison-revision.png) shows the revision:
+
+- [C2](C2/README.md): five marks on the rail, one emphasized, with a short line
+  of loose finger writing in B's ink style running off the emphasized mark.
+- [B2](B2/README.md): the same icon with the rail removed and the writing
+  centered, so the two differ only in the rail.
+
+Both still show a faint "n" and "e" in the stroke at 167 px. C2's rail of
+marks with a line running off it can also read as a chart axis.
+
 ## Selection
 
 Pending the operator's pick. It will be recorded under `decisions/`, with what
