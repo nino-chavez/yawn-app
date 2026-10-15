@@ -48,5 +48,8 @@ The concepts, renders and comparison sheets are in
   `IPadInk/AppIcon.icon`. Its display name stays "iPad Ink".
 - The Mac app's `icon.png` is still the screenshot of the retired landing
   page. Using C2, or a variant of it, on the Mac is a separate decision.
-- Open: a screenshot of the operator's iPad home screen with the icon beside
-  its neighbors, which is the appearance check this decision still owes.
+- Checked on the device 2026-10-15: a home-screen screenshot and a cold review
+  ([record](../docs/evidence/screen-reviews/ipad-icon-home-screen-2026-10-15-cold.md)).
+  It reads as a handwriting or notes app and no letters were read. The rail is
+  faint at home-screen size; thickening it is a candidate revision awaiting the
+  operator.
