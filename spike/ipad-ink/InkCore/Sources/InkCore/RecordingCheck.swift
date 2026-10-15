@@ -55,13 +55,17 @@ public struct RecordingCheck: Codable, Equatable, Sendable {
     public let requestedMode: String
     public let session: RecordingSessionState
     public let durationSeconds: Double
+    /// Times capture restarted in place after the microphone reconfigured
+    /// without changing (voice processing does this right after start).
+    public let engineRestarts: Int
     public let level: LevelSummary
 
-    public init(requestedMode: String, session: RecordingSessionState, durationSeconds: Double, level: LevelSummary) {
+    public init(requestedMode: String, session: RecordingSessionState, durationSeconds: Double, engineRestarts: Int, level: LevelSummary) {
         schema = "ipad-ink-recording-check/1"
         self.requestedMode = requestedMode
         self.session = session
         self.durationSeconds = durationSeconds
+        self.engineRestarts = engineRestarts
         self.level = level
     }
 
@@ -70,6 +74,7 @@ public struct RecordingCheck: Codable, Equatable, Sendable {
         case requestedMode = "requested_mode"
         case session
         case durationSeconds = "duration_seconds"
+        case engineRestarts = "engine_restarts"
         case level
     }
 }

@@ -7,6 +7,9 @@ import Synchronization
 /// mode test".
 enum MicrophoneMode: String, CaseIterable, Identifiable, Sendable {
     case measurement
+    /// Measurement with the input gain raised from the system's 0.5 to 1. Added
+    /// after round one showed the gain is settable on this iPad.
+    case measurementFullGain = "measurement_full_gain"
     case standard = "default"
     case videoRecording = "video_recording"
     case voiceProcessing = "voice_processing"
@@ -16,6 +19,7 @@ enum MicrophoneMode: String, CaseIterable, Identifiable, Sendable {
     var label: String {
         switch self {
         case .measurement: "Measurement"
+        case .measurementFullGain: "Measurement, full input gain"
         case .standard: "Default"
         case .videoRecording: "Video recording"
         case .voiceProcessing: "Voice processing"
@@ -30,7 +34,7 @@ enum MicrophoneMode: String, CaseIterable, Identifiable, Sendable {
 
     var sessionMode: AVAudioSession.Mode {
         switch self {
-        case .measurement: .measurement
+        case .measurement, .measurementFullGain: .measurement
         case .standard: .default
         case .videoRecording: .videoRecording
         case .voiceProcessing: .voiceChat
