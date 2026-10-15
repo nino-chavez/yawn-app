@@ -34,6 +34,7 @@ struct ContentView: View {
             .task { await store.refreshSpeechModelStatus() }
             .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
                 store.refreshPlaybackTime()
+                store.refreshInputLevel()
             }
         }
     }
@@ -67,6 +68,7 @@ struct ContentView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                microphoneModePicker
                 stateText
                 HStack(spacing: 8) {
                     Text(store.speechModelStatus)
@@ -96,7 +98,61 @@ struct ContentView: View {
             Text(stateDescription)
                 .font(.footnote)
                 .foregroundStyle(isFailed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+            if store.isRecording {
+                levelMeter
+            }
+            if let check = store.lastRecordingCheck {
+                Text(Self.checkSummary(check))
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    /// A test control. Measurement is the default and what every earlier
+    /// recording used.
+    private var microphoneModePicker: some View {
+        HStack(spacing: 4) {
+            Text("Microphone (test)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("Microphone mode (test)", selection: $store.microphoneMode) {
+                ForEach(MicrophoneMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            Spacer(minLength: 0)
+        }
+        .disabled(store.recordingState != .ready)
+    }
+
+    private var levelMeter: some View {
+        let level = store.inputLevel ?? LevelAccumulator.floorDBFS
+        return HStack(spacing: 8) {
+            Text("Input level")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            ProgressView(value: min(1, max(0, (level + 60) / 60)))
+                .frame(width: 220)
+                .accessibilityLabel("Input level")
+                .accessibilityValue("\(Int(level.rounded())) decibels")
+            Text(level <= -60 ? "below −60 dB" : "\(Int(level.rounded())) dB")
+                .font(.footnote.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    static func checkSummary(_ check: RecordingCheck) -> String {
+        let level = check.level
+        let mode = MicrophoneMode(rawValue: check.requestedMode)?.label ?? check.requestedMode
+        let actual = check.session.mode.replacingOccurrences(of: "AVAudioSessionMode", with: "")
+        let processing = check.session.voiceProcessing ? ", voice processing on" : ""
+        func db(_ value: Double) -> String { String(format: "%.1f", value) }
+        return "Microphone test, \(mode) (session: \(actual)\(processing)): speech \(db(level.windowRMSP90DBFS)) dB, "
+            + "background \(db(level.windowRMSP10DBFS)) dB, gap \(db(level.speechMinusNoiseDB)) dB, "
+            + "peak \(db(level.peakDBFS)) dB, \(level.clippedSamples) clipped samples. Saved as recording-check.json."
     }
 
     private var isFailed: Bool {

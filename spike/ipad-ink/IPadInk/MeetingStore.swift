@@ -27,6 +27,13 @@ final class MeetingStore: NSObject, ObservableObject {
     /// Set when something other than Stop ended the recording. It stays on
     /// screen beside the normal after-Stop states until New meeting.
     @Published private(set) var interruptionNote: String?
+    /// Test control, see MicrophoneTest.swift. Changing it applies to the next
+    /// recording only.
+    @Published var microphoneMode: MicrophoneMode = .measurement
+    /// The last 100 ms window's level while recording, in dBFS.
+    @Published private(set) var inputLevel: Double?
+    /// What the last recording's microphone test measured, shown after Stop.
+    @Published private(set) var lastRecordingCheck: RecordingCheck?
 
     private var audioEngine = AVAudioEngine()
     private var audioFile: AVAudioFile?
@@ -37,6 +44,9 @@ final class MeetingStore: NSObject, ObservableObject {
     private var player: AVAudioPlayer?
     private var audioSessionObservers: [NSObjectProtocol] = []
     private var engineObserver: NSObjectProtocol?
+    private let levelMeter = LevelMeter()
+    private var recordingMode: MicrophoneMode = .measurement
+    private var recordingSession: RecordingSessionState?
     /// Bumped by New meeting. A transcription run that outlives its meeting
     /// still saves to that meeting's folder but no longer touches the screen.
     private var meetingGeneration = 0
@@ -122,6 +132,8 @@ final class MeetingStore: NSObject, ObservableObject {
         meetingGeneration += 1
         UIApplication.shared.isIdleTimerDisabled = false
         interruptionNote = nil
+        lastRecordingCheck = nil
+        inputLevel = nil
         player?.stop()
         player = nil
         consentConfirmed = false
@@ -266,10 +278,20 @@ final class MeetingStore: NSObject, ObservableObject {
     private func beginRecording(keepDays: Int) {
         var folder: URL?
         do {
-            // Measurement mode turns off voice processing so the room is
-            // recorded as the microphone hears it.
-            try AVAudioSession.sharedInstance().setCategory(.record, mode: .measurement)
+            // Measurement mode keeps system processing to a minimum so the room
+            // is recorded as the microphone hears it; the other modes are a test.
+            let mode = microphoneMode
+            try AVAudioSession.sharedInstance().setCategory(mode.category, mode: mode.sessionMode)
             try AVAudioSession.sharedInstance().setActive(true)
+            // A fresh engine per recording: voice processing belongs to the
+            // engine's I/O unit and must not carry into the next recording.
+            audioEngine = AVAudioEngine()
+            observeEngineConfiguration()
+            if mode == .voiceProcessing {
+                try audioEngine.inputNode.setVoiceProcessingEnabled(true)
+                // The voice-processing unit runs only with its output in the graph.
+                _ = audioEngine.mainMixerNode
+            }
 
             let meetingFolder = try makeMeetingFolder()
             folder = meetingFolder
@@ -296,9 +318,12 @@ final class MeetingStore: NSObject, ObservableObject {
             guard let converter = AVAudioConverter(from: inputFormat, to: file.processingFormat) else {
                 throw CocoaError(.featureUnsupported)
             }
-            input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat, block: Self.makeTapBlock(file: file, converter: converter))
+            levelMeter.reset()
+            input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat, block: Self.makeTapBlock(file: file, converter: converter, meter: levelMeter))
             audioEngine.prepare()
             try audioEngine.start()
+            recordingMode = mode
+            recordingSession = RecordingSessionState.current(engine: audioEngine)
 
             meetingURL = meetingFolder
             audioURL = destination
@@ -350,7 +375,11 @@ final class MeetingStore: NSObject, ObservableObject {
         if let engineObserver { NotificationCenter.default.removeObserver(engineObserver) }
         engineObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.finishInterruptedRecording(reason: "the microphone changed")
+                // A real hardware change stops the engine. One that leaves it
+                // running, such as turning voice processing on before start,
+                // has not interrupted anything.
+                guard let self, !self.audioEngine.isRunning else { return }
+                self.finishInterruptedRecording(reason: "the microphone changed")
             }
         }
     }
@@ -388,9 +417,14 @@ final class MeetingStore: NSObject, ObservableObject {
     private func finishAudioCapture() -> AVAudioFramePosition {
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
+        if audioEngine.inputNode.isVoiceProcessingEnabled {
+            try? audioEngine.inputNode.setVoiceProcessingEnabled(false)
+        }
         let framesWritten = audioFile?.length ?? 0
         audioFile = nil
         UIApplication.shared.isIdleTimerDisabled = false
+        inputLevel = nil
+        saveRecordingCheck(framesWritten: framesWritten)
         return framesWritten
     }
 
@@ -419,7 +453,7 @@ final class MeetingStore: NSObject, ObservableObject {
 
     /// Built outside the main actor: the engine calls the tap on its audio
     /// thread, and a main-actor closure would trap there under Swift 6.
-    nonisolated private static func makeTapBlock(file: AVAudioFile, converter: AVAudioConverter) -> AVAudioNodeTapBlock {
+    nonisolated private static func makeTapBlock(file: AVAudioFile, converter: AVAudioConverter, meter: LevelMeter) -> AVAudioNodeTapBlock {
         let outputFormat = converter.outputFormat
         return { buffer, _ in
             let ratio = outputFormat.sampleRate / buffer.format.sampleRate
@@ -438,8 +472,29 @@ final class MeetingStore: NSObject, ObservableObject {
             }
             if error == nil, converted.frameLength > 0 {
                 try? file.write(from: converted)
+                meter.add(converted)
             }
         }
+    }
+
+    func refreshInputLevel() {
+        guard isRecording else { return }
+        inputLevel = levelMeter.latestWindowRMS
+    }
+
+    /// recording-check.json beside the audio: the requested mode, the session
+    /// the system actually gave, and the level of what was written.
+    private func saveRecordingCheck(framesWritten: AVAudioFramePosition) {
+        guard let meetingURL, let recordingSession else { return }
+        let check = RecordingCheck(
+            requestedMode: recordingMode.rawValue,
+            session: recordingSession,
+            durationSeconds: Double(framesWritten) / Self.fileSampleRate,
+            level: levelMeter.summary
+        )
+        lastRecordingCheck = check
+        self.recordingSession = nil
+        try? write(check, to: meetingURL.appendingPathComponent("recording-check.json"))
     }
 
     private func merge(_ segment: TranscriptSegment) {

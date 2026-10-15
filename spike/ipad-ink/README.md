@@ -102,6 +102,59 @@ writing.
 `IPadInk` folder includes the file without a project entry. Why C2:
 [`decisions/ipad-icon-selection-2026-10-14.md`](../../decisions/ipad-icon-selection-2026-10-14.md).
 
+## Microphone mode test
+
+The first table recording sat about 25 dB below a normal speech level. The app
+records in `AVAudioSession` mode `.measurement`, which Apple documents as
+minimizing system-supplied signal processing and disabling some dynamics
+processing. The **Microphone (test)** menu beside the keep period picks the
+mode for the next recording. Measurement stays the default.
+
+| Menu | Session | What Apple says it does |
+|---|---|---|
+| Measurement | `.record`, `.measurement` | Minimal system processing; primary microphone |
+| Default | `.record`, `.default` | No stated processing |
+| Video recording | `.record`, `.videoRecording` | "Appropriate audio-signal processing"; the microphone closest to the camera |
+| Voice processing | `.playAndRecord`, `.voiceChat`, voice processing on the input node | Automatic gain correction and voice processing, tuned for a near talker |
+
+While recording, an input-level bar shows the last 100 ms window in dBFS.
+After Stop, the screen shows the take's numbers. The app also saves
+`recording-check.json` beside the audio. It holds the requested mode, the
+session the system actually configured, read back after start (category, mode,
+voice processing, input port, data source, polar pattern, input gain), and level
+statistics of the 16 kHz audio that was written. Those statistics are RMS, peak,
+the 10th, 50th and 90th percentiles of 100 ms window levels, speech minus noise
+(p90 minus p10), and the number of clipped samples. The file holds no audio and
+no words.
+
+**The test.** Every take records the same known source, so the takes differ
+only in the mode:
+
+1. Put the iPad where the operator sits. Put the Mac's speaker where the other
+   person would sit, about a table's width away, and leave the Mac's volume
+   alone for the whole test.
+2. Run `python3 spike/speech-engine-comparison/ipad_mic_ab.py play --scratch
+   <a folder outside the repo>`. It speaks the opening of the Gettysburg Address
+   once per take, waiting for Enter, and warns if the volume changed.
+3. Make five takes, in this order: measurement, default, video recording, voice
+   processing, measurement. For each, choose the mode, tick consent, keep 1
+   day, tap Start recording, press Enter on the Mac, and tap Stop recording when
+   the passage ends. Wait for the transcript before the next take.
+4. Pull the meetings to the Mac, then run `ipad_mic_ab.py score <meeting
+   folders>`. Delete the Mac copies after scoring.
+
+**Ranking rule, fixed before the takes.** Rank by word recall of the passage
+in the app's own transcript, and break ties by speech minus noise. A mode is
+out if it clips, or if it recalls fewer words than measurement does. Loudness
+alone decides nothing, because software gain can raise any take. The two
+measurement takes check the setup: if their recall differs by more than 5
+points, or their speech level by more than 2 dB, the setup drifted and the run
+is repeated. A voice-processing take that lingered would also show up as a
+mismatch in the last measurement take.
+
+Limits: one speaker, a synthetic voice, one room, one distance. A real second
+person's voice and a longer meeting are the next test, not this one.
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.
