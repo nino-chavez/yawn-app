@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- An oval opening whose weight settles toward the bottom, leaning back 12 degrees.
+       Outline: egg, 434 wide, 714 tall. Opening: egg, 220 wide, 424 tall, set high so the
+       rim is thin at the top and heavy at the bottom. Even-odd fill cuts the opening. -->
+  <g transform="translate(0 -9) rotate(-12 512 512)">
+    <path fill="#6855a9" fill-rule="evenodd"
+      d="M295 520 A217 373 0 0 1 729 520 A217 341 0 0 1 295 520 Z
+         M402 436 A110 242 0 0 1 622 436 A110 182 0 0 1 402 436 Z"/>
+  </g>
+</svg>
