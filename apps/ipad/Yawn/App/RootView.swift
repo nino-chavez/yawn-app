@@ -1,15 +1,19 @@
 import SwiftUI
 
 /// The page is the screen. Past meetings live in a sidebar beside it
-/// (concept selection, change 2), collapsed while there are none to show.
+/// (concept selection, change 2), hidden while recording.
 struct RootView: View {
+    @StateObject private var recorder = MeetingRecorder()
     @State private var columns: NavigationSplitViewVisibility = .detailOnly
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            MeetingSidebar()
+            MeetingSidebar(meetings: recorder.meetings)
         } detail: {
-            PageScreen()
+            PageScreen(recorder: recorder)
+        }
+        .onChange(of: recorder.isRecording) { _, recording in
+            if recording { columns = .detailOnly }
         }
     }
 }

@@ -322,3 +322,82 @@ func replayChunkedWAVMatchesWhole() {
     ReplayBoost.appendSamples(Array(samples[2...]), to: &chunked)
     #expect(chunked == ReplayBoost.wavData(samples, sampleRate: 16_000))
 }
+
+private func scratchFolder() throws -> URL {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("inkcore-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+private func makeMeeting(in meetings: URL, id: String = UUID().uuidString, createdAt: Date, keepDays: Int) throws -> URL {
+    let folder = meetings.appendingPathComponent(id, isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    try MeetingExportEncoder.data(for: MeetingExport(createdAt: createdAt, consentEveryoneAudible: true, keepDays: keepDays, audioSampleRate: 16_000))
+        .write(to: folder.appendingPathComponent("meeting.json"))
+    try Data([1, 2, 3]).write(to: folder.appendingPathComponent("audio.wav"))
+    try Data([4]).write(to: folder.appendingPathComponent("transcript.json"))
+    return folder
+}
+
+@Test("the sweep deletes expired audio only and keeps the transcript")
+func ledgerSweepDeletesExpiredAudioOnly() throws {
+    let root = try scratchFolder()
+    let meetings = root.appendingPathComponent("meetings")
+    let now = Date(timeIntervalSince1970: 2_000_000_000)
+    let expired = try makeMeeting(in: meetings, createdAt: now.addingTimeInterval(-2 * 86_400), keepDays: 1)
+    let kept = try makeMeeting(in: meetings, createdAt: now.addingTimeInterval(-3_600), keepDays: 1)
+    let ledger = RetentionLedger(ledgerURL: root.appendingPathComponent("support/retention-ledger.json"), meetingsFolder: meetings)
+    try ledger.record(.init(meetingID: expired.lastPathComponent, createdAt: now.addingTimeInterval(-2 * 86_400), keepDays: 1))
+    try ledger.record(.init(meetingID: kept.lastPathComponent, createdAt: now.addingTimeInterval(-3_600), keepDays: 1))
+
+    #expect(try ledger.sweep(now: now) == [expired.lastPathComponent])
+    #expect(!FileManager.default.fileExists(atPath: expired.appendingPathComponent("audio.wav").path))
+    #expect(FileManager.default.fileExists(atPath: expired.appendingPathComponent("transcript.json").path))
+    #expect(FileManager.default.fileExists(atPath: kept.appendingPathComponent("audio.wav").path))
+}
+
+@Test("a missing ledger is rebuilt from meeting.json, and edited bad data deletes sooner")
+func ledgerRebuildsFromMeetings() throws {
+    let root = try scratchFolder()
+    let meetings = root.appendingPathComponent("meetings")
+    let now = Date(timeIntervalSince1970: 2_000_000_000)
+    // keep_days edited to 99 in Files reads as 1; a future date reads as now.
+    let edited = try makeMeeting(in: meetings, createdAt: now.addingTimeInterval(-2 * 86_400), keepDays: 99)
+    let future = try makeMeeting(in: meetings, createdAt: now.addingTimeInterval(30 * 86_400), keepDays: 1)
+    // A folder renamed in Files is not a meeting ID and stays out.
+    _ = try makeMeeting(in: meetings, id: "renamed copy", createdAt: now.addingTimeInterval(-9 * 86_400), keepDays: 1)
+    let ledger = RetentionLedger(ledgerURL: root.appendingPathComponent("retention-ledger.json"), meetingsFolder: meetings)
+
+    let entries = try ledger.load(now: now)
+    #expect(Set(entries.map(\.meetingID)) == [edited.lastPathComponent, future.lastPathComponent])
+    #expect(entries.first { $0.meetingID == edited.lastPathComponent }?.keepDays == 1)
+    #expect(entries.first { $0.meetingID == future.lastPathComponent }?.createdAt == now)
+    #expect(try ledger.sweep(now: now) == [edited.lastPathComponent])
+}
+
+@Test("an undecodable ledger is set aside and rebuilt, not trusted")
+func ledgerSetsAsideDamage() throws {
+    let root = try scratchFolder()
+    let meetings = root.appendingPathComponent("meetings")
+    let meeting = try makeMeeting(in: meetings, createdAt: Date(timeIntervalSince1970: 1_000), keepDays: 7)
+    let url = root.appendingPathComponent("retention-ledger.json")
+    try Data("not json".utf8).write(to: url)
+    let entries = try RetentionLedger(ledgerURL: url, meetingsFolder: meetings).load()
+    #expect(entries.map(\.meetingID) == [meeting.lastPathComponent])
+    let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+    #expect(names.contains { $0.hasPrefix("retention-ledger.damaged-") })
+}
+
+@Test("recording report JSON has exactly the documented keys and no free text")
+func recordingReportKeys() throws {
+    var level = LevelAccumulator()
+    level.add(sine(amplitude: 0.1, windows: 1))
+    let report = RecordingReport(durationSeconds: 3_600, ending: .stopped, engineRestarts: 1, transcription: .live, transcriptReadySeconds: 1.5, finalSegments: 400, batteryStartPercent: 90, batteryEndPercent: 81, level: level.summary)
+    let object = try #require(JSONSerialization.jsonObject(with: MeetingExportEncoder.data(for: report)) as? [String: Any])
+    #expect(Set(object.keys) == ["schema", "duration_seconds", "ending", "engine_restarts", "transcription", "transcript_ready_seconds", "final_segments", "battery_start_percent", "battery_end_percent", "level"])
+    #expect(object["schema"] as? String == "yawn-ipad-recording-report/1")
+    #expect(object["transcription"] as? String == "live")
+    let after = RecordingReport(durationSeconds: 1, ending: .microphoneChanged, engineRestarts: 0, transcription: .afterStop, transcriptReadySeconds: nil, finalSegments: 0, batteryStartPercent: nil, batteryEndPercent: nil, level: level.summary)
+    let json = String(decoding: try MeetingExportEncoder.data(for: after), as: UTF8.self)
+    #expect(json.contains("\"after_stop\"") && json.contains("\"microphone_changed\""))
+}
