@@ -34,6 +34,8 @@ final class MeetingStore: NSObject, ObservableObject {
     @Published private(set) var inputLevel: Double?
     /// What the last recording's microphone test measured, shown after Stop.
     @Published private(set) var lastRecordingCheck: RecordingCheck?
+    /// How much louder replay plays than the saved audio, in dB.
+    @Published private(set) var replayGainDB: Double?
 
     private var audioEngine = AVAudioEngine()
     private var audioFile: AVAudioFile?
@@ -140,6 +142,7 @@ final class MeetingStore: NSObject, ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
         interruptionNote = nil
         lastRecordingCheck = nil
+        replayGainDB = nil
         inputLevel = nil
         player?.stop()
         player = nil
@@ -494,7 +497,11 @@ final class MeetingStore: NSObject, ObservableObject {
             // A record-only session cannot play the replay.
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
-            player = try AVAudioPlayer(contentsOf: audioURL)
+            // The room is recorded quietly; replay plays a boosted copy held in
+            // memory so speech is easy to hear. The saved file is unchanged.
+            let replay = try Self.boostedReplay(of: audioURL)
+            player = try replay.map { try AVAudioPlayer(data: $0.data) } ?? AVAudioPlayer(contentsOf: audioURL)
+            replayGainDB = replay?.gainDB ?? 0
             player?.prepareToPlay()
             return true
         } catch {
@@ -503,6 +510,19 @@ final class MeetingStore: NSObject, ObservableObject {
             }
             return false
         }
+    }
+
+    /// nil for an empty recording, which plays as saved.
+    private static func boostedReplay(of url: URL) throws -> (data: Data, gainDB: Double)? {
+        let file = try AVAudioFile(forReading: url)
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { return nil }
+        try file.read(into: buffer)
+        guard let channel = buffer.floatChannelData?[0] else { return nil }
+        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+        let gain = ReplayBoost.gainDB(speechDBFS: ReplayBoost.speechLevel(samples))
+        let data = ReplayBoost.wavData(ReplayBoost.boosted(samples, gainDB: gain), sampleRate: Int(file.processingFormat.sampleRate))
+        return (data, gain)
     }
 
     private static func elapsedTime(_ framesWritten: AVAudioFramePosition) -> String {

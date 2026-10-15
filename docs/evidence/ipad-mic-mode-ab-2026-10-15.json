@@ -1,0 +1,31 @@
+{
+  "schema": "ipad-mic-mode-ab-result/1",
+  "question": "Does a different AVAudioSession mode record a table conversation on the iPad better than measurement mode?",
+  "answer": "No evidence that it does. Measurement stays. Its low level did not hurt Apple's transcriber; what failed at the table was a person listening, so replay is now boosted instead.",
+  "decision": "Operator stopped the experiment after round 1 on 2026-10-15 (round 2 would most likely confirm, not change, the outcome). Keep measurement mode; add a replay boost; spend the next test on speaker labels with a real two-person recording.",
+  "setup": {
+    "device": "iPad Air (5th generation), iPadOS 27.0, built-in microphone, research build spike/ipad-ink (PR #130)",
+    "source": "macOS 'say' voice Samantha reading the opening of the Gettysburg Address (103 words), played from a MacBook speaker a table's width away at Mac output volume 50",
+    "transcriber": "Apple SpeechTranscriber on the iPad, after Stop",
+    "metric_order": "word recall of the passage first, then speech minus noise (p90 minus p10 of 100 ms window levels); fixed before the takes",
+    "content_policy": "Levels and recall only. The Mac copies of the takes were deleted after scoring; the iPad copies expire under their 1-day keep period."
+  },
+  "takes": [
+    {"mode": "measurement", "session_mode": "Measurement", "data_source": "Top", "polar_pattern": "Omnidirectional", "input_gain": 0.5, "speech_dbfs": -58.15, "noise_dbfs": -76.11, "speech_minus_noise_db": 17.96, "peak_dbfs": -44.76, "clipped_samples": 0, "word_recall": 0.981},
+    {"mode": "default", "session_mode": "Default", "data_source": "Top", "polar_pattern": "Omnidirectional", "input_gain": 0.5, "speech_dbfs": -42.48, "noise_dbfs": -56.35, "speech_minus_noise_db": 13.87, "peak_dbfs": -28.74, "clipped_samples": 0, "word_recall": 0.981},
+    {"mode": "video_recording", "session_mode": "VideoRecording", "data_source": "Back", "polar_pattern": "Subcardioid", "input_gain": 0.5, "speech_dbfs": -43.83, "noise_dbfs": -58.52, "speech_minus_noise_db": 14.69, "peak_dbfs": -31.57, "clipped_samples": 0, "word_recall": 0.951},
+    {"mode": "voice_processing", "session_mode": "VoiceChat", "result": "stopped at 0:00: enabling voice processing reconfigured the microphone right after start, which the build read as a hardware change. Fixed in PR #131 (restart in place on the same input port); not re-run."}
+  ],
+  "findings": [
+    "The louder modes raised the noise floor about 20 dB but speech only about 15 dB, so speech stood out less than in measurement.",
+    "Recall hit its ceiling at volume 50: measurement and default both caught 98.1% of the words, so recall could not separate the modes at this level.",
+    "The session read-back showed the input gain is settable on this iPad and sits at 0.5. Whether raising it is analog (a real improvement) was not tested.",
+    "Measurement mode's low level is a listening problem, not a transcription problem: at -58 dBFS speech the transcript still caught 98% of the passage."
+  ],
+  "limits": [
+    "One round: no closing measurement take, so no drift check.",
+    "A synthetic voice from one position at one volume; the quieter rounds (25 and 12) that could separate the modes on recall were not run.",
+    "Voice processing and full input gain were never measured."
+  ],
+  "replay_boost_check": "ReplayBoost (added in the same change as this file) applied to the measurement take: +38.1 dB, speech -58.1 to -20.1 dBFS, background -37.9, peak -7.2, no samples near the ceiling, and AVAudioPlayer loaded the in-memory copy at full length (35.6 s)."
+}

@@ -190,6 +190,31 @@ default, 12 measurement, 12 default. The script logs each take's volume, and
 `score --log` attaches it. If voice processing still will not record, it is
 recorded as not runnable in this spike and the experiment closes.
 
+**Result: stopped after round 1 (operator, 2026-10-15).** Round 2 would most
+likely have confirmed measurement rather than changed anything, so it was not
+run. Measurement stays the default and the test menu stays for any rerun. Its
+low level did not hurt Apple's transcriber (98.1% recall at −58 dBFS speech);
+what failed at the table was a person listening to the clips, which the replay
+boost below addresses. Voice processing (fixed but never re-run) and full input
+gain (never measured) remain open. Numbers and limits:
+[`docs/evidence/ipad-mic-mode-ab-2026-10-15.json`](../../docs/evidence/ipad-mic-mode-ab-2026-10-15.json).
+
+## Replay boost
+
+Replay plays louder than the room was recorded. On loading a meeting for
+replay, `InkCore.ReplayBoost` measures speech the same way `recording-check.json`
+does (the 90th percentile of 100 ms window levels). It applies enough gain to
+bring speech to −20 dBFS, never a cut and at most 40 dB, then a tanh soft
+limiter that keeps every sample under 0.99 of full scale. `AVAudioPlayer` plays the
+result from a WAV held in memory. The saved `audio.wav`, the transcript and
+the Mac kit all use the original audio. The replay panel says how many dB
+louder it plays. On the microphone test's measurement take, this gave +38 dB:
+speech −20 dBFS, background −38, peak −7, and nothing near the ceiling.
+
+The boosted copy is built in memory on the main thread when replay opens, at
+about 2 bytes per sample. A ten-minute meeting is under 20 MB. A meeting
+several hours long would need streaming instead.
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.
