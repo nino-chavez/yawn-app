@@ -38,12 +38,17 @@ and the transcript arrives after Stop.
    ([result](evidence/ipad-table-test-2026-10-14.json)). The recording-mode
    test that followed kept measurement mode: its low level did not hurt the
    transcriber, so replay is boosted instead
-   ([result](evidence/ipad-mic-mode-ab-2026-10-15.json)). Next: a longer
-   two-person recording in which each person also speaks alone.
-2. **Structural gaps that shape every screen.** Erase and undo (the spike
-   matches stroke records to the drawing by position, so either one breaks the
-   timing), a list of past meetings, and a transcript that does not wait for
-   Stop.
+   ([result](evidence/ipad-mic-mode-ab-2026-10-15.json)). The remaining
+   capability questions (an hour through screen lock, the transcript wait,
+   live transcription, transcript quality) were planned from Apple's
+   documentation, published benchmarks and Apple Notes on iPad instead of
+   another field recording. They are not yet confirmed on the M1 iPad: the
+   build plan's slice 2 runs an unattended hour to confirm them. Speaker
+   labels stay open; they do not block the build.
+2. **Structural gaps that shape every screen.** Erase and undo (done in the
+   spike, PR #123: strokes are keyed by creation time and seed, so timing
+   survives both), a list of past meetings, and a transcript that does not
+   wait for Stop.
 3. **Design as a new surface.** An
    [experience brief](experience-brief-ipad-2026-10-14.md) with the iPad
    platform strategy; comparables (Mobbin's iPhone screens, first pass in
@@ -54,6 +59,10 @@ and the transcript arrives after Stop.
    the build; a cold review of iPad captures.
 4. **Craft and distribution.** Critique, audit and polish passes, then
    TestFlight. Release remains a separate state.
+
+Steps 2 to 4 are now one [build plan](ipad-build-plan-2026-10-15.md): a fresh
+app in `apps/ipad/` on the Time rail design, in seven slices, with live
+transcription. The spike stays as the lab.
 
 ## Current release and next acceptance work — 2026-09-08
 
