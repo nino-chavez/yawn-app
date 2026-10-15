@@ -211,9 +211,11 @@ the Mac kit all use the original audio. The replay panel says how many dB
 louder it plays. On the microphone test's measurement take, this gave +38 dB:
 speech −20 dBFS, background −38, peak −7, and nothing near the ceiling.
 
-The boosted copy is built in memory on the main thread when replay opens, at
-about 2 bytes per sample. A ten-minute meeting is under 20 MB. A meeting
-several hours long would need streaming instead.
+The boosted copy is built when replay opens, on the main thread, by reading
+the file twice in 10-second chunks: once to measure speech, once to boost it.
+Memory stays near the output's size, about 2 bytes per sample, so a ten-minute
+meeting needs under 20 MB. Recordings over two hours, and any recording the
+boost fails on, play as saved, and a boost failure never blocks transcription.
 
 ## Known limits of this spike
 

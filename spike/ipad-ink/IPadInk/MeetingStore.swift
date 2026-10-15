@@ -499,7 +499,8 @@ final class MeetingStore: NSObject, ObservableObject {
             try AVAudioSession.sharedInstance().setActive(true)
             // The room is recorded quietly; replay plays a boosted copy held in
             // memory so speech is easy to hear. The saved file is unchanged.
-            let replay = try Self.boostedReplay(of: audioURL)
+            // The boost is optional: if it fails, replay plays the saved file.
+            let replay = try? Self.boostedReplay(of: audioURL)
             player = try replay.map { try AVAudioPlayer(data: $0.data) } ?? AVAudioPlayer(contentsOf: audioURL)
             replayGainDB = replay?.gainDB ?? 0
             player?.prepareToPlay()
@@ -512,16 +513,32 @@ final class MeetingStore: NSObject, ObservableObject {
         }
     }
 
-    /// nil for an empty recording, which plays as saved.
+    /// Longer recordings play as saved: the boosted copy is about 2 bytes a
+    /// sample in memory (some 230 MB at this limit).
+    private static let maxBoostedSeconds = 2.0 * 3_600
+
+    /// Reads the file in 10 s chunks twice: once to measure speech, once to
+    /// boost it into an in-memory WAV, so memory stays near the output's size.
+    /// nil for an empty or very long recording, which plays as saved.
     private static func boostedReplay(of url: URL) throws -> (data: Data, gainDB: Double)? {
         let file = try AVAudioFile(forReading: url)
-        let frames = AVAudioFrameCount(file.length)
-        guard frames > 0, let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { return nil }
-        try file.read(into: buffer)
-        guard let channel = buffer.floatChannelData?[0] else { return nil }
-        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
-        let gain = ReplayBoost.gainDB(speechDBFS: ReplayBoost.speechLevel(samples))
-        let data = ReplayBoost.wavData(ReplayBoost.boosted(samples, gainDB: gain), sampleRate: Int(file.processingFormat.sampleRate))
+        let format = file.processingFormat
+        guard file.length > 0, Double(file.length) <= maxBoostedSeconds * format.sampleRate,
+              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(ReplayBoost.chunkFrames))
+        else { return nil }
+        func chunks(_ body: (UnsafeBufferPointer<Float>) -> Void) throws {
+            file.framePosition = 0
+            while file.framePosition < file.length {
+                try file.read(into: buffer, frameCount: AVAudioFrameCount(ReplayBoost.chunkFrames))
+                guard let channel = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+                body(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+            }
+        }
+        var levels: [Double] = []
+        try chunks { levels += ReplayBoost.windowLevels($0) }
+        let gain = ReplayBoost.gainDB(speechDBFS: ReplayBoost.speechLevel(windowLevels: levels))
+        var data = ReplayBoost.wavHeader(sampleCount: Int(file.length), sampleRate: Int(format.sampleRate))
+        try chunks { ReplayBoost.appendSamples(ReplayBoost.boosted($0, gainDB: gain), to: &data) }
         return (data, gain)
     }
 

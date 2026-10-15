@@ -298,3 +298,27 @@ func replayWAVHeader() {
     #expect(data[44] == 1 && data[45] == 0)
     #expect(data[46] == 0xFF && data[47] == 0xFF)
 }
+
+@Test("speech measured chunk by chunk equals speech measured over the whole recording")
+func replayChunkedLevelsMatchWhole() {
+    let samples = sine(amplitude: 0.01, windows: 150) + sine(amplitude: 0.3, windows: 70) + [Float](repeating: 0.2, count: 900)
+    let whole = samples.withUnsafeBufferPointer { ReplayBoost.windowLevels($0) }
+    var chunked: [Double] = []
+    var start = 0
+    while start < samples.count {
+        let end = min(samples.count, start + ReplayBoost.chunkFrames)
+        chunked += samples[start..<end].withUnsafeBufferPointer { ReplayBoost.windowLevels($0) }
+        start = end
+    }
+    #expect(chunked == whole)
+    #expect(ReplayBoost.speechLevel(windowLevels: chunked) == ReplayBoost.speechLevel(samples))
+}
+
+@Test("a WAV built chunk by chunk equals one built at once")
+func replayChunkedWAVMatchesWhole() {
+    let samples: [Int16] = [1, -2, 300, -32_768, 32_767]
+    var chunked = ReplayBoost.wavHeader(sampleCount: samples.count, sampleRate: 16_000)
+    ReplayBoost.appendSamples(Array(samples[0..<2]), to: &chunked)
+    ReplayBoost.appendSamples(Array(samples[2...]), to: &chunked)
+    #expect(chunked == ReplayBoost.wavData(samples, sampleRate: 16_000))
+}
