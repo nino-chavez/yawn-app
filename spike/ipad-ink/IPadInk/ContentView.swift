@@ -51,7 +51,6 @@ struct ContentView: View {
                         Text("30 days").tag(30 as Int?)
                     }
                     .pickerStyle(.menu)
-                    microphoneModePicker
                     Button("Start recording", action: store.startRecording)
                         .buttonStyle(.borderedProminent)
                         .disabled(!store.canStart)
@@ -69,6 +68,7 @@ struct ContentView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                microphoneModePicker
                 stateText
                 HStack(spacing: 8) {
                     Text(store.speechModelStatus)
@@ -122,6 +122,8 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.menu)
+            .fixedSize()
+            Spacer(minLength: 0)
         }
         .disabled(store.recordingState != .ready)
     }
