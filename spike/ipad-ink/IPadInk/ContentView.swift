@@ -29,7 +29,7 @@ struct ContentView: View {
                 }
                 .padding()
             }
-            .navigationTitle("iPad Ink")
+            .navigationTitle("Yawn Lab")
             .navigationBarTitleDisplayMode(.inline)
             .task { await store.refreshSpeechModelStatus() }
             .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
@@ -237,7 +237,7 @@ struct ContentView: View {
                 }
             }
             .frame(maxHeight: .infinity)
-            Text("Exports stay in Files › On My iPad › iPad Ink › meetings.")
+            Text("Exports stay in Files › On My iPad › Yawn Lab › meetings.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

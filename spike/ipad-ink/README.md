@@ -1,4 +1,4 @@
-# iPad Ink research spike
+# iPad Ink research spike ("Yawn Lab" on the iPad)
 
 This is a research spike, not the Yawn product. It tests whether in-person note
 taking works on an iPad: microphone-only audio, Apple Pencil strokes timed to
@@ -30,7 +30,7 @@ predates it.
 
 ## Exports
 
-Files are saved under Files > On My iPad > iPad Ink > `meetings/<uuid>/` (`UIFileSharingEnabled` comes from `IPadInk-Info.plist`, merged with the generated Info.plist):
+Files are saved under Files > On My iPad > Yawn Lab > `meetings/<uuid>/` (`UIFileSharingEnabled` comes from `IPadInk-Info.plist`, merged with the generated Info.plist):
 
 - `audio.wav` — local microphone recording.
 - `strokes.json` — `[{index, start_seconds, end_seconds}]`; untimed strokes use
@@ -96,8 +96,10 @@ writing.
 
 ## App icon
 
-`IPadInk/AppIcon.icon` is an Icon Composer document, a copy of concept C2 from
-`docs/design/concepts/ipad-icon-2026-10-14/`. The target's
+The spike shows on the iPad as "Yawn Lab" with a grey copy of the C2 icon, so
+it is never mistaken for the Yawn app (`apps/ipad/`), which uses the violet
+original. `IPadInk/AppIcon.icon` is an Icon Composer document, a copy of
+concept C2 from `docs/design/concepts/ipad-icon-2026-10-14/`. The target's
 `ASSETCATALOG_COMPILER_APPICON_NAME` is `AppIcon`, and the synchronized
 `IPadInk` folder includes the file without a project entry. Why C2:
 [`decisions/ipad-icon-selection-2026-10-14.md`](../../decisions/ipad-icon-selection-2026-10-14.md).
