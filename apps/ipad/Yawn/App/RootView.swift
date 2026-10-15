@@ -5,6 +5,7 @@ import SwiftUI
 struct RootView: View {
     @StateObject private var recorder = MeetingRecorder()
     @State private var columns: NavigationSplitViewVisibility = .detailOnly
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
@@ -14,6 +15,9 @@ struct RootView: View {
         }
         .onChange(of: recorder.isRecording) { _, recording in
             if recording { columns = .detailOnly }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { recorder.sweepExpiredAudio() }
         }
     }
 }

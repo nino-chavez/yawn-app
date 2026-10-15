@@ -25,6 +25,7 @@ struct PageScreen: View {
             .fullScreenCover(isPresented: $showingBefore) {
                 BeforeRecording(
                     speechModel: recorder.speechModel,
+                    canStart: recorder.canStart,
                     onInstallSpeechModel: recorder.installSpeechModel,
                     onStart: { keepDays in
                         showingBefore = false
@@ -49,7 +50,7 @@ struct PageScreen: View {
             }
         case .finishing:
             BarStatus(text: "Finishing")
-        case .idle, .transcriptReady, .needsSpeechModel, .failed:
+        case .idle, .transcriptReady, .needsSpeechModel, .transcriptionFailed, .failed:
             RecordButton { showingBefore = true }
         }
     }
@@ -75,6 +76,11 @@ struct PageScreen: View {
                         Button("Install", action: recorder.installSpeechModel)
                     }
                 }
+            case .transcriptionFailed:
+                HStack {
+                    Text("Needs attention: the meeting is saved, but its transcript could not be made.")
+                    Button("Transcribe again") { Task { await recorder.transcribeAgain() } }
+                }
             case .failed(let message):
                 Text(message).foregroundStyle(.red)
             case .idle, .preparing, .recording, .finishing:
@@ -89,7 +95,7 @@ struct PageScreen: View {
 
     private var hasStatus: Bool {
         switch recorder.phase {
-        case .transcriptReady, .needsSpeechModel, .failed: true
+        case .transcriptReady, .needsSpeechModel, .transcriptionFailed, .failed: true
         case .idle, .preparing, .recording, .finishing: recorder.interruptionNote != nil && !recorder.isRecording
         }
     }

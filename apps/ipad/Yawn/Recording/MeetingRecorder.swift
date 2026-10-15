@@ -16,8 +16,12 @@ final class MeetingRecorder: ObservableObject {
         case finishing
         /// The last meeting is saved; its transcript may be empty if nobody spoke.
         case transcriptReady
-        /// The last meeting is saved but has no transcript yet.
+        /// The last meeting is saved but has no transcript: the speech model
+        /// is not installed.
         case needsSpeechModel
+        /// The last meeting is saved, the model is installed, but transcription
+        /// failed. Transcribe again retries it.
+        case transcriptionFailed
         case failed(String)
     }
 
@@ -36,6 +40,11 @@ final class MeetingRecorder: ObservableObject {
 
     var isRecording: Bool { phase == .recording }
 
+    /// A new recording can start: nothing is preparing, recording or finishing.
+    var canStart: Bool {
+        phase != .preparing && phase != .recording && phase != .finishing
+    }
+
     private static let fileSampleRate = 16_000.0
     private static let maxEngineRestarts = 3
 
@@ -53,9 +62,16 @@ final class MeetingRecorder: ObservableObject {
     init() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         registerSessionObservers()
-        _ = try? MeetingStorage.ledger().sweep()
-        meetings = MeetingStorage.summaries()
+        sweepExpiredAudio()
         Task { await refreshSpeechModel() }
+    }
+
+    /// Deletes audio past its keep period. Runs at launch, whenever the app
+    /// comes to the front, and before every recording: the app can stay in
+    /// memory for days, so launch alone would keep audio too long.
+    func sweepExpiredAudio() {
+        _ = try? MeetingStorage.ledger().sweep()
+        if phase != .recording { meetings = MeetingStorage.summaries() }
     }
 
     // MARK: Speech model
@@ -79,16 +95,23 @@ final class MeetingRecorder: ObservableObject {
                 }
             } catch {}
             await refreshSpeechModel()
-            if speechModel == .installed, phase == .needsSpeechModel, let folder = meetingFolder {
-                await transcribeAfterStop(folder: folder, ending: nil)
+            if speechModel == .installed, phase == .needsSpeechModel {
+                await transcribeAgain()
             }
         }
+    }
+
+    /// Retries the last meeting's transcript from its saved audio.
+    func transcribeAgain() async {
+        guard let folder = meetingFolder, phase == .needsSpeechModel || phase == .transcriptionFailed else { return }
+        await transcribeAfterStop(folder: folder, ending: nil)
     }
 
     // MARK: Recording
 
     func start(keepDays: Int) async {
-        guard phase != .recording, phase != .preparing, phase != .finishing else { return }
+        guard canStart else { return }
+        sweepExpiredAudio()
         phase = .preparing
         interruptionNote = nil
         transcript = []
@@ -143,6 +166,7 @@ final class MeetingRecorder: ObservableObject {
             engine.stop()
             live?.feeder.finish()
             live = nil
+            Self.releaseAudioSession()
             UIApplication.shared.isIdleTimerDisabled = false
             // A meeting that never started keeps no audio behind.
             if let folder { try? FileManager.default.removeItem(at: folder) }
@@ -160,7 +184,10 @@ final class MeetingRecorder: ObservableObject {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         let frames = audioFile?.length ?? 0
+        // Finalizes the WAV header now, before anything reads the file back.
+        audioFile?.close()
         audioFile = nil
+        Self.releaseAudioSession()
         UIApplication.shared.isIdleTimerDisabled = false
         lastDuration = Double(frames) / Self.fileSampleRate
         if let note {
@@ -213,7 +240,12 @@ final class MeetingRecorder: ObservableObject {
                                      batteryEndPercent: report.batteryEndPercent, level: report.level)
             try? MeetingStorage.write(report, to: folder.appendingPathComponent("recording-report.json"))
         }
-        phase = segments == nil ? .needsSpeechModel : .transcriptReady
+        if segments != nil {
+            phase = .transcriptReady
+        } else {
+            await refreshSpeechModel()
+            phase = speechModel == .installed ? .transcriptionFailed : .needsSpeechModel
+        }
         meetings = MeetingStorage.summaries()
     }
 
@@ -318,6 +350,11 @@ final class MeetingRecorder: ObservableObject {
     private static func currentInputPort() -> String? {
         guard let input = AVAudioSession.sharedInstance().currentRoute.inputs.first else { return nil }
         return "\(input.portType.rawValue):\(input.uid)"
+    }
+
+    /// Lets other apps' audio resume once Yawn is not recording.
+    private static func releaseAudioSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private static func batteryPercent() -> Int? {

@@ -4,6 +4,8 @@ import SwiftUI
 /// (Concept C). Consent and a keep period are both unmade until chosen.
 struct BeforeRecording: View {
     let speechModel: MeetingRecorder.SpeechModel
+    /// False while the last meeting is still finishing; Start waits for it.
+    let canStart: Bool
     let onInstallSpeechModel: () -> Void
     let onStart: (Int) -> Void
     let onCancel: () -> Void
@@ -53,7 +55,12 @@ struct BeforeRecording: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .tint(.red)
-                .disabled(!agreed || keepDays == nil)
+                .disabled(!agreed || keepDays == nil || !canStart)
+                if !canStart {
+                    Text("The last meeting is still finishing. Start becomes available in a moment.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Button("Not now", action: onCancel)
                     .frame(maxWidth: .infinity)
             }
