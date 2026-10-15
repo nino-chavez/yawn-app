@@ -31,6 +31,13 @@ and the transcript arrives after Stop.
    `spike/ipad-ink/EVALUATION.md` describes. It decides whether the transcript
    carries speaker labels. The earlier in-person recordings no longer exist,
    and they used the Mac's microphone.
+   **First run, 2026-10-14 (114 s):** not settled. No labeler separated the
+   operator from the other person, the kit's scorer could not map speakers to
+   people, and the recording sat about 25 dB below normal speech level, so the
+   transcript stays unlabeled
+   ([result](evidence/ipad-table-test-2026-10-14.json)). Next: fix the
+   recording level, then a longer recording in which each person also speaks
+   alone.
 2. **Structural gaps that shape every screen.** Erase and undo (the spike
    matches stroke records to the drawing by position, so either one breaks the
    timing), a list of past meetings, and a transcript that does not wait for
