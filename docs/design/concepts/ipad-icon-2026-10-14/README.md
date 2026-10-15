@@ -77,5 +77,6 @@ marks with a line running off it can also read as a chart axis.
 
 ## Selection
 
-Pending the operator's pick. It will be recorded under `decisions/`, with what
-was taken from the other two.
+The operator chose **C2** on 2026-10-14. The record, with what was taken from
+B and what was left out, is
+[`decisions/ipad-icon-selection-2026-10-14.md`](../../../../decisions/ipad-icon-selection-2026-10-14.md).
