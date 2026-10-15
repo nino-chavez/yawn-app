@@ -109,7 +109,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		A10000000000000000000015 /* XCLocalSwiftPackageReference "InkCore" */ = { isa = XCLocalSwiftPackageReference; relativePath = InkCore; };
+		A10000000000000000000015 /* XCLocalSwiftPackageReference "InkCore" */ = { isa = XCLocalSwiftPackageReference; relativePath = ../../packages/yawn-ink-core; };
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */

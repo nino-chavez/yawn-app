@@ -164,6 +164,22 @@ orchestrating session builds and installs: the worker sandbox cannot run
 Slice 7's TestFlight step creates an app record in the operator's App Store
 Connect account. That is an outward action and waits for the operator.
 
+## Build and install
+
+From the repository root, with the iPad connected and unlocked:
+
+```
+xcodebuild -project apps/ipad/Yawn.xcodeproj -scheme Yawn -configuration Debug \
+  -destination id=<iPad UDID> -derivedDataPath apps/ipad/.derived \
+  DEVELOPMENT_TEAM=34VZ63G58M -allowProvisioningUpdates build
+xcrun devicectl device install app --device <iPad UDID> \
+  apps/ipad/.derived/Build/Products/Debug-iphoneos/Yawn.app
+(cd packages/yawn-ink-core && swift test)
+```
+
+`xcrun devicectl list devices` names the UDID. The app installs beside the
+spike, as "Yawn" with the C2 icon.
+
 ## How each slice is checked
 
 - Package logic has unit tests that fail when broken on purpose, as the level
