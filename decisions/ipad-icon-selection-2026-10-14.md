@@ -50,6 +50,12 @@ The concepts, renders and comparison sheets are in
   page. Using C2, or a variant of it, on the Mac is a separate decision.
 - Checked on the device 2026-10-15: a home-screen screenshot and a cold review
   ([record](../docs/evidence/screen-reviews/ipad-icon-home-screen-2026-10-15-cold.md)).
-  It reads as a handwriting or notes app and no letters were read. The rail is
-  faint at home-screen size; thickening it is a candidate revision awaiting the
-  operator.
+  It reads as a handwriting or notes app and no letters were read. The rail was
+  faint at home-screen size.
+- Revised 2026-10-15 at the operator's request: the rail stroke went from 24 to
+  44 px, the quiet marks from radius 38 to 46, and the rail color from
+  `#8c7ca8` to `#7d6e9c` (dark: `#968aa8` to `#a597b8`). The linked mark
+  (radius 60) and the ink are unchanged. The installed app uses the revised
+  `AppIcon.icon`; `docs/design/concepts/ipad-icon-2026-10-14/C2/` stays the
+  as-chosen record. Device before and after:
+  [`home-screen-rail-before-after.png`](../docs/evidence/screen-reviews/ipad-icon-2026-10-15/home-screen-rail-before-after.png).
