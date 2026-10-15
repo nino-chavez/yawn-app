@@ -66,6 +66,8 @@ cloud, folders, handwriting recognition, speaker labels.
 
 ## InkCore
 
+Moved to `packages/yawn-ink-core/` on 2026-10-15 so the Yawn iPad app and this spike share it; the module is still `InkCore`.
+
 All testable logic: stroke-time mapping, stroke visibility at a playhead,
 transcript merging (a final result replaces volatile results for the same
 range), the keep-period decision (meetings with `created_at`, `keep_days`,
