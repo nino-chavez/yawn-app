@@ -94,6 +94,14 @@ stroke. `strokes.json` remains the same position-indexed export beside
 The pen, eraser, undo and redo buttons sit above the page, so they never cover
 writing.
 
+## App icon
+
+`IPadInk/AppIcon.icon` is an Icon Composer document, a copy of concept C2 from
+`docs/design/concepts/ipad-icon-2026-10-14/`. The target's
+`ASSETCATALOG_COMPILER_APPICON_NAME` is `AppIcon`, and the synchronized
+`IPadInk` folder includes the file without a project entry. Why C2:
+[`decisions/ipad-icon-selection-2026-10-14.md`](../../decisions/ipad-icon-selection-2026-10-14.md).
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.
