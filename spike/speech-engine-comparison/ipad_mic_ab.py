@@ -104,10 +104,14 @@ def score(args: argparse.Namespace) -> int:
         heard = " ".join(segment.get("text", "") for segment in transcript if segment.get("final", True))
         level, session = check["level"], check["session"]
         created = dt.datetime.fromisoformat(meeting["created_at"].replace("Z", "+00:00"))
-        # A take is played within two minutes after its recording starts.
+        # A take is played within two minutes after its recording starts. The
+        # Mac and iPad clocks differ and both round to whole seconds, so a
+        # little negative skew still matches.
         match = next((take for take in played
-                      if 0 <= (dt.datetime.fromisoformat(take["played_at"]) - created).total_seconds() <= 120
+                      if -10 <= (dt.datetime.fromisoformat(take["played_at"]) - created).total_seconds() <= 120
                       and take["mode"] == check["requested_mode"]), None)
+        if played and not match and args.assume_volume is None:
+            print(json.dumps({"meeting": folder.name[:8], "warning": "no logged take matches this recording; its volume is unknown and it is left out of every ranking"}))
         rows.append({
             "volume": match["volume"] if match else args.assume_volume,
             "engine_restarts": check.get("engine_restarts"),
