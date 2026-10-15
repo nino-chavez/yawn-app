@@ -219,10 +219,12 @@ boost fails on, play as saved, and a boost failure never blocks transcription.
 
 ## Known limits of this spike
 
-- Transcription runs after Stop, not live. Live transcription was cut to fit.
+- Transcription runs after Stop, not live. Live transcription was cut to keep
+  the spike small; the real app transcribes live
+  ([build plan](../../docs/ipad-build-plan-2026-10-15.md)).
 - Stroke times come from PencilKit's stroke creation date and its last point's
-  time offset. Undoing or erasing strokes is not supported: stroke records are
-  matched to the drawing by position.
+  time offset. Erasing and undoing keep each stroke's time (see "Erase and
+  undo").
 - Replay owns the canvas after Stop: drawing is off, strokes later than the
   playhead are dimmed, and tapping a stroke seeks to it. "New meeting" asks for
   consent and a keep period again and starts a fresh canvas.

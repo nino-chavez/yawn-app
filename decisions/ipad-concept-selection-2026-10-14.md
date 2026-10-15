@@ -69,6 +69,14 @@ with the list one tap away".
 - **B's grid of page pictures.** Pages of handwriting differ little at
   thumbnail size; the date and the small rail identify a meeting faster.
 
+## Change 3, closed 2026-10-15
+
+The operator writes top to bottom. The table recording agrees, though thinly:
+its 11 strokes formed three rows, each lower and later than the last, all in
+the final 14 s ([result](../docs/evidence/ipad-table-test-2026-10-14.json)).
+The rail stays in the page's left margin. The build follows the
+[iPad build plan](../docs/ipad-build-plan-2026-10-15.md).
+
 ## What would change this
 
 - The table recording shows the operator's writing does not run top to bottom.
