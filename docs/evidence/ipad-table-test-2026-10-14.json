@@ -1,0 +1,235 @@
+{
+  "schema": "ipad-table-test-result/1",
+  "question": "Does an automatic speaker labeler say who spoke in a real two-person iPad table recording well enough to label the transcript?",
+  "answer": "No. None of the three labelers separated the operator from the other person, and the kit's scorer could not map speakers to people. The transcript stays unlabeled.",
+  "content_policy": "Counts, clip names, speaker-set labels and group breakdowns only. No audio, transcript text, ink, clip times or stroke times are stored here; a speaker timeline of the conversation is deliberately left out. The Mac copies are deleted at delete_after under the meeting's 1-day keep period.",
+  "recording": {
+    "device": "iPad Air (5th generation), iPadOS 27.0, built-in microphone, research build spike/ipad-ink",
+    "people": "the operator and one consenting second person at a table",
+    "duration_seconds": 114.5,
+    "sample_rate_hz": 16000,
+    "keep_days": 1,
+    "delete_after": "2026-10-15T20:17:52Z",
+    "level_dbfs": {
+      "peak": -16.9,
+      "rms_whole_file": -48.2,
+      "louder_speech_windows": -44.6,
+      "quiet_windows": -68.2
+    },
+    "level_note": "About 25 dB below a normal speech level. Likely cause, not yet tested: the app records with AVAudioSession mode .measurement, which disables some input processing. The operator found some clips hard to hear in the first labeling pass, before playback was boosted 18 dB.",
+    "recorded_on": "2026-10-14"
+  },
+  "labelers": {
+    "kit": "spike/speech-engine-comparison/ipad_meeting_review.py (packet and score), FluidAudio v0.17.7 CLI",
+    "arms": {
+      "pipeline-offline-2spk": "segmentation + VBx pipeline told to find 2 speakers; the review packet was built from this arm",
+      "pipeline-offline": "the same pipeline with no speaker-count hint",
+      "nemotron3-c128-split-w8a8": "FluidAudio's documented iPad pick (Neural Engine streaming model)"
+    },
+    "speakers_found": {
+      "pipeline-offline-2spk": 2,
+      "pipeline-offline": 1,
+      "nemotron3-c128-split-w8a8": 5
+    }
+  },
+  "blind_labels": {
+    "method": "The operator listened to 9 clips on a local page with no predictions shown (4 identity clips meant to hold one voice each, 5 balanced clips) and chose me, the other person, both, or can't tell. The first set of answers was lost when the browser pane closed; this is the second set, saved per tap on 2026-10-15.",
+    "clips": [
+      {
+        "clip": "I1",
+        "kind": "identity",
+        "human": [
+          "me",
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S2"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_3"
+        ]
+      },
+      {
+        "clip": "I2",
+        "kind": "identity",
+        "human": [
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S2"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_2",
+          "speaker_3"
+        ]
+      },
+      {
+        "clip": "I3",
+        "kind": "identity",
+        "human": [
+          "me",
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S1"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_1",
+          "speaker_2"
+        ]
+      },
+      {
+        "clip": "I4",
+        "kind": "identity",
+        "human": [
+          "me",
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S1"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_1",
+          "speaker_2",
+          "speaker_4"
+        ]
+      },
+      {
+        "clip": "A",
+        "kind": "balanced",
+        "human": [
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S2"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0"
+        ]
+      },
+      {
+        "clip": "B",
+        "kind": "balanced",
+        "human": [
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S2"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_1",
+          "speaker_3"
+        ]
+      },
+      {
+        "clip": "C",
+        "kind": "balanced",
+        "human": [
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S2"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_2",
+          "speaker_3"
+        ]
+      },
+      {
+        "clip": "D",
+        "kind": "balanced",
+        "human": [
+          "me",
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S1"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0",
+          "speaker_1",
+          "speaker_2"
+        ]
+      },
+      {
+        "clip": "E",
+        "kind": "balanced",
+        "human": [
+          "other"
+        ],
+        "pipeline-offline-2spk": [
+          "S1"
+        ],
+        "pipeline-offline": [
+          "S1"
+        ],
+        "nemotron3-c128-split-w8a8": [
+          "speaker_0"
+        ]
+      }
+    ],
+    "prediction_rule": "speaker active for at least max(0.5 seconds, 10% of the clip), the kit's predicted_set"
+  },
+  "scores": {
+    "kit_score_pipeline-offline-2spk": {
+      "status": "identity_unresolved",
+      "why": "Three of the four identity clips held both voices, so only one predicted speaker (S2, as 'other') could be mapped. The kit needs one clip of each person alone."
+    },
+    "no_clip_of_the_operator_alone": "The operator heard their own voice alone in none of the 9 clips; 'all me', the baseline Yawn uses on the Mac, matches 0 of 9.",
+    "speaker_count_agreement_of_9": {
+      "pipeline-offline-2spk": 5,
+      "pipeline-offline": 5,
+      "nemotron3-c128-split-w8a8": 3,
+      "baseline_always_one_speaker": 5
+    },
+    "pipeline-offline-2spk_groups": {
+      "S2": "5 clips: 4 the other person alone, 1 both. S2 is close to 'the other person'.",
+      "S1": "4 clips: 3 both, 1 the other person alone. S1 is not the operator; it marks stretches where both people talk."
+    },
+    "derived_mapping_not_the_kit_rule": "If S2 = other and, by elimination, S1 = me, exact matches on the 5 balanced clips are 3 (A, B, C). Always answering 'the other person' matches 4 of the 5. The labeler does not beat that baseline."
+  },
+  "writing_order": {
+    "question": "Does the operator write top to bottom in time order? (selection change 3 for the time rail)",
+    "strokes": 11,
+    "rows_of_strokes": 3,
+    "result": "The strokes form three rows. Each row sits lower on the page than the one before and was written after it.",
+    "limit": "All writing fell in the last 14 s of the recording. Consistent with top to bottom, but too little writing to settle the question."
+  },
+  "limits": [
+    "One meeting, 114.5 s, two people, 9 clips. The roadmap asked for 5 to 10 minutes.",
+    "The recording is about 25 dB quiet, and the operator found some clips hard to hear; quiet speech hurts both the labelers and the human labels.",
+    "Clip windows were chosen from the pipeline-offline-2spk arm's segments, which favors that arm's boundaries over the other two.",
+    "This is a stratified sample of selected turns, not whole-meeting accuracy or DER."
+  ],
+  "next": "Fix the recording level first (A/B the AVAudioSession mode with a level meter), then record a longer two-person meeting in which each person also speaks alone for a while, and rescore."
+}
