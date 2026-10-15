@@ -31,8 +31,10 @@ name? What one change would help most?
 - **Revise item.** The rail, the part that says "tied to a moment", is faint
   on the device. The reviewer read it as "a ruler or timeline" only on close
   description, and its first answer did not mention time. Thickening the rail
-  and raising the quiet marks' contrast is the candidate fix. It is not made
-  here: it changes the look the operator chose, so it waits for his call.
+  and raising the quiet marks' contrast is the candidate fix. The operator
+  asked for it the same day; it is applied, with a device before and after in
+  [`ipad-icon-2026-10-15/home-screen-rail-before-after.png`](ipad-icon-2026-10-15/home-screen-rail-before-after.png).
+  The revised icon has not had its own cold pass.
 
 **Agent's own observation from the full screenshot.** Apple's icons on the
 same page use the same vocabulary. Freeform is a loose stroke; Stocks and
