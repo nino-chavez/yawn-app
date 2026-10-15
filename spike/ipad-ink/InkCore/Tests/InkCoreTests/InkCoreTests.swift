@@ -248,3 +248,77 @@ func recordingCheckKeys() throws {
     // A nil data source is omitted, not written as a fake value.
     #expect((object["session"] as? [String: Any])?["data_source"] == nil)
 }
+
+@Test("replay gain lifts speech to -20 dBFS, never cuts, and caps at 40 dB")
+func replayGainRule() {
+    #expect(ReplayBoost.gainDB(speechDBFS: -35) == 15)
+    #expect(ReplayBoost.gainDB(speechDBFS: -10) == 0)
+    #expect(ReplayBoost.gainDB(speechDBFS: -75) == 40)
+}
+
+@Test("replay speech level matches the recording check's p90 window level")
+func replaySpeechLevelMatchesCheck() {
+    var samples = sine(amplitude: 0.01, windows: 5)
+    samples += sine(amplitude: 0.5, windows: 5)
+    var level = LevelAccumulator()
+    level.add(samples)
+    #expect(abs(ReplayBoost.speechLevel(samples) - level.summary.windowRMSP90DBFS) < 0.05)
+}
+
+@Test("a quiet sine boosted 20 dB comes out ten times louder")
+func replayBoostIsNearLinearWhenQuiet() {
+    let boosted = ReplayBoost.boosted(sine(amplitude: 0.01, windows: 1), gainDB: 20)
+    let peak = Double(boosted.map { abs(Int($0)) }.max() ?? 0) / Double(Int16.max)
+    #expect(abs(peak - 0.1) < 0.002)
+}
+
+@Test("a full-scale sine boosted 40 dB stays under the ceiling and never wraps")
+func replayBoostNeverClipsOrWraps() {
+    let boosted = ReplayBoost.boosted(sine(amplitude: 1, windows: 1), gainDB: 40)
+    let peak = boosted.map { abs(Int($0)) }.max() ?? 0
+    #expect(peak <= Int(0.99 * Double(Int16.max)) + 1)
+    #expect(peak > 30_000)
+    // Positive input stays positive: an overflow would wrap to negative.
+    let input = sine(amplitude: 1, windows: 1)
+    #expect(zip(input, boosted).allSatisfy { $0 <= 0 || $1 >= 0 })
+    #expect(zip(input, boosted).allSatisfy { $0 >= 0 || $1 <= 0 })
+}
+
+@Test("the in-memory WAV header describes 16 kHz mono 16-bit PCM")
+func replayWAVHeader() {
+    let data = ReplayBoost.wavData([1, -1, 300], sampleRate: 16_000)
+    #expect(data.count == 44 + 6)
+    #expect(String(decoding: data[0..<4], as: UTF8.self) == "RIFF")
+    #expect(String(decoding: data[8..<12], as: UTF8.self) == "WAVE")
+    let le32 = { (offset: Int) in data[offset..<offset + 4].enumerated().reduce(UInt32(0)) { $0 | UInt32($1.element) << (8 * UInt32($1.offset)) } }
+    #expect(le32(4) == 36 + 6)
+    #expect(le32(24) == 16_000)
+    #expect(le32(28) == 32_000)
+    #expect(le32(40) == 6)
+    #expect(data[44] == 1 && data[45] == 0)
+    #expect(data[46] == 0xFF && data[47] == 0xFF)
+}
+
+@Test("speech measured chunk by chunk equals speech measured over the whole recording")
+func replayChunkedLevelsMatchWhole() {
+    let samples = sine(amplitude: 0.01, windows: 150) + sine(amplitude: 0.3, windows: 70) + [Float](repeating: 0.2, count: 900)
+    let whole = samples.withUnsafeBufferPointer { ReplayBoost.windowLevels($0) }
+    var chunked: [Double] = []
+    var start = 0
+    while start < samples.count {
+        let end = min(samples.count, start + ReplayBoost.chunkFrames)
+        chunked += samples[start..<end].withUnsafeBufferPointer { ReplayBoost.windowLevels($0) }
+        start = end
+    }
+    #expect(chunked == whole)
+    #expect(ReplayBoost.speechLevel(windowLevels: chunked) == ReplayBoost.speechLevel(samples))
+}
+
+@Test("a WAV built chunk by chunk equals one built at once")
+func replayChunkedWAVMatchesWhole() {
+    let samples: [Int16] = [1, -2, 300, -32_768, 32_767]
+    var chunked = ReplayBoost.wavHeader(sampleCount: samples.count, sampleRate: 16_000)
+    ReplayBoost.appendSamples(Array(samples[0..<2]), to: &chunked)
+    ReplayBoost.appendSamples(Array(samples[2...]), to: &chunked)
+    #expect(chunked == ReplayBoost.wavData(samples, sampleRate: 16_000))
+}

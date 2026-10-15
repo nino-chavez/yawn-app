@@ -35,9 +35,11 @@ and the transcript arrives after Stop.
    operator from the other person, the kit's scorer could not map speakers to
    people, and the recording sat about 25 dB below normal speech level, so the
    transcript stays unlabeled
-   ([result](evidence/ipad-table-test-2026-10-14.json)). Next: fix the
-   recording level, then a longer recording in which each person also speaks
-   alone.
+   ([result](evidence/ipad-table-test-2026-10-14.json)). The recording-mode
+   test that followed kept measurement mode: its low level did not hurt the
+   transcriber, so replay is boosted instead
+   ([result](evidence/ipad-mic-mode-ab-2026-10-15.json)). Next: a longer
+   two-person recording in which each person also speaks alone.
 2. **Structural gaps that shape every screen.** Erase and undo (the spike
    matches stroke records to the drawing by position, so either one breaks the
    timing), a list of past meetings, and a transcript that does not wait for

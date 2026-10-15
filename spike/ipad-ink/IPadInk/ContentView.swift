@@ -254,6 +254,11 @@ struct ContentView: View {
                             .monospacedDigit()
                     }
                     Slider(value: Binding(get: { store.playbackTime }, set: store.seek(to:)), in: 0...store.playbackDuration)
+                    if let gain = store.replayGainDB, gain >= 1 {
+                        Text("Plays \(Int(gain.rounded())) dB louder than recorded so speech is easy to hear. The saved audio is unchanged.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
