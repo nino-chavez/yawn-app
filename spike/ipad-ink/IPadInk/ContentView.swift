@@ -149,8 +149,10 @@ struct ContentView: View {
         let mode = MicrophoneMode(rawValue: check.requestedMode)?.label ?? check.requestedMode
         let actual = check.session.mode.replacingOccurrences(of: "AVAudioSessionMode", with: "")
         let processing = check.session.voiceProcessing ? ", voice processing on" : ""
+        let restarts = check.engineRestarts > 0 ? ", restarted \(check.engineRestarts)x" : ""
+        let gain = String(format: ", input gain %.2f", check.session.inputGain)
         func db(_ value: Double) -> String { String(format: "%.1f", value) }
-        return "Microphone test, \(mode) (session: \(actual)\(processing)): speech \(db(level.windowRMSP90DBFS)) dB, "
+        return "Microphone test, \(mode) (session: \(actual)\(processing)\(gain)\(restarts)): speech \(db(level.windowRMSP90DBFS)) dB, "
             + "background \(db(level.windowRMSP10DBFS)) dB, gap \(db(level.speechMinusNoiseDB)) dB, "
             + "peak \(db(level.peakDBFS)) dB, \(level.clippedSamples) clipped samples. Saved as recording-check.json."
     }

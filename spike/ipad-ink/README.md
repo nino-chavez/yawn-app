@@ -155,6 +155,41 @@ mismatch in the last measurement take.
 Limits: one speaker, a synthetic voice, one room, one distance. A real second
 person's voice and a longer meeting are the next test, not this one.
 
+**Round 1, 2026-10-15 (Mac volume 50).** Measurement: speech −58.2 dBFS,
+noise −76.1, gap 18.0 dB, recall 98.1%. Default: −42.5, −56.4, 13.9 dB, 98.1%.
+Video recording (back microphone, subcardioid): −43.8, −58.5, 14.7 dB, 95.1%.
+Voice processing stopped at 0:00. Enabling it reconfigures the microphone right
+after start; the app read that as a hardware change and ended the take. The
+closing measurement take was not run, so there is no drift check. The louder
+modes raise the noise floor more than the speech. The session read-back showed
+the input gain is settable on this iPad and sits at 0.5.
+
+**Round 2, written before it ran.** What changed and why:
+
+- Voice processing: a reconfiguration on the same input port (type and UID)
+  now restarts capture into the same file, up to 3 times, counted as
+  `engine_restarts` in `recording-check.json`. A different port still ends the
+  recording with the note. A real hardware change (plugging in a USB-C
+  microphone mid-recording) is still untested.
+- New mode **Measurement, full input gain**: measurement with the input gain
+  set to 1, restored after the take. Added after round 1's data showed the gain
+  is settable. If speech and noise both rise by about the same number of dB,
+  the gain is digital and no better than gain added in software; if the gap
+  widens, it is analog and a real gain for measurement.
+- Recall hit its ceiling at volume 50 (98.1% twice). Speech minus noise
+  penalizes any mode with dynamics processing by construction, so it cannot
+  show a processed mode helping. Two quieter volumes (25 and 12) repeat
+  measurement against default so recall can separate them.
+- A mode is out if it recalls **more than 5 points** below measurement (round
+  1 said "fewer words than measurement"). Changed after seeing round 1, to
+  match the 5-point drift tolerance; it puts video recording back in.
+
+Takes, in order (`ipad_mic_ab.py play` default): 50 measurement, 50 voice
+processing, 50 measurement full gain, 50 measurement, 25 measurement, 25
+default, 12 measurement, 12 default. The script logs each take's volume, and
+`score --log` attaches it. If voice processing still will not record, it is
+recorded as not runnable in this spike and the experiment closes.
+
 ## Known limits of this spike
 
 - Transcription runs after Stop, not live. Live transcription was cut to fit.

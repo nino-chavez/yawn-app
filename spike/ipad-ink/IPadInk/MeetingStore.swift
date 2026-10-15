@@ -47,6 +47,13 @@ final class MeetingStore: NSObject, ObservableObject {
     private let levelMeter = LevelMeter()
     private var recordingMode: MicrophoneMode = .measurement
     private var recordingSession: RecordingSessionState?
+    /// The input port a recording started on, as "type:uid". A reconfiguration
+    /// on the same port restarts capture; a different port ends the recording.
+    private var recordingInputPort: String?
+    private var engineRestarts = 0
+    /// Set when a test mode raised the input gain, so Stop can put it back.
+    private var inputGainToRestore: Float?
+    private static let maxEngineRestarts = 3
     /// Bumped by New meeting. A transcription run that outlives its meeting
     /// still saves to that meeting's folder but no longer touches the screen.
     private var meetingGeneration = 0
@@ -281,8 +288,13 @@ final class MeetingStore: NSObject, ObservableObject {
             // Measurement mode keeps system processing to a minimum so the room
             // is recorded as the microphone hears it; the other modes are a test.
             let mode = microphoneMode
-            try AVAudioSession.sharedInstance().setCategory(mode.category, mode: mode.sessionMode)
-            try AVAudioSession.sharedInstance().setActive(true)
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(mode.category, mode: mode.sessionMode)
+            try session.setActive(true)
+            if mode == .measurementFullGain, session.isInputGainSettable {
+                inputGainToRestore = session.inputGain
+                try session.setInputGain(1)
+            }
             // A fresh engine per recording: voice processing belongs to the
             // engine's I/O unit and must not carry into the next recording.
             audioEngine = AVAudioEngine()
@@ -313,17 +325,14 @@ final class MeetingStore: NSObject, ObservableObject {
             ]
             // The file is 16-bit on disk; it accepts 16 kHz mono float buffers.
             let file = try AVAudioFile(forWriting: destination, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
-            let input = audioEngine.inputNode
-            let inputFormat = input.outputFormat(forBus: 0)
-            guard let converter = AVAudioConverter(from: inputFormat, to: file.processingFormat) else {
-                throw CocoaError(.featureUnsupported)
-            }
             levelMeter.reset()
-            input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat, block: Self.makeTapBlock(file: file, converter: converter, meter: levelMeter))
+            engineRestarts = 0
+            try installCaptureTap(writingTo: file)
             audioEngine.prepare()
             try audioEngine.start()
             recordingMode = mode
             recordingSession = RecordingSessionState.current(engine: audioEngine)
+            recordingInputPort = Self.currentInputPort()
 
             meetingURL = meetingFolder
             audioURL = destination
@@ -334,6 +343,7 @@ final class MeetingStore: NSObject, ObservableObject {
         } catch {
             audioEngine.inputNode.removeTap(onBus: 0)
             audioEngine.stop()
+            restoreInputGain()
             UIApplication.shared.isIdleTimerDisabled = false
             // A meeting that never started keeps no audio behind.
             if let folder { try? FileManager.default.removeItem(at: folder) }
@@ -379,7 +389,7 @@ final class MeetingStore: NSObject, ObservableObject {
                 // running, such as turning voice processing on before start,
                 // has not interrupted anything.
                 guard let self, !self.audioEngine.isRunning else { return }
-                self.finishInterruptedRecording(reason: "the microphone changed")
+                self.handleEngineConfigurationChange()
             }
         }
     }
@@ -408,6 +418,54 @@ final class MeetingStore: NSObject, ObservableObject {
         transcribeSavedAudio()
     }
 
+    /// The engine stops itself when its I/O unit reconfigures. Voice processing
+    /// does that right after start on the same microphone, so the same input
+    /// port restarts capture into the same file; only a different input, or a
+    /// microphone that will not settle, ends the recording.
+    private func handleEngineConfigurationChange() {
+        guard isRecording, let file = audioFile else { return }
+        guard Self.currentInputPort() == recordingInputPort else {
+            finishInterruptedRecording(reason: "the microphone changed")
+            return
+        }
+        guard engineRestarts < Self.maxEngineRestarts else {
+            finishInterruptedRecording(reason: "the microphone kept reconfiguring")
+            return
+        }
+        do {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            try installCaptureTap(writingTo: file)
+            audioEngine.prepare()
+            try audioEngine.start()
+            engineRestarts += 1
+            // The check describes the configuration that actually recorded.
+            recordingSession = RecordingSessionState.current(engine: audioEngine)
+        } catch {
+            finishInterruptedRecording(reason: "the microphone could not restart after it reconfigured")
+        }
+    }
+
+    /// Reads the input format now, because voice processing can change it.
+    private func installCaptureTap(writingTo file: AVAudioFile) throws {
+        let input = audioEngine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard let converter = AVAudioConverter(from: inputFormat, to: file.processingFormat) else {
+            throw CocoaError(.featureUnsupported)
+        }
+        input.installTap(onBus: 0, bufferSize: 4_096, format: inputFormat, block: Self.makeTapBlock(file: file, converter: converter, meter: levelMeter))
+    }
+
+    private static func currentInputPort() -> String? {
+        guard let input = AVAudioSession.sharedInstance().currentRoute.inputs.first else { return nil }
+        return "\(input.portType.rawValue):\(input.uid)"
+    }
+
+    private func restoreInputGain() {
+        guard let gain = inputGainToRestore else { return }
+        try? AVAudioSession.sharedInstance().setInputGain(gain)
+        inputGainToRestore = nil
+    }
+
     private func retryReplayIfNeeded() {
         guard player == nil, !isRecording, recordingState != .ready, audioURL != nil else { return }
         prepareReplay(reportFailure: false)
@@ -425,6 +483,7 @@ final class MeetingStore: NSObject, ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = false
         inputLevel = nil
         saveRecordingCheck(framesWritten: framesWritten)
+        restoreInputGain()
         return framesWritten
     }
 
@@ -490,6 +549,7 @@ final class MeetingStore: NSObject, ObservableObject {
             requestedMode: recordingMode.rawValue,
             session: recordingSession,
             durationSeconds: Double(framesWritten) / Self.fileSampleRate,
+            engineRestarts: engineRestarts,
             level: levelMeter.summary
         )
         lastRecordingCheck = check
