@@ -1,7 +1,7 @@
 ---
 surface: mac-rail (an interrupted recording; a meeting whose saved note cannot be read)
 kind: cold
-build: main's installed Yawn Fixture app (UI as of 9f44753); data seeded by eb3336f's rendered-review-fixture
+build: the signed Yawn Fixture bundle from the 2026-10-16 installed pass (built at 9f44753; not re-verified by digest, because source-digest.json covers only the runtime). No file under apps/desktop/ui, apps/desktop/src-tauri or crates differs between 9f44753 and main. Data seeded by eb3336f's rendered-review-fixture
 device: installed Yawn Fixture app on this Mac, 1080 by 900 at 2x, the app's own window captured with screencapture -l; Dark (the Mac's appearance) and Light (the in-app choice)
 reviewer: one fresh subagent (Claude) with the four frames under shuffled neutral names and the five job questions only
 implementer: the session that seeded and captured it (Claude), not the reviewer
@@ -45,12 +45,17 @@ sidebar, inactive-window styling).
   action"). There is no transcription of a recovered recording's kept audio, so no
   positive action exists to offer. The primary action waits on a product decision. It
   remains an operator item.
-- *The 6:00 stop mark on an empty rail.* It is the Rail's stop mark (`DESIGN.md`). It
-  marks where the recording ended, not a note.
-- *"Full transcript" collapsed while the row says "transcript available".* It is
-  collapsed by design, and the transcript is one click away.
-- *The share button absent on the interrupted meeting.* There is nothing verified to
-  export without a transcript. This is by design.
+- *The 6:00 stop mark on an empty rail.* `DESIGN.md` names the stop mark on the rail as
+  part of the attention surface. It marks where the recording ended, not a note.
+- *"Full transcript" collapsed while the row says "transcript available".*
+  `DESIGN.md` places Full transcript as a text button that opens the transcript, so it
+  starts collapsed. The transcript is one click away.
+- *The share button absent on the interrupted meeting.* The toolbar shows Export only
+  when the meeting has transcript turns (`apps/desktop/ui/main.js`, `canExport =
+  Boolean(transcript?.turns?.length)`). The export command itself would run without a
+  transcript, writing a "no retained transcript" withheld line plus the receipts, so
+  hiding the button is a UI choice, not a limit of export. It is recorded, not judged
+  here.
 
 **New product findings (follow-up; not fixed here).**
 

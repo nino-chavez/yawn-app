@@ -1,8 +1,10 @@
 # Mac interrupted and unreadable-note pages, installed build, 2026-10-16
 
 Captures of the installed **Yawn Fixture** app (`com.ninochavez.local-meeting-notes.fixture`),
-the same signed build as `mac-rail-installed-2026-10-16` (main's UI; this PR changes
-only the fixture seeder). Each frame is the app's own window, `screencapture -o -l
+the same signed bundle as `mac-rail-installed-2026-10-16`, built at `9f44753`. It was
+not rebuilt, because this PR changes only the fixture seeder. No app or UI source differs
+between `9f44753` and main. The bundle's `source-digest.json` covers only the runtime, so
+the UI build was not re-verified by digest. Each frame is the app's own window, `screencapture -o -l
 <window id>`, 1080 by 900 points at 2x.
 
 ## How the frames were made
