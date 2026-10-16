@@ -1,7 +1,12 @@
 # Yawn — design direction
 
-design_intent: rethink
-design_direction: docs/design-direction-decision.md
+design_intent: refit
+design_direction: decisions/family-direction-2026-10-15.md
+<!-- 2026-10-15, later: the operator selected Concept 2, Rail, with the
+     paper language, for both apps; the record above is the direction.
+     DESIGN.md is rewritten from it. The 2026-09-02 ADR
+     (docs/design-direction-decision.md) remains the record of the Mac
+     window frame, which Rail keeps. -->
 <!-- 2026-10-15: the operator asked for a rethink of the UI, UX and visual
      style of both apps. Brief: docs/experience-brief-family-2026-10-15.md.
      Baseline blind review of the shipped Mac app (seven of seven revise):

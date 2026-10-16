@@ -1823,3 +1823,67 @@ export function updatePresentation(status) {
 export function updateAvailableNotice(version) {
   return { text: `Yawn ${version} is available.`, action: { action: "open-update-settings", label: "Update…" } };
 }
+
+// Note moments (product brief, "Note moments on the Mac", 2026-10-15). A
+// moment is the second, by this Mac's clock since the recording started, at
+// which a line of the operator's note was first typed. Pauses are included;
+// the capture ledger's pause spans convert a moment to a position in the
+// audio after the meeting. The clock runs while recording or paused and is
+// null otherwise, so a line typed after Stop never gains one.
+export function noteMomentSeconds(snapshot, nowEpochSeconds = Date.now() / 1000) {
+  if (!["recording", "paused"].includes(snapshot?.capture)) return null;
+  const startedAt = Number(snapshot?.started_at_epoch_seconds);
+  if (!Number.isFinite(startedAt) || !Number.isFinite(nowEpochSeconds)) return null;
+  return Math.max(0, Math.floor(nowEpochSeconds - startedAt));
+}
+
+// Keeps a note's moments attached to their lines as the text changes. Lines
+// are the note split on newlines. A line that survives an edit keeps its
+// moment (matched by text through a longest common subsequence, so inserted
+// and deleted lines shift the rest without losing them); a line edited in
+// place keeps its moment; a new non-empty line gets `nowSeconds` when the
+// clock is running and nothing otherwise. Best effort over a plain textarea:
+// the Rail wave's line-aware editor replaces this with stable line identity.
+export function alignNoteMoments(previousText, previousMoments, nextText, nowSeconds) {
+  const prev = String(previousText ?? "").split("\n");
+  const next = String(nextText ?? "").split("\n");
+  const had = new Map();
+  for (const moment of Array.isArray(previousMoments) ? previousMoments : []) {
+    const line = Number(moment?.line);
+    const seconds = Number(moment?.seconds);
+    if (Number.isInteger(line) && Number.isInteger(seconds) && line >= 0 && line < prev.length && seconds >= 0) had.set(line, seconds);
+  }
+  const n = prev.length;
+  const m = next.length;
+  const match = new Map(); // next line index -> previous line index
+  if (n * m <= 250_000) {
+    const table = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        table[i][j] = prev[i] === next[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (prev[i] === next[j]) { match.set(j, i); i += 1; j += 1; }
+      else if (table[i + 1][j] >= table[i][j + 1]) i += 1;
+      else j += 1;
+    }
+  } else {
+    // Past the budget, align by position; a note this long is far outside a
+    // meeting's worth of typing.
+    for (let k = 0; k < Math.min(n, m); k++) match.set(k, k);
+  }
+  const matchedPrevious = new Set(match.values());
+  const clock = Number.isInteger(nowSeconds) && nowSeconds >= 0 ? nowSeconds : null;
+  const result = [];
+  for (let k = 0; k < m; k++) {
+    let seconds;
+    if (match.has(k)) seconds = had.get(match.get(k));
+    else if (k < n && !matchedPrevious.has(k) && had.has(k)) seconds = had.get(k); // edited in place
+    if (seconds === undefined && !match.has(k) && next[k].trim() !== "" && clock !== null) seconds = clock;
+    if (Number.isInteger(seconds)) result.push({ line: k, seconds });
+  }
+  return result;
+}

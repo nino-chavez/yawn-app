@@ -2,7 +2,8 @@
 
 Status: reset on 2026-08-10; automatic note generation retired from the product
 contract on 2026-09-30; an iPad in-person mode added on 2026-10-13, not yet
-built. Implementation and release are separate states.
+built; note moments on the Mac added on 2026-10-15, not yet built.
+Implementation and release are separate states.
 
 Future sequencing lives in the [product roadmap](roadmap.md). The roadmap may
 propose work, but this brief remains the current product contract until amended.
@@ -153,6 +154,31 @@ The three moments stay the same: one record action behind the consent check, a
 page that grows as the operator writes, then the handwriting with its audio and
 transcript, and a list of past meetings. Every other rule in this brief applies
 on iPad unchanged.
+
+## Note moments on the Mac — decided 2026-10-15
+
+Status: decided by the operator on 2026-10-15 with the family design
+direction (`decisions/family-direction-2026-10-15.md`). Not yet built.
+
+On the Mac, a line the operator types while a meeting is being recorded keeps
+the moment it was first typed, counted from the start of the recording. After
+the meeting, that moment ties the line to the audio and to the transcript turn
+spoken nearest to it, the way a stroke's time does on the iPad. The page shows
+the moments down its left margin, and that margin is how the operator moves
+through the audio.
+
+- A moment is set once, when the line is first typed during capture. Editing
+  the line later keeps its moment. A line typed while the recording is paused
+  takes the paused moment. A line typed after Stop has no moment and is shown
+  apart from the timed lines.
+- A moment is a fact about when the operator wrote, never a claim about what
+  was said. The transcript turn shown beside a line is the nearest one by
+  time, and the count of turns folded between two lines is shown, not hidden.
+  The full transcript stays available in the same meeting view.
+- When the audio has been released, the moments remain and still reach the
+  transcript.
+- Moments are stored with the note, on this Mac, and go nowhere else. A note
+  saved before this change has no moments and reads as it did.
 
 ## Not part of this reset
 

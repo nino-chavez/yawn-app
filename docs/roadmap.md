@@ -16,9 +16,13 @@ states, both platforms, both appearances (`design/concepts/family-2026-10-15/`,
 harness at `apps/desktop/ui-harness/family-concepts/`). The Mac window frame
 and the iPad structure stay as selected; the Mac document pane, During canvas,
 Settings and the visual language on both devices are what the concepts answer.
-The selection record, pending the operator's choice, is
-`decisions/family-direction-2026-10-15.md`. `DIRECTION.md` reads
-`design_intent: rethink` until it lands.
+The operator selected **Concept 2, Rail** the same day
+(`decisions/family-direction-2026-10-15.md`): the paper language on both
+apps, and the Mac carries the time link, which needs a moment per typed line
+(product brief, "Note moments on the Mac"). `DIRECTION.md` is back to
+`refit` pointing at that record; `DESIGN.md` is rewritten from it. Order of
+work: the brief amendment and the note-moment storage first, then the Mac
+implementation wave, with the iPad slices continuing on the same language.
 
 ## Current source amendment — 2026-09-30
 
