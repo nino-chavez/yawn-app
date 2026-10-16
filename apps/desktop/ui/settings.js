@@ -1,6 +1,6 @@
 import { mergePermissions, updatePresentation } from "./view-model.mjs";
 import { APPEARANCES, getAppearance, setAppearance } from "./appearance.mjs";
-import { TEXT_SIZES, getTextSize, setTextSize } from "./text-size.mjs";
+import { TEXT_SIZES, TEXT_SIZE_EVENT, getTextSize, setTextSize } from "./text-size.mjs";
 
 // The Settings page (Rail, 2026-10-16): mounted inside the main window's
 // document pane, opened from the sidebar gear, the Settings menu item and ⌘,.
@@ -590,8 +590,9 @@ export function mountSettings(root = document) {
     choiceRoot.innerHTML = APPEARANCES.map((value) => `<button class="appearance-option" type="button" data-settings-action="appearance" data-value="${value}" aria-pressed="${value === current ? "true" : "false"}">${labels[value]}</button>`).join("");
   }
 
-  // Text size (2026-10-16): macOS keeps its per-app Text Size list to Apple's
-  // own apps, so Yawn offers its own steps. Each scales every type size.
+  // Text size (2026-10-16): Yawn's own steps, like Apple's apps' Cmd-+ and
+  // Cmd--; View > Bigger / Smaller step the same choice. Each scales every
+  // type size.
   function renderTextSize() {
     const choiceRoot = root.querySelector("#text-size-choice");
     if (!choiceRoot) return;
@@ -599,13 +600,15 @@ export function mountSettings(root = document) {
     const labels = { default: "Default", large: "Large", larger: "Larger", largest: "Largest" };
     const detail = root.querySelector("#text-size-detail");
     if (detail) detail.textContent = current === "default"
-      ? "The Mac's standard size."
+      ? "Yawn's standard size."
       : "Larger text everywhere in Yawn.";
     choiceRoot.innerHTML = TEXT_SIZES.map((value) => `<button class="appearance-option" type="button" data-settings-action="text-size" data-value="${value}" aria-pressed="${value === current ? "true" : "false"}">${labels[value]}</button>`).join("");
   }
 
   renderAppearance();
   renderTextSize();
+  // View > Bigger / Smaller change the size while this page may be open.
+  globalThis.addEventListener?.(TEXT_SIZE_EVENT, renderTextSize);
   void refresh();
   void refreshModels();
   void refreshTranscriptionEngine();
@@ -614,6 +617,7 @@ export function mountSettings(root = document) {
 
   return () => {
     disposed = true;
+    globalThis.removeEventListener?.(TEXT_SIZE_EVENT, renderTextSize);
     for (const timer of [transcriptionEnginePoll, modelPoll, speakerModelPoll, updatePoll]) {
       clearTimeout(timer);
       clearInterval(timer);

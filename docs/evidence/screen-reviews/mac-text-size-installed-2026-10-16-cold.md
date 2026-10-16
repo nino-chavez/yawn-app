@@ -18,11 +18,14 @@ installed build at the default window size.
 
 **Captures.** `mac-text-size-installed-2026-10-16/` with its `MANIFEST.md`.
 
-**Why an in-app setting.** macOS 27's Accessibility → Display → Text Size list
-holds only Apple's apps (`com.apple.universalaccess` `FontSizeCategory` on this
-Mac names thirteen `com.apple.*` bundles and a global value), and a third-party
-app cannot join it. Settings → Appearance → Text size (Default, Large, Larger,
-Largest) multiplies every type size by 1, 1.15, 1.3 or 1.5.
+**Why an in-app setting.** Apple's Text Size setting applies to "the apps
+listed", and Apple's own apps change text in the app with ⌘+ and ⌘− (Apple
+Support, "Increase font size and icons on Mac", macOS 27). On this Mac the list
+(`com.apple.universalaccess` `FontSizeCategory`) names thirteen `com.apple.*`
+bundles and a global value; no API was found for another app to join it. Yawn
+does the same: Settings → Appearance → Text size (Default, Large, Larger,
+Largest) and View → Bigger, Smaller, Actual Size (⌘+, ⌘−, ⌘0) set one scale
+that multiplies every type size by 1, 1.15, 1.3 or 1.5.
 
 **What getting here found (fixed before pass 1, `5004bd1`).** The first Largest
 capture broke elapsed times across lines ("12:0 / 3", "Elapse / d") and clipped
@@ -55,9 +58,11 @@ were fixed px. They now derive from the scale.
 - **The transcript column drifts from the notes.** Turns are pushed down in
   order so they never overlap (`layoutLedgers`); the column is labeled "Nearest
   in the transcript". Unchanged at every size.
-- **Less fits on screen, and the toolbar title truncates.** The expected cost of
-  1.5x text in a 1080 by 900 window; the page scrolls and the full title is the
-  page heading.
+- **Three-line notes, less on screen, the toolbar title truncates.** At 1.5x
+  in a 1080 by 900 window the page width does not grow, the rail gutter does
+  (so times stay whole), and the turn column stays 324px, so the note column
+  narrows while its text grows. Rebalancing the columns at large sizes is a
+  product call, below. The page scrolls; the full title is the page heading.
 
 **Not reviewed here.** Light appearance and increased contrast at Largest; the
 Large and Larger steps (between the two judged ends); the live recording and the
@@ -70,3 +75,15 @@ the existing Appearance group in Settings.
 
 1. Should a rail mark sit on the first line of a wrapped note instead of its
    middle? It applies at every text size.
+2. At the larger sizes, should the 324px turn column narrow so the notes keep
+   more of the page?
+
+**Checked outside the captures.** Clicking Text size live (Largest, Larger,
+Default) re-scales the page at once, moves the pressed state, changes the detail
+line and stores the choice; an opened meeting renders at the chosen size. This
+was checked in the browser harness (`ui/review/harness.html`),
+not on the installed build, because Computer Use's approval went unanswered.
+The View menu items were added after the captures and are covered by tests, not
+by a frame. The Default detail line also changed after the captures, from "The Mac's
+standard size." (in `default-settings.png`) to "Yawn's standard size.", so it no
+longer suggests Yawn follows the Mac's setting.

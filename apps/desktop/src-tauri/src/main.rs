@@ -2040,6 +2040,9 @@ fn menu_event_name(id: &str) -> Option<&'static str> {
         "stop-recording" => Some("menu:stop"),
         "toggle-sidebar" => Some("menu:toggle-sidebar"),
         "open-transcript" => Some("menu:open-transcript"),
+        "text-bigger" => Some("menu:text-bigger"),
+        "text-smaller" => Some("menu:text-smaller"),
+        "text-actual" => Some("menu:text-actual"),
         _ => None,
     }
 }
@@ -6438,9 +6441,26 @@ fn main() {
                 tauri::menu::MenuItemBuilder::with_id("open-transcript", "Open Full Transcript")
                     .accelerator("CmdOrCtrl+Alt+T")
                     .build(app)?;
+            // Text size (2026-10-16): the Mac's own Text Size list holds only
+            // Apple's apps, which change text size in the app with Cmd-+ and
+            // Cmd-- (Mail, Messages). These step the same setting as Settings
+            // > Appearance > Text size; the frontend owns the steps.
+            let text_bigger = tauri::menu::MenuItemBuilder::with_id("text-bigger", "Bigger")
+                .accelerator("CmdOrCtrl+=")
+                .build(app)?;
+            let text_smaller = tauri::menu::MenuItemBuilder::with_id("text-smaller", "Smaller")
+                .accelerator("CmdOrCtrl+-")
+                .build(app)?;
+            let text_actual = tauri::menu::MenuItemBuilder::with_id("text-actual", "Actual Size")
+                .accelerator("CmdOrCtrl+0")
+                .build(app)?;
             let view_menu = tauri::menu::SubmenuBuilder::new(app, "View")
                 .item(&toggle_sidebar)
                 .item(&open_transcript)
+                .separator()
+                .item(&text_bigger)
+                .item(&text_smaller)
+                .item(&text_actual)
                 .build()?;
             // W6-B: a standard Window submenu. Predefined items only, same as
             // Edit above. `.maximize()` is Tauri/muda's builder name for the
@@ -10320,6 +10340,9 @@ mod tests {
             menu_event_name("open-transcript"),
             Some("menu:open-transcript")
         );
+        assert_eq!(menu_event_name("text-bigger"), Some("menu:text-bigger"));
+        assert_eq!(menu_event_name("text-smaller"), Some("menu:text-smaller"));
+        assert_eq!(menu_event_name("text-actual"), Some("menu:text-actual"));
         // "open-settings" is handled before `menu_event_name` is ever
         // called (it drives `show_settings_page` directly) and must not
         // also be wired as an event — a menu item id that means neither

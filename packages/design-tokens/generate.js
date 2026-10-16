@@ -77,9 +77,8 @@ function render() {
   --font: ${t.font.body};
   --font-mono: ${t.font.mono};
   /* Text size (2026-10-16): every type size is its token times --text-scale,
-     which text-size.mjs sets on the root from the Settings choice. macOS
-     keeps its per-app Text Size list to Apple's own apps, so the scale is
-     Yawn's own preference; 1 renders the sizes below unchanged. */
+     which text-size.mjs sets on the root from the Settings choice (or View >
+     Bigger / Smaller); 1 renders the sizes below unchanged. */
   --text-scale: 1;
   ${Object.entries(fs_).filter(([k]) => k !== "transcript").map(([k, v]) => `--t-${k}: ${scaled(v.size)};`).join(" ")}
   --lh-body: ${fs_.body.lineHeight}; --lh-read: ${fs_.read.lineHeight};

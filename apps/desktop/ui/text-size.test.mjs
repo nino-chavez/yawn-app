@@ -133,3 +133,26 @@ test("the rail gutter grows with the text size, so an elapsed time never breaks"
   assert.match(rules, /\.ledger-rail \{[^}]*left: var\(--ledger-rail-x\)/);
   assert.match(rules, /\.ledger-mark span \{[^}]*width: var\(--ledger-time-w\)/);
 });
+
+test("Bigger and Smaller step one size and stop at the ends; Actual Size returns to Default", () => {
+  assert.equal(mod.stepTextSize(1, "default"), "large");
+  assert.equal(mod.stepTextSize(1, "larger"), "largest");
+  assert.equal(mod.stepTextSize(1, "largest"), "largest");
+  assert.equal(mod.stepTextSize(-1, "large"), "default");
+  assert.equal(mod.stepTextSize(-1, "default"), "default");
+  assert.equal(mod.stepTextSize(0, "largest"), "default");
+  assert.equal(mod.stepTextSize(1, "unknown"), "large");
+});
+
+test("the View menu's text-size items reach the setting, and an open Settings page follows them", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  for (const [event, step] of [["text-bigger", "1"], ["text-smaller", "-1"], ["text-actual", "0"]]) {
+    assert.match(main, new RegExp(`tauriListen\\("menu:${event}", \\(\\) => setTextSize\\(stepTextSize\\(${step}\\)\\)\\)`), event);
+  }
+  const rust = await readFile(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+  assert.match(rust, /"text-bigger" => Some\("menu:text-bigger"\)/);
+  assert.match(rust, /accelerator\("CmdOrCtrl\+="\)/);
+  const settings = await readFile(new URL("./settings.js", import.meta.url), "utf8");
+  assert.match(settings, /addEventListener\?\.\(TEXT_SIZE_EVENT, renderTextSize\)/);
+  assert.match(settings, /removeEventListener\?\.\(TEXT_SIZE_EVENT, renderTextSize\)/);
+});
