@@ -786,6 +786,7 @@ function renderToolbarMeetingActions() {
           ${items.join("")}
         </div>` : ""}
       </div>` : ""}
+      ${state.transcriptRetry?.phase === "starting" ? `<span class="caption toolbar-status" role="status" aria-live="polite">Preparing retry…</span>` : ""}
     </div>`;
 }
 
@@ -1836,7 +1837,9 @@ function closeModal() {
   // so a cancelled guided invitation never leaks its hint into the next
   // ordinary Record click.
   state.startSheetGuided = false;
-  if (retryOpen) queueMicrotask(() => root.querySelector("#transcript-retry-action")?.focus());
+  // The retry action lives in the toolbar's More menu (Rail slice 1), so
+  // focus returns to the menu button the person opened it from.
+  if (retryOpen) queueMicrotask(() => root.querySelector('[data-action="toggle-meeting-management"]')?.focus());
 }
 
 async function openVocabulary() {
@@ -2801,6 +2804,7 @@ async function openTranscriptRetry() {
   const selection = state.selected;
   const retry = transcriptRetryContext(selection?.note, selection?.transcript, selection?.transcriptRetry);
   if (!selection || !retry) return;
+  state.meetingManagementOpen = false;
   if (retry.pending) {
     state.transcriptRetry = { ...retry.pending, phase: "ready" };
     state.modal = "transcript-retry";

@@ -726,6 +726,14 @@ h3 {
   gap: var(--space-4);
 }
 
+/* A step in progress that nothing else on screen reports (a retry being
+   prepared) is one caption beside the actions, in the toolbar's own voice. */
+.toolbar-status {
+  margin-left: var(--space-6);
+  color: var(--label-3);
+  white-space: nowrap;
+}
+
 .meeting-manage-control {
   position: relative;
 }
