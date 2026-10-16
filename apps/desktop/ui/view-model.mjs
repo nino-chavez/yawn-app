@@ -44,7 +44,7 @@ const CAPTURE_COPY = Object.freeze({
   summarizing: {
     eyebrow: "Transcript ready",
     title: "Your meeting is ready to read.",
-    detail: "Automatic note generation is no longer available. Your notes and transcript remain available.",
+    detail: "Your notes and the transcript are here.",
     tone: "complete",
   },
   "transcript-ready": {
@@ -315,7 +315,7 @@ export function retentionLabel(days) {
 // command; this presentation deliberately contains no fallback selector.
 export function retainedAudioPlaybackPresentation(note, recovery, playback = {}) {
   if (!note || recovery || note.audioRetention?.state !== "retained") return null;
-  if (!["note", "summary-failed", "transcript-only", "saved-note-unreadable", "transcribing"].includes(note.state)) return null;
+  if (!["note", "summary-failed", "transcript-only", "saved-note-unreadable", "transcribing", "recovered-interrupted"].includes(note.state)) return null;
   const availableControls = [
     { source: "microphone", handle: note.microphonePlaybackHandle, label: "Play microphone" },
     { source: "system", handle: note.systemPlaybackHandle, label: "Play system audio" },
@@ -1523,7 +1523,7 @@ export function meetingRecoveryPresentation(note, transcript) {
       state: "summary-failed",
       tone: "neutral",
       title: hasUsableNote ? "An earlier AI draft remains available." : "No AI draft was created.",
-      detail: "Automatic note generation is no longer available. Your notes and transcript remain available.",
+      detail: "Your notes and the transcript are here; no draft will be made.",
       action: null,
     };
   }

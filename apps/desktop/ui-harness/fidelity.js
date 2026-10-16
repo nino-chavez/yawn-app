@@ -1,6 +1,7 @@
-// Tonal Ledger Canvas geometry gate. Runs the real production frontend in the
-// WKWebView harness against the transcript-only fixture, then compares browser
-// computed values with the single selected-reference contract.
+// Rail geometry gate (DESIGN.md, selected 2026-10-15). Runs the real
+// production frontend in the WKWebView harness against the ledger fixture --
+// a transcript-ready meeting with seven timed lines -- then compares browser
+// computed values with the single contract.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const q = (selector) => document.querySelector(selector);
 const waitFor = async (selector, tries = 80) => {
@@ -13,16 +14,17 @@ const waitFor = async (selector, tries = 80) => {
 };
 
 const row = await waitFor('[data-action="open-meeting"]');
-if (!row) return { state: "transcript-only / no meeting note", error: "meeting row never appeared" };
+if (!row) return { state: "ledger / transcript ready", error: "meeting row never appeared" };
 row.click();
-if (!await waitFor(".no-note-state")) {
-  return { state: "transcript-only / no meeting note", error: "transcript-only fixture did not render the retained-note state" };
+if (!await waitFor(".ledger.has-rail.has-turns")) {
+  return { state: "ledger / transcript ready", error: "the ledger fixture did not render a rail with a turn column" };
 }
 if (q("[data-action='generate-note']") || document.body.textContent.includes("Generate note")) {
-  return { state: "transcript-only / no meeting note", error: "retired generation control rendered" };
+  return { state: "ledger / transcript ready", error: "retired generation control rendered" };
 }
+await sleep(120);
 
-const contract = await fetch("tonal-ledger-canvas.contract.json").then((response) => response.json());
+const contract = await fetch("rail.contract.json").then((response) => response.json());
 const read = (element, check) => {
   const style = getComputedStyle(element);
   if (check.measurement === "rect.height") return element.getBoundingClientRect().height;

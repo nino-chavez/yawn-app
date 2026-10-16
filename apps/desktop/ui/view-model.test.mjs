@@ -662,7 +662,7 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // Rail (2026-10-15): the transport sits under the header; the operator's
   // notes are the first section of the page, then a saved AI draft, then the
   // meeting context, then the full transcript.
-  assert.match(source, /\$\{renderTransport\(playback, transcript, row\)\}\s*<section class="note-section your-notes-section"[\s\S]*\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<div class="doc-transcript-disclosure-wrap">/);
+  assert.match(source, /\$\{renderTransport\(playback, transcript, row\)\}\s*\$\{attentionFirst \? noteBlock : ""\}\s*<section class="note-section your-notes-section"[\s\S]*\$\{attentionFirst \? "" : noteBlock\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<div class="doc-transcript-disclosure-wrap">/);
   // The selected Tonal Ledger reference keeps the disclosure inside `.read`
   // and aligned to the same document measure as the note.
   assert.match(source, /<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>\s*<\/article>/);
@@ -714,7 +714,7 @@ test("Stop is offered only while the recorder can accept it", () => {
   for (const capture of ["captured", "transcribing"]) {
     assert.match(capturePresentation({ capture }).detail, /Recording stopped\./, capture);
   }
-  assert.match(capturePresentation({ capture: "summarizing" }).detail, /no longer available/);
+  assert.match(capturePresentation({ capture: "summarizing" }).detail, /notes and the transcript are here/);
 });
 
 test("the pause control never claims a state the capture helper has not confirmed", () => {
@@ -1147,7 +1147,7 @@ test("summary failure keeps the transcript without offering regeneration", () =>
   assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action, null);
   assert.match(recovery.detail, /transcript/);
-  assert.match(recovery.detail, /no longer available/);
+  assert.match(recovery.detail, /no draft will be made/);
   assert.doesNotMatch(recovery.detail, /current note/);
 });
 
@@ -1190,7 +1190,7 @@ test("summary failure has the same plain retired state without a source", () => 
   });
   assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action, null);
-  assert.match(recovery.detail, /notes and transcript remain available/);
+  assert.match(recovery.detail, /no draft will be made/);
 });
 
 test("historical generation state remains plain instead of showing a spinner", () => {
@@ -1202,7 +1202,7 @@ test("historical generation state remains plain instead of showing a spinner", (
   }, { state: "transcript" });
   assert.equal(recovery.state, "summary-failed");
   assert.equal(recovery.action, null);
-  assert.match(recovery.detail, /no longer available/);
+  assert.match(recovery.detail, /no draft will be made/);
 });
 
 test("stale transcript routes back to meetings instead of inventing a transcript retry", () => {
@@ -1219,14 +1219,14 @@ test("an empty transcript-only note remains explicit without a generate control"
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // R14: the empty state is one sentence at reading size carrying the
   // heading id, not an h2 plus the reader's generic message repeated.
-  assert.match(source, /<p id="meeting-note-heading" class="empty-note-state">/);
+  assert.match(source, /<p id="meeting-note-heading" class="\$\{attention \? "attention-headline" : "empty-note-state"\}">/);
   // Rail (2026-10-15): a transcript-only meeting draws no note section at
   // all; the operator's notes and the transcript are the page, and the
   // retirement of generation is not announced in the meeting view.
   const noteRenderer = source.slice(source.indexOf("function renderMeetingNote("), source.indexOf("function renderTranscriptDisclosure("));
   assert.doesNotMatch(noteRenderer, /no longer available/);
   assert.doesNotMatch(source, /note\?\.message && !claims\.length/);
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}/);
+  assert.match(source, /const noteBlock = renderMeetingNote\(note, claimEvidence, recovery\);/);
   assert.doesNotMatch(source, /renderGenerateNote|generate-note/);
 });
 

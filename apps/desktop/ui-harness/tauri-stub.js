@@ -299,8 +299,8 @@
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
             createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
-      : mode === "library" || mode === "ledger" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
-      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : {}) }, {
+      : mode === "library" || mode === "ledger" || mode === "interrupted" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : {}) }, {
           ...libraryRow,
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",
@@ -457,7 +457,22 @@
       transcriptHandle: "transcript-handle-2",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
-    } : sheetMode ? { ...sheetNote } : mode === "ledger" ? {
+    } : sheetMode ? { ...sheetNote } : mode === "interrupted" ? {
+      // mode=interrupted (Rail): a recording that stopped at 6:41 with its
+      // audio kept and one timed line typed before the stop. Invented.
+      meetingId: "harness-meeting-1",
+      state: "recovered-interrupted",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { text: "gutters: get a second quote", moments: [{ line: 0, seconds: 95 }], unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: null,
+      microphonePlaybackHandle: "mic-playback-1",
+      meetingDeletionHandle: "deletion-handle-1",
+      message: "The recording was interrupted before it could be transcribed. The audio it kept can still be played.",
+      audioRetention: { state: "retained", policy: "7-days", deadlineEpochSeconds: Math.floor(Date.now() / 1000) + 6 * 24 * 60 * 60, message: "Audio retained on this Mac." },
+      capturePauses: { state: "not-paused", count: 0, totalPausedSeconds: 0, message: "Recording was not paused during this meeting.", spans: [] },
+    } : mode === "ledger" ? {
       meetingId: "harness-meeting-1",
       state: "transcript-only",
       claims: [],

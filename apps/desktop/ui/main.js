@@ -896,7 +896,6 @@ function renderNeedsAttentionPane({ headline, detail, action = null, secondaryAc
   return `
     <div class="attention-pane">
       <section class="attention-state" aria-labelledby="attention-state-heading">
-        <p class="attention-label">Needs attention</p>
         <h1 class="attention-headline" id="attention-state-heading">${escapeHtml(headline)}</h1>
         <p class="attention-detail">${escapeHtml(detail)}</p>
         ${action || secondaryAction ? `
@@ -918,6 +917,20 @@ function renderEmptyPane() {
     return renderNeedsAttentionPane({ headline: permission.title, detail: permission.detail, action });
   }
   const processing = backgroundTranscriptionPresentation(state.snapshot);
+  const empty = libraryEmptyStatePresentation(state.library);
+  if (empty?.variant === "no-meetings") {
+    // DESIGN.md (Rail), first run: the page with its empty rail, one line,
+    // one sentence in the app's own words, and the shortcut. Nothing seeded.
+    return `
+      <div class="empty-pane first-run-page" role="region" aria-label="First run">
+        <div class="ledger-rail empty-rail" aria-hidden="true"></div>
+        <div class="empty-doc">
+          <h1>Record a meeting</h1>
+          <p>Yawn records the call and your own notes, keeps them on this Mac, and makes a transcript when you stop.</p>
+          <p class="caption">⌘R, or the Record button</p>
+        </div>
+      </div>`;
+  }
   return `
     <div class="empty-pane">
       <p class="caption">Select a meeting, or press Record</p>
@@ -1009,27 +1022,51 @@ function renderCapturePane() {
   const disabled = state.noteUnreadable || !snapshot.meeting_id;
   const contextDisabled = state.contextUnreadable || !snapshot.meeting_id;
   const context = snapshot.error || snapshot.warnings?.[0] || "";
+  const live = ["recording", "paused"].includes(snapshot?.capture);
+  const startedAt = Number(snapshot?.started_at_epoch_seconds);
+  // DESIGN.md (Rail): while recording or paused the toolbar's badge is the
+  // status; the page carries only when it started. The transitional steps
+  // (arming, stopping, captured, transcribing) keep their one-line caption.
+  const meta = live && Number.isFinite(startedAt) ? `Started ${timeOfDayLabel(startedAt)}` : presentation.detail;
+  const title = Number.isFinite(startedAt) ? `Meeting · ${dateLabel(startedAt)}` : "Meeting";
   return `
-    <div class="canvas-wrap">
-      <div class="canvas-caption caption">${escapeHtml(presentation.detail)}</div>
-      ${context ? `<p class="caption canvas-context-note" data-tone="${escapeHtml(presentation.tone)}">${escapeHtml(context)}</p>` : ""}
+    <div class="canvas-wrap doc-page">
+      <div class="doc-head">
+        <div class="doc-heading">
+          <p class="doc-meta canvas-caption">${escapeHtml(meta)}</p>
+          <h1>${escapeHtml(title)}</h1>
+        </div>
+      </div>
+      ${context ? `<p class="caption canvas-context-note doc-fact" data-tone="${escapeHtml(presentation.tone)}">${escapeHtml(context)}</p>` : ""}
       ${!inProgress ? `<div class="canvas-terminal-actions">${captureAction(snapshot, true)}</div>` : ""}
       ${renderActivityMonitor(snapshot)}
-      <textarea class="notes-area" data-field="operator-note" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${disabled ? "disabled" : ""}>${escapeHtml(state.noteDraft)}</textarea>
-      <div class="canvas-field-foot caption">${escapeHtml(state.noteUnreadable ? "This note could not be read, so Yawn will not overwrite it." : noteSaveCopy())}</div>
+      <section class="note-section your-notes-section" aria-labelledby="capture-note-heading">
+        <div class="note-editor-head"><h3 id="capture-note-heading">Your notes</h3><span class="doc-fact canvas-field-foot">${escapeHtml(state.noteUnreadable ? "This note could not be read, so Yawn will not overwrite it." : noteSaveCopy())}</span></div>
+        ${renderNoteLedger({
+          text: state.noteDraft,
+          moments: state.noteMoments || [],
+          turns: [],
+          pauses: null,
+          field: "operator-note",
+          meetingId: snapshot.meeting_id || "",
+          editable: !disabled,
+          placeholder: "Write down the detail you will want to verify later.",
+          live,
+        })}
+      </section>
       <details class="canvas-context-disclosure">
         <summary class="caption">What is this meeting for? (optional)</summary>
         <textarea class="notes-area canvas-context-area" data-field="meeting-context" data-meeting-id="${escapeHtml(snapshot.meeting_id || "")}" aria-label="What is this meeting for? Optional." placeholder="What is this meeting for? What must get decided?" ${contextDisabled ? "disabled" : ""}>${escapeHtml(state.contextDraft)}</textarea>
         <div class="canvas-field-foot caption">${escapeHtml(state.contextUnreadable ? "This context could not be read, so Yawn will not overwrite it." : contextSaveCopy())}</div>
       </details>
       ${snapshot.turns?.length ? `
-        <details class="transcript-disclosure">
-          <summary>Transcript (${snapshot.turns.length} turns)</summary>
+        <div class="doc-transcript-disclosure-wrap"><details class="transcript-disclosure">
+          <summary><span>Transcript (${snapshot.turns.length} turns)</span><svg class="transcript-disclosure-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
           <div class="transcript-disclosure-content">${renderTranscript(snapshot.turns, "Transcript", inProgress ? "Yawn prepares the retained transcript after you stop recording." : "The retained record for checking a detail that matters.", {
             copyAction: "copy-current-transcript",
             openFileAction: snapshot.capture === "transcript-ready" && snapshot.current_transcript_sha256 ? "open-current-transcript-file" : "",
           })}</div>
-        </details>` : ""}
+        </details></div>` : ""}
     </div>
   `;
 }
@@ -1232,16 +1269,28 @@ function renderMeetingNoteItems(claims, claimEvidence) {
 // presentation (view-model.mjs) already names both states; before this the
 // document dropped them because they are non-blocking (the transcript is
 // still readable) and the note area only knew "transcript-only".
-const INLINE_NOTE_RECOVERY_STATES = ["summary-failed", "saved-note-unreadable"];
+const INLINE_NOTE_RECOVERY_STATES = ["summary-failed", "saved-note-unreadable", "recovered-interrupted"];
 
 function renderMeetingNote(note, claimEvidence, recovery = null) {
   const presentation = meetingNotePresentation(note);
   if (presentation.state === "empty") {
     if (recovery && INLINE_NOTE_RECOVERY_STATES.includes(recovery.state)) {
+      // DESIGN.md (Rail): a problem is a bounded attention surface with one
+      // next action (the transcript retry, when the kept audio allows one)
+      // and one secondary (Move to Trash), never a banner. A fact that needs
+      // no action keeps the plain headline and detail.
+      const attention = recovery.tone === "attention";
+      const retry = attention ? transcriptRetryContext(note, state.selected?.transcript, state.selected?.transcriptRetry) : null;
+      const canTrash = attention && Boolean(note?.meetingDeletionHandle);
+      const starting = state.transcriptRetry?.phase === "starting";
       return `
-        <section class="meeting-note meeting-note-unavailable" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
-          <p id="meeting-note-heading" class="empty-note-state">${escapeHtml(recovery.title)}</p>
-          <p class="doc-fact">${escapeHtml(recovery.detail)}</p>
+        <section class="meeting-note meeting-note-unavailable${attention ? " attention-state attention-inline" : ""}" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
+          <p id="meeting-note-heading" class="${attention ? "attention-headline" : "empty-note-state"}">${escapeHtml(recovery.title)}</p>
+          <p class="${attention ? "attention-detail" : "doc-fact"}">${escapeHtml(recovery.detail)}</p>
+          ${retry || canTrash ? `<div class="attention-actions">
+            ${retry ? `<button class="btn primary" type="button" data-action="${escapeHtml(retry.action)}" ${starting ? "disabled" : ""}>${starting ? "Preparing retry…" : escapeHtml(retry.label)}</button>` : ""}
+            ${canTrash ? `<button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
+          </div>` : ""}
         </section>
       `;
     }
@@ -1453,14 +1502,19 @@ function renderMeetingPane() {
   const claimEvidence = state.selected.claimEvidence || {};
   // A withheld saved draft is a fact about the note only; the retained audio
   // stays playable.
+  // A withheld saved draft and an interrupted recording are facts about the
+  // note and the transcript only; the kept audio stays playable.
   const playback = retainedAudioPlaybackPresentation(
     note,
-    recovery?.state === "saved-note-unreadable" ? null : recovery,
+    ["saved-note-unreadable", "recovered-interrupted"].includes(recovery?.state) ? null : recovery,
     state.audioPlayback,
   );
   const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
   const inspectorOpen = Boolean(evidenceSplit.open && transcript?.turns?.length);
-
+  // DESIGN.md (Rail): a needs-attention surface comes before the notes; a
+  // saved AI draft or a plain note fact comes after them.
+  const noteBlock = renderMeetingNote(note, claimEvidence, recovery);
+  const attentionFirst = Boolean(recovery && recovery.tone === "attention" && INLINE_NOTE_RECOVERY_STATES.includes(recovery.state));
 
   return `
     <div class="doc-wrap">
@@ -1475,6 +1529,7 @@ function renderMeetingPane() {
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderTransport(playback, transcript, row)}
+        ${attentionFirst ? noteBlock : ""}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
           <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
           ${operatorNote?.unreadable
@@ -1488,10 +1543,13 @@ function renderMeetingPane() {
               meetingId: row.meetingId || "",
               editable: noteEditable,
               placeholder: "Write down the detail you will want to verify later.",
+              stop: note?.state === "recovered-interrupted" && Number.isFinite(Number(row?.durationSeconds))
+                ? { seconds: Number(row.durationSeconds), label: "Recording stopped here" }
+                : null,
             })}
           ${!operatorNote?.unreadable && !noteEditable ? `<p class="doc-fact">Reopen this meeting to edit its notes.</p>` : ""}
         </section>
-        ${renderMeetingNote(note, claimEvidence, recovery)}
+        ${attentionFirst ? "" : noteBlock}
         ${renderMeetingContextSection(note)}
         <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
       </article>
@@ -1605,7 +1663,7 @@ function renderTransport(playback, transcript, row) {
 // layoutLedgers() places the rail marks and the turn column beside those
 // lines. Marks come from the stored note moments, never from line position.
 // A note without moments is a plain page: no rail, no marks, no turn column.
-function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false }) {
+function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false, stop = null }) {
   const ledger = noteLedgerPresentation({ text, moments, turns, pauses });
   const lines = String(text ?? "").split("\n");
   const timedRows = ledger.rows.filter((row) => row.seconds !== null);
@@ -1622,9 +1680,9 @@ function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, edit
       <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"><span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}</div>`;
   }).join("") : "";
   return `
-    <div class="ledger${ledger.hasRail ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
+    <div class="ledger${ledger.hasRail || stop ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
       <div class="ledger-rail" aria-hidden="true"></div>
-      <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}</div>
+      <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}${stop ? `<div class="ledger-mark stop ledger-stop"><span>${escapeHtml(timeLabel(stop.seconds))}</span><i></i><em>${escapeHtml(stop.label)}</em></div>` : ""}</div>
       <div class="ledger-note">
         <textarea class="notes-area meeting-notes-editor ledger-editor" data-field="${escapeHtml(field)}" data-meeting-id="${escapeHtml(meetingId)}" aria-label="Your meeting notes" placeholder="${escapeHtml(placeholder)}" ${editable ? "" : "disabled"}>${escapeHtml(text)}</textarea>
         <div class="ledger-mirror" aria-hidden="true" data-text-length="${lines.join("\n").length}">${lines.map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("")}</div>
@@ -1680,6 +1738,11 @@ function layoutLedgers() {
     if (after) {
       const index = Number(after.dataset.line);
       if (Number.isFinite(tops[index])) after.style.top = `${tops[index] - 22}px`;
+    }
+    const stop = ledger.querySelector(".ledger-stop");
+    if (stop) {
+      stop.style.top = `${noteHeight + 18}px`;
+      bottom = Math.max(bottom, noteHeight + 36);
     }
     ledger.style.minHeight = `${bottom}px`;
   }
@@ -3859,7 +3922,10 @@ function handleInput(event) {
     state.noteDraft = event.target.value;
     // A line typed while recording keeps the moment it was first typed
     // (product brief, "Note moments on the Mac").
+    const previousCaptureMoments = JSON.stringify(state.noteMoments || []);
     state.noteMoments = alignNoteMoments(previousNoteDraft, state.noteMoments, state.noteDraft, noteMomentSeconds(state.snapshot));
+    if (JSON.stringify(state.noteMoments) !== previousCaptureMoments) render();
+    else layoutLedgers();
     state.noteSaveState = "local";
     setNoteSaveCopy();
     scheduleNoteSave();

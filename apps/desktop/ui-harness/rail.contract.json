@@ -1,0 +1,169 @@
+{
+  "name": "Rail production fidelity",
+  "source": "DESIGN.md (Rail, selected 2026-10-15) and ui-harness/family-concepts/2-rail/styles.css",
+  "amendment": "2026-10-15: replaces the Tonal Ledger \u2014 Canvas contract. Checks the paper system's geometry on the ledger state: the toolbar, the sidebar, the page's gutter, the meta line and title, the transport, the rail and its marks, the note and turn columns.",
+  "targetRenderer": "WKWebView on macOS",
+  "viewport": {
+    "width": 1080,
+    "height": 900
+  },
+  "state": "ledger / transcript ready with seven timed lines",
+  "tolerancePx": 0.5,
+  "checks": [
+    {
+      "id": "toolbar-height",
+      "selector": ".toolbar",
+      "measurement": "rect.height",
+      "expected": 52
+    },
+    {
+      "id": "search-height",
+      "selector": ".search-field",
+      "measurement": "rect.height",
+      "expected": 24
+    },
+    {
+      "id": "search-width",
+      "selector": ".search-field",
+      "measurement": "style.width",
+      "expected": 170
+    },
+    {
+      "id": "record-button-height",
+      "selector": ".record-control .btn",
+      "measurement": "rect.height",
+      "expected": 22
+    },
+    {
+      "id": "sidebar-width",
+      "selector": ".sidebar",
+      "measurement": "style.width",
+      "expected": 262
+    },
+    {
+      "id": "sidebar-group-type",
+      "selector": ".group-label",
+      "measurement": "style.fontSize",
+      "expected": 10
+    },
+    {
+      "id": "sidebar-row-inline-padding",
+      "selector": ".row",
+      "measurement": "style.paddingLeft",
+      "expected": 10
+    },
+    {
+      "id": "page-top-inset",
+      "selector": ".doc-head",
+      "measurement": "distance.top",
+      "relativeTo": ".content",
+      "expected": 28
+    },
+    {
+      "id": "page-gutter",
+      "selector": ".doc-head",
+      "measurement": "distance.left",
+      "relativeTo": ".content",
+      "expected": 104
+    },
+    {
+      "id": "meta-type",
+      "selector": ".doc-meta",
+      "measurement": "style.fontSize",
+      "expected": 12
+    },
+    {
+      "id": "title-size",
+      "selector": ".doc-head h1",
+      "measurement": "style.fontSize",
+      "expected": 20
+    },
+    {
+      "id": "transport-play-size",
+      "selector": ".transport-play",
+      "measurement": "rect.height",
+      "expected": 24
+    },
+    {
+      "id": "transport-track-height",
+      "selector": ".transport-track",
+      "measurement": "rect.height",
+      "expected": 28
+    },
+    {
+      "id": "rail-left",
+      "selector": ".ledger-rail",
+      "measurement": "distance.left",
+      "relativeTo": ".ledger",
+      "expected": 52
+    },
+    {
+      "id": "rail-width",
+      "selector": ".ledger-rail",
+      "measurement": "style.width",
+      "expected": 2
+    },
+    {
+      "id": "rail-mark-size",
+      "selector": ".ledger-mark i",
+      "measurement": "rect.height",
+      "expected": 9
+    },
+    {
+      "id": "rail-mark-type",
+      "selector": ".ledger-mark span",
+      "measurement": "style.fontSize",
+      "expected": 11
+    },
+    {
+      "id": "note-column-left",
+      "selector": ".ledger-note",
+      "measurement": "distance.left",
+      "relativeTo": ".ledger",
+      "expected": 76
+    },
+    {
+      "id": "note-type",
+      "selector": ".ledger-editor",
+      "measurement": "style.fontSize",
+      "expected": 16
+    },
+    {
+      "id": "note-leading",
+      "selector": ".ledger-editor",
+      "measurement": "style.lineHeight",
+      "expected": 24
+    },
+    {
+      "id": "turn-column-width",
+      "selector": ".ledger-turns",
+      "measurement": "style.width",
+      "expected": 324,
+      "note": "300px column plus its own 24px gap (border-box)"
+    },
+    {
+      "id": "turn-type",
+      "selector": ".ledger-turn",
+      "measurement": "style.fontSize",
+      "expected": 13
+    },
+    {
+      "id": "turn-time-type",
+      "selector": ".ledger-turn-time",
+      "measurement": "style.fontSize",
+      "expected": 11
+    },
+    {
+      "id": "fold-type",
+      "selector": ".ledger-fold",
+      "measurement": "style.fontSize",
+      "expected": 11
+    },
+    {
+      "id": "transcript-disclosure-type",
+      "selector": ".transcript-disclosure > summary",
+      "measurement": "style.fontSize",
+      "expected": 12
+    }
+  ]
+}

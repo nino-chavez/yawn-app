@@ -42,17 +42,13 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   sheet stays open. Healthy: `backdropAnimationStarts`/`dialogAnimationStarts`
   both stay at 1 through `animationStartsAfterTicks`, both node identities
   survive every tick, and the sheet closes with `.modal-backdrop` gone.
-- `fidelity` — the Tonal Ledger — Canvas release gate. It opens the real
-  production frontend in a 1080 × 900 WKWebView, selects a transcript-only
-  meeting with no generated note, and compares browser-computed geometry to
-  `tonal-ledger-canvas.contract.json`. The fixture intentionally includes the
-  retirement fact, personal-note editor, disclosure, and two sidebar groups.
-  The September 30 contract amendment removes generation controls and the
-  absolute vertical positions that depended on them.
-  Run it with `npm run test:visual-fidelity` from `apps/desktop/`. Healthy:
-  every check passes. Do not copy values into the scenario; the contract is
-  the sole expected-value source and is derived from the selected
-  `visual-treatments/tonal-ledger-refined/` reference.
+- `fidelity` — the Rail release gate (DESIGN.md, selected 2026-10-15). It
+  opens the real production frontend in a 1080 × 900 WKWebView on the
+  `ledger` stub mode (a transcript-ready meeting with seven timed lines) and
+  compares browser-computed geometry to `rail.contract.json`: toolbar,
+  sidebar, page gutter, meta line and title, transport, rail and marks, note
+  and turn columns. Run it with `npm run test:visual-fidelity` from
+  `apps/desktop/`. Healthy: every check within tolerance.
 - `note-retirement` — checks transcript-only, saved AI draft, historical failed
   draft and Settings. Saves personal notes through the stub, opens and exports
   transcripts through the stub, and opens the saved draft’s source inspector.
@@ -122,7 +118,7 @@ Two checks guard this:
   finished meeting and a two-turn transcript. Also collects page errors on
   `window.__errors`.
 - `scenario.js`, `smoke.js`, `sheets.js` — scenario bodies for the runner.
-- `fidelity.js`, `tonal-ledger-canvas.contract.json` — computed-geometry
+- `fidelity.js`, `rail.contract.json` — computed-geometry
   comparison and its selected-reference contract.
 
 ## Limits
