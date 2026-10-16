@@ -1735,8 +1735,32 @@ function syncLedgerMirror(editor, mirror) {
 // turn column and the folds beside the lines they belong to. Turn rows that
 // would overlap are pushed down in order; the editor takes the mirror's
 // height so the page never scrolls inside the note.
+// The note column can change width without a window resize: the sidebar
+// collapses through a margin transition, so the layout taken during render()
+// measures the old width and leaves the marks beside the wrong lines. Re-lay
+// out when a ledger's width changes, and only its width -- layoutLedgers sets
+// the editor's height, which would otherwise feed back into the observer.
+const ledgerWidths = new WeakMap();
+const ledgerResizeObserver = typeof ResizeObserver === "function"
+  ? new ResizeObserver((entries) => {
+    let changed = false;
+    for (const entry of entries) {
+      const width = Math.round(entry.contentRect.width);
+      if (ledgerWidths.get(entry.target) !== width) {
+        ledgerWidths.set(entry.target, width);
+        changed = true;
+      }
+    }
+    if (changed) layoutLedgers();
+  })
+  : null;
+
 function layoutLedgers() {
   for (const ledger of root.querySelectorAll(".ledger")) {
+    if (ledgerResizeObserver && !ledgerWidths.has(ledger)) {
+      ledgerWidths.set(ledger, Math.round(ledger.getBoundingClientRect().width));
+      ledgerResizeObserver.observe(ledger);
+    }
     const editor = ledger.querySelector(".ledger-editor");
     const mirror = ledger.querySelector(".ledger-mirror");
     if (!editor || !mirror) continue;

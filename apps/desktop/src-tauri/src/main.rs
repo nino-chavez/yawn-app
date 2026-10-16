@@ -7524,6 +7524,11 @@ fn execute_scheduled_retention(
 
     let retention = execute_due_retention_excluding(storage, now, &active_meetings)
         .map_err(|_| ScheduledRetentionError::Retention)?;
+    // The purge takes each meeting's lease and the sequence lock itself, and
+    // the sequence mutex is not reentrant: holding it here deadlocks on the
+    // first due trash entry, with the command lock held, which stalls every
+    // library command. An active meeting is still refused by its lease.
+    drop(storage_sequence);
     let trash_purge = execute_due_trash_purge(storage, &coordination, now)
         .map_err(|_| ScheduledRetentionError::Retention)?;
     Ok(Some(ScheduledRetentionReport {
@@ -10092,6 +10097,46 @@ mod tests {
         assert!(state.audio_playback.lock().unwrap().is_none());
         assert!(!directory.join("capture/mic.wav").exists());
         assert!(!directory.join("capture/system.wav").exists());
+    }
+
+    // A trash entry past its window used to deadlock the whole app: the
+    // retention pass held the storage sequence lock while the purge's lease
+    // took it again (std's Mutex is not reentrant), and the held command lock
+    // then stalled every library command behind it. Run on a thread with a
+    // deadline so a regression fails instead of hanging the suite.
+    #[test]
+    fn scheduled_retention_purges_a_due_trash_entry_without_deadlocking() {
+        let (temporary, storage) = test_storage();
+        let meeting_id = "due-trash";
+        write_transcript_fixture(&storage, meeting_id, 0, AudioState::Retained, "synthetic");
+
+        let state = Arc::new(ApplicationState::default());
+        let writer = Arc::new(acquire_app_data_writer_lock(&storage).unwrap());
+        writer
+            .meeting_trash_authority()
+            .trash_meeting(meeting_id, 1_000)
+            .unwrap();
+        *state.app_data_writer_lock.lock().unwrap() = Some(writer);
+
+        let due = 1_000 + local_meeting_notes_session_core::meeting_trash::TRASH_WINDOW_SECONDS;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let thread_state = Arc::clone(&state);
+        let thread_storage = storage.clone();
+        std::thread::spawn(move || {
+            let _ = sender.send(execute_scheduled_retention(&thread_state, &thread_storage, due));
+        });
+        let report = receiver
+            .recv_timeout(Duration::from_secs(10))
+            .expect("scheduled retention deadlocked on a due trash entry")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            report.trash_purge,
+            vec![TrashPurgeOutcome::Purged(meeting_id.into())]
+        );
+        assert!(state.command_lock.try_lock().is_ok());
+        drop(temporary);
     }
 
     #[test]
