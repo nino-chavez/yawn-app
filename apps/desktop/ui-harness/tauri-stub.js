@@ -311,7 +311,7 @@
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
             createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
-      : mode === "library" || mode === "ledger" || mode === "interrupted" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+      : mode === "library" || mode === "note-unreadable" || mode === "ledger" || mode === "interrupted" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : {}) }, {
           ...libraryRow,
           handle: "row-handle-2",
@@ -481,7 +481,7 @@
       transcriptHandle: null,
       microphonePlaybackHandle: "mic-playback-1",
       meetingDeletionHandle: "deletion-handle-1",
-      message: "The recording was interrupted before it could be transcribed. The audio it kept can still be played.",
+      message: "It was not transcribed. Its audio is kept on this Mac and can still be played.",
       audioRetention: { state: "retained", policy: "7-days", deadlineEpochSeconds: Math.floor(Date.now() / 1000) + 6 * 24 * 60 * 60, message: "Audio retained on this Mac." },
       capturePauses: { state: "not-paused", count: 0, totalPausedSeconds: 0, message: "Recording was not paused during this meeting.", spans: [] },
     } : mode === "ledger" ? {
@@ -603,6 +603,15 @@
     return setupOverride.transcriptionEngine;
   };
   responses.open_settings_window = () => { window.__setupCalls.push("open_settings_window"); return null; };
+  // mode=note-unreadable: the library meeting with a personal note on disk
+  // that could not be read, so the page shows the unreadable-note fact.
+  if (mode === "note-unreadable") {
+    const openNote = responses.library_open_note;
+    responses.library_open_note = (args) => {
+      const note = openNote(args);
+      return note && typeof note === "object" ? { ...note, operatorNote: { text: "", unreadable: true } } : note;
+    };
+  }
   window.__TAURI__ = {
     core: {
       invoke: (command, args) => {

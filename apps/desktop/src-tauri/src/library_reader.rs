@@ -1484,7 +1484,7 @@ impl LibraryReader {
                 let message = if audio_retention.state == "released" {
                     "This recording was interrupted before it could be transcribed. Its audio has since been deleted."
                 } else {
-                    "This recording was interrupted before it could be transcribed. Any retained audio remains available."
+                    "It was not transcribed. Its audio is kept on this Mac and can still be played."
                 };
                 return LibraryNoteResponse {
                     state: "recovered-interrupted",

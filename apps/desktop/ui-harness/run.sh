@@ -20,7 +20,14 @@ trap cleanup EXIT
 # module imports in main.js load without file:// CORS trouble.
 serve="$build_dir/serve"
 mkdir "$serve"
-ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$PWD/../ui/settings.js" "$PWD/../ui/settings.html" "$PWD/../ui/settings-window.css" "$serve/"
+# Every module and stylesheet the UI ships, not a hand-kept list: a new
+# import that the list missed failed the module graph silently and the
+# harness rendered a blank page with no recorded error (2026-10-16, after
+# appearance.mjs and text-size.mjs landed). Tests are not served.
+for file in "$PWD"/../ui/*.js "$PWD"/../ui/*.mjs "$PWD"/../ui/*.css "$PWD"/../ui/*.html; do
+  case "$file" in *.test.mjs|*/index.html) continue ;; esac
+  ln -s "$file" "$serve/"
+done
 ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/rail.contract.json" "$PWD/settings-retirement.html" "$serve/"
 ready_token="$(uuidgen)"
 printf '%s' "$ready_token" > "$serve/harness-ready.txt"

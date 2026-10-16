@@ -1553,7 +1553,7 @@ export function meetingRecoveryPresentation(note, transcript) {
       state: "recovered-interrupted",
       tone: "attention",
       title: "This recording did not finish.",
-      detail: message || "The recording was interrupted before it could be transcribed. The audio it kept can still be played.",
+      detail: message || "It was not transcribed. Its audio is kept on this Mac and can still be played.",
       action: null,
     };
   }

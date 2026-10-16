@@ -793,9 +793,12 @@ test("the recorder offers pause beside stop and stops straight from a pause", as
   assert.match(source, /renderRetryCapturePauses\(retry\.pauses\)/);
   // And on the ordinary path, which never opens a retry: the meeting the
   // operator reads after stopping.
-  assert.match(source, /renderMeetingCapturePauses\(note\?\.capturePauses\)/);
+  assert.match(source, /renderMeetingCapturePauses\(note\?\.capturePauses, note\?\.state\)/);
   // A meeting still loading its note must not read as unverifiable.
-  assert.match(source, /function renderMeetingCapturePauses\(pauses\) \{\s*if \(!pauses\) return "";/);
+  assert.match(source, /function renderMeetingCapturePauses\(pauses, noteState = ""\) \{\s*if \(!pauses\) return "";/);
+  // An interrupted meeting never shows the unverifiable-pause fact: there is no
+  // pause ledger to check and its banner already says it did not finish.
+  assert.match(source, /if \(presentation\.state === "unavailable" && noteState === "recovered-interrupted"\) return "";/);
   // An uninterrupted recording stays quiet rather than announcing an absence.
   assert.match(source, /if \(presentation\.state === "not-paused"\) return "";/);
 });
