@@ -1275,21 +1275,22 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
   const presentation = meetingNotePresentation(note);
   if (presentation.state === "empty") {
     if (recovery && INLINE_NOTE_RECOVERY_STATES.includes(recovery.state)) {
-      // DESIGN.md (Rail): a problem is a bounded attention surface with one
-      // next action (the transcript retry, when the kept audio allows one)
-      // and one secondary (Move to Trash), never a banner. A fact that needs
-      // no action keeps the plain headline and detail.
+      // DESIGN.md (Rail): a problem is a bounded attention surface with its
+      // next action, never a banner. The one attention-tone state that lands
+      // here is an interrupted recording, and it never had a transcript, so
+      // no transcript retry applies (transcriptRetryPresentation refuses any
+      // meeting in recovery) and the audio it kept already plays from the
+      // transport above. What is left to offer is Move to Trash, as a
+      // secondary control: a destructive action is never the primary. A fact
+      // that needs no action keeps the plain headline and detail.
       const attention = recovery.tone === "attention";
-      const retry = attention ? transcriptRetryContext(note, state.selected?.transcript, state.selected?.transcriptRetry) : null;
       const canTrash = attention && Boolean(note?.meetingDeletionHandle);
-      const starting = state.transcriptRetry?.phase === "starting";
       return `
         <section class="meeting-note meeting-note-unavailable${attention ? " attention-state attention-inline" : ""}" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
           <p id="meeting-note-heading" class="${attention ? "attention-headline" : "empty-note-state"}">${escapeHtml(recovery.title)}</p>
           <p class="${attention ? "attention-detail" : "doc-fact"}">${escapeHtml(recovery.detail)}</p>
-          ${retry || canTrash ? `<div class="attention-actions">
-            ${retry ? `<button class="btn primary" type="button" data-action="${escapeHtml(retry.action)}" ${starting ? "disabled" : ""}>${starting ? "Preparing retry…" : escapeHtml(retry.label)}</button>` : ""}
-            ${canTrash ? `<button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
+          ${canTrash ? `<div class="attention-actions">
+            <button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>
           </div>` : ""}
         </section>
       `;
