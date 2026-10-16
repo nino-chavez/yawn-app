@@ -1985,7 +1985,7 @@ export function ledgerFoldPresentation(row, openFolds = []) {
     count,
     expanded: Array.isArray(openFolds) && openFolds.includes(turnIndex),
     turnIndexes,
-    visibleLabel: `${openFolds?.includes?.(turnIndex) ? "\u2212" : "+"} ${count} ${count === 1 ? "turn" : "turns"}`,
+    visibleLabel: `+ ${count} ${count === 1 ? "turn" : "turns"}`,
     accessibleName: `${count} more ${count === 1 ? "turn" : "turns"}`,
   };
 }

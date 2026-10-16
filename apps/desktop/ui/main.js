@@ -1667,8 +1667,8 @@ function renderTransport(playback, transcript, row) {
       ${length ? `<span class="transport-time">${escapeHtml(timeLabel(length))}</span>` : ""}
       <div class="transport-track" aria-hidden="true">${ticks.map((tick) => `<i class="transport-tick ${tick.you ? "you" : "them"}" style="left:${tick.percent}%"></i>`).join("")}</div>
       ${sources.length > 1 ? `<span class="transport-source" role="group" aria-labelledby="transport-source-label" title="Yawn kept two recordings of this meeting. Choose which one Play plays.">
-        <span class="transport-source-label" id="transport-source-label">Listen to</span>
-        ${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}" title="${escapeHtml(control.source === "microphone" ? "The microphone recording: your voice" : "The system audio recording: everyone else on the call")}">${escapeHtml(control.source === "microphone" ? "Microphone" : "System audio")}</button>`).join("")}
+        <span class="transport-source-label" id="transport-source-label">Recording to play</span>
+        ${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}" title="${escapeHtml(control.source === "microphone" ? "The microphone recording: your voice" : "The system audio recording: everyone else on the call")}">${escapeHtml(control.source === "microphone" ? "Microphone · you" : "System audio · the call")}</button>`).join("")}
       </span>` : ""}
       ${playingLabel ? `<span class="caption transport-status" role="status" aria-live="polite">${escapeHtml(playingLabel)}</span>` : ""}
     </div>
@@ -1756,14 +1756,14 @@ function layoutLedgers() {
       const index = Number(turn.dataset.line);
       if (!Number.isFinite(tops[index])) continue;
       let top = tops[index];
-      // The fold sits 4px above its turn; an open fold's turns sit between
+      // The fold sits 8px above its turn, as far as the row above it; an open fold's turns sit between
       // the fold and the turn, so the turn (and every row after it) moves
       // down by their height while the fold stays where it was.
       const key = turn.dataset.fold;
       const fold = key !== undefined ? ledger.querySelector(`.ledger-fold[data-fold="${key}"]`) : null;
       const opened = key !== undefined ? ledger.querySelector(`.ledger-fold-turns[data-fold="${key}"]`) : null;
-      const foldHeight = fold ? fold.offsetHeight + 4 : 0;
-      const openedHeight = opened ? opened.offsetHeight + 8 : 0;
+      const foldHeight = fold ? fold.offsetHeight + 8 : 0;
+      const openedHeight = opened ? opened.offsetHeight + 20 : 0;
       if (top - foldHeight < lastBottom + 8) top = lastBottom + 8 + foldHeight;
       const foldTop = top - foldHeight;
       top += openedHeight;

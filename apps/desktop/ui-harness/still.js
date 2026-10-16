@@ -13,4 +13,8 @@ for (let index = 0; index < openFolds; index += 1) {
   fold.click();
   await sleep(250);
 }
+// The runner's page is hidden (document.visibilityState), so CSS animations
+// and transitions never advance there; finish them so the frame shows the
+// settled state a visible window reaches in 120 ms.
+if (openFolds) document.getAnimations().forEach((animation) => animation.finish());
 return { ok: true, errors: window.__errors || [] };

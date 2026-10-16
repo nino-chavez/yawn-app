@@ -3027,8 +3027,8 @@ html, body, #app {
 }
 
 .transport-source-btn {
-  padding: 2px 6px;
-  border: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--separator-strong);
   border-radius: 4px;
   background: transparent;
   color: var(--label-3);
@@ -3039,6 +3039,8 @@ html, body, #app {
 .transport-source-btn[aria-pressed="true"] {
   color: var(--label);
   background: var(--selection);
+  border-color: var(--label-3);
+  font-weight: 600;
 }
 
 .transport-status {
@@ -3232,14 +3234,13 @@ html, body, #app {
   position: absolute;
   left: 0;
   padding: 0 6px;
-  margin: 0 -6px;
-  border: 0;
+  border: 1px solid var(--separator-strong);
   border-radius: 4px;
   background: none;
   font: inherit;
   font-size: 11px;
   line-height: 14px;
-  color: var(--label-3);
+  color: var(--label-2);
   cursor: pointer;
 }
 
@@ -3259,7 +3260,8 @@ html, body, #app {
 
 .ledger-fold:hover,
 .ledger-fold.open {
-  color: var(--label-2);
+  color: var(--label);
+  background: var(--selection);
 }
 
 .ledger-fold:focus-visible {
@@ -3276,7 +3278,7 @@ html, body, #app {
   display: grid;
   gap: 6px;
   padding-left: 8px;
-  border-left: 1px solid var(--separator);
+  border-left: 2px solid var(--label-3);
   animation: motion-fade-in var(--motion-fast) var(--motion-ease);
 }
 
