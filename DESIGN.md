@@ -322,6 +322,9 @@ these in the frames only.
   marks and no fold rows.
 - Both appearances, large text and increased contrast, cold-reviewed from
   device captures of the installed build; on the iPad, from the device.
+  Large text on the Mac: `docs/evidence/screen-reviews/mac-text-size-installed-2026-10-16-cold.md`
+  (Default and Largest, Dark, 1080 by 900; ledger and Settings). Still owed
+  on the Mac: increased contrast, and large text in Light.
 
 ## Family invariants (shared with Minder)
 
