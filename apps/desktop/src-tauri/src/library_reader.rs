@@ -1481,10 +1481,19 @@ impl LibraryReader {
             // left to play. The message names that honestly instead of
             // repeating the retained-audio sentence over audio that is gone.
             MeetingLifecycle::RecoveredInterrupted => {
-                let message = if audio_retention.state == "released" {
+                // The sentence says the audio can be played only when this
+                // response actually carries a playback handle: a retained
+                // meeting whose audio files are missing or unverified gets
+                // no handle, and saying "can still be played" over it would
+                // be false.
+                let playable =
+                    microphone_playback_handle.is_some() || system_playback_handle.is_some();
+                let message = if playable {
+                    "It was not transcribed. Its audio is kept on this Mac and can still be played."
+                } else if audio_retention.state == "released" {
                     "This recording was interrupted before it could be transcribed. Its audio has since been deleted."
                 } else {
-                    "This recording was interrupted before it could be transcribed. Any retained audio remains available."
+                    "It was not transcribed, and its audio cannot be played."
                 };
                 return LibraryNoteResponse {
                     state: "recovered-interrupted",
@@ -4921,6 +4930,14 @@ mod tests {
         assert!(
             note.microphone_playback_handle.is_some() || note.microphone_playback_handle.is_none(),
             "playback handles, if issued at all, must reflect real playable audio"
+        );
+        // The banner promises playback only when a playback handle came back.
+        let playable =
+            note.microphone_playback_handle.is_some() || note.system_playback_handle.is_some();
+        assert_eq!(
+            note.message.contains("can still be played"),
+            playable,
+            "the interrupted message says the audio can be played exactly when a playback handle exists"
         );
     }
 

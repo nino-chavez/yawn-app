@@ -3744,3 +3744,12 @@ html, body, #app {
   margin: var(--space-18) 0 0;
   max-width: var(--measure);
 }
+
+/* An unreadable personal note is a fact the reader needs: body contrast,
+   not the caption grey (installed cold review, 2026-10-16). */
+.your-notes-section > .doc-fact.note-unreadable {
+  max-width: var(--measure);
+  color: var(--label);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+}

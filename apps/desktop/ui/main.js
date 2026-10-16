@@ -1571,14 +1571,14 @@ function renderMeetingPane() {
             <h1 id="meeting-title">${escapeHtml(title)}</h1>
           </div>
         </div>
-        ${renderMeetingCapturePauses(note?.capturePauses)}
+        ${renderMeetingCapturePauses(note?.capturePauses, note?.state)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderTransport(playback, transcript, row)}
         ${attentionFirst ? noteBlock : ""}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
           <div class="note-editor-head${ledgerHasTurns ? " ledger-head" : ""}">${ledgerHasTurns ? `<span class="ledger-head-rail">Elapsed</span>` : ""}<span class="ledger-head-note"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></span>${ledgerHasTurns ? `<span class="ledger-head-turns">Nearest in the transcript</span>` : ""}</div>
           ${operatorNote?.unreadable
-            ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
+            ? `<p class="doc-fact note-unreadable">Yawn could not read your notes for this meeting, so they are not shown and nothing will be written over them. The file stays on this Mac, and the rest of this meeting is not affected.</p>`
             : renderNoteLedger({
               text: state.selected?.operatorNoteDraft || "",
               moments: state.selected?.operatorNoteMoments || [],
@@ -1638,10 +1638,15 @@ function renderMeetingContextSection(note) {
 // DESIGN.md: a fact is a caption, never a banner -- whether the fact is
 // routine ("paused once, 0:03") or genuinely unverifiable. Neither carries an
 // action, so neither qualifies for the needs-attention treatment either.
-function renderMeetingCapturePauses(pauses) {
+function renderMeetingCapturePauses(pauses, noteState = "") {
   if (!pauses) return "";
   const presentation = capturePausePresentation(pauses);
   if (presentation.state === "not-paused") return "";
+  // An interrupted recording has no pause ledger to check, and its banner
+  // already says it did not finish; "could not verify whether it was paused"
+  // there reads as a stray fact with no consequence (installed cold review,
+  // 2026-10-16). A recorded pause still shows.
+  if (presentation.state === "unavailable" && noteState === "recovered-interrupted") return "";
   return `<p class="doc-fact" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
 }
 
@@ -1772,14 +1777,23 @@ function syncLedgerMirror(editor, mirror) {
 // measures the old width and leaves the marks beside the wrong lines. Re-lay
 // out when a ledger's width changes, and only its width -- layoutLedgers sets
 // the editor's height, which would otherwise feed back into the observer.
-const ledgerWidths = new WeakMap();
+//
+// The mirror is observed too, for its height: the text's metrics can settle
+// after the first layout (the text-size setting, a font finishing loading), so
+// a line that wrapped differently left the editor one line too tall until the
+// next render (the fold gate's "note-does-not-move" caught it, 2026-10-16).
+// layoutLedgers never sizes the mirror, so this cannot feed back.
+const ledgerSizes = new WeakMap();
+const ledgerSizeKey = (element, rect) => (element.classList.contains("ledger-mirror")
+  ? `${Math.round(rect.width)}x${Math.round(rect.height)}`
+  : `${Math.round(rect.width)}`);
 const ledgerResizeObserver = typeof ResizeObserver === "function"
   ? new ResizeObserver((entries) => {
     let changed = false;
     for (const entry of entries) {
-      const width = Math.round(entry.contentRect.width);
-      if (ledgerWidths.get(entry.target) !== width) {
-        ledgerWidths.set(entry.target, width);
+      const key = ledgerSizeKey(entry.target, entry.contentRect);
+      if (ledgerSizes.get(entry.target) !== key) {
+        ledgerSizes.set(entry.target, key);
         changed = true;
       }
     }
@@ -1787,12 +1801,39 @@ const ledgerResizeObserver = typeof ResizeObserver === "function"
   })
   : null;
 
-function layoutLedgers() {
+function observeLedgerSize(element) {
+  if (!ledgerResizeObserver || !element || ledgerSizes.has(element)) return;
+  ledgerSizes.set(element, ledgerSizeKey(element, element.getBoundingClientRect()));
+  ledgerResizeObserver.observe(element);
+}
+
+// One frame after a layout, a mirror whose height no longer matches the height
+// the editor was given is laid out again. The text's metrics can settle after
+// the layout read them (measured 2026-10-16: the editor kept a mirror height
+// one wrapped line short until the next render), and the size observer below
+// did not catch every case.
+let ledgerRecheckPending = false;
+function recheckLedgerHeights() {
+  if (!ledgerRecheckPending) return;
+  ledgerRecheckPending = false;
+  const stale = Array.from(root.querySelectorAll(".ledger-mirror"))
+    .some((mirror) => mirror.dataset.laidOutHeight !== String(mirror.offsetHeight));
+  if (stale) layoutLedgers({ recheck: false });
+}
+
+function layoutLedgers({ recheck = true } = {}) {
+  if (recheck && !ledgerRecheckPending) {
+    ledgerRecheckPending = true;
+    // Two frames when the window renders; a timer as well, because a hidden
+    // window (minimized, or the review harness) runs no animation frames or
+    // resize observers at all (measured: visibilityState "hidden", no frame
+    // in 200 ms), and the stale height would otherwise stay until a render.
+    globalThis.requestAnimationFrame?.(() => globalThis.requestAnimationFrame?.(recheckLedgerHeights));
+    setTimeout(recheckLedgerHeights, 120);
+  }
   for (const ledger of root.querySelectorAll(".ledger")) {
-    if (ledgerResizeObserver && !ledgerWidths.has(ledger)) {
-      ledgerWidths.set(ledger, Math.round(ledger.getBoundingClientRect().width));
-      ledgerResizeObserver.observe(ledger);
-    }
+    observeLedgerSize(ledger);
+    observeLedgerSize(ledger.querySelector(".ledger-mirror"));
     const editor = ledger.querySelector(".ledger-editor");
     const mirror = ledger.querySelector(".ledger-mirror");
     if (!editor || !mirror) continue;
@@ -1802,6 +1843,7 @@ function layoutLedgers() {
     const heights = lines.map((line) => line.offsetHeight);
     const noteHeight = mirror.offsetHeight;
     editor.style.height = `${Math.max(noteHeight, 24)}px`;
+    mirror.dataset.laidOutHeight = String(noteHeight);
     let bottom = noteHeight;
     for (const mark of ledger.querySelectorAll(".ledger-mark")) {
       const index = Number(mark.dataset.line);
