@@ -1,0 +1,4 @@
+n1 unreadable-note-light
+n2 interrupted-dark
+n3 unreadable-note-dark
+n4 interrupted-light
