@@ -60,6 +60,7 @@ struct PaperSpecimen: View {
             }
             .background(Paper.page)
             .navigationTitle("Paper specimen")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Paper.windowChrome, for: .navigationBar)
             .toolbarBackgroundVisibility(.visible, for: .navigationBar)
         }

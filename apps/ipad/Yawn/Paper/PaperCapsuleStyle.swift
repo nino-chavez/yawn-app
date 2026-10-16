@@ -15,10 +15,13 @@ struct PaperCapsuleStyle: ButtonStyle {
     /// A label color other than the kind's own; Record uses it to keep its
     /// word red on an otherwise plain capsule.
     var labelColor: Color?
+    /// A symbol-only capsule: one fixed round size whatever the symbol's
+    /// width, so the tools in a column match at every text size.
+    var square = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .paperCapsule(kind, labelColor: labelColor, pressed: configuration.isPressed)
+            .paperCapsule(kind, labelColor: labelColor, square: square, pressed: configuration.isPressed)
             .frame(minHeight: PaperMetrics.touchTarget)
             .contentShape(.rect)
     }
@@ -30,6 +33,7 @@ struct PaperCapsuleStyle: ButtonStyle {
 struct PaperCapsuleModifier: ViewModifier {
     let kind: PaperCapsuleStyle.Kind
     let labelColor: Color?
+    let square: Bool
     let pressed: Bool
 
     @ScaledMetric(relativeTo: .subheadline) private var height = PaperMetrics.capsuleHeight
@@ -38,10 +42,9 @@ struct PaperCapsuleModifier: ViewModifier {
         content
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(labelColor ?? foreground)
-            .padding(.horizontal, PaperMetrics.capsulePadding)
-            // A symbol-only capsule is at least as wide as it is tall, so the
-            // tools in a column keep one width at every text size.
-            .frame(minWidth: height, minHeight: height)
+            .padding(.horizontal, square ? 0 : PaperMetrics.capsulePadding)
+            .frame(width: square ? height : nil, height: square ? height : nil)
+            .frame(minHeight: height)
             .background(fill, in: .capsule)
             .overlay { Capsule().strokeBorder(border, lineWidth: kind == .active ? 1.5 : 1) }
             .opacity(pressed ? 0.8 : 1)
@@ -78,8 +81,9 @@ extension View {
     func paperCapsule(
         _ kind: PaperCapsuleStyle.Kind = .plain,
         labelColor: Color? = nil,
+        square: Bool = false,
         pressed: Bool = false
     ) -> some View {
-        modifier(PaperCapsuleModifier(kind: kind, labelColor: labelColor, pressed: pressed))
+        modifier(PaperCapsuleModifier(kind: kind, labelColor: labelColor, square: square, pressed: pressed))
     }
 }

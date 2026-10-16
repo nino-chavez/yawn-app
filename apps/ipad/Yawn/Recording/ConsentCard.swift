@@ -38,10 +38,14 @@ struct ConsentCard: View {
             Text("Yawn records the room and writes its transcript on this iPad.")
                 .font(.body)
                 .foregroundStyle(Paper.label2)
-            Toggle("Everyone who can be heard has agreed to the recording", isOn: $everyoneAgreed)
-                .font(.body)
-                .foregroundStyle(Paper.label)
-                .tint(Paper.graphite)
+            Toggle(isOn: $everyoneAgreed) {
+                // The consent statement itself: it wraps, never truncates.
+                Text("Everyone who can be heard has agreed to the recording")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.body)
+            .foregroundStyle(Paper.label)
+            .tint(Paper.graphite)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Keep the audio")
                     .font(.subheadline.weight(.semibold))
@@ -62,6 +66,15 @@ struct ConsentCard: View {
             Button("Start recording", action: begin)
                 .buttonStyle(PaperStartButtonStyle())
                 .disabled(!canStart)
+            if !canStart {
+                // Why Start is faded, in one line, since a faded button alone
+                // says only that something is missing.
+                Text(everyoneAgreed ? "Choose how long to keep the audio to start." : "Confirm everyone agreed, and choose how long to keep the audio, to start.")
+                    .font(.footnote)
+                    .foregroundStyle(Paper.label3)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
             Button(action: notNow) {
                 Text("Not now")
                     .font(.body)

@@ -12,7 +12,9 @@ struct ToolCapsule: View {
     var body: some View {
         Button(name, systemImage: symbol, action: action)
             .labelStyle(.iconOnly)
-            .buttonStyle(PaperCapsuleStyle(kind: active ? .active : .plain))
+            // The active tool is heavier as well as tinted and ringed.
+            .fontWeight(active ? .bold : .regular)
+            .buttonStyle(PaperCapsuleStyle(kind: active ? .active : .plain, square: true))
             .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
