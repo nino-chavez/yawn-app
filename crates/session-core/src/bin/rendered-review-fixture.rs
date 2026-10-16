@@ -11,6 +11,7 @@ use std::io::{self, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use local_meeting_notes_session_core::meeting::{
     ArtifactRef, AudioRetention, AudioRetentionRule, AudioState, MeetingArtifacts,
@@ -22,10 +23,17 @@ use local_meeting_notes_session_core::model_store::{
     ModelCatalog, ModelStoreError, ModelVerification, TranscriptModelFileRole, activate_model,
     install_receipt_bytes, verify_model_directory,
 };
+use local_meeting_notes_session_core::recovery::{
+    RecoveryDisposition, RecoveryError, scan_and_recover,
+};
 use local_meeting_notes_session_core::retention::{AppDataWriterLock, AppDataWriterLockError};
 use local_meeting_notes_session_core::runtime::{RuntimeError, RuntimeManifest};
 use local_meeting_notes_session_core::storage::{
     StorageRoot, create_private_dir, durable_create_new, sync_directory,
+};
+use local_meeting_notes_session_core::supervision::{
+    GroupSignaler, OwnershipReceipt, OwnershipSchema, ProcessIdentity, ProcessInspection,
+    ProcessInspector,
 };
 use local_meeting_notes_session_core::transcript_retry::{
     TranscriptRetryAuthority, TranscriptRetrySourceBinding,
@@ -69,10 +77,15 @@ const DIFF_SKIPPED_OPERATION_ID: &str = "25555555-5555-4555-8555-555555555555";
 /// Trash list and restore action.
 const TRASH_MEETING_ID: &str = "66666666-6666-4666-8666-666666666666";
 
-/// A meeting whose retained transcript is tampered with after the meeting
-/// record is written, so its pinned digest no longer matches the bytes on
-/// disk. Exercises the export command's withheld-artifact manifest line.
-const EXPORT_TAMPERED_MEETING_ID: &str = "77777777-7777-4777-8777-777777777777";
+/// A meeting whose saved operator note is unreadable. Exercises the export
+/// command's withheld-artifact manifest line and the page's unreadable note.
+const EXPORT_WITHHELD_MEETING_ID: &str = "77777777-7777-4777-8777-777777777777";
+
+/// A recording the app never finished, recovered by the real startup
+/// recovery into the `recovered-interrupted` page: retained audio, no
+/// transcript, and a stop mark where the recording ended.
+const INTERRUPTED_MEETING_ID: &str = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const INTERRUPTED_AUDIO_SECONDS: usize = 6 * 60;
 
 /// A meeting carrying a real, validator-passing generated note (claim types
 /// `summary` and `decision`), a pre-meeting context note, and one transcript
@@ -114,6 +127,8 @@ const COVERED_STATES: &[&str] = &[
     "retry diff skipped over budget",
     "trashed meeting pending restore",
     "export withheld-artifact manifest",
+    "unreadable operator note",
+    "recovered interrupted recording with retained audio",
     "generated note row preview and reverse citation map",
     "read-only pre-meeting context",
     "locked meeting behind the local barrier",
@@ -181,6 +196,12 @@ enum FixtureError {
     ModelStore(#[from] ModelStoreError),
     #[error(transparent)]
     WriterLock(#[from] AppDataWriterLockError),
+    #[error(transparent)]
+    Recovery(#[from] RecoveryError),
+    #[error(
+        "startup recovery did not turn the seeded capture into one recovered-interrupted meeting"
+    )]
+    InterruptedRecovery,
 }
 
 fn main() {
@@ -261,6 +282,8 @@ fn repository_root() -> PathBuf {
 fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
     validate_root(root, &repository)?;
     let storage = StorageRoot::create(root, &repository)?;
+    // First, while it is the only meeting the real recovery scan can see.
+    seed_interrupted_meeting(&storage)?;
     let meeting_dir = storage.path().join("meetings").join(MEETING_ID);
     for child in ["", "capture", "transcript", "notes"] {
         create_private_dir(&meeting_dir.join(child))?;
@@ -396,7 +419,7 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
     seed_diff_identical_meeting(&storage)?;
     seed_diff_skipped_meeting(&storage)?;
     seed_trash_meeting(&storage)?;
-    seed_export_tampered_meeting(&storage)?;
+    seed_export_withheld_meeting(&storage)?;
     seed_note_meeting(&storage)?;
     seed_locked_meeting(&storage)?;
     seed_ledger_meeting(&storage)?;
@@ -734,45 +757,165 @@ fn seed_trash_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     Ok(())
 }
 
-/// W2-C: a meeting whose retained transcript is tampered with *after* the
-/// meeting record is written and verified, so its pinned digest no longer
-/// matches the bytes on disk — mirroring
-/// `meeting_export.rs`'s own
-/// `export_meeting_withholds_a_tampered_transcript_and_names_it_in_the_result`
-/// test fixture exactly. Exercises the real export command's
-/// withheld-artifact manifest line and README.txt entry when a reviewer
-/// clicks Export on this meeting; the sibling `MEETING_ID` above already
-/// exercises the ordinary "Export available" state (a verified transcript).
-fn seed_export_tampered_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+/// W2-C: a meeting whose saved operator note is unreadable, so exporting it
+/// withholds `your-notes.txt` and names why in README.txt and the command's
+/// result, and the meeting page shows the note as unreadable rather than as
+/// an empty note that could be typed over.
+///
+/// This used to tamper the retained transcript instead. That state can never
+/// render in the installed app: startup recovery verifies every artifact
+/// `meeting.json` pins, a transcript that fails its digest is a retention
+/// mismatch, and one retention mismatch withholds the whole app ("Yawn cannot
+/// record yet"). The operator note is not a pinned artifact, so a broken one
+/// reaches the page and the export. The tampered-transcript withholding stays
+/// covered by `meeting_export.rs`'s
+/// `export_meeting_withholds_a_tampered_transcript_and_names_it_in_the_result`.
+fn seed_export_withheld_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     let turns: &[(&str, &str)] = &[
-        (
-            "Me",
-            "Fixture: this transcript will be tampered with after the meeting record is written.",
-        ),
+        ("Me", "Fixture: this meeting's saved note cannot be read."),
         (
             "Them",
-            "Fixture: exporting this meeting must withhold transcript.md and name why.",
+            "Fixture: exporting this meeting must withhold your-notes.txt and name why.",
         ),
     ];
-    let source = transcript_bytes_tagged(turns, "synthetic-fixture-export-tampered");
-    let shell = seed_plain_meeting(storage, EXPORT_TAMPERED_MEETING_ID, CREATED_AT + 4, source)?;
+    let source = transcript_bytes_tagged(turns, "synthetic-fixture-export-withheld");
+    let shell = seed_plain_meeting(storage, EXPORT_WITHHELD_MEETING_ID, CREATED_AT + 4, source)?;
     write_meeting_record(
         &shell,
-        EXPORT_TAMPERED_MEETING_ID,
+        EXPORT_WITHHELD_MEETING_ID,
         MeetingLifecycle::TranscriptReady,
         None,
     )?;
     verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
-
-    // Tamper the retained transcript's bytes without touching meeting.json,
-    // so its recorded sha256 no longer matches what is on disk. This runs
-    // only after the meeting proved valid above, so the corruption is the
-    // one thing that changed.
-    fs::write(
-        shell.meeting_dir.join(&shell.current_ref.relative_path),
-        b"{ not the verified transcript",
+    write_new(
+        &shell.meeting_dir.join("operator-note.json"),
+        b"{ not a saved operator note",
     )?;
     Ok(())
+}
+
+/// A capture the app never finished: the worker died mid-recording, leaving
+/// an `incomplete` meeting with its ownership receipt and two promoted audio
+/// legs. The seed hands it to the real startup recovery (`scan_and_recover`)
+/// with an inspector that reports every recorded process gone, so the
+/// interruption receipt, audio digests and `recovered-interrupted` lifecycle
+/// are written by the product's own code, not by hand.
+///
+/// Recovery runs here, before any other meeting exists, rather than at the
+/// app's launch: launch inspects real process ids, and a reused pid would
+/// either be signalled or leave the meeting ownership-ambiguous, which
+/// withholds capture for the whole app.
+///
+/// Six minutes of silent audio give the page a recording length, so the
+/// rail can place the stop mark where the recording ended.
+fn seed_interrupted_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let meeting_dir = storage.path().join("meetings").join(INTERRUPTED_MEETING_ID);
+    for child in ["", "capture"] {
+        create_private_dir(&meeting_dir.join(child))?;
+    }
+    let rule = AudioRetentionRule::UntilManualDeletion;
+    let policy = retention_policy_sha256(&rule);
+    let attempt = json!({
+        "schema": "capture-attempt/1",
+        "meeting_id": INTERRUPTED_MEETING_ID,
+        "attempt_id": INTERRUPTED_MEETING_ID,
+        "created_at_epoch_seconds": CREATED_AT - 600,
+        "application_build_sha256": "a".repeat(64),
+        "participant_notice_version": "internal-transcript-alpha/1",
+        "operator_attestation": {
+            "participantsConsented": true,
+            "headphones": true,
+            "operatorAlone": true,
+        },
+        "retention_policy_sha256": policy,
+    });
+    write_new(
+        &meeting_dir.join("attempt.json"),
+        &serde_json::to_vec_pretty(&attempt)?,
+    )?;
+    let worker = ProcessIdentity {
+        pid: 4_242,
+        start_time_epoch_seconds: CREATED_AT - 600,
+        executable_path: PathBuf::from("/synthetic-fixture/worker"),
+        executable_sha256: "d".repeat(64),
+    };
+    let ownership = OwnershipReceipt {
+        schema: OwnershipSchema::V1,
+        process_group_id: worker.pid as i32,
+        application_build_sha256: "a".repeat(64),
+        worker_build_sha256: "b".repeat(64),
+        tap_build_sha256: "c".repeat(64),
+        children: vec![worker],
+    };
+    write_new(
+        &meeting_dir.join("ownership.json"),
+        &serde_json::to_vec_pretty(&ownership)?,
+    )?;
+    let audio = wav(AUDIO_SAMPLE_RATE as usize * INTERRUPTED_AUDIO_SECONDS);
+    write_new(&meeting_dir.join("capture/mic.wav"), &audio)?;
+    write_new(&meeting_dir.join("capture/system.wav"), &audio)?;
+    let meeting = MeetingRecord {
+        schema: MeetingSchema::V2,
+        meeting_id: INTERRUPTED_MEETING_ID.into(),
+        lifecycle: MeetingLifecycle::Incomplete,
+        retention: AudioRetention {
+            policy_sha256: policy,
+            rule,
+            next_deletion_at_epoch_seconds: None,
+            state: AudioState::NeverCreated,
+            deletion_receipt: None,
+        },
+        artifacts: MeetingArtifacts {
+            attempt: artifact_ref(&meeting_dir, "attempt.json")?,
+            ownership: Some(artifact_ref(&meeting_dir, "ownership.json")?),
+            capture_session: None,
+            microphone_audio: None,
+            system_audio: None,
+            current_transcript: None,
+            current_note: None,
+        },
+        pending_storage_operation: None,
+    };
+    write_new(
+        &meeting_dir.join("meeting.json"),
+        &serde_json::to_vec_pretty(&meeting)?,
+    )?;
+
+    let report = scan_and_recover(
+        storage,
+        CREATED_AT,
+        &NoLiveFixtureProcess,
+        &NeverSignalFixtureGroup,
+        Duration::from_millis(1),
+    )?;
+    let recovered = report.meetings.len() == 1
+        && report.meetings[0].meeting_id == INTERRUPTED_MEETING_ID
+        && report.meetings[0].disposition == RecoveryDisposition::RecoveredInterrupted
+        && !report.blocks_capture;
+    if !recovered {
+        return Err(FixtureError::InterruptedRecovery);
+    }
+    Ok(())
+}
+
+/// Every process an ownership receipt in this synthetic root names is gone.
+struct NoLiveFixtureProcess;
+
+impl ProcessInspector for NoLiveFixtureProcess {
+    fn inspect(&self, _pid: u32) -> io::Result<ProcessInspection> {
+        Ok(ProcessInspection::Absent)
+    }
+}
+
+/// Seeding never signals a real process group.
+struct NeverSignalFixtureGroup;
+
+impl GroupSignaler for NeverSignalFixtureGroup {
+    fn terminate(&self, _process_group_id: i32) -> io::Result<()> {
+        Err(io::Error::other(
+            "the fixture seed never signals a process group",
+        ))
+    }
 }
 
 /// W3-A / W2-A / I3: a meeting carrying a real, validator-passing generated
@@ -965,7 +1108,7 @@ fn seed_ledger_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
         (921.0, 948.0, "Them", "Fixture: the twelfth item is the menu-bar pill, which is the only other red on the Mac."),
         (962.0, 989.0, "Me", "Fixture: and the live mark on the rail, which goes away when Stop lands."),
         (1004.0, 1030.0, "Them", "Fixture: the thirteenth item is the export; the manifest withholds nothing it cannot verify."),
-        (1044.0, 1071.0, "Me", "Fixture: the tampered artifact state is already seeded, so the review can see it."),
+        (1044.0, 1071.0, "Me", "Fixture: the withheld artifact state is already seeded, so the review can see it."),
         (1086.0, 1112.0, "Them", "Fixture: the fourteenth item is the lock; Touch ID or the login password, never a stand-in."),
         (1126.0, 1150.0, "Me", "Fixture: the fixture shows the barrier only, which is the honest limit."),
         (1166.0, 1192.0, "Them", "Fixture: the last item is the capture set itself; both appearances, large text, increased contrast."),
@@ -1822,13 +1965,45 @@ mod tests {
         turn_texts(meeting_dir, relative_path)
     }
 
+    /// The installed Fixture app runs `scan_and_recover` at launch and refuses
+    /// to start when any meeting blocks capture or fails its retention check
+    /// (`main.rs`, startup recovery). A seeded root must pass that same gate,
+    /// or the review sees "Yawn cannot record yet" instead of the library.
+    #[test]
+    fn seeded_root_passes_the_apps_startup_recovery() {
+        let temp = TempDir::new().unwrap();
+        let root = target(&temp);
+        seed(&root, repo(&temp)).unwrap();
+        let storage = StorageRoot::create(&root, &temp.path().join("repository")).unwrap();
+
+        let report = scan_and_recover(
+            &storage,
+            CREATED_AT + 60,
+            &NoLiveFixtureProcess,
+            &NeverSignalFixtureGroup,
+            Duration::from_millis(1),
+        )
+        .unwrap();
+
+        assert!(!report.blocks_capture, "{:?}", report.meetings);
+        for meeting in &report.meetings {
+            assert_eq!(
+                meeting.disposition,
+                RecoveryDisposition::Valid,
+                "meeting {} would not open cleanly at launch",
+                meeting.meeting_id
+            );
+        }
+    }
+
     /// End-to-end proof that every Wave 2/3 state this packet stages is both
     /// present on disk and produces the real product state a reviewer would
     /// see: pause spans project to `Paused`, the diff engine actually
     /// computes each of the three retry-diff states from the staged
     /// transcripts (not merely "files exist"), the trashed meeting is the
-    /// only one `list_trash_entries` reports, the tampered transcript fails
-    /// its own digest check, and the note meeting's revision reference is
+    /// only one `list_trash_entries` reports, the withheld meeting's note is
+    /// unreadable while its transcript verifies, the interrupted capture was
+    /// recovered with its audio, and the note meeting's revision reference is
     /// internally consistent.
     #[test]
     fn seed_produces_every_targeted_wave_2_3_state() {
@@ -1938,26 +2113,46 @@ mod tests {
                 .exists()
         );
 
-        // W2-C: the tampered meeting's pinned transcript digest no longer
-        // matches the bytes on disk, exactly the failure `export_meeting`
-        // withholds and names.
-        let tampered_dir = storage
+        // W2-C: the withheld meeting's transcript still verifies (so launch
+        // admits it) while its saved operator note does not parse, the
+        // failure the page shows as unreadable and `export_meeting` withholds.
+        let withheld_dir = storage
             .path()
             .join("meetings")
-            .join(EXPORT_TAMPERED_MEETING_ID);
-        let tampered_meeting = load_meeting(&tampered_dir).unwrap();
+            .join(EXPORT_WITHHELD_MEETING_ID);
+        let withheld_meeting = load_meeting(&withheld_dir).unwrap();
+        verify_record_artifacts(&withheld_dir, &withheld_meeting).unwrap();
         assert!(
-            verify_artifact_ref(
-                &tampered_dir,
-                tampered_meeting
-                    .artifacts
-                    .current_transcript
-                    .as_ref()
-                    .unwrap()
+            serde_json::from_slice::<serde_json::Value>(
+                &fs::read(withheld_dir.join("operator-note.json")).unwrap()
             )
             .is_err(),
-            "the tampered transcript must fail verification"
+            "the saved operator note must not parse"
         );
+
+        // The interrupted capture was recovered by the real recovery code:
+        // both audio legs retained and pinned, an interruption receipt in
+        // place of a finished capture session, and no transcript.
+        let interrupted_dir = storage.path().join("meetings").join(INTERRUPTED_MEETING_ID);
+        let interrupted = load_meeting(&interrupted_dir).unwrap();
+        assert_eq!(
+            interrupted.lifecycle,
+            MeetingLifecycle::RecoveredInterrupted
+        );
+        assert_eq!(interrupted.retention.state, AudioState::Retained);
+        assert!(interrupted.artifacts.current_transcript.is_none());
+        assert_eq!(
+            interrupted
+                .artifacts
+                .microphone_audio
+                .as_ref()
+                .unwrap()
+                .relative_path,
+            "capture/mic.wav"
+        );
+        assert!(interrupted.artifacts.system_audio.is_some());
+        assert!(interrupted.artifacts.capture_session.is_some());
+        verify_record_artifacts(&interrupted_dir, &interrupted).unwrap();
 
         // W3-A / W2-A: the note meeting is `Ready` with an internally
         // consistent, digest-named current note bound to its own transcript.
