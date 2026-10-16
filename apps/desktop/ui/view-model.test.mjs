@@ -1219,7 +1219,8 @@ test("an empty transcript-only note remains explicit without a generate control"
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // R14: the empty state is one sentence at reading size carrying the
   // heading id, not an h2 plus the reader's generic message repeated.
-  assert.match(source, /<p id="meeting-note-heading" class="\$\{attention \? "attention-headline" : "empty-note-state"\}">/);
+  assert.match(source, /<p id="meeting-note-heading" class="attention-headline">/);
+  assert.match(source, /<p id="meeting-note-heading" class="doc-fact meeting-note-fact">/);
   // Rail (2026-10-15): a transcript-only meeting draws no note section at
   // all; the operator's notes and the transcript are the page, and the
   // retirement of generation is not announced in the meeting view.

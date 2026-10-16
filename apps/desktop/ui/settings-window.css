@@ -70,7 +70,9 @@ h2 {
 .privacy-row,
 .update-automatic {
   display: flex;
-  align-items: center;
+  /* The state word sits on the row title's line, not centred against the
+     title-and-description stack (cold review 2026-10-16). */
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-16);
   padding: 7px 0;

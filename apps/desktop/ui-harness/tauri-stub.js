@@ -15,6 +15,14 @@
 // above the columns), and each fork has a reading only a fixture can show.
 (() => {
   const mode = new URLSearchParams(location.search).get("mode") || "capture";
+  // A fixed time of day for the fixture rows, so two captures of one state
+  // minutes apart (light, then dark) show the same meta line.
+  const fixtureEpoch = (daysAgo, hour, minute) => {
+    const at = new Date();
+    at.setDate(at.getDate() - daysAgo);
+    at.setHours(hour, minute, 0, 0);
+    return Math.floor(at.getTime() / 1000);
+  };
   const captureSnapshot = {
     startup: "ready",
     capture: "recording",
@@ -71,7 +79,7 @@
     meetingId: "harness-meeting-1",
     label: "Harness meeting",
     labelSource: "operator",
-    createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 3600,
+    createdAtEpochSeconds: fixtureEpoch(1, 14, 10),
     transcriptAvailable: true,
   };
   // mode=transcribing-meeting / transcribing-meeting-lands: the state right
@@ -282,7 +290,7 @@
               transcriptAvailable: false, transcriptPending: true, recovery: null, durationSeconds: 1079 },
           ]),
           ...(stopLandsSelected ? [{ ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null }] : []),
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null }] : []),
         ];
         return { rows, total: rows.length, metadataRevision: 1, searchProbeEnabled: false };
       })()
@@ -292,7 +300,7 @@
           { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false,
             transcriptPending: true, recovery: null },
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
       : transcribingMode ? {
         rows: [
@@ -301,7 +309,7 @@
           { ...libraryRow, label: "", labelSource: "date", createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 90,
             transcriptAvailable: transcriptLanded, transcriptPending: legacyContract ? undefined : !transcriptLanded, recovery: null, durationSeconds: 1832 },
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
       : mode === "library" || mode === "ledger" || mode === "interrupted" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
       ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : {}) }, {
@@ -309,7 +317,7 @@
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",
           label: "Earlier harness meeting",
-          createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60),
+          createdAtEpochSeconds: fixtureEpoch(9, 9, 30),
         }], total: 2, metadataRevision: 1, searchProbeEnabled: searchMode }
       : { rows: [], total: 0, metadataRevision: 1 }),
     preview_list_trash: () => ({ entries: [] }),

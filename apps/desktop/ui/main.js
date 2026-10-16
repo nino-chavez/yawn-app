@@ -710,7 +710,7 @@ function renderToolbarRecordControl() {
     return `
       <span class="btn${transport.state === "recording" ? " record live record-live-badge" : ""}" aria-label="${escapeHtml(transport.label)}, ${escapeHtml(elapsedLabel)}">${escapeHtml(badgeLabel)}</span>
       ${pauseControl ? `<button class="btn" type="button" data-action="${pauseControl.action}" ${pauseControl.disabled || changing || stopping ? "disabled" : ""}>${escapeHtml(pauseControl.label)}</button>` : ""}
-      <button class="btn" type="button" data-action="stop-recording" title="Stop (⌘.)" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button>
+      <button class="btn primary" type="button" data-action="stop-recording" title="Stop (⌘.)" ${stopping ? "disabled" : ""}>${stopping ? "Stopping…" : "Stop"}</button>
     `;
   }
   if (transport.state === "processing") {
@@ -1027,7 +1027,10 @@ function renderCapturePane() {
   // DESIGN.md (Rail): while recording or paused the toolbar's badge is the
   // status; the page carries only when it started. The transitional steps
   // (arming, stopping, captured, transcribing) keep their one-line caption.
-  const meta = live && Number.isFinite(startedAt) ? `Started ${timeOfDayLabel(startedAt)}` : presentation.detail;
+  // Live, the meta is when the recording started, or its state word when
+  // the start time is not known; the detail ("Add a short note…") would only
+  // repeat the editor's placeholder. Other states keep their one-line detail.
+  const meta = live ? (Number.isFinite(startedAt) ? `Started ${timeOfDayLabel(startedAt)}` : presentation.label) : presentation.detail;
   const title = Number.isFinite(startedAt) ? `Meeting · ${dateLabel(startedAt)}` : "Meeting";
   return `
     <div class="canvas-wrap doc-page">
@@ -1287,8 +1290,10 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
       const canTrash = attention && Boolean(note?.meetingDeletionHandle);
       return `
         <section class="meeting-note meeting-note-unavailable${attention ? " attention-state attention-inline" : ""}" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
-          <p id="meeting-note-heading" class="${attention ? "attention-headline" : "empty-note-state"}">${escapeHtml(recovery.title)}</p>
-          <p class="${attention ? "attention-detail" : "doc-fact"}">${escapeHtml(recovery.detail)}</p>
+          ${attention
+            ? `<p id="meeting-note-heading" class="attention-headline">${escapeHtml(recovery.title)}</p>
+          <p class="attention-detail">${escapeHtml(recovery.detail)}</p>`
+            : `<p id="meeting-note-heading" class="doc-fact meeting-note-fact">${recovery.state === "summary-failed" ? escapeHtml(recovery.detail) : `${escapeHtml(recovery.title)} ${escapeHtml(recovery.detail)}`}</p>`}
           ${canTrash ? `<div class="attention-actions">
             <button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>
           </div>` : ""}
@@ -1511,6 +1516,11 @@ function renderMeetingPane() {
     state.audioPlayback,
   );
   const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
+  // The turn column gets a heading only when it is drawn (a timed note and a
+  // transcript), so the head row's columns match the ledger's.
+  const ledgerHasTurns = !operatorNote?.unreadable
+    && Boolean(transcript?.turns?.length)
+    && noteLedgerPresentation({ text: state.selected?.operatorNoteDraft || "", moments: state.selected?.operatorNoteMoments || [], turns: transcript?.turns || [], pauses: note?.capturePauses }).hasRail;
   const inspectorOpen = Boolean(evidenceSplit.open && transcript?.turns?.length);
   // DESIGN.md (Rail): a needs-attention surface comes before the notes; a
   // saved AI draft or a plain note fact comes after them.
@@ -1532,7 +1542,7 @@ function renderMeetingPane() {
         ${renderTransport(playback, transcript, row)}
         ${attentionFirst ? noteBlock : ""}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
-          <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
+          <div class="note-editor-head${ledgerHasTurns ? " ledger-head" : ""}">${ledgerHasTurns ? `<span class="ledger-head-rail">Typed at</span>` : ""}<span class="ledger-head-note"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></span>${ledgerHasTurns ? `<span class="ledger-head-turns">Nearest in the transcript</span>` : ""}</div>
           ${operatorNote?.unreadable
             ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
             : renderNoteLedger({
@@ -1608,7 +1618,9 @@ function renderDocMeta(row, note) {
   if (meta.duration) parts.push(meta.duration);
   const audio = audioRetentionCaption(note);
   if (audio) parts.push(audio);
-  parts.push(meetingStateCaption(note?.state));
+  // The ordinary meeting (a transcript, the operator's notes) states nothing
+  // here: the page shows what it has. Other states keep their word.
+  if (note?.state !== "transcript-only") parts.push(meetingStateCaption(note?.state));
   return `<p class="doc-meta">${escapeHtml(parts.filter(Boolean).join(" · "))}</p>`;
 }
 
@@ -1653,7 +1665,6 @@ function renderTransport(playback, transcript, row) {
       <div class="transport-track" aria-hidden="true">${ticks.map((tick) => `<i class="transport-tick ${tick.you ? "you" : "them"}" style="left:${tick.percent}%"></i>`).join("")}</div>
       ${sources.length > 1 ? `<span class="transport-source" role="group" aria-label="Which recording to play">${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}">${escapeHtml(control.source === "microphone" ? "Microphone" : "System audio")}</button>`).join("")}</span>` : ""}
       ${playingLabel ? `<span class="caption transport-status" role="status" aria-live="polite">${escapeHtml(playingLabel)}</span>` : ""}
-      ${turns.length ? `<button class="transport-full" type="button" data-action="open-full-transcript"><span>Full transcript</span><svg width="7" height="10" viewBox="0 0 7 10" fill="none" aria-hidden="true"><path d="M1.5 1.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
     </div>
   `;
 }
@@ -1674,16 +1685,20 @@ function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, edit
   // scrubs and what the transcript's times count in. It equals the stored
   // moment when nothing was paused; a pause before the line moves it earlier.
   const marks = timedRows.map((row) => `<div class="ledger-mark${live && row.line === lastTimed ? " live" : ""}" data-line="${row.line}"><span>${escapeHtml(timeLabel(row.audioSeconds ?? row.seconds))}</span><i></i></div>`).join("");
-  const turnColumn = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat).map((row) => {
+  // A fold counts the turns folded between two notes (product brief, "Note
+  // moments on the Mac"). Turns before the first note are not between
+  // anything, so the first row carries no fold; the full transcript below
+  // has them.
+  const turnColumn = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat).map((row, position) => {
     const turn = turns[row.turnIndex];
     const who = transcriptSpeakerLabel(turn);
-    return `${row.foldedBefore > 0 ? `<div class="ledger-fold" data-line="${row.line}">+ ${row.foldedBefore} ${row.foldedBefore === 1 ? "turn" : "turns"}</div>` : ""}
+    return `${row.foldedBefore > 0 && position > 0 ? `<div class="ledger-fold" data-line="${row.line}">+ ${row.foldedBefore} ${row.foldedBefore === 1 ? "turn" : "turns"}</div>` : ""}
       <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"><span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}</div>`;
   }).join("") : "";
   return `
     <div class="ledger${ledger.hasRail || stop ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
       <div class="ledger-rail" aria-hidden="true"></div>
-      <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}${stop ? `<div class="ledger-mark stop ledger-stop"><span>${escapeHtml(timeLabel(stop.seconds))}</span><i></i><em>${escapeHtml(stop.label)}</em></div>` : ""}</div>
+      <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}${stop ? `<div class="ledger-mark stop ledger-stop" title="${escapeHtml(stop.label)}"><span>${escapeHtml(timeLabel(stop.seconds))}</span><i></i></div>` : ""}</div>
       <div class="ledger-note">
         <textarea class="notes-area meeting-notes-editor ledger-editor" data-field="${escapeHtml(field)}" data-meeting-id="${escapeHtml(meetingId)}" aria-label="Your meeting notes" placeholder="${escapeHtml(placeholder)}" ${editable ? "" : "disabled"}>${escapeHtml(text)}</textarea>
         <div class="ledger-mirror" aria-hidden="true" data-text-length="${lines.join("\n").length}">${lines.map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("")}</div>

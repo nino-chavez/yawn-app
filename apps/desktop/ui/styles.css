@@ -453,8 +453,8 @@ h3 {
 .note-editor-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-16);
+  justify-content: flex-start;
+  gap: var(--space-12);
   max-width: var(--measure);
   margin: 0 0 var(--space-8);
   padding: 0;
@@ -2866,6 +2866,7 @@ html, body, #app {
   font-size: var(--t-large);
   font-weight: 650;
   line-height: 1.25;
+  letter-spacing: 0;
 }
 
 .empty-doc p {
@@ -3574,3 +3575,55 @@ html, body, #app {
 
 /* Keep optional model choices separate from the first-run selection. */
 .model-setup-secondary { margin-top: 12px; }
+
+/* The ledger's head row shares the ledger's note and turn columns, so the
+   turn column's heading sits level with "Your notes" (cold review
+   2026-10-16: the column of quotes was unexplained). */
+.note-editor-head.ledger-head {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  align-items: baseline;
+  max-width: none;
+  /* The page gutter is the head's own first column here, so the head starts
+     where the ledger starts and the three cells land on its three columns. */
+  margin-left: 0;
+}
+.ledger-head-rail {
+  padding-right: 24px;
+  text-align: right;
+  font-size: 11px;
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--label-3);
+}
+/* With a turn column beside it the note keeps a gutter of its own, so a long
+   line stops short of the turns instead of touching them. The mirror is
+   absolutely positioned against the column's padding box, so it takes the
+   same inset explicitly: the editor and the mirror must wrap at one width. */
+.ledger.has-turns .ledger-note {
+  padding-right: 24px;
+}
+.ledger.has-turns .ledger-mirror {
+  width: auto;
+  right: 24px;
+}
+.ledger-head-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-12);
+  min-width: 0;
+}
+.ledger-head-turns {
+  padding-left: 24px;
+  font-size: 11px;
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--label-3);
+}
+/* A neutral note-area state is one caption with room above it, apart from
+   the editor's placeholder (cold review 2026-10-16: the two read as one
+   block). */
+.meeting-note-unavailable .meeting-note-fact {
+  margin: var(--space-18) 0 0;
+  max-width: var(--measure);
+}
