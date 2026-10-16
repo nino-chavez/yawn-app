@@ -124,3 +124,12 @@ test("the after-the-meeting label centers on its line at any size", async () => 
   assert.doesNotMatch(main, /heights\[index\] \/ 2 - 13\}px/);
   assert.match(main, /after\.offsetHeight \/ 2/);
 });
+
+test("the rail gutter grows with the text size, so an elapsed time never breaks", async () => {
+  const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+  assert.match(styles, /--ledger-time-w: calc\(40px \* var\(--text-scale\)\)/);
+  const rules = styles.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.doesNotMatch(rules, /\b76px\b/);
+  assert.match(rules, /\.ledger-rail \{[^}]*left: var\(--ledger-rail-x\)/);
+  assert.match(rules, /\.ledger-mark span \{[^}]*width: var\(--ledger-time-w\)/);
+});

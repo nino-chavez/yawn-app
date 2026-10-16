@@ -2592,8 +2592,8 @@ html, body, #app {
 
 .search-field {
   display: inline-flex;
-  width: 170px;
-  height: 24px;
+  width: calc(170px * var(--text-scale));
+  min-height: 24px;
   align-items: center;
   padding: 0 8px;
   border: 1px solid var(--control-border);
@@ -2978,7 +2978,7 @@ html, body, #app {
 .doc-page .your-notes-section > .note-editor-head,
 .doc-page .your-notes-section > .doc-fact,
 .doc-page .doc-transcript-disclosure-wrap {
-  margin-left: 76px;
+  margin-left: var(--ledger-gutter);
 }
 
 .doc-meta {
@@ -2996,7 +2996,7 @@ html, body, #app {
   align-items: center;
   gap: 10px;
   min-height: 30px;
-  margin: 0 0 var(--space-12) 76px;
+  margin: 0 0 var(--space-12) var(--ledger-gutter);
 }
 
 .transport-play {
@@ -3102,23 +3102,32 @@ html, body, #app {
 
 /* -- the ledger: rail | note | nearest turn -------------------------------- */
 
+/* The rail gutter grows with the text size so an elapsed time never breaks
+   across lines; the rail line sits 12px past the time column, where the
+   mark's dot centers (8px gap + half of the 9px dot). */
+:root {
+  --ledger-time-w: calc(40px * var(--text-scale));
+  --ledger-rail-x: calc(var(--ledger-time-w) + 12px);
+  --ledger-gutter: calc(var(--ledger-time-w) + 36px);
+}
+
 .ledger {
   position: relative;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr);
   margin-top: var(--space-6);
 }
 
 /* The note column starts at the page gutter (76px) in every state; the
    turn column carries its own 24px gap so the gutter never shifts. */
 .ledger.has-turns {
-  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr) 324px;
 }
 
 .ledger-rail {
   display: none;
   position: absolute;
-  left: 52px;
+  left: var(--ledger-rail-x);
   top: 2px;
   bottom: 0;
   width: 2px;
@@ -3144,7 +3153,7 @@ html, body, #app {
 }
 
 .ledger-mark span {
-  width: 40px;
+  width: var(--ledger-time-w);
   text-align: right;
   font-size: var(--t-caption);
   line-height: calc(14px * var(--text-scale));
@@ -3199,7 +3208,7 @@ html, body, #app {
 .ledger-after {
   position: absolute;
   left: 0;
-  width: 52px;
+  width: var(--ledger-rail-x);
   text-align: right;
   font-size: var(--t-caption);
   line-height: calc(13px * var(--text-scale));
@@ -3483,7 +3492,7 @@ html, body, #app {
 .canvas-wrap > .activity-monitor,
 .canvas-wrap > .canvas-context-note,
 .canvas-wrap > .canvas-context-disclosure {
-  margin-left: 76px;
+  margin-left: var(--ledger-gutter);
 }
 
 .canvas-wrap .your-notes-section {
@@ -3677,7 +3686,7 @@ html, body, #app {
    2026-10-16: the column of quotes was unexplained). */
 .note-editor-head.ledger-head {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr) 324px;
   /* No grid gap: the ledger has none, and a gap would shift the headings
      off the columns they name. */
   gap: 0;
