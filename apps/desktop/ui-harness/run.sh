@@ -96,6 +96,8 @@ case "$mode" in
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  still) run "${2:?run.sh still <mode>}" still.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  still-settings) run_settings still.js "&width=580&height=640&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   note-retirement-negative) run transcript-retirement note-retirement.js "&width=1080&height=900&negative-control=1" ;;
   note-retirement)
     run transcript-retirement note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
@@ -114,5 +116,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|still <mode>|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac
