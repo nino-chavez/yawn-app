@@ -13,10 +13,16 @@ struct RecordingBadge: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(Paper.record)
-                .frame(width: 8, height: 8)
-                .opacity(paused ? 0.5 : 1)
+            // Paused differs by shape as well as weight: two bars, not a dot.
+            if paused {
+                Image(systemName: "pause.fill")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Paper.record)
+            } else {
+                Circle()
+                    .fill(Paper.record)
+                    .frame(width: 8, height: 8)
+            }
             Text(paused ? "Paused" : "Recording")
             Text(elapsed)
                 .monospacedDigit()

@@ -39,9 +39,11 @@ struct PaperCapsuleModifier: ViewModifier {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(labelColor ?? foreground)
             .padding(.horizontal, PaperMetrics.capsulePadding)
-            .frame(minHeight: height)
+            // A symbol-only capsule is at least as wide as it is tall, so the
+            // tools in a column keep one width at every text size.
+            .frame(minWidth: height, minHeight: height)
             .background(fill, in: .capsule)
-            .overlay { Capsule().strokeBorder(border, lineWidth: 1) }
+            .overlay { Capsule().strokeBorder(border, lineWidth: kind == .active ? 1.5 : 1) }
             .opacity(pressed ? 0.8 : 1)
     }
 
@@ -64,7 +66,10 @@ struct PaperCapsuleModifier: ViewModifier {
     private var border: Color {
         switch kind {
         case .plain: Paper.controlBorder
-        case .record, .active: .clear
+        case .record: .clear
+        // The active tool carries a ring as well as its tint, so selection
+        // is not color alone.
+        case .active: Paper.moment
         }
     }
 }

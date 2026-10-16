@@ -20,8 +20,14 @@ names the one setting it changed; every setting was restored afterwards.
 | specimen-light.png | the prepared components (`-paperSpecimen`, debug builds only) | light | large | off |
 | specimen-dark.png | the prepared components | dark | large | off |
 | specimen-light-xxxl.png | the prepared components | light | extra-extra-extra-large | off |
+| specimen-light-consent.png | the prepared components, scrolled to the consent card | light | large | off |
 
-The cold packet used neutral names: i1 first-run-light, i2 first-run-dark,
+The cold packets used neutral names: i1 first-run-light, i2 first-run-dark,
 i3 first-run-light-xxxl, i4 first-run-light-increased-contrast, i5
 sidebar-light, i6 sidebar-dark, i7 specimen-light, i8 specimen-dark, i9
-specimen-light-xxxl.
+specimen-light-xxxl, i10 specimen-light-consent (pass 3 only).
+
+Pass 1's packet carried a defect of the implementer's: its i7 to i9 were
+captured before the project defined DEBUG, so the specimen route was
+compiled out and the three frames duplicated first run. Every frame here is
+from the build the review record names.

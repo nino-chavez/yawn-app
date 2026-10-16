@@ -20,13 +20,19 @@ struct RecordButton: View {
 /// sight on dark bars, so this is the same capsule in Label 2 with one line
 /// that says why it does nothing.
 struct RecordUnavailable: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+
+    /// At the larger text sizes the bar has no room for a second line under
+    /// the capsule, so the caption tightens rather than touching the bar's edge.
+    private var compact: Bool { textSize >= .xxLarge }
+
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: compact ? 0 : 4) {
             Label("Record", systemImage: "record.circle")
                 .labelStyle(.titleAndIcon)
                 .paperCapsule(.plain, labelColor: Paper.label2)
             Text("Not available in this build yet")
-                .font(.caption)
+                .font(compact ? .caption2 : .caption)
                 .foregroundStyle(Paper.label3)
         }
         .accessibilityElement(children: .combine)

@@ -170,16 +170,20 @@ button, input { font: inherit; color: inherit; }
 // Paper.page, never a literal.
 const CATALOG_DIR = path.join(ROOT, "apps", "ipad", "Yawn", "Paper", "Paper.xcassets");
 const CATALOG_SETS = [
-  // [asset name, token]  -- the DESIGN.md role each one carries
+  // [asset name, token, increased-contrast token?] -- the DESIGN.md role each
+  // one carries. A third entry gives the set high-contrast variants, which
+  // iPadOS picks under Increase Contrast (DESIGN.md Accessibility: separators
+  // and Label 3 darken, no new colors); the Mac reads the same values from
+  // tokens.css under prefers-contrast.
   ["PaperWindowChrome", c.neutral.window],      // Window chrome
   ["PaperSidebar", c.neutral.sidebar],          // Sidebar
   ["PaperPage", c.neutral.content],             // Page
   ["PaperPanel", c.neutral.panel],              // Panel
-  ["PaperHairline", c.neutral.separator],       // Hairline
-  ["PaperHairlineStrong", c.neutral.separatorStrong], // Hairline, strong
+  ["PaperHairline", c.neutral.separator, c.contrastMore.separator], // Hairline
+  ["PaperHairlineStrong", c.neutral.separatorStrong, c.contrastMore.separatorStrong], // Hairline, strong
   ["PaperLabel", c.neutral.label],              // Label
-  ["PaperLabel2", c.neutral.label2],            // Label 2
-  ["PaperLabel3", c.neutral.label3],            // Label 3
+  ["PaperLabel2", c.neutral.label2, c.contrastMore.label2], // Label 2
+  ["PaperLabel3", c.neutral.label3, c.contrastMore.label3], // Label 3
   ["PaperLabel4", c.neutral.label4],            // Label 4
   ["PaperGraphite", c.accent],                  // Graphite (accent)
   ["PaperOnGraphite", c.onAccent],              // On graphite
@@ -222,16 +226,39 @@ function catalogComponents(value) {
   throw new Error(`not a catalog color: ${value}`);
 }
 
-function colorSetJson(token) {
-  const entry = (value, dark) => ({
-    ...(dark ? { appearances: [{ appearance: "luminosity", value: "dark" }] } : {}),
-    color: { "color-space": "srgb", components: catalogComponents(value) },
-    idiom: "universal",
-  });
+function colorSetJson(token, contrast) {
+  const entry = (value, { dark = false, high = false } = {}) => {
+    const appearances = [
+      ...(dark ? [{ appearance: "luminosity", value: "dark" }] : []),
+      ...(high ? [{ appearance: "contrast", value: "high" }] : []),
+    ];
+    return {
+      ...(appearances.length ? { appearances } : {}),
+      color: { "color-space": "srgb", components: catalogComponents(value) },
+      idiom: "universal",
+    };
+  };
+  const colors = [entry(token.light), entry(token.dark, { dark: true })];
+  if (contrast) {
+    colors.push(entry(contrast.light, { high: true }));
+    colors.push(entry(contrast.dark, { dark: true, high: true }));
+  }
   return JSON.stringify({
-    colors: [entry(token.light, false), entry(token.dark, true)],
+    colors,
     info: { author: "packages/design-tokens/generate.js", version: 1 },
   }, null, 2) + "\n";
+}
+
+// Color sets on disk that no token names any more. A leftover set still
+// compiles, so Xcode keeps generating its symbol and a view can go on using
+// a role the tokens no longer define; the check fails on one and the write
+// removes it.
+function staleCatalogSets() {
+  if (!fs.existsSync(CATALOG_DIR)) return [];
+  const expected = new Set(CATALOG_SETS.map(([name]) => `${name}.colorset`));
+  return fs.readdirSync(CATALOG_DIR)
+    .filter((entry) => entry.endsWith(".colorset") && !expected.has(entry))
+    .map((entry) => path.join(CATALOG_DIR, entry));
 }
 
 // Every file the catalog consists of, keyed by path.
@@ -240,8 +267,8 @@ function renderCatalog() {
   files.set(path.join(CATALOG_DIR, "Contents.json"), JSON.stringify({
     info: { author: "packages/design-tokens/generate.js", version: 1 },
   }, null, 2) + "\n");
-  for (const [name, token] of CATALOG_SETS) {
-    files.set(path.join(CATALOG_DIR, `${name}.colorset`, "Contents.json"), colorSetJson(token));
+  for (const [name, token, contrast] of CATALOG_SETS) {
+    files.set(path.join(CATALOG_DIR, `${name}.colorset`, "Contents.json"), colorSetJson(token, contrast));
   }
   return files;
 }
@@ -266,6 +293,12 @@ function main() {
         return;
       }
     }
+    const stale = staleCatalogSets();
+    if (stale.length) {
+      process.stderr.write(`the iPad catalog holds color sets tokens.json no longer names: ${stale.map((file) => path.relative(ROOT, file)).join(", ")}\n`);
+      process.exitCode = 1;
+      return;
+    }
     process.stdout.write("tokens.css and the iPad catalog match tokens.json\n");
     return;
   }
@@ -275,6 +308,10 @@ function main() {
   for (const [file, contents] of catalog) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, contents);
+  }
+  for (const stale of staleCatalogSets()) {
+    fs.rmSync(stale, { recursive: true });
+    process.stdout.write(`removed ${path.relative(ROOT, stale)}\n`);
   }
   process.stdout.write(`wrote ${catalog.size} files under ${path.relative(ROOT, CATALOG_DIR)}\n`);
 }
