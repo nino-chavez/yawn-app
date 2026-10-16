@@ -653,7 +653,9 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // neighbour, not the full workspace transcript). Operator notes and
   // meeting context are sections of the document flow, not a separate
   // right-hand pane -- the inspector occupies that space when open.
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderTranscriptRetryAction\(note, transcript, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  // Rail (2026-10-15): transcript retry moved to the toolbar's More menu; the
+  // document flow is note, playback, context, then the operator's notes.
+  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
   // The selected Tonal Ledger reference keeps the disclosure inside `.read`
   // and aligned to the same document measure as the note.
   assert.match(source, /<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>\s*<\/article>/);
@@ -1211,7 +1213,11 @@ test("an empty transcript-only note remains explicit without a generate control"
   // R14: the empty state is one sentence at reading size carrying the
   // heading id, not an h2 plus the reader's generic message repeated.
   assert.match(source, /<p id="meeting-note-heading" class="empty-note-state">/);
-  assert.match(source, /if \(note\?\.state !== "transcript-only"\) return "";/);
+  // Rail (2026-10-15): a transcript-only meeting draws no note section at
+  // all; the operator's notes and the transcript are the page, and the
+  // retirement of generation is not announced in the meeting view.
+  const noteRenderer = source.slice(source.indexOf("function renderMeetingNote("), source.indexOf("function renderTranscriptDisclosure("));
+  assert.doesNotMatch(noteRenderer, /no longer available/);
   assert.doesNotMatch(source, /note\?\.message && !claims\.length/);
   assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}/);
   assert.doesNotMatch(source, /renderGenerateNote|generate-note/);

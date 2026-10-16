@@ -88,12 +88,16 @@ test("settings groups follow grouped-list structure: heading outside, rows insid
     "section must have heading outside the box, then .settings-group-box inside");
 });
 
-test("Settings omits retired notes setup and keeps the remaining navigation aligned", async () => {
+test("Settings is one column of groups with no section navigation and no retired notes setup", async () => {
+  // DESIGN.md (Rail): one scrolling form, every group visible; the link-styled
+  // tab row the baseline review read as a web page is gone. Order is the
+  // design system's: Recording, Transcription, Speakers, Storage, Updates.
   const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
-  const navTargets = [...html.matchAll(/<a href="#([^"]+)">/g)].map(([, id]) => id);
+  assert.doesNotMatch(html, /<nav/);
+  assert.doesNotMatch(html, /<a href="#/);
   const sectionIds = [...html.matchAll(/<section id="([^"]+)" class="settings-group"/g)].map(([, id]) => id);
-  assert.deepEqual(navTargets, ["recording", "transcription", "speakers", "updates", "storage"]);
-  assert.deepEqual(sectionIds, navTargets);
+  assert.deepEqual(sectionIds, ["recording", "transcription", "speakers", "storage", "updates"]);
+  assert.doesNotMatch(html, /notes-setup|note-model/);
 });
 
 test("button primary actions follow one-per-group rule", async () => {
