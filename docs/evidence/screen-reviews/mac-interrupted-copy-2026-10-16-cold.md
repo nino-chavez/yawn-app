@@ -37,6 +37,12 @@ meeting, so they are not shown and nothing will be written over them. The file
 stays on this Mac, and the rest of this meeting is not affected.", at body size,
 Label color and the reading measure.
 
+**After pass 2, not re-reviewed.** "can be played above" became "can still be
+played" (the reviewer flagged the spatial pointer), and the message is now
+chosen by whether a playback handle exists, with "It was not transcribed, and
+its audio cannot be played." for a retained meeting with no playable file. No
+reviewer saw these two wordings.
+
 **Not changed, and why.** The interrupted banner's only action (Move to Trash)
 and whether a transcript can ever be made are the operator's open decision.
 The rail's stop mark is decided design. "Not editable" is the note section's
@@ -50,7 +56,9 @@ the fold gate's `note-does-not-move` failed about half its runs on main: the
 editor kept a mirror height one wrapped line short. The ledger now re-lays out
 when the mirror's height drifts from the one it used, checked one frame later
 and by a timer, because a hidden window (the harness; a minimized app) runs no
-frames or resize observers. 12 of 12 gate runs pass after the fix.
+frames or resize observers. 12 of 12 gate runs pass after the fix. Why the
+mirror grows after the layout reads it was not found; the recheck works
+around it, it does not explain it.
 
 **Removed, combined, demoted, or hidden.** Hidden: the unverifiable-pause fact
 on an interrupted meeting. Removed: the banner's second "interrupted". Nothing
