@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  alignNoteMoments,
+  noteMomentSeconds,
   backgroundTranscriptionPresentation,
   canOpenStart,
   canStartMeeting,
@@ -2294,4 +2296,55 @@ test("the main window's update notice names the version and leads to Settings", 
   const notice = updateAvailableNotice("0.6.16");
   assert.match(notice.text, /0\.6\.16/);
   assert.equal(notice.action.action, "open-update-settings");
+});
+
+test("a note moment is the clock since the recording started, while recording or paused", () => {
+  const snapshot = { capture: "recording", started_at_epoch_seconds: 1_000 };
+  assert.equal(noteMomentSeconds(snapshot, 1_252.9), 252);
+  assert.equal(noteMomentSeconds({ ...snapshot, capture: "paused" }, 1_300), 300);
+  assert.equal(noteMomentSeconds({ ...snapshot, capture: "transcribing" }, 1_300), null);
+  assert.equal(noteMomentSeconds({ capture: "recording" }, 1_300), null);
+});
+
+test("a line typed while recording gets the moment it was first typed and keeps it through edits", () => {
+  // First keystroke on a blank page.
+  let moments = alignNoteMoments("", [], "r", 48);
+  assert.deepEqual(moments, [{ line: 0, seconds: 48 }]);
+  // Typing on: the same line keeps its moment.
+  moments = alignNoteMoments("r", moments, "retry review", 52);
+  assert.deepEqual(moments, [{ line: 0, seconds: 48 }]);
+  // Enter adds an empty line, which has no moment yet.
+  moments = alignNoteMoments("retry review", moments, "retry review\n", 120);
+  assert.deepEqual(moments, [{ line: 0, seconds: 48 }]);
+  // The new line's first character sets its moment.
+  moments = alignNoteMoments("retry review\n", moments, "retry review\nd", 130);
+  assert.deepEqual(moments, [{ line: 0, seconds: 48 }, { line: 1, seconds: 130 }]);
+});
+
+test("inserting and deleting lines shifts moments without losing them", () => {
+  const moments = [{ line: 0, seconds: 10 }, { line: 1, seconds: 20 }];
+  assert.deepEqual(alignNoteMoments("a\nb", moments, "a\nx\nb", 99),
+    [{ line: 0, seconds: 10 }, { line: 1, seconds: 99 }, { line: 2, seconds: 20 }]);
+  assert.deepEqual(alignNoteMoments("a\nb\nc", [{ line: 0, seconds: 10 }, { line: 2, seconds: 30 }], "a\nc", 99),
+    [{ line: 0, seconds: 10 }, { line: 1, seconds: 30 }]);
+});
+
+test("after Stop a new line gets no moment and the old ones follow their lines", () => {
+  const moments = [{ line: 0, seconds: 10 }];
+  assert.deepEqual(alignNoteMoments("a", moments, "a\nlater", null), [{ line: 0, seconds: 10 }]);
+  assert.deepEqual(alignNoteMoments("a\nlater", moments, "before\na\nlater", null), [{ line: 1, seconds: 10 }]);
+  // A moment that no longer names a line is dropped, never invented.
+  assert.deepEqual(alignNoteMoments("a", [{ line: 3, seconds: 10 }], "a", null), []);
+});
+
+test("a line typed before Record stays untimed when edited while recording", () => {
+  // "agenda" was typed before the recording started, so it has no moment.
+  let moments = alignNoteMoments("agenda", [], "agenda v2", 720);
+  assert.deepEqual(moments, []);
+  // A new line typed below it during the recording does get the clock.
+  moments = alignNoteMoments("agenda v2", moments, "agenda v2\nowner: Sam", 731);
+  assert.deepEqual(moments, [{ line: 1, seconds: 731 }]);
+  // Editing the timed line later keeps its first moment.
+  moments = alignNoteMoments("agenda v2\nowner: Sam", moments, "agenda v2\nowner: Sam, by Friday", 900);
+  assert.deepEqual(moments, [{ line: 1, seconds: 731 }]);
 });

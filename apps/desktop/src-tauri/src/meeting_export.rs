@@ -681,7 +681,7 @@ mod tests {
         assert!(!export_dir.join("your-notes.txt").exists());
         assert!(!export_dir.join("context.txt").exists());
 
-        crate::operator_note::write(&fixture.directory, "remember the follow-up").unwrap();
+        crate::operator_note::write(&fixture.directory, "remember the follow-up", &[]).unwrap();
         crate::meeting_context::write(&fixture.directory, "client is evaluating two vendors")
             .unwrap();
         export_meeting(&fixture.storage, MEETING_ID, None, 0, &[], false).unwrap();

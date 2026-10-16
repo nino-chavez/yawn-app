@@ -122,5 +122,10 @@ typed line's moment being fuzzier than a stroke's.
 
 ## Selection
 
-Pending. The operator chooses; the record is
+**Concept 2, Rail**, chosen by the operator on 2026-10-15. The record, with
+the conditions and the grafts, is
 [decisions/family-direction-2026-10-15.md](../../../../decisions/family-direction-2026-10-15.md).
+The Rail frames were recaptured the same day after the contrast check
+darkened Label 3 and light Attention
+(`docs/evidence/design-contrast-2026-10-15.md`); `DESIGN.md` carries the
+measured values.

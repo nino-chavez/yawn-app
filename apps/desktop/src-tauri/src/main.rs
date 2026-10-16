@@ -3771,9 +3771,10 @@ fn operator_note(
 fn save_operator_note(
     state: State<'_, ApplicationState>,
     text: String,
+    moments: Option<Vec<operator_note::NoteMoment>>,
 ) -> Result<operator_note::OperatorNote, String> {
     let directory = current_meeting_dir(&state)?;
-    operator_note::write(&directory, &text)?;
+    operator_note::write(&directory, &text, &moments.clone().unwrap_or_default())?;
     // Answer with what is now on disk rather than echoing the argument, so the
     // surface's "saved" is a statement about storage and not about the request.
     Ok(operator_note::read(&directory))
@@ -4922,6 +4923,7 @@ struct LibraryTranscriptFileOpenResponse {
 fn library_save_operator_note(
     handle: String,
     text: String,
+    moments: Option<Vec<operator_note::NoteMoment>>,
     state: State<'_, ApplicationState>,
 ) -> Result<LibraryOperatorNoteSaveResponse, CommandError> {
     state.with_preview_library(
@@ -4934,7 +4936,7 @@ fn library_save_operator_note(
         |reader, active| {
             let saved = reader.open_operator_note_bound(&handle, active, |storage, meeting_id| {
                 let directory = meeting_dir(storage, meeting_id).map_err(error_text)?;
-                operator_note::write(&directory, &text)?;
+                operator_note::write(&directory, &text, &moments.clone().unwrap_or_default())?;
                 Ok::<_, CommandError>((meeting_id.to_owned(), operator_note::read(&directory)))
             });
             match saved {

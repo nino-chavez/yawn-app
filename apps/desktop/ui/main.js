@@ -5,6 +5,8 @@ import {
   contentView,
   captureActivity,
   captureActivityElapsedSeconds,
+  alignNoteMoments,
+  noteMomentSeconds,
   captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
@@ -2251,6 +2253,7 @@ function clearCurrentNote() {
   clearTimeout(noteSaveTimer);
   noteSaveTimer = undefined;
   state.noteDraft = "";
+  state.noteMoments = [];
   state.noteLoadedFor = "";
   state.noteSaveState = "local";
   state.noteUnreadable = false;
@@ -2303,6 +2306,7 @@ async function loadCurrentNote(meetingId) {
     if (state.snapshot?.meeting_id !== meetingId || state.noteDraft) return;
     state.noteLoadedFor = meetingId;
     state.noteDraft = note.text || "";
+    state.noteMoments = Array.isArray(note.moments) ? note.moments : [];
     state.noteUnreadable = note.unreadable === true;
     state.noteSaveState = note.unreadable ? "unreadable" : note.text ? "saved" : "local";
     render();
@@ -2713,6 +2717,7 @@ async function loadSelectedMeeting(row, lockToken = null, transcriptMatch = null
     // `claimEvidence` already follows on this same object.
     evidenceSplit: { open: false, ordinal: null, turnIndex: null },
     operatorNoteDraft: operatorNote.text || "",
+    operatorNoteMoments: Array.isArray(operatorNote.moments) ? operatorNote.moments : [],
     operatorNoteSaveQueue: Promise.resolve(),
     operatorNoteSaveState: operatorNote.unreadable ? "unreadable" : operatorNote.text ? "saved" : "local",
   };
@@ -3210,13 +3215,13 @@ function openFullTranscriptFromInspector() {
   details.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
-function queueNoteSave(text = state.noteDraft, meetingId = state.snapshot?.meeting_id) {
+function queueNoteSave(text = state.noteDraft, meetingId = state.snapshot?.meeting_id, moments = state.noteMoments) {
   if (!meetingId || state.noteUnreadable) return Promise.resolve();
   state.noteSaveQueue = state.noteSaveQueue.catch(() => undefined).then(async () => {
     if (state.snapshot?.meeting_id !== meetingId) return;
     state.noteSaveState = "saving";
     setNoteSaveCopy();
-    const saved = await invoke("save_operator_note", { text });
+    const saved = await invoke("save_operator_note", { text, moments: Array.isArray(moments) ? moments : [] });
     if (state.snapshot?.meeting_id === meetingId && state.noteDraft === text) {
       state.noteUnreadable = saved.unreadable === true;
       state.noteSaveState = saved.unreadable ? "unreadable" : "saved";
@@ -3270,7 +3275,7 @@ function scheduleContextSave() {
   }, 600);
 }
 
-function queueSelectedNoteSave(text = state.selected?.operatorNoteDraft, selection = state.selected) {
+function queueSelectedNoteSave(text = state.selected?.operatorNoteDraft, selection = state.selected, moments = state.selected?.operatorNoteMoments) {
   if (!selection?.row?.meetingId || selection.note?.operatorNote?.unreadable) return Promise.resolve();
   selection.operatorNoteSaveQueue = (selection.operatorNoteSaveQueue || Promise.resolve())
     .catch(() => undefined)
@@ -3280,7 +3285,7 @@ function queueSelectedNoteSave(text = state.selected?.operatorNoteDraft, selecti
       if (!handle) throw new Error("Reopen this meeting before saving its notes.");
       selection.operatorNoteSaveState = "saving";
       setLibraryNoteSaveCopy();
-      const saved = await invoke("library_save_operator_note", { handle, text });
+      const saved = await invoke("library_save_operator_note", { handle, text, moments: Array.isArray(moments) ? moments : [] });
       if (state.selected !== selection) return;
       selection.note = {
         ...selection.note,
@@ -3719,7 +3724,11 @@ function handleInput(event) {
     state.searchTimer = setTimeout(() => void runBusy("search", refreshLibrary), 220);
   }
   if (event.target.dataset.field === "operator-note") {
+    const previousNoteDraft = state.noteDraft;
     state.noteDraft = event.target.value;
+    // A line typed while recording keeps the moment it was first typed
+    // (product brief, "Note moments on the Mac").
+    state.noteMoments = alignNoteMoments(previousNoteDraft, state.noteMoments, state.noteDraft, noteMomentSeconds(state.snapshot));
     state.noteSaveState = "local";
     setNoteSaveCopy();
     scheduleNoteSave();
@@ -3732,7 +3741,11 @@ function handleInput(event) {
   }
   if (event.target.dataset.field === "library-operator-note") {
     if (!state.selected) return;
+    const previousDraft = state.selected.operatorNoteDraft;
     state.selected.operatorNoteDraft = event.target.value;
+    // After the meeting no line gains a moment; the existing ones follow
+    // their lines through the edit.
+    state.selected.operatorNoteMoments = alignNoteMoments(previousDraft, state.selected.operatorNoteMoments, state.selected.operatorNoteDraft, null);
     state.selected.operatorNoteSaveState = "local";
     setLibraryNoteSaveCopy();
     scheduleSelectedNoteSave();
@@ -3956,6 +3969,7 @@ async function refreshLibraryKeepingSelection() {
       && reopened.row?.meetingId === selection.row.meetingId
       && selection.operatorNoteDraft !== draftAtStart) {
       reopened.operatorNoteDraft = selection.operatorNoteDraft;
+      reopened.operatorNoteMoments = selection.operatorNoteMoments;
       reopened.operatorNoteSaveState = "local";
       scheduleSelectedNoteSave();
       render();

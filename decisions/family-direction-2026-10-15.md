@@ -1,11 +1,10 @@
 # Yawn on Mac and iPad: the family design direction
 
-2026-10-15 · PROPOSED · judged-screen pattern § 2c
+2026-10-15 · DECIDED 2026-10-15 · judged-screen pattern § 2c
 
-Status: **awaiting the operator's selection.** The three concepts are
-rendered, compared by the author and by a blind reviewer, and the author's
-recommendation is below. Nothing is selected until the operator names a
-concept here, in their own words.
+Status: **decided.** Concept 2, Rail, chosen by Nino Chavez, the operator, on
+2026-10-15. The selection and its conditions are in the Selection section;
+the comparison that led to it stands as written.
 
 ## The question
 
@@ -85,7 +84,25 @@ invites looking at the app.
 
 ## Selection
 
-_Pending. Concept, chosen by, date, in the operator's words._
+Concept: **2, Rail.** Chosen by Nino Chavez, the operator, on 2026-10-15, in
+these words: "Select Concept 2 Rail. The Mac gets a moment per typed line;
+amend the brief and storage before the Mac wave."
+
+What this decides:
+
+- The Mac carries the time link. Each line the operator types during capture
+  keeps the moment it was first typed; the transcript turn nearest each note
+  sits level with it after the meeting, and the rest fold into a count. The
+  rail down the page's left margin is the scrubber on both devices.
+- The paper language is the family's visual system: a warm sheet, graphite
+  chrome, an ink locator on the selected row, blue ink for the moment link,
+  the operator's words as the largest type, red for recording only.
+- The grafts named above are part of the selection: Notebook's colored
+  moment link (already in the Rail frames), Record's single-form Settings,
+  and Record's tick-per-turn on the scrubber.
+- Order of work, as the operator set it: the product-brief amendment and the
+  storage change for the note moment come before the Mac implementation
+  wave.
 
 ## Consequences, once selected
 

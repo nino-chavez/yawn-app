@@ -4190,7 +4190,7 @@ mod tests {
             .open_operator_note_bound(&note_handle, &HashSet::new(), |storage, meeting_id| {
                 called.set(true);
                 let directory = meeting_dir(storage, meeting_id).unwrap();
-                crate::operator_note::write(&directory, "capture the budget risk").unwrap();
+                crate::operator_note::write(&directory, "capture the budget risk", &[]).unwrap();
                 crate::operator_note::read(&directory)
             })
             .unwrap();
@@ -4516,7 +4516,7 @@ mod tests {
             b"microphone recording",
             b"system recording",
         );
-        crate::operator_note::write(&fixture.directory, "my private note").unwrap();
+        crate::operator_note::write(&fixture.directory, "my private note", &[]).unwrap();
         crate::meeting_context::write(&fixture.directory, "why we met").unwrap();
         crate::meeting_lock::write(&fixture.directory, true).unwrap();
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
@@ -4556,7 +4556,7 @@ mod tests {
             b"microphone recording",
             b"system recording",
         );
-        crate::operator_note::write(&fixture.directory, "my private note").unwrap();
+        crate::operator_note::write(&fixture.directory, "my private note", &[]).unwrap();
         crate::meeting_lock::write(&fixture.directory, true).unwrap();
         let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
