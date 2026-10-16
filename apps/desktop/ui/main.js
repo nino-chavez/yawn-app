@@ -7,6 +7,8 @@ import {
   captureActivityElapsedSeconds,
   alignNoteMoments,
   noteMomentSeconds,
+  noteLedgerPresentation,
+  transportTicksPresentation,
   captureIsInProgress,
   capturePresentation,
   errorRecoveryPresentation,
@@ -97,6 +99,8 @@ const state = {
   // it, so the escalation is state-driven, never derived from the DOM.
   libraryStalled: false,
   meetingManagementOpen: false,
+  // DESIGN.md (Rail): one transport; which retained recording it plays.
+  playbackSource: "microphone",
   modal: "",
   notice: "",
   // The version a background check found (updater.rs), until the operator
@@ -439,6 +443,7 @@ function render() {
   if (state.noteCaptureFocusPending) focusOperatorNoteFromHotkey();
   syncActivityClock();
   dismissEvidencePopoverIfDetached();
+  layoutLedgers();
 }
 
 // Snapshot polling keeps recording and transcription honest, but rebuilding the
@@ -1269,7 +1274,8 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
     `;
   }
   return `
-    <section class="meeting-note" aria-label="Meeting note">
+    <section class="meeting-note" aria-label="Saved AI draft">
+      <h3 class="meeting-note-label">Saved AI draft</h3>
       ${presentation.summary.length ? `
         <section class="meeting-note-section meeting-note-overview" aria-labelledby="meeting-overview-heading">
           <h3 id="meeting-overview-heading">Overview</h3>
@@ -1459,25 +1465,34 @@ function renderMeetingPane() {
   return `
     <div class="doc-wrap">
       <div class="doc-main">
-      <article class="read" aria-labelledby="meeting-title">
+      <article class="read doc-page" aria-labelledby="meeting-title">
         <div class="doc-head">
           <div class="doc-heading">
+            ${renderDocMeta(row, note)}
             <h1 id="meeting-title">${escapeHtml(title)}</h1>
-            <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meetingStateCaption(note?.state))}</p>
           </div>
         </div>
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
-        ${renderMeetingNote(note, claimEvidence, recovery)}
-        ${renderRetainedAudioPlayback(playback)}
-        ${renderMeetingContextSection(note)}
+        ${renderTransport(playback, transcript, row)}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
           <div class="note-editor-head"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></div>
           ${operatorNote?.unreadable
             ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
-            : `<textarea class="notes-area meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
-              ${noteEditable ? "" : `<p class="doc-fact">Reopen this meeting to edit its notes.</p>`}`}
+            : renderNoteLedger({
+              text: state.selected?.operatorNoteDraft || "",
+              moments: state.selected?.operatorNoteMoments || [],
+              turns: transcript?.turns || [],
+              pauses: note?.capturePauses,
+              field: "library-operator-note",
+              meetingId: row.meetingId || "",
+              editable: noteEditable,
+              placeholder: "Write down the detail you will want to verify later.",
+            })}
+          ${!operatorNote?.unreadable && !noteEditable ? `<p class="doc-fact">Reopen this meeting to edit its notes.</p>` : ""}
         </section>
+        ${renderMeetingNote(note, claimEvidence, recovery)}
+        ${renderMeetingContextSection(note)}
         <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
       </article>
       </div>
@@ -1526,26 +1541,148 @@ function renderMeetingCapturePauses(pauses) {
   return `<p class="doc-fact" data-capture-pauses="${escapeHtml(presentation.state)}">${escapeHtml(presentation.detail)}</p>`;
 }
 
-function renderRetainedAudioPlayback(playback) {
+// DESIGN.md (Rail): the page's meta line -- date · time · length · the audio
+// fact · the state word -- small and stable above the title.
+function renderDocMeta(row, note) {
+  const meta = libraryRowMetaPresentation(row);
+  const parts = [dateLabel(row.createdAtEpochSeconds), timeOfDayLabel(row.createdAtEpochSeconds)];
+  if (meta.duration) parts.push(meta.duration);
+  const audio = audioRetentionCaption(note);
+  if (audio) parts.push(audio);
+  parts.push(meetingStateCaption(note?.state));
+  return `<p class="doc-meta">${escapeHtml(parts.filter(Boolean).join(" · "))}</p>`;
+}
+
+function audioRetentionCaption(note) {
+  const retention = note?.audioRetention;
+  if (!retention) return "";
+  const deadline = Number(retention.deadlineEpochSeconds);
+  if (retention.state === "retained" && Number.isFinite(deadline) && deadline > 0) return `Audio kept until ${dateLabel(deadline)}`;
+  if (retention.state === "retained") return "Audio kept";
+  return "";
+}
+
+// DESIGN.md (Rail): one slim transport under the header -- play or stop,
+// the length, a track with a tick per turn (the operator's above the line,
+// the call's below), which recording plays when two are retained, the
+// playback status, and Full transcript at the right. Seeking and a moving
+// playhead need a seekable player in the Rust shell; until then the track is
+// a map of the meeting, not a scrubber.
+function renderTransport(playback, transcript, row) {
   if (!playback) return "";
+  const turns = transcript?.turns || [];
+  const starts = turns.map((turn) => Number(turn?.start)).filter(Number.isFinite);
+  const length = Number.isFinite(Number(row?.durationSeconds)) ? Number(row.durationSeconds) : starts.length ? Math.max(...starts) : 0;
+  const ticks = transportTicksPresentation(turns, length);
+  const sources = playback.controls;
+  const chosen = sources.find((control) => control.source === state.playbackSource) || sources[0] || null;
   const playingLabel = playback.playingSource === "microphone"
     ? "Playing microphone recording"
     : playback.playingSource === "system"
       ? "Playing system audio recording"
       : playback.status === "completed"
         ? "Recording finished"
-        : "No recording is playing";
+        : "";
   return `
-    <section class="note-section retained-audio-section" aria-labelledby="retained-audio-heading">
-      <h3 id="retained-audio-heading">Listen to saved audio</h3>
-      <p class="note-help">Microphone and system audio are separate recordings.</p>
-      <div class="retained-audio-controls">
-        ${playback.controls.map((control) => `<button class="btn" type="button" data-action="play-retained-audio" data-source="${escapeHtml(control.source)}" ${playback.isPlaying ? "disabled" : ""}>${escapeHtml(control.label)}</button>`).join("")}
-        ${playback.isPlaying ? `<button class="btn" type="button" data-action="stop-retained-audio">Stop</button>` : ""}
-      </div>
-      <p class="doc-fact" aria-live="polite">${escapeHtml(playingLabel)}</p>
-    </section>
+    <div class="transport" role="group" aria-label="Retained audio">
+      ${playback.isPlaying
+        ? `<button class="transport-play" type="button" data-action="stop-retained-audio" aria-label="Stop playback"><svg width="9" height="9" viewBox="0 0 9 9" aria-hidden="true"><rect x="0.5" y="0.5" width="8" height="8" rx="1.5" fill="currentColor"/></svg></button>`
+        : chosen
+          ? `<button class="transport-play" type="button" data-action="play-retained-audio" data-source="${escapeHtml(chosen.source)}" aria-label="${escapeHtml(chosen.label)}"><svg width="9" height="11" viewBox="0 0 9 11" aria-hidden="true"><path d="M1 1.2v8.6c0 .6.6.9 1.1.6l6.4-4.3c.5-.3.5-1 0-1.3L2.1.6C1.6.3 1 .6 1 1.2z" fill="currentColor"/></svg></button>`
+          : ""}
+      ${length ? `<span class="transport-time">${escapeHtml(timeLabel(length))}</span>` : ""}
+      <div class="transport-track" aria-hidden="true">${ticks.map((tick) => `<i class="transport-tick ${tick.you ? "you" : "them"}" style="left:${tick.percent}%"></i>`).join("")}</div>
+      ${sources.length > 1 ? `<span class="transport-source" role="group" aria-label="Which recording to play">${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}">${escapeHtml(control.source === "microphone" ? "Microphone" : "System audio")}</button>`).join("")}</span>` : ""}
+      ${playingLabel ? `<span class="caption transport-status" role="status" aria-live="polite">${escapeHtml(playingLabel)}</span>` : ""}
+      ${turns.length ? `<button class="transport-full" type="button" data-action="open-full-transcript"><span>Full transcript</span><svg width="7" height="10" viewBox="0 0 7 10" fill="none" aria-hidden="true"><path d="M1.5 1.5l3.5 3.5-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>` : ""}
+    </div>
   `;
+}
+
+// DESIGN.md (Rail): the ledger -- rail | note | nearest turn. The note stays
+// a plain textarea (its undo history and focus survive render(), see
+// dom-patch.mjs); a hidden mirror of its lines gives each line's position, and
+// layoutLedgers() places the rail marks and the turn column beside those
+// lines. Marks come from the stored note moments, never from line position.
+// A note without moments is a plain page: no rail, no marks, no turn column.
+function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false }) {
+  const ledger = noteLedgerPresentation({ text, moments, turns, pauses });
+  const lines = String(text ?? "").split("\n");
+  const timedRows = ledger.rows.filter((row) => row.seconds !== null);
+  const lastTimed = timedRows.length ? timedRows[timedRows.length - 1].line : -1;
+  const showTurns = ledger.hasRail && turns.length > 0;
+  // A mark reads the line's position in the audio, which is what the rail
+  // scrubs and what the transcript's times count in. It equals the stored
+  // moment when nothing was paused; a pause before the line moves it earlier.
+  const marks = timedRows.map((row) => `<div class="ledger-mark${live && row.line === lastTimed ? " live" : ""}" data-line="${row.line}"><span>${escapeHtml(timeLabel(row.audioSeconds ?? row.seconds))}</span><i></i></div>`).join("");
+  const turnColumn = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat).map((row) => {
+    const turn = turns[row.turnIndex];
+    const who = transcriptSpeakerLabel(turn);
+    return `${row.foldedBefore > 0 ? `<div class="ledger-fold" data-line="${row.line}">+ ${row.foldedBefore} ${row.foldedBefore === 1 ? "turn" : "turns"}</div>` : ""}
+      <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"><span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}</div>`;
+  }).join("") : "";
+  return `
+    <div class="ledger${ledger.hasRail ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
+      <div class="ledger-rail" aria-hidden="true"></div>
+      <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}</div>
+      <div class="ledger-note">
+        <textarea class="notes-area meeting-notes-editor ledger-editor" data-field="${escapeHtml(field)}" data-meeting-id="${escapeHtml(meetingId)}" aria-label="Your meeting notes" placeholder="${escapeHtml(placeholder)}" ${editable ? "" : "disabled"}>${escapeHtml(text)}</textarea>
+        <div class="ledger-mirror" aria-hidden="true" data-text-length="${lines.join("\n").length}">${lines.map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("")}</div>
+      </div>
+      ${showTurns ? `<div class="ledger-turns">${turnColumn}</div>` : ""}
+    </div>
+  `;
+}
+
+// Keeps the mirror's lines equal to the editor's, so the layout below reads
+// positions for the text the person actually has, including between renders.
+function syncLedgerMirror(editor, mirror) {
+  const value = editor.value || "";
+  if (mirror.dataset.text === value) return;
+  mirror.dataset.text = value;
+  mirror.innerHTML = value.split("\n").map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("");
+}
+
+// Measures each line's position in the mirror and places the rail marks, the
+// turn column and the folds beside the lines they belong to. Turn rows that
+// would overlap are pushed down in order; the editor takes the mirror's
+// height so the page never scrolls inside the note.
+function layoutLedgers() {
+  for (const ledger of root.querySelectorAll(".ledger")) {
+    const editor = ledger.querySelector(".ledger-editor");
+    const mirror = ledger.querySelector(".ledger-mirror");
+    if (!editor || !mirror) continue;
+    syncLedgerMirror(editor, mirror);
+    const lines = Array.from(mirror.querySelectorAll(".ledger-mirror-line"));
+    const tops = lines.map((line) => line.offsetTop);
+    const heights = lines.map((line) => line.offsetHeight);
+    const noteHeight = mirror.offsetHeight;
+    editor.style.height = `${Math.max(noteHeight, 24)}px`;
+    let bottom = noteHeight;
+    for (const mark of ledger.querySelectorAll(".ledger-mark")) {
+      const index = Number(mark.dataset.line);
+      if (Number.isFinite(tops[index])) mark.style.top = `${tops[index] + heights[index] / 2}px`;
+    }
+    let lastBottom = -Infinity;
+    for (const turn of ledger.querySelectorAll(".ledger-turn")) {
+      const index = Number(turn.dataset.line);
+      if (!Number.isFinite(tops[index])) continue;
+      let top = tops[index];
+      const fold = turn.previousElementSibling?.classList.contains("ledger-fold") ? turn.previousElementSibling : null;
+      const foldHeight = fold ? fold.offsetHeight + 4 : 0;
+      if (top - foldHeight < lastBottom + 8) top = lastBottom + 8 + foldHeight;
+      turn.style.top = `${top}px`;
+      if (fold) fold.style.top = `${top - 4}px`;
+      lastBottom = top + turn.offsetHeight;
+      bottom = Math.max(bottom, lastBottom);
+    }
+    const after = ledger.querySelector(".ledger-after");
+    if (after) {
+      const index = Number(after.dataset.line);
+      if (Number.isFinite(tops[index])) after.style.top = `${tops[index] - 22}px`;
+    }
+    ledger.style.minHeight = `${bottom}px`;
+  }
 }
 
 // DESIGN.md's claim row: the claim's own text is the affordance -- a dashed
@@ -3586,6 +3723,7 @@ function handleClick(event) {
   if (action === "home" || action === "meetings") void openMeetings();
   else if (action === "toggle-sidebar") toggleSidebar();
   else if (action === "open-full-transcript") openFullTranscriptFromInspector();
+  else if (action === "set-playback-source") { state.playbackSource = control.dataset.source === "system" ? "system" : "microphone"; render(); }
   else if (action === "analyze-speakers") void analyzeSpeakers().catch(reportError);
   else if (action === "open-start") openStart();
   else if (action === "open-start-guided") openStart(true);
@@ -3738,7 +3876,12 @@ function handleInput(event) {
     state.selected.operatorNoteDraft = event.target.value;
     // After the meeting no line gains a moment; the existing ones follow
     // their lines through the edit.
+    const previousMoments = JSON.stringify(state.selected.operatorNoteMoments || []);
     state.selected.operatorNoteMoments = alignNoteMoments(previousDraft, state.selected.operatorNoteMoments, state.selected.operatorNoteDraft, null);
+    // The rail follows the lines as they are typed; a line inserted or
+    // removed moves the marks, which only a render redraws.
+    if (JSON.stringify(state.selected.operatorNoteMoments) !== previousMoments) render();
+    else layoutLedgers();
     state.selected.operatorNoteSaveState = "local";
     setLibraryNoteSaveCopy();
     scheduleSelectedNoteSave();
@@ -4015,6 +4158,9 @@ async function initialize() {
   render();
   if (!invoke) return;
   listenForNoteCaptureHotkey();
+  // The ledger's marks and turn column follow the note's wrapped lines, which
+  // change with the window's width.
+  window.addEventListener("resize", () => layoutLedgers());
   listenForMenuEvents();
   listenForUpdateNotices();
   try {
