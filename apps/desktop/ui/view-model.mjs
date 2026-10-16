@@ -162,13 +162,16 @@ export function transcriptionWorkerHeartbeatAgeSeconds(snapshot, nowEpochSeconds
 // nothing. `hasSelected` is checked before the terminal fallback (the only
 // order change from the prior version of this function), so it is the one
 // thing that can turn a terminal snapshot into "meeting".
-export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpen = false } = {}) {
+export function contentView({ hasInvoke, snapshot, hasSelected = false, trashOpen = false, settingsOpen = false } = {}) {
   if (!hasInvoke) return "browser-notice";
   const startup = snapshot?.startup;
   if (!snapshot || startup === "checking") return "startup-checking";
   if (startup === "model-required") return "model-setup";
   if (startup !== "ready") return "startup-attention";
   if (captureIsInProgress(snapshot)) return "capture";
+  // Settings is a page in the document pane; a recording in progress still
+  // takes the pane, and opening a meeting closes Settings (main.js).
+  if (settingsOpen) return "settings";
   if (hasSelected) return "meeting";
   if (!["idle", "summarizing"].includes(snapshot.capture)) return "capture";
   if (trashOpen) return "trash";

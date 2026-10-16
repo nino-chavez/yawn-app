@@ -82,6 +82,10 @@ function morphNode(oldNode, newNode) {
     return;
   }
   syncAttributes(oldNode, newNode);
+  // A host for content render() does not own (the in-app Settings page mounts
+  // its own tree here): keep whatever is inside rather than patching it back
+  // to the empty placeholder render() emits.
+  if (oldNode.hasAttribute("data-patch-preserve")) return;
   if (syncFormState(oldNode, newNode)) return;
   patchChildren(oldNode, newNode);
   if (oldNode.tagName === "SELECT" && oldNode.value !== newNode.value) {

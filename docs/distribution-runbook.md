@@ -839,6 +839,14 @@ freezes the exact list, and `shipped_shell_is_permitted_every_command_it_invokes
 fails any build whose shell invokes a command its window capability does not
 grant. The first fixed cohort version is 0.2.1.
 
+On 2026-10-16 the operator moved Settings into the main window, so the main
+and Preview windows now also grant the Settings commands (speech-model and
+speaker-model settings, model install and removal, update status, the
+automatic-check toggle, Check now, install update) and the window theme call.
+`open_settings_window` is retired; the separate Settings window can no longer
+be opened, and `every_frontend_call_has_a_matching_product_permission` now
+requires the main window to permit everything `settings.js` invokes.
+
 The second lane is the **internal beta** described by the accepted vertical
 slice. It carries `product` runtime admission and remains blocked until the
 private automatic-note admission receipt exists for the exact build and model

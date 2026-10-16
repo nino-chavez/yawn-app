@@ -4,25 +4,11 @@
    hairlines. No tabs, no inset cards. Every color and size resolves through
    tokens.css (loaded first in settings.html). */
 
-* { box-sizing: border-box; }
+.settings-shell, .settings-shell * { box-sizing: border-box; }
 
-html {
-  height: 100%;
-  overflow: hidden;
-}
+.settings-shell button, .settings-shell input { font: inherit; }
 
-body {
-  height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
-  margin: 0;
-  color: var(--label);
-  background: var(--content);
-}
-
-button, input { font: inherit; }
-
-button:focus-visible, a:focus-visible, input:focus-visible {
+.settings-shell button:focus-visible, .settings-shell a:focus-visible, .settings-shell input:focus-visible {
   outline: 2px solid var(--moment);
   outline-offset: 2px;
   border-radius: var(--r-control);
@@ -34,13 +20,13 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   padding: var(--space-16) var(--space-24) var(--space-24);
 }
 
-h2, p, dl, dd { margin: 0; }
+.settings-shell h2, .settings-shell p, .settings-shell dl, .settings-shell dd { margin: 0; }
 
-.settings-group + .settings-group {
+.settings-shell .settings-group + .settings-group {
   margin-top: var(--space-24);
 }
 
-.settings-group-title {
+.settings-shell .settings-group-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -50,7 +36,7 @@ h2, p, dl, dd { margin: 0; }
 }
 
 /* The section label: the one uppercase in the window, tracked, in Label 3. */
-h2 {
+.settings-shell h2 {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -59,16 +45,13 @@ h2 {
   line-height: 20px;
 }
 
-.settings-group-box {
+.settings-shell .settings-group-box {
   display: block;
 }
 
 /* Rows: label and detail at the left, the state or control at the right,
    a hairline between rows. */
-.permission-line,
-.model-line,
-.privacy-row,
-.update-automatic {
+.settings-shell .permission-line, .settings-shell .model-line, .settings-shell .privacy-row, .settings-shell .update-automatic {
   display: flex;
   /* The state word sits on the row title's line, not centred against the
      title-and-description stack (cold review 2026-10-16). */
@@ -79,15 +62,12 @@ h2 {
   border-bottom: 1px solid var(--separator);
 }
 
-.permission-copy,
-.model-copy {
+.settings-shell .permission-copy, .settings-shell .model-copy {
   min-width: 0;
   flex: 1;
 }
 
-.permission-copy strong,
-.model-title-row strong,
-.privacy-row dt {
+.settings-shell .permission-copy strong, .settings-shell .model-title-row strong, .settings-shell .privacy-row dt {
   display: block;
   font-size: var(--t-body);
   font-weight: 500;
@@ -95,29 +75,26 @@ h2 {
   line-height: 18px;
 }
 
-.permission-copy p,
-.model-copy p,
-.privacy-row dd {
+.settings-shell .permission-copy p, .settings-shell .model-copy p, .settings-shell .privacy-row dd {
   margin: 1px 0 0;
   font-size: var(--t-caption);
   line-height: 16px;
   color: var(--label-3);
 }
 
-.privacy-row {
+.settings-shell .privacy-row {
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
 }
 
-.model-title-row {
+.settings-shell .model-title-row {
   display: flex;
   align-items: baseline;
   gap: var(--space-8);
 }
 
-.model-size,
-.state {
+.settings-shell .model-size, .settings-shell .state {
   flex: 0 0 auto;
   font-size: 12px;
   line-height: 18px;
@@ -125,29 +102,29 @@ h2 {
   white-space: nowrap;
 }
 
-.state[data-tone="attention"] {
+.settings-shell .state[data-tone="attention"] {
   color: var(--attention);
 }
 
-.model-actions {
+.settings-shell .model-actions {
   display: flex;
   flex: 0 0 auto;
   gap: var(--space-8);
 }
 
-.model-progress {
+.settings-shell .model-progress {
   margin-top: var(--space-6);
   display: flex;
   align-items: center;
   gap: var(--space-8);
 }
 
-.model-progress progress {
+.settings-shell .model-progress progress {
   width: 160px;
   accent-color: var(--accent);
 }
 
-.model-progress small {
+.settings-shell .model-progress small {
   font-size: var(--t-caption);
   color: var(--label-3);
 }
@@ -155,8 +132,7 @@ h2 {
 /* Push buttons: 22px, 10px side padding, 12px type, one Control border.
    The primary is graphite (allow-button); the secondary is the plain push
    (quiet-button). Never a card, pill or link in their place. */
-.quiet-button,
-.allow-button {
+.settings-shell .quiet-button, .settings-shell .allow-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -174,59 +150,98 @@ h2 {
   cursor: default;
 }
 
-.allow-button {
+.settings-shell .allow-button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
 }
 
-.quiet-button:active,
-.allow-button:active {
+.settings-shell .quiet-button:active, .settings-shell .allow-button:active {
   filter: brightness(0.92);
 }
 
-button:disabled {
+.settings-shell button:disabled {
   opacity: 0.45;
 }
 
-.update-automatic input {
+.settings-shell .update-automatic input {
   margin: 0;
   width: 14px;
   height: 14px;
   accent-color: var(--accent);
 }
 
-.update-automatic span {
+.settings-shell .update-automatic span {
   font-size: var(--t-body);
   color: var(--label);
 }
 
-.card-message,
-.message {
+.settings-shell .card-message, .settings-shell .message {
   margin: var(--space-8) 0 0;
   font-size: var(--t-caption);
   line-height: 16px;
   color: var(--label-3);
 }
 
-.card-message a {
+.settings-shell .card-message a {
   color: var(--label-2);
 }
 
-.card-message[data-tone="attention"],
-.message[data-tone="attention"] {
+.settings-shell .card-message[data-tone="attention"], .settings-shell .message[data-tone="attention"] {
   color: var(--attention);
 }
 
-.card-message:empty,
-.message:empty {
+.settings-shell .card-message:empty, .settings-shell .message:empty {
   display: none;
 }
 
 /* The storage fact, once, at the foot of the window. */
-.privacy-sentence {
+.settings-shell .privacy-sentence {
   margin: var(--space-24) 0 0;
   font-size: var(--t-caption);
   line-height: 16px;
   color: var(--label-3);
+}
+
+/* Appearance: three options in one row, the pressed one marked the way the
+   transport's recording choice is (Selection fill, Label text). */
+.settings-shell .appearance-choice {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--space-4);
+}
+
+.settings-shell .appearance-option {
+  min-height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--separator-strong);
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--label-2);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: default;
+}
+
+.settings-shell .appearance-option[aria-pressed="true"] {
+  color: var(--label);
+  background: var(--selection);
+  border-color: var(--label-3);
+  font-weight: 600;
+}
+
+/* In the main window the page sits in the document pane: a centered column
+   at the width the Settings window used to have. */
+.settings-page {
+  /* .content is a flex row: fill it, so the column centers in the pane and
+     the scroll bar sits at the pane's edge. */
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.settings-page .settings-shell {
+  max-width: 580px;
+  padding-top: var(--space-24);
 }

@@ -6,83 +6,13 @@
     <meta name="color-scheme" content="light dark" />
     <title>Yawn Settings</title>
     <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="settings-standalone.css" />
     <link rel="stylesheet" href="settings-window.css" />
   </head>
   <body>
-    <!-- DESIGN.md (Rail, 2026-10-15): one scrolling column of groups. Each
-         group is a section label, then rows of label and detail with the
-         state or control at the right, separated by hairlines; no tabs, no
-         cards, no description paragraphs. The window's own title bar reads
-         "Yawn Settings". The storage fact is said once, last. -->
-    <main class="settings-shell">
-      <section id="recording" class="settings-group" tabindex="-1" aria-labelledby="audio-title">
-        <div class="settings-group-title">
-          <h2 id="audio-title">Recording</h2>
-          <button class="quiet-button" type="button" data-action="refresh">Check again</button>
-        </div>
-        <div class="settings-group-box">
-          <div id="permissions" class="permission-list" aria-live="polite"></div>
-        </div>
-        <p id="message" class="message" role="status"></p>
-      </section>
-      <section id="transcription" class="settings-group" tabindex="-1" aria-labelledby="model-title">
-        <div class="settings-group-title">
-          <h2 id="model-title">Transcription</h2>
-        </div>
-        <div class="settings-group-box">
-          <div id="transcription-engine" class="model-list" aria-live="polite"></div>
-          <div id="models" class="model-list" aria-live="polite"></div>
-          <p id="model-message" class="card-message" role="status"></p>
-        </div>
-      </section>
-      <section id="speakers" class="settings-group" tabindex="-1" aria-labelledby="speaker-model-title">
-        <div class="settings-group-title">
-          <h2 id="speaker-model-title">Speakers</h2>
-        </div>
-        <div class="settings-group-box">
-          <div id="speaker-model" class="model-list" aria-live="polite"></div>
-          <p id="speaker-model-message" class="card-message" role="status"></p>
-          <p class="card-message">Model: <a href="https://huggingface.co/nvidia/Nemotron-3-Diarization" target="_blank" rel="noreferrer">NVIDIA Nemotron-3-Diarization</a> (openmdw-1.1).</p>
-        </div>
-      </section>
-      <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">
-        <div class="settings-group-title">
-          <h2 id="privacy-title">Storage</h2>
-        </div>
-        <div class="settings-group-box">
-          <dl class="privacy-rows">
-            <div class="privacy-row">
-              <dt>Meetings</dt>
-              <dd>On this Mac, until you delete them. A deleted meeting stays in Trash for 30 days.</dd>
-            </div>
-            <div class="privacy-row">
-              <dt>Audio</dt>
-              <dd>Kept 1, 7 or 30 days, chosen at the start of each meeting.</dd>
-            </div>
-            <div class="privacy-row">
-              <dt>Transcription</dt>
-              <dd>Runs on this Mac, with Apple speech or the downloaded model selected above.</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
-      <section id="updates" class="settings-group" tabindex="-1" aria-labelledby="updates-title">
-        <div class="settings-group-title">
-          <h2 id="updates-title">Updates</h2>
-          <button class="quiet-button" type="button" data-action="check-updates">Check now</button>
-        </div>
-        <div class="settings-group-box">
-          <div id="update-status" class="permission-list" aria-live="polite"></div>
-          <label class="update-automatic">
-            <span>Check for updates automatically</span>
-            <input id="update-automatic" type="checkbox" checked />
-          </label>
-          <p id="update-disclosure" class="card-message">Once a day, Yawn downloads a small file from the release server that names the newest version. It sends no meeting data or account details; like any download, the server can see this Mac’s internet address.</p>
-          <p id="update-message" class="card-message" role="status"></p>
-        </div>
-      </section>
-      <p class="privacy-sentence">Nothing leaves this Mac. Yawn has no account and makes no network calls with meeting data; the optional update check above is its only connection.</p>
-    </main>
-    <script type="module" src="settings.js"></script>
+    <!-- The page's groups live in settings.js (SETTINGS_MARKUP), which the
+         main window mounts in its document pane as well. -->
+    <main class="settings-shell"></main>
+    <script type="module" src="settings-window.js"></script>
   </body>
 </html>

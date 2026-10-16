@@ -189,12 +189,22 @@ something is written would change shape under the first note. A cold review
 that names the bare rail is answered by this paragraph, not by a revision.
 The same holds on the iPad.
 
-Settings (the graft from Record): one window, 580pt wide, a 38pt title bar,
-one scrolling column of groups. Each group is a section label, then rows of
+Settings (the graft from Record; placement amended by the operator,
+2026-10-16): a page in the main window's document pane, not a window of its
+own. It opens from the gear at the right of the sidebar's foot, from the
+Settings menu item and from ⌘,; the toolbar title reads "Settings" and opening
+a meeting, Trash or Record leaves it. The page is one 580px column of groups,
+centered in the pane. Each group is a section label, then rows of
 label and detail with the state or control at the right, separated by
 hairlines, no inset cards. States are 12px Label 2 text; actions are push
 buttons; a switch is the system switch. The one privacy sentence closes the
 column. Every group's first row is visible in one window height.
+
+Appearance (operator decision, 2026-10-16): the first Settings group offers
+System, Light or Dark as three toggle buttons, System by default. System
+follows macOS; Light or Dark holds regardless of it, on the page and on the
+native window chrome. Every dark value keys on the app's theme attribute,
+never the system media query, so the choice governs both appearances.
 
 Spacing scale: 4, 8, 12, 16, 24, 32, 48, 64 px. Radii: 5px controls, 6px rows
 and turns, 8px the attention surface, 18px capsules.
