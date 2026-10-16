@@ -6,7 +6,6 @@ mod build_contract;
 
 const PRODUCT_COMMANDS: &[&str] = &[
     "app_snapshot",
-    "open_settings_window",
     "start_meeting",
     "pause_meeting",
     "resume_meeting",
@@ -107,7 +106,6 @@ const NATIVE_ONLY_COMMANDS: &[&str] = &[
 const MAIN_PERMISSIONS: &[&str] = &[
     "core:window:allow-start-dragging",
     "allow-app-snapshot",
-    "allow-open-settings-window",
     "allow-start-meeting",
     "allow-pause-meeting",
     "allow-resume-meeting",
@@ -166,6 +164,18 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-select-transcription-engine",
     "allow-install-apple-speech-assets",
     "allow-analyze-speakers",
+    // Settings is a page in the main window (operator decision, 2026-10-16),
+    // so the main window carries the Settings commands, and the theme call
+    // for the System/Light/Dark choice.
+    "allow-transcript-model-settings",
+    "allow-remove-transcript-model",
+    "allow-nemotron-model-settings",
+    "allow-install-nemotron-model",
+    "allow-update-status",
+    "allow-set-automatic-update-check",
+    "allow-check-for-updates",
+    "allow-install-update",
+    "core:window:allow-set-theme",
 ];
 
 fn permissions(source: &str) -> Vec<String> {
@@ -299,7 +309,8 @@ fn every_frontend_call_has_a_matching_product_permission() {
         include_str!("../capabilities/product/main.json"),
         include_str!("../capabilities/product/preview.json"),
     ] {
-        assert_permissions(source, &main_invoked);
+        // The main window hosts the Settings page, so it must permit both.
+        assert_permissions(source, &invoked);
     }
     assert_permissions(
         include_str!("../capabilities/product/settings-window.json"),

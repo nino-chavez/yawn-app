@@ -160,7 +160,7 @@ use local_meeting_notes_session_core::transcription_queue::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
 const CAPTURE_EVENT_MAX_BYTES: usize = 64 * 1024;
@@ -184,7 +184,6 @@ const NEMOTRON_MODEL_SHA256: &str =
 const NEMOTRON_MODEL_URL: &str = "https://huggingface.co/nvidia/Nemotron-3-Diarization/resolve/f667ed73aee57d40cc39428eb768b4fd87a0a29e/Nemotron-3-Diarization.q8_0.gguf";
 const TRANSCRIPT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
 const PARTICIPANT_NOTICE_VERSION: &str = "internal-transcript-alpha/1";
-const SETTINGS_WINDOW_LABEL: &str = "settings";
 const RETAINED_AUDIO_PLAYER: &str = "/usr/bin/afplay";
 /// `afplay` opens this fixed standard-input alias. The player never receives a
 /// meeting path, and Rust owns the standard-descriptor setup without a custom
@@ -195,44 +194,19 @@ const ACTIVE_WINDOW_LABEL: &str = "preview";
 #[cfg(not(feature = "preview-surface"))]
 const ACTIVE_WINDOW_LABEL: &str = "main";
 
-fn show_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        window.show()?;
-        window.unminimize()?;
-        window.set_focus()?;
-        return Ok(window);
+/// Settings is a page in the main window (operator decision, 2026-10-16), not
+/// a window of its own: bring the main window forward and ask its frontend to
+/// open the page. The menu item, "Check for Updates…" and ⌘, all land here or
+/// on the same frontend route.
+pub(crate) const SETTINGS_PAGE_EVENT: &str = "menu:open-settings";
+
+pub(crate) fn show_settings_page(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(ACTIVE_WINDOW_LABEL) {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
-
-    // Preferences-style window (docs/experience-brief-2026-09-02.md platform
-    // strategy, adopt table: "closable, not modal" was already true — this
-    // build is never given a parent, so it was never modal — but the fixed
-    // 720x720 size with resizing, minimizing, and maximizing all disabled
-    // read as a defect on the cold review. Resizable + minimizable now;
-    // maximizable stays off because a settings surface has no full-window
-    // use for the extra space, which the brief does not ask for either.
-    tauri::WebviewWindowBuilder::new(
-        app,
-        SETTINGS_WINDOW_LABEL,
-        WebviewUrl::App("settings.html".into()),
-    )
-    .title("Yawn Settings")
-    // DESIGN.md (Rail): one 580pt window, one scrolling column of groups.
-    .inner_size(580.0, 640.0)
-    .min_inner_size(520.0, 480.0)
-    .resizable(true)
-    .minimizable(true)
-    .maximizable(false)
-    .closable(true)
-    .center()
-    .focused(true)
-    .build()
-}
-
-#[tauri::command]
-fn open_settings_window(app: AppHandle) -> Result<(), String> {
-    show_settings_window(&app)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    let _ = app.emit(SETTINGS_PAGE_EVENT, ());
 }
 
 /// Shows and focuses the active (`ACTIVE_WINDOW_LABEL`) window — never the
@@ -2055,7 +2029,7 @@ fn tray_shows_stop_recording(capture: CaptureState) -> bool {
 /// Maps a native File/View menu item id to the frontend event it emits, so
 /// the exact event names are unit-testable without a live menu bar. Kept
 /// separate from `main`'s `on_menu_event` closure, which calls this for every
-/// id besides "open-settings" (that one drives `show_settings_window`
+/// id besides "open-settings" (that one drives `show_settings_page`
 /// directly and never reaches the frontend as an event). The frontend is the
 /// only thing that turns "menu:new-recording"/"menu:stop" into an actual
 /// start or stop — this function only names the wire, it does not call
@@ -6308,7 +6282,6 @@ fn main() {
         .manage(updater::UpdaterState::default())
         .invoke_handler(tauri::generate_handler![
             app_snapshot,
-            open_settings_window,
             start_meeting,
             pause_meeting,
             resume_meeting,
@@ -6494,7 +6467,7 @@ fn main() {
             app.on_menu_event(|app, event| {
                 let id = event.id().0.as_str();
                 if id == "open-settings" {
-                    let _ = show_settings_window(app);
+                    show_settings_page(app);
                     return;
                 }
                 if id == "check-for-updates" {
@@ -10348,7 +10321,7 @@ mod tests {
             Some("menu:open-transcript")
         );
         // "open-settings" is handled before `menu_event_name` is ever
-        // called (it drives `show_settings_window` directly) and must not
+        // called (it drives `show_settings_page` directly) and must not
         // also be wired as an event — a menu item id that means neither
         // must resolve to nothing, not a stray event the frontend never
         // asked for.

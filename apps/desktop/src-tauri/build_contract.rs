@@ -30,7 +30,6 @@ pub const CAPTURE_ENTITLEMENTS: &str = "capture-entitlements.plist";
 
 const PRODUCT_COMMANDS: &[&str] = &[
     "app_snapshot",
-    "open_settings_window",
     "start_meeting",
     "pause_meeting",
     "resume_meeting",

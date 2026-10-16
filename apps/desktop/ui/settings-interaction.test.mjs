@@ -38,32 +38,35 @@ test("Settings switches speech options and does not invoke retired note setup", 
     } } }, confirm: () => true },
     mergePermissions: (_, value) => value,
     updatePresentation,
+    APPEARANCES: ["system", "light", "dark"],
+    getAppearance: () => "system",
+    setAppearance: () => {},
     setTimeout: (callback) => { timers.set(++timerId, callback); return timerId; },
     clearTimeout: (id) => timers.delete(id), console,
   };
-  const source = readFileSync(new URL("./settings.js", import.meta.url), "utf8").replace(/^import[^\n]+\n/, "");
+  const source = readFileSync(new URL("./settings.js", import.meta.url), "utf8").replace(/^import[^\n]+\n/gm, "").replace(/^export /gm, "") + "\nmountSettings(document);";
   vm.runInNewContext(source, context);
   const settle = async () => { for (let i = 0; i < 24; i++) await Promise.resolve(); };
   const click = async (action) => {
-    handlers.click({ target: { closest: () => ({ disabled: false, dataset: { action, modelId: "small" } }) } });
+    handlers.click({ target: { closest: () => ({ disabled: false, dataset: { settingsAction: action, modelId: "small" } }) } });
     await settle();
   };
   await settle();
   // The Updates row renders from update_status: an up-to-date build shows a
   // ready state and offers no install.
   assert.match(node("#update-status").innerHTML, /data-tone="ready"/);
-  assert.doesNotMatch(node("#update-status").innerHTML, /data-action="install-update"/);
+  assert.doesNotMatch(node("#update-status").innerHTML, /data-settings-action="install-update"/);
   assert.match(node("#models").innerHTML, /Selected/);
   await click("use-apple-speech");
   assert.equal(selected, "apple-native");
   assert.match(node("#transcription-engine").innerHTML, /Selected/i);
   assert.doesNotMatch(node("#models").innerHTML, /Selected/);
-  assert.match(node("#models").innerHTML, /data-action="use-model"/);
-  assert.match(node("#models").innerHTML, /data-action="use-model"[^>]*disabled/);
+  assert.match(node("#models").innerHTML, /data-settings-action="use-model"/);
+  assert.match(node("#models").innerHTML, /data-settings-action="use-model"[^>]*disabled/);
   restarting = false;
   for (const callback of [...timers.values()]) callback();
   await settle();
-  assert.doesNotMatch(node("#models").innerHTML, /data-action="use-model"[^>]*disabled/);
+  assert.doesNotMatch(node("#models").innerHTML, /data-settings-action="use-model"[^>]*disabled/);
   assert.notEqual(node("#model-message").textContent, "Startup pending");
   await click("use-model");
   assert.equal(selected, "whisper");

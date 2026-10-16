@@ -2405,8 +2405,10 @@ h3 {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Keyed on the app's theme attribute, not the system media query: Settings
+   can force Light or Dark (appearance.mjs), and these dark values must follow
+   that choice. */
+  :root[data-theme="dark"] {
     color-scheme: dark;
     --canvas: var(--content);
     --paper: var(--content);
@@ -2444,7 +2446,7 @@ h3 {
     --toast-attention-text: #ecc36f;
   }
 
-  .topbar {
+  :root[data-theme="dark"] .topbar {
     background: rgb(25 26 24 / 92%);
   }
 
@@ -2478,50 +2480,47 @@ h3 {
      while light showed the two identical. DESIGN.md's button vocabulary is
      default and primary -- there is no secondary variant to style -- so it
      takes `--control` with every other default button. */
-  .search-input,
-  .fact-pill,
-  .status-pill,
-  .shortcut {
+  :root[data-theme="dark"] .search-input, :root[data-theme="dark"] .fact-pill, :root[data-theme="dark"] .status-pill, :root[data-theme="dark"] .shortcut {
     background: var(--paper);
   }
 
-  .meeting-row:hover:not(:disabled) {
+  :root[data-theme="dark"] .meeting-row:hover:not(:disabled) {
     background: var(--paper-soft);
   }
 
 
-  .claim-evidence {
+  :root[data-theme="dark"] .claim-evidence {
     color: #c0c9de;
   }
 
-  .claim-evidence {
+  :root[data-theme="dark"] .claim-evidence {
     background: #202846;
   }
 
-  .claim-evidence span {
+  :root[data-theme="dark"] .claim-evidence span {
     color: #9cadcf;
   }
 
-  .check-row:has(input:checked) {
+  :root[data-theme="dark"] .check-row:has(input:checked) {
     border-color: #5269a1;
     background: #242c46;
   }
 
-  .destructive-target {
+  :root[data-theme="dark"] .destructive-target {
     border-color: rgb(239 136 121 / 34%);
     background: rgb(239 136 121 / 10%);
   }
 
-  .toast-notice {
+  :root[data-theme="dark"] .toast-notice {
     border-color: rgb(119 190 147 / 35%);
     color: #b9ebcb;
     background: #203b2a;
   }
 
-  .startup-orb {
+  :root[data-theme="dark"] .startup-orb {
     border-color: #384d85;
   }
-}
+
 
 /* ==========================================================================
    Rethink phase 1 shell — DESIGN.md composition (toolbar, sidebar, document
@@ -2817,6 +2816,32 @@ html, body, #app {
 .trash-row:hover,
 .trash-row[aria-current="true"] {
   background: var(--selection);
+}
+
+/* Trash and the Settings gear share the sidebar's foot: Trash takes the row,
+   the gear sits at its right edge (operator decision, 2026-10-16). */
+.sidebar-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--separator);
+}
+
+.sidebar-footer .trash-row {
+  flex: 1 1 auto;
+  border-top: none;
+}
+
+.sidebar-settings {
+  flex: 0 0 auto;
+  margin-right: var(--space-8);
+  color: var(--label-2);
+}
+
+.sidebar-settings:hover,
+.sidebar-settings[aria-current="page"] {
+  background: var(--selection);
+  color: var(--label);
 }
 
 .trash-row svg {

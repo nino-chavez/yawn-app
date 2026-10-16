@@ -72,6 +72,8 @@ import {
   withheldTurnPresentation,
 } from "./view-model.mjs";
 import { patchInto } from "./dom-patch.mjs";
+import { applyAppearance, watchSystemAppearance } from "./appearance.mjs";
+import { mountSettings } from "./settings.js";
 
 const root = document.querySelector("#app");
 const invoke = window.__TAURI__?.core?.invoke;
@@ -160,6 +162,9 @@ const state = {
   // the quiet secondary list in place of Meetings.
   trash: null,
   trashOpen: false,
+  // The Settings page in the document pane (operator decision, 2026-10-16:
+  // Settings lives in the main window, reached from the sidebar gear and ⌘,).
+  settingsOpen: false,
 };
 
 let noteSaveTimer;
@@ -348,6 +353,7 @@ function render() {
     snapshot: state.snapshot,
     hasSelected: Boolean(state.selected),
     trashOpen: Boolean(state.trashOpen),
+    settingsOpen: Boolean(state.settingsOpen),
   });
   // These four states cannot function as a shell: there is no library to
   // show beside a document yet (still checking, choosing a model, or a real
@@ -389,13 +395,14 @@ function render() {
   const selectedTitle = view === "meeting" && state.selected && !selectedBlocked
     ? sidebarRowTitle(state.selected.row, dateLabel(state.selected.row?.createdAtEpochSeconds))
     : "";
-  const title = toolbarTitlePresentation({ capture: state.snapshot?.capture, selectedTitle });
+  const title = view === "settings" ? "Settings" : toolbarTitlePresentation({ capture: state.snapshot?.capture, selectedTitle });
   const collapsed = state.sidebarCollapsed || currentWindowWidth() < SIDEBAR_COLLAPSE_WIDTH;
 
   let paneContent;
   if (view === "capture") paneContent = renderCapturePane();
   else if (view === "meeting") paneContent = renderMeetingPane();
   else if (view === "trash") paneContent = renderTrashPane();
+  else if (view === "settings") paneContent = `<div class="settings-page"><div class="settings-shell" id="settings-root" data-patch-preserve></div></div>`;
   else paneContent = renderEmptyPane();
 
   // Patched in place, never assigned wholesale: replacing root.innerHTML
@@ -446,6 +453,21 @@ function render() {
   syncActivityClock();
   dismissEvidencePopoverIfDetached();
   layoutLedgers();
+  syncSettingsPage(view);
+}
+
+// The page mounts once into its preserved host (dom-patch leaves the host's
+// children alone) and stops its polls when the pane shows anything else.
+let settingsUnmount = null;
+function syncSettingsPage(view) {
+  const host = view === "settings" ? root.querySelector("#settings-root") : null;
+  if (host && !host.firstElementChild) {
+    settingsUnmount?.();
+    settingsUnmount = mountSettings(host);
+  } else if (!host && settingsUnmount) {
+    settingsUnmount();
+    settingsUnmount = null;
+  }
 }
 
 // Snapshot polling keeps recording and transcription honest, but rebuilding the
@@ -569,21 +591,14 @@ function listenForMenuEvents() {
   tauriListen("menu:stop", () => { void stopRecording(); }).catch(() => {});
   tauriListen("menu:toggle-sidebar", () => toggleSidebar()).catch(() => {});
   tauriListen("menu:open-transcript", () => openFullTranscriptFromInspector()).catch(() => {});
+  tauriListen("menu:open-settings", () => { void openSettings().catch(reportError); }).catch(() => {});
 }
 
-// tokens.css keys dark mode on `html[data-theme="dark"]` only -- it carries
-// no `prefers-color-scheme` fallback of its own (that's `settings.js`'s
-// job for the Settings window; this is the same pattern for the main
-// window). Set at load and kept in sync with the system appearance so
-// "both appearances from tokens alone" (DESIGN.md) actually holds here.
+// Theme: appearance.mjs owns html[data-theme] (System, Light or Dark, set in
+// Settings), so the main window and the Settings page agree.
 function syncThemeFromSystem() {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-  const query = window.matchMedia("(prefers-color-scheme: dark)");
-  const apply = () => {
-    document.documentElement.dataset.theme = query.matches ? "dark" : "light";
-  };
-  apply();
-  query.addEventListener("change", apply);
+  applyAppearance();
+  watchSystemAppearance();
 }
 
 function renderBrowserNotice() {
@@ -879,12 +894,21 @@ function renderSidebar() {
       ${capturing ? renderCaptureStatusRow() : ""}
       ${body}
     </div>
+    <div class="sidebar-footer">
     <button class="trash-row${state.trashOpen ? " selected" : ""}" type="button" data-action="open-trash" aria-current="${state.trashOpen ? "true" : "false"}">
       <svg width="13" height="14" viewBox="0 0 13 14" fill="none" aria-hidden="true">
         <path d="M1 3.5h11M4.5 3.5V2a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M2.5 3.5l.6 9a1 1 0 0 0 1 .95h4.8a1 1 0 0 0 1-.95l.6-9" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <span>Trash</span>
-    </button>`;
+    </button>
+    <button class="icon-button sidebar-settings${state.settingsOpen ? " selected" : ""}" type="button" data-action="open-settings" title="Settings (⌘,)" aria-label="Settings" aria-current="${state.settingsOpen ? "page" : "false"}">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.1" />
+        <path d="M8 1.2v1.7M8 13.1v1.7M14.8 8h-1.7M2.9 8H1.2M12.8 3.2l-1.2 1.2M4.4 11.6l-1.2 1.2M12.8 12.8l-1.2-1.2M4.4 4.4L3.2 3.2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />
+        <circle cx="8" cy="8" r="4.6" stroke="currentColor" stroke-width="1.1" />
+      </svg>
+    </button>
+    </div>`;
 }
 
 // -- Document pane -----------------------------------------------------------
@@ -2698,6 +2722,7 @@ function openStart(guided = false) {
   // route (the topbar/Home Record button, the ⌘R hotkey, and the guided
   // invitation) shares.
   beginStartJourney();
+  state.settingsOpen = false;
   state.modal = "start";
   state.startSheetGuided = guided;
   render();
@@ -2808,6 +2833,7 @@ async function openMeeting(handle, transcriptMatch = null, openEpoch = ++meeting
   await flushSelectedNoteSave();
   if (openEpoch !== meetingOpenEpoch) return;
   state.trashOpen = false;
+  state.settingsOpen = false;
   await runBusy("meeting", async () => {
     // The reader spends every row handle when a note is opened
     // (library_reader.rs, open_note_current clears them), so a handle from
@@ -3632,6 +3658,7 @@ async function openMeetings() {
   state.transcriptQuery = "";
   state.activeView = "home";
   state.trashOpen = false;
+  state.settingsOpen = false;
   if (!invoke) {
     render();
     return;
@@ -3642,12 +3669,28 @@ async function openMeetings() {
 function openTrash() {
   meetingOpenEpoch += 1;
   state.selected = null;
+  state.settingsOpen = false;
   state.trashOpen = true;
   state.transcriptSearchResults = null;
   state.transcriptSearchRows = null;
   render();
   if (!invoke) return;
   void runBusy("open-trash", refreshTrash);
+}
+
+async function openSettings() {
+  meetingOpenEpoch += 1;
+  await flushSelectedNoteSave();
+  if (invoke && state.audioPlayback?.state === "playing") {
+    state.audioPlayback = await invoke("library_stop_retained_audio");
+  }
+  state.selected = null;
+  state.meetingManagementOpen = false;
+  state.trashOpen = false;
+  state.transcriptSearchResults = null;
+  state.transcriptSearchRows = null;
+  state.settingsOpen = true;
+  render();
 }
 
 function closeTrash() {
@@ -3974,16 +4017,13 @@ function handleClick(event) {
   else if (action === "use-apple-speech") void selectTranscriptionEngine("apple-native").catch(reportError);
   else if (action === "request-microphone") void requestPermission("microphone");
   else if (action === "request-system-audio") void requestPermission("system-audio");
-  else if (action === "settings" || action === "open-settings") {
-    if (invoke) void invoke("open_settings_window").catch(reportError);
-  }
+  else if (action === "settings" || action === "open-settings") void openSettings().catch(reportError);
   else if (action === "clear-error") { state.error = ""; render(); }
   else if (action === "clear-notice") { state.notice = ""; render(); }
   else if (action === "clear-update-notice") { state.updateNotice = ""; render(); }
   else if (action === "open-update-settings") {
     state.updateNotice = "";
-    render();
-    if (invoke) void invoke("open_settings_window").catch(reportError);
+    void openSettings().catch(reportError);
   }
 }
 
@@ -4155,7 +4195,7 @@ function handleKeydown(event) {
   }
   if (key === "," && !event.shiftKey) {
     event.preventDefault();
-    if (invoke) void invoke("open_settings_window").catch(reportError);
+    void openSettings().catch(reportError);
   }
 }
 

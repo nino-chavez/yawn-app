@@ -47,7 +47,7 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 
 use crate::{
     ApplicationState, CaptureState, StartupState, has_pending_transcription_work,
-    product_facade::ProductOperationFacade, show_settings_window, transcription_operation_active,
+    product_facade::ProductOperationFacade, show_settings_page, transcription_operation_active,
 };
 
 /// Presence turns the automatic check off; absence (the default) leaves it on.
@@ -373,7 +373,7 @@ pub(crate) fn start_background_checks(app: AppHandle) {
 
 /// The app menu's "Check for Updates…": Settings shows the result.
 pub(crate) fn check_from_menu(app: &AppHandle) {
-    let _ = show_settings_window(app);
+    show_settings_page(app);
     let app = app.clone();
     tauri::async_runtime::spawn(async move { check_once(&app, false).await });
 }

@@ -11,7 +11,6 @@
   "permissions": [
     "core:window:allow-start-dragging",
     "allow-app-snapshot",
-    "allow-open-settings-window",
     "allow-start-meeting",
     "allow-pause-meeting",
     "allow-resume-meeting",
@@ -65,6 +64,15 @@
     "allow-get-transcription-engine-settings",
     "allow-select-transcription-engine",
     "allow-install-apple-speech-assets",
-    "allow-analyze-speakers"
+    "allow-analyze-speakers",
+    "allow-transcript-model-settings",
+    "allow-remove-transcript-model",
+    "allow-nemotron-model-settings",
+    "allow-install-nemotron-model",
+    "allow-update-status",
+    "allow-set-automatic-update-check",
+    "allow-check-for-updates",
+    "allow-install-update",
+    "core:window:allow-set-theme"
   ]
 }

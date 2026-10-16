@@ -26,7 +26,7 @@ test("a rejection is read for its message before settings.js decides what kind o
 
 test("speaker analysis is an explicit optional download with a local-only upstream link", async () => {
   const settings = await readFile(new URL("./settings.js", import.meta.url), "utf8");
-  const markup = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+  const markup = (await readFile(new URL("./settings.js", import.meta.url), "utf8")).split("export const SETTINGS_MARKUP = `")[1].split("`;")[0];
   assert.match(settings, /invoke\("nemotron_model_settings"\)/);
   assert.match(settings, /invoke\("install_nemotron_model"\)/);
   assert.match(settings, /never names people or changes your transcript/);
@@ -61,7 +61,7 @@ test("settings groups follow grouped-list structure: heading outside, rows insid
   // Refit R18: settings groups use the macOS System Settings grouped-list
   // pattern: a group heading (h2) outside the .settings-group-box, rows inside
   // with aria-labelledby connecting them. No label copy is asserted.
-  const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+  const html = (await readFile(new URL("./settings.js", import.meta.url), "utf8")).split("export const SETTINGS_MARKUP = `")[1].split("`;")[0];
 
   // Check for the grouped-list structure in the HTML:
   // 1. Each section.settings-group has aria-labelledby
@@ -74,7 +74,7 @@ test("settings groups follow grouped-list structure: heading outside, rows insid
   // Find all sections and their aria-labelledby values
   const sectionPattern = /section[^>]*class="[^"]*settings-group[^"]*"[^>]*aria-labelledby="([^"]+)"/g;
   const sections = [...html.matchAll(sectionPattern)];
-  assert.ok(sections.length > 0, "settings.html must contain section.settings-group elements");
+  assert.ok(sections.length > 0, "the Settings markup must contain section.settings-group elements");
 
   sections.forEach((match) => {
     const labelledBy = match[1];
@@ -92,11 +92,11 @@ test("Settings is one column of groups with no section navigation and no retired
   // DESIGN.md (Rail): one scrolling form, every group visible; the link-styled
   // tab row the baseline review read as a web page is gone. Order is the
   // design system's: Recording, Transcription, Speakers, Storage, Updates.
-  const html = await readFile(new URL("./settings.html", import.meta.url), "utf8");
+  const html = (await readFile(new URL("./settings.js", import.meta.url), "utf8")).split("export const SETTINGS_MARKUP = `")[1].split("`;")[0];
   assert.doesNotMatch(html, /<nav/);
   assert.doesNotMatch(html, /<a href="#/);
   const sectionIds = [...html.matchAll(/<section id="([^"]+)" class="settings-group"/g)].map(([, id]) => id);
-  assert.deepEqual(sectionIds, ["recording", "transcription", "speakers", "storage", "updates"]);
+  assert.deepEqual(sectionIds, ["appearance", "recording", "transcription", "speakers", "storage", "updates"]);
   assert.doesNotMatch(html, /notes-setup|note-model/);
 });
 
