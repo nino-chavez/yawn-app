@@ -30,17 +30,30 @@ function systemPrefersDark() {
     && globalThis.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+// Whether this session has forced the native window theme. Only then does
+// "system" need a call to hand it back: setting the window's theme while the
+// page is still loading can leave the webview unpainted, so a launch with the
+// default choice makes no native call at all.
+let nativeForced = false;
+
 export function applyAppearance(choice = getAppearance()) {
   if (typeof document === "undefined") return;
-  const nativeWindow = globalThis.__TAURI__?.window?.getCurrentWindow?.();
-  // Hand the native window back to the system first, so "system" reads the
-  // Mac's real setting rather than a theme an earlier choice forced.
-  const setNative = nativeWindow?.setTheme?.(choice === "system" ? null : choice);
   const apply = () => {
     document.documentElement.dataset.theme = resolveTheme(choice, systemPrefersDark());
   };
   apply();
-  if (setNative && typeof setNative.then === "function") setNative.then(apply, () => {});
+  if (choice === "system" && !nativeForced) return;
+  nativeForced = choice !== "system";
+  const setNative = () => {
+    const nativeWindow = globalThis.__TAURI__?.window?.getCurrentWindow?.();
+    // Hand the native window back to the system first, so "system" reads the
+    // Mac's real setting rather than a theme an earlier choice forced.
+    const pending = nativeWindow?.setTheme?.(choice === "system" ? null : choice);
+    if (pending && typeof pending.then === "function") pending.then(apply, () => {});
+  };
+  // Never during load: wait for the page to finish and paint once.
+  if (document.readyState === "complete") setNative();
+  else globalThis.addEventListener?.("load", () => globalThis.requestAnimationFrame?.(setNative) ?? setNative(), { once: true });
 }
 
 export function setAppearance(choice) {
