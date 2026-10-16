@@ -37,7 +37,7 @@
   --attention: #8f5d12; --attention-bg: rgba(190,130,40,0.12);
   --evidence: rgba(47,95,168,0.12);  /* the current turn's surface; the same tint as --moment-soft */
   --moment: #2f5fa8; --on-moment: #ffffff; --moment-soft: rgba(47,95,168,0.12);  /* the playhead, a tapped line, the current turn */
-  --rail: #cfcabd; --rail-mark: #201e1a; --record-soft: rgba(199,57,44,0.11);
+  --rail: #cfcabd; --rail-mark: #201e1a; --record-soft: rgba(199,57,44,0.11); --ink-dim: rgba(31,29,25,0.28);
 }
 :root[data-theme="dark"] {
   --window: #1b1a17; --sidebar: #1f1e1a; --content: #262521; --panel: #2b2a25;
@@ -50,7 +50,7 @@
   --attention: #d9a24a; --attention-bg: rgba(217,162,74,0.14);
   --evidence: rgba(143,180,255,0.18);
   --moment: #8fb4ff; --on-moment: #0f1a2e; --moment-soft: rgba(143,180,255,0.18);
-  --rail: #4d4a42; --rail-mark: #ece7db; --record-soft: rgba(255,106,92,0.16);
+  --rail: #4d4a42; --rail-mark: #ece7db; --record-soft: rgba(255,106,92,0.16); --ink-dim: rgba(239,233,220,0.30);
 }
 html, body { margin: 0; height: 100%; }
 body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); background: var(--window);

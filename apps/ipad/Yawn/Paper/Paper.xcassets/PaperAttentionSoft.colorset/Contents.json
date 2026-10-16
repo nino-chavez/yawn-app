@@ -1,0 +1,38 @@
+{
+  "colors": [
+    {
+      "color": {
+        "color-space": "srgb",
+        "components": {
+          "alpha": "0.120",
+          "blue": "0x28",
+          "green": "0x82",
+          "red": "0xBE"
+        }
+      },
+      "idiom": "universal"
+    },
+    {
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ],
+      "color": {
+        "color-space": "srgb",
+        "components": {
+          "alpha": "0.140",
+          "blue": "0x4A",
+          "green": "0xA2",
+          "red": "0xD9"
+        }
+      },
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "packages/design-tokens/generate.js",
+    "version": 1
+  }
+}

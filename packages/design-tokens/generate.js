@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /*
- * Generates apps/desktop/ui/tokens.css from tokens.json.
+ * Generates apps/desktop/ui/tokens.css and the iPad app's color catalog
+ * (apps/ipad/Yawn/Paper/Paper.xcassets) from tokens.json.
  *
  * No dependencies. Reads the JSON, pulls the values the shipped CSS actually
  * consumes, and writes them into a hand-formatted template that matches
@@ -30,7 +31,7 @@ const t = JSON.parse(fs.readFileSync(TOKENS_PATH, "utf8"));
 const c = t.color;
 const light = {
   moment: c.moment.light, onMoment: c.onMoment.light, momentSoft: c.momentSoft.light,
-  rail: c.rail.light, railMark: c.railMark.light, recordSoft: c.recordSoft.light,
+  rail: c.rail.light, railMark: c.railMark.light, recordSoft: c.recordSoft.light, inkDim: c.inkDim.light,
   accent: c.accent.light,
   onAccent: c.onAccent.light,
   record: c.record.light,
@@ -42,7 +43,7 @@ const light = {
 };
 const dark = {
   moment: c.moment.dark, onMoment: c.onMoment.dark, momentSoft: c.momentSoft.dark,
-  rail: c.rail.dark, railMark: c.railMark.dark, recordSoft: c.recordSoft.dark,
+  rail: c.rail.dark, railMark: c.railMark.dark, recordSoft: c.recordSoft.dark, inkDim: c.inkDim.dark,
   accent: c.accent.dark,
   onAccent: c.onAccent.dark,
   record: c.record.dark,
@@ -103,7 +104,7 @@ function render() {
   --attention: ${light.attention}; --attention-bg: ${light.attentionBg};
   --evidence: ${light.evidence};  /* the current turn's surface; the same tint as --moment-soft */
   --moment: ${light.moment}; --on-moment: ${light.onMoment}; --moment-soft: ${light.momentSoft};  /* the playhead, a tapped line, the current turn */
-  --rail: ${light.rail}; --rail-mark: ${light.railMark}; --record-soft: ${light.recordSoft};
+  --rail: ${light.rail}; --rail-mark: ${light.railMark}; --record-soft: ${light.recordSoft}; --ink-dim: ${light.inkDim};
 }
 :root[data-theme="dark"] {
   --window: ${dark.window}; --sidebar: ${dark.sidebar}; --content: ${dark.content}; --panel: ${dark.panel};
@@ -116,7 +117,7 @@ function render() {
   --attention: ${dark.attention}; --attention-bg: ${dark.attentionBg};
   --evidence: ${dark.evidence};
   --moment: ${dark.moment}; --on-moment: ${dark.onMoment}; --moment-soft: ${dark.momentSoft};
-  --rail: ${dark.rail}; --rail-mark: ${dark.railMark}; --record-soft: ${dark.recordSoft};
+  --rail: ${dark.rail}; --rail-mark: ${dark.railMark}; --record-soft: ${dark.recordSoft}; --ink-dim: ${dark.inkDim};
 }
 html, body { margin: 0; height: 100%; }
 body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); background: var(--window);
@@ -159,8 +160,95 @@ button, input { font: inherit; color: inherit; }
 `;
 }
 
+// -- The iPad asset catalog ---------------------------------------------------
+//
+// DESIGN.md Color: "the SwiftUI app carries the same values as named colors
+// in its asset catalog". Generated here so the two apps cannot drift: one
+// color set per role, light and dark, named Paper<Role>. Xcode generates a
+// ColorResource symbol per set (`.paperPage`), and apps/ipad/Yawn/Paper/Paper.swift
+// is the one place that maps those symbols to SwiftUI colors; views use
+// Paper.page, never a literal.
+const CATALOG_DIR = path.join(ROOT, "apps", "ipad", "Yawn", "Paper", "Paper.xcassets");
+const CATALOG_SETS = [
+  // [asset name, token]  -- the DESIGN.md role each one carries
+  ["PaperWindowChrome", c.neutral.window],      // Window chrome
+  ["PaperSidebar", c.neutral.sidebar],          // Sidebar
+  ["PaperPage", c.neutral.content],             // Page
+  ["PaperPanel", c.neutral.panel],              // Panel
+  ["PaperHairline", c.neutral.separator],       // Hairline
+  ["PaperHairlineStrong", c.neutral.separatorStrong], // Hairline, strong
+  ["PaperLabel", c.neutral.label],              // Label
+  ["PaperLabel2", c.neutral.label2],            // Label 2
+  ["PaperLabel3", c.neutral.label3],            // Label 3
+  ["PaperLabel4", c.neutral.label4],            // Label 4
+  ["PaperGraphite", c.accent],                  // Graphite (accent)
+  ["PaperOnGraphite", c.onAccent],              // On graphite
+  ["PaperSelection", c.neutral.selection],      // Selection
+  ["PaperControl", c.neutral.control],          // Control
+  ["PaperControlBorder", c.neutral.controlBorder], // Control border
+  ["PaperRail", c.rail],                        // Rail
+  ["PaperRailMark", c.railMark],                // Rail mark
+  ["PaperRecord", c.record],                    // Record
+  ["PaperOnRecord", c.onRecord],                // On record
+  ["PaperRecordSoft", c.recordSoft],            // Record, soft
+  ["PaperAttention", c.attention],              // Attention
+  ["PaperAttentionSoft", c.attentionBackground], // Attention, soft
+  ["PaperMoment", c.moment],                    // Moment
+  ["PaperOnMoment", c.onMoment],                // On moment
+  ["PaperMomentSoft", c.momentSoft],            // Moment, soft
+  ["PaperInkDim", c.inkDim],                    // Ink, dim
+];
+
+// `#rrggbb` or `rgba(r,g,b,a)` -> the catalog's sRGB components.
+function catalogComponents(value) {
+  const hex = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(value.trim());
+  if (hex) {
+    return {
+      alpha: "1.000",
+      blue: `0x${hex[3].toUpperCase()}`,
+      green: `0x${hex[2].toUpperCase()}`,
+      red: `0x${hex[1].toUpperCase()}`,
+    };
+  }
+  const rgba = /^rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/i.exec(value.trim());
+  if (rgba) {
+    return {
+      alpha: Number(rgba[4]).toFixed(3),
+      blue: `0x${Number(rgba[3]).toString(16).toUpperCase().padStart(2, "0")}`,
+      green: `0x${Number(rgba[2]).toString(16).toUpperCase().padStart(2, "0")}`,
+      red: `0x${Number(rgba[1]).toString(16).toUpperCase().padStart(2, "0")}`,
+    };
+  }
+  throw new Error(`not a catalog color: ${value}`);
+}
+
+function colorSetJson(token) {
+  const entry = (value, dark) => ({
+    ...(dark ? { appearances: [{ appearance: "luminosity", value: "dark" }] } : {}),
+    color: { "color-space": "srgb", components: catalogComponents(value) },
+    idiom: "universal",
+  });
+  return JSON.stringify({
+    colors: [entry(token.light, false), entry(token.dark, true)],
+    info: { author: "packages/design-tokens/generate.js", version: 1 },
+  }, null, 2) + "\n";
+}
+
+// Every file the catalog consists of, keyed by path.
+function renderCatalog() {
+  const files = new Map();
+  files.set(path.join(CATALOG_DIR, "Contents.json"), JSON.stringify({
+    info: { author: "packages/design-tokens/generate.js", version: 1 },
+  }, null, 2) + "\n");
+  for (const [name, token] of CATALOG_SETS) {
+    files.set(path.join(CATALOG_DIR, `${name}.colorset`, "Contents.json"), colorSetJson(token));
+  }
+  return files;
+}
+
 function main() {
   const output = render();
+  const catalog = renderCatalog();
   const checkOnly = process.argv.includes("--check");
 
   if (checkOnly) {
@@ -170,12 +258,25 @@ function main() {
       process.exitCode = 1;
       return;
     }
-    process.stdout.write("tokens.css matches tokens.json\n");
+    for (const [file, contents] of catalog) {
+      const existing = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+      if (existing !== contents) {
+        process.stderr.write(`the iPad catalog is out of date with tokens.json: ${path.relative(ROOT, file)}\n`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+    process.stdout.write("tokens.css and the iPad catalog match tokens.json\n");
     return;
   }
 
   fs.writeFileSync(OUT_PATH, output);
   process.stdout.write(`wrote ${path.relative(ROOT, OUT_PATH)}\n`);
+  for (const [file, contents] of catalog) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, contents);
+  }
+  process.stdout.write(`wrote ${catalog.size} files under ${path.relative(ROOT, CATALOG_DIR)}\n`);
 }
 
 main();
