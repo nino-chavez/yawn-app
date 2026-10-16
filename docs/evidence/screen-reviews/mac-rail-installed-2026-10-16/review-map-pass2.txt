@@ -1,0 +1,14 @@
+p01 dark-transcript-only
+p02 light-settings-top
+p03 dark-firstrun
+p04 light-ledger
+p05 dark-nodraft
+p06 light-firstrun-sheet
+p07 dark-settings-bottom
+p08 light-transcript-only
+p09 dark-ledger
+p10 light-firstrun
+p11 dark-settings-top
+p12 light-nodraft
+p13 dark-firstrun-sheet
+p14 light-settings-bottom

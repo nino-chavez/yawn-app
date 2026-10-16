@@ -1,7 +1,7 @@
 # Mac Rail, installed build, 2026-10-16
 
 Captures of the installed **Yawn Fixture** app (`com.ninochavez.local-meeting-notes.fixture`),
-built from this branch at `4588e87` with
+built from this branch at `9f44753` with
 `npx tauri build --config src-tauri/tauri.fixture.conf.json --features preview-surface`
 and signed with `scripts/prepare-preview-bundle.sh sign`. Each frame is the app's
 own window, `screencapture -o -l <window id>`, 1080 by 900 points at 2x. These
@@ -25,9 +25,12 @@ the evidence of record for the Rail Mac wave.
   chrome, so the light frames show a light title bar.
 - **Every frame verified.** The capture helper activates the app, captures, and
   rejects a frame whose interior is one flat color (a window that has loaded but
-  not painted, which happens when it launches inactive); the detector was checked
-  on known blank and known content frames first. Exactly one Fixture process was
-  running for each frame.
+  not painted, which happens when it launches inactive) and a frame that shows
+  macOS's purple screen-capture indicator over the traffic lights (drawn while
+  Computer Use drives the app); both detectors were checked on known good and
+  known bad frames first. Exactly one Fixture process was running for each frame.
+  Pass 1 judged a first set at `807a87e`'s tree, six of whose frames carried the
+  indicator; every frame here was recaptured at `9f44753` after the pass-1 fixes.
 - **First run.** The `meetings/` folder was moved aside, the app relaunched, the
   first-run sheet captured, Continue clicked, the page captured, then the folder
   restored and the first-run marker cleared.
@@ -44,8 +47,8 @@ the evidence of record for the Rail Mac wave.
 | `dark-firstrun-sheet.png`, `light-firstrun-sheet.png` | no meetings yet: the first-run sheet | both |
 | `dark-firstrun.png`, `light-firstrun.png` | no meetings yet: the first-run page after Continue | both |
 
-`review-map.txt` maps the neutral names the cold reviewer saw (`m01`…`m14`,
-shuffled) to these files.
+`review-map-pass1.txt` and `review-map-pass2.txt` map the neutral, shuffled
+names each cold reviewer saw (`m01`…`m14`, `p01`…`p14`) to the frames.
 
 ## Not captured, and why
 
