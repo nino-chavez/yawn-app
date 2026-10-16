@@ -1896,3 +1896,89 @@ export function alignNoteMoments(previousText, previousMoments, nextText, nowSec
   }
   return result;
 }
+
+// -- The ledger (DESIGN.md, Rail): a note's timed lines beside the transcript --
+
+// A note moment is wall-clock seconds since the recording started, pauses
+// included. The retained audio has no samples for a pause, so the position in
+// the audio is the moment minus every pause that ended before it; a moment
+// inside a pause lands at the pause point.
+export function momentAudioSeconds(seconds, pauses) {
+  const moment = Number(seconds);
+  if (!Number.isFinite(moment) || moment < 0) return null;
+  const spans = Array.isArray(pauses?.spans) ? pauses.spans : [];
+  let audio = moment;
+  for (const span of spans) {
+    const pausedAt = Number(span?.pausedAtSeconds);
+    const resumedAt = Number(span?.resumedAtSeconds);
+    if (!Number.isFinite(pausedAt) || !Number.isFinite(resumedAt) || resumedAt <= pausedAt) continue;
+    if (moment >= resumedAt) audio -= resumedAt - pausedAt;
+    else if (moment > pausedAt) audio -= moment - pausedAt;
+  }
+  return Math.max(0, audio);
+}
+
+// The transcript turn spoken nearest a position in the audio, by its start.
+// -1 when the transcript has no timed turns.
+export function nearestTurnIndex(turns, audioSeconds) {
+  const target = Number(audioSeconds);
+  if (!Array.isArray(turns) || !Number.isFinite(target)) return -1;
+  let best = -1;
+  let bestDistance = Infinity;
+  turns.forEach((turn, index) => {
+    const start = Number(turn?.start);
+    if (!Number.isFinite(start)) return;
+    const distance = Math.abs(start - target);
+    if (distance < bestDistance) { best = index; bestDistance = distance; }
+  });
+  return best;
+}
+
+// One row per line of the note. A timed line carries its moment, its position
+// in the audio, and the nearest turn; the turns between two shown turns fold
+// into a count. A line without a moment is just a line. `afterStopLine` is
+// the first non-empty untimed line after the last timed one, where the page
+// draws "After the meeting"; -1 when there is none or nothing is timed.
+export function noteLedgerPresentation({ text, moments, turns, pauses } = {}) {
+  const lines = String(text ?? "").split("\n");
+  const byLine = new Map();
+  for (const moment of Array.isArray(moments) ? moments : []) {
+    const line = Number(moment?.line);
+    const seconds = Number(moment?.seconds);
+    if (Number.isInteger(line) && line >= 0 && line < lines.length && Number.isInteger(seconds) && seconds >= 0) byLine.set(line, seconds);
+  }
+  const timedTurns = Array.isArray(turns) ? turns : [];
+  let previousTurn = -1;
+  let lastTimedLine = -1;
+  const rows = lines.map((lineText, index) => {
+    const seconds = byLine.get(index);
+    if (seconds === undefined) return { line: index, text: lineText, seconds: null, audioSeconds: null, turnIndex: -1, foldedBefore: 0, repeat: false };
+    lastTimedLine = index;
+    const audioSeconds = momentAudioSeconds(seconds, pauses);
+    const turnIndex = nearestTurnIndex(timedTurns, audioSeconds);
+    const repeat = turnIndex >= 0 && turnIndex <= previousTurn;
+    const foldedBefore = turnIndex > previousTurn ? Math.max(0, turnIndex - previousTurn - 1) : 0;
+    if (turnIndex > previousTurn) previousTurn = turnIndex;
+    return { line: index, text: lineText, seconds, audioSeconds, turnIndex, foldedBefore, repeat };
+  });
+  const after = lastTimedLine >= 0
+    ? rows.findIndex((row) => row.seconds === null && row.line > lastTimedLine && row.text.trim() !== "")
+    : -1;
+  const timed = rows.filter((row) => row.seconds !== null).length;
+  return { rows, timed, hasRail: timed > 0, afterStopLine: after, lastTimedLine };
+}
+
+// A tick per timed turn on the transport's track, as a percentage of the
+// meeting's length, with the operator's turns above the line and the call's
+// below.
+export function transportTicksPresentation(turns, lengthSeconds) {
+  const length = Number(lengthSeconds);
+  if (!Array.isArray(turns) || !Number.isFinite(length) || length <= 0) return [];
+  const ticks = [];
+  for (const turn of turns) {
+    const start = Number(turn?.start);
+    if (!Number.isFinite(start) || start < 0 || start > length) continue;
+    ticks.push({ percent: Math.round((start / length) * 1000) / 10, you: transcriptSpeakerLabel(turn) === "You" });
+  }
+  return ticks;
+}

@@ -109,6 +109,17 @@ pub enum CapturePauseState {
     Unavailable,
 }
 
+/// One pause, as whole seconds by the wall clock from the moment recording
+/// began. The audio has no samples for the span, so a position measured by
+/// the wall clock (a note moment, product brief "Note moments on the Mac")
+/// converts to a position in the audio by subtracting the spans before it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CapturePauseSpan {
+    pub paused_at_seconds: u64,
+    pub resumed_at_seconds: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapturePauseProjection {
@@ -119,6 +130,9 @@ pub struct CapturePauseProjection {
     /// Total time nothing was captured, in whole seconds.
     pub total_paused_seconds: u64,
     pub message: String,
+    /// The spans themselves, in order; empty whenever the state is not
+    /// `Paused`.
+    pub spans: Vec<CapturePauseSpan>,
 }
 
 impl CapturePauseProjection {
@@ -128,6 +142,7 @@ impl CapturePauseProjection {
             count: 0,
             total_paused_seconds: 0,
             message: "Recording was not paused during this meeting.".into(),
+            spans: Vec::new(),
         }
     }
 
@@ -137,6 +152,7 @@ impl CapturePauseProjection {
             count: 0,
             total_paused_seconds: 0,
             message: message.into(),
+            spans: Vec::new(),
         }
     }
 
@@ -426,6 +442,7 @@ pub fn project_capture_pauses(
     // otherwise is not one this reader will summarize.
     let mut total_samples: u64 = 0;
     let mut previous_end: Option<u64> = None;
+    let mut projected_spans = Vec::with_capacity(spans.len());
     for span in spans {
         let Some(span) = span.as_object() else {
             return Ok(malformed_pause_projection());
@@ -450,6 +467,10 @@ pub fn project_capture_pauses(
             return Ok(malformed_pause_projection());
         };
         total_samples = running;
+        projected_spans.push(CapturePauseSpan {
+            paused_at_seconds: start / CAPTURE_RATE,
+            resumed_at_seconds: end / CAPTURE_RATE,
+        });
     }
 
     if spans.is_empty() {
@@ -468,6 +489,7 @@ pub fn project_capture_pauses(
             clock_label(seconds),
             if count == 1 { "that gap" } else { "those gaps" },
         ),
+        spans: projected_spans,
     })
 }
 
@@ -772,7 +794,8 @@ mod tests {
                 "state": "not-paused",
                 "count": 0,
                 "totalPausedSeconds": 0,
-                "message": "Recording was not paused during this meeting."
+                "message": "Recording was not paused during this meeting.",
+                "spans": []
             })
         );
 
@@ -805,6 +828,10 @@ mod tests {
         assert_eq!(single.count, 1);
         assert_eq!(single.total_paused_seconds, 45);
         assert_eq!(
+            single.spans,
+            vec![CapturePauseSpan { paused_at_seconds: 1, resumed_at_seconds: 46 }]
+        );
+        assert_eq!(
             single.message,
             "Recording was paused 1 time, for 0:45 in total. Nothing was captured during that gap."
         );
@@ -822,6 +849,8 @@ mod tests {
         let pair = project_capture_pauses(&meeting_dir, &twice).unwrap();
         assert_eq!(pair.count, 2);
         assert_eq!(pair.total_paused_seconds, 90);
+        assert_eq!(pair.spans.len(), 2);
+        assert_eq!(pair.spans[1], CapturePauseSpan { paused_at_seconds: 60, resumed_at_seconds: 105 });
         assert_eq!(
             pair.message,
             "Recording was paused 2 times, for 1:30 in total. Nothing was captured during those gaps."

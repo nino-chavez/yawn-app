@@ -5,6 +5,10 @@ import test from "node:test";
 import {
   alignNoteMoments,
   noteMomentSeconds,
+  momentAudioSeconds,
+  nearestTurnIndex,
+  noteLedgerPresentation,
+  transportTicksPresentation,
   backgroundTranscriptionPresentation,
   canOpenStart,
   canStartMeeting,
@@ -655,7 +659,10 @@ test("retry comparison redacts withheld text and keeps the summary before person
   // right-hand pane -- the inspector occupies that space when open.
   // Rail (2026-10-15): transcript retry moved to the toolbar's More menu; the
   // document flow is note, playback, context, then the operator's notes.
-  assert.match(source, /\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderRetainedAudioPlayback\(playback\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<section class="note-section your-notes-section"/);
+  // Rail (2026-10-15): the transport sits under the header; the operator's
+  // notes are the first section of the page, then a saved AI draft, then the
+  // meeting context, then the full transcript.
+  assert.match(source, /\$\{renderTransport\(playback, transcript, row\)\}\s*<section class="note-section your-notes-section"[\s\S]*\$\{renderMeetingNote\(note, claimEvidence, recovery\)\}\s*\$\{renderMeetingContextSection\(note\)\}\s*<div class="doc-transcript-disclosure-wrap">/);
   // The selected Tonal Ledger reference keeps the disclosure inside `.read`
   // and aligned to the same document measure as the note.
   assert.match(source, /<div class="doc-transcript-disclosure-wrap">\$\{renderTranscriptDisclosure\(transcript, recovery, note\)\}<\/div>\s*<\/article>/);
@@ -1296,7 +1303,10 @@ test("meetingBlockingRecovery is null once anything about the meeting is readabl
 
 test("meeting detail exposes only explicit retained-audio controls and polls the owned player", async () => {
   const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
-  assert.match(source, /Microphone and system audio are separate recordings\./);
+  // Rail (2026-10-15): one transport. When both recordings are retained the
+  // choice is a control, not a sentence explaining that there are two.
+  assert.match(source, /data-action="set-playback-source"/);
+  assert.match(source, /data-action="play-retained-audio" data-source=/);
   assert.match(source, /data-action="stop-retained-audio"/);
   // Roadmap intake I5 added `lockToken`: absent for an unlocked meeting,
   // which is the ordinary case, and a fresh single-use confirmation for a
@@ -2353,4 +2363,48 @@ test("a line typed before Record stays untimed when edited while recording", () 
   // Editing the timed line later keeps its first moment.
   moments = alignNoteMoments("agenda v2\nowner: Sam", moments, "agenda v2\nowner: Sam, by Friday", 900);
   assert.deepEqual(moments, [{ line: 1, seconds: 731 }]);
+});
+
+test("a note moment converts to audio time by subtracting the pauses before it", () => {
+  const pauses = { state: "paused", spans: [{ pausedAtSeconds: 60, resumedAtSeconds: 105 }, { pausedAtSeconds: 300, resumedAtSeconds: 330 }] };
+  assert.equal(momentAudioSeconds(30, pauses), 30);
+  assert.equal(momentAudioSeconds(120, pauses), 75);
+  assert.equal(momentAudioSeconds(80, pauses), 60, "a moment inside a pause lands at the pause point");
+  assert.equal(momentAudioSeconds(400, pauses), 325);
+  assert.equal(momentAudioSeconds(400, { state: "not-paused" }), 400);
+  assert.equal(momentAudioSeconds(-1, pauses), null);
+});
+
+test("the ledger pairs each timed line with the nearest turn and folds the turns between", () => {
+  const turns = [{ start: 4, speaker: "You" }, { start: 31 }, { start: 44, speaker: "You" }, { start: 118 }, { start: 127, speaker: "You" }, { start: 236, speaker: "You" }];
+  const ledger = noteLedgerPresentation({
+    text: "first\nsecond\nlater\n",
+    moments: [{ line: 0, seconds: 48 }, { line: 1, seconds: 130 }],
+    turns,
+    pauses: { state: "not-paused" },
+  });
+  assert.equal(ledger.hasRail, true);
+  assert.equal(ledger.timed, 2);
+  assert.deepEqual(ledger.rows[0], { line: 0, text: "first", seconds: 48, audioSeconds: 48, turnIndex: 2, foldedBefore: 2, repeat: false });
+  assert.deepEqual(ledger.rows[1], { line: 1, text: "second", seconds: 130, audioSeconds: 130, turnIndex: 4, foldedBefore: 1, repeat: false });
+  assert.equal(ledger.rows[2].seconds, null);
+  assert.equal(ledger.afterStopLine, 2, "the first non-empty untimed line after the last timed one");
+  assert.equal(nearestTurnIndex(turns, 100), 3);
+  assert.equal(nearestTurnIndex([], 100), -1);
+});
+
+test("a note without moments is a plain page: no rail, no folds, no after-the-meeting line", () => {
+  const ledger = noteLedgerPresentation({ text: "a\nb", moments: [], turns: [{ start: 1 }], pauses: null });
+  assert.equal(ledger.hasRail, false);
+  assert.equal(ledger.afterStopLine, -1);
+  assert.ok(ledger.rows.every((row) => row.seconds === null && row.turnIndex === -1));
+  // A second note nearest the same turn repeats nothing in the turn column.
+  const twice = noteLedgerPresentation({ text: "a\nb", moments: [{ line: 0, seconds: 10 }, { line: 1, seconds: 12 }], turns: [{ start: 11 }], pauses: null });
+  assert.equal(twice.rows[1].repeat, true);
+});
+
+test("transport ticks place each timed turn on the track and tell the operator's turns apart", () => {
+  const ticks = transportTicksPresentation([{ start: 0, speaker: "You" }, { start: 50 }, { start: 200 }, { start: 100, speaker: "You" }], 100);
+  assert.deepEqual(ticks, [{ percent: 0, you: true }, { percent: 50, you: false }, { percent: 100, you: true }]);
+  assert.deepEqual(transportTicksPresentation([{ start: 1 }], 0), []);
 });

@@ -115,6 +115,36 @@
   // rather than two identical transcripts. Word counts are stated exactly as
   // the Rust projection states them, because the browser tokenizes each turn
   // itself and refuses a span whose count disagrees with its own.
+  // mode=ledger (Rail, 2026-10-15): a transcript-ready meeting whose operator
+  // note carries a moment per line, a transcript spread across the meeting,
+  // one pause, and retained audio with a deadline -- the state the ledger
+  // (rail | note | nearest turn) and the transport are judged on. Invented.
+  const ledgerTurns = [
+    { start: 4, end: 20, speaker: "You", text: "Okay, let's go through the launch checklist from the top.", sourceTurnIndex: 0 },
+    { start: 31, end: 40, speaker: "Them", text: "The retry review is the only thing still open on my side.", sourceTurnIndex: 1 },
+    { start: 44, end: 50, speaker: "You", text: "Can that ship before Friday? Sam, is that yours?", sourceTurnIndex: 2 },
+    { start: 52, end: 70, speaker: "Them", text: "Yes. I'll own it. Friday is fine if nothing else lands on me.", sourceTurnIndex: 3 },
+    { start: 118, end: 126, speaker: "Them", text: "One thing on the retry flow. People pick keep or promote too fast.", sourceTurnIndex: 4 },
+    { start: 127, end: 140, speaker: "You", text: "Then the diff has to be on screen before either button is.", sourceTurnIndex: 5 },
+    { start: 141, end: 150, speaker: "Them", text: "Agreed. We'll block the buttons until the diff renders.", sourceTurnIndex: 6 },
+    { start: 236, end: 248, speaker: "You", text: "Export. Does the thirty-day trash window apply to exported bundles?", sourceTurnIndex: 7 },
+    { start: 249, end: 260, speaker: "Them", text: "I don't think we ever decided that. Let's park it as an open question.", sourceTurnIndex: 8 },
+    { start: 431, end: 437, speaker: "You", text: "Release note. Who's drafting it?", sourceTurnIndex: 9 },
+    { start: 438, end: 445, speaker: "Them", text: "Dana said she'd have a draft by Thursday.", sourceTurnIndex: 10 },
+    { start: 672, end: 685, speaker: "Them", text: "What's the most we can spend on the installer work without going back to the board?", sourceTurnIndex: 11 },
+    { start: 686, end: 700, speaker: "You", text: "If it stays under twelve hundred, nobody has to vote on it.", sourceTurnIndex: 12 },
+    { start: 895, end: 903, speaker: "You", text: "Speaking of QA, when does the installer pass happen?", sourceTurnIndex: 13 },
+    { start: 904, end: 915, speaker: "Them", text: "Monday. Full pass on a clean machine.", sourceTurnIndex: 14 },
+    { start: 1171, end: 1182, speaker: "You", text: "Notarization has been slow all week. Has anyone talked to Priya?", sourceTurnIndex: 15 },
+    { start: 1183, end: 1190, speaker: "Them", text: "Not yet. I'll ask her after this.", sourceTurnIndex: 16 },
+    { start: 1366, end: 1380, speaker: "You", text: "Last thing. Same time on the twenty-eighth?", sourceTurnIndex: 17 },
+    { start: 1381, end: 1385, speaker: "Them", text: "Works for me.", sourceTurnIndex: 18 },
+  ];
+  const ledgerNote = {
+    text: "retry review ships before Friday — Sam owns\ndiff must be on screen before keep / promote\nexport: does the 30-day window cover bundles? (open)\nDana → release note Thursday\nbudget stays under 1,200 → no board vote\nQA pass on the installer Monday\nask Priya about the notarization delay\n\nfollow up with Sam on Monday",
+    moments: [{ line: 0, seconds: 48 }, { line: 1, seconds: 130 }, { line: 2, seconds: 245 }, { line: 3, seconds: 440 }, { line: 4, seconds: 735 }, { line: 5, seconds: 947 }, { line: 6, seconds: 1225 }],
+    unreadable: false,
+  };
   const currentTurns = [
     { start: 1, end: 3, speaker: "Me", text: "alpha decision about the launch", sourceTurnIndex: 0 },
     { start: 4, end: 6, speaker: "Them", text: "bravo follow-up owed by Friday", sourceTurnIndex: 1 },
@@ -269,8 +299,8 @@
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
             createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
-      : mode === "library" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
-      ? { rows: [{ ...libraryRow }, {
+      : mode === "library" || mode === "ledger" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : {}) }, {
           ...libraryRow,
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",
@@ -427,7 +457,21 @@
       transcriptHandle: "transcript-handle-2",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
-    } : sheetMode ? { ...sheetNote } : mode === "saved-draft" ? {
+    } : sheetMode ? { ...sheetNote } : mode === "ledger" ? {
+      meetingId: "harness-meeting-1",
+      state: "transcript-only",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { ...ledgerNote },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: "transcript-handle-1",
+      microphonePlaybackHandle: "mic-playback-1",
+      systemPlaybackHandle: "system-playback-1",
+      meetingDeletionHandle: "deletion-handle-1",
+      message: "No admitted note is available. Retained transcript text remains available.",
+      audioRetention: { state: "retained", policy: "7-days", deadlineEpochSeconds: Math.floor(Date.now() / 1000) + 6 * 24 * 60 * 60, message: "Audio retained on this Mac." },
+      capturePauses: { state: "paused", count: 1, totalPausedSeconds: 45, message: "Recording was paused 1 time, for 0:45 in total. Nothing was captured during that gap.", spans: [{ pausedAtSeconds: 300, resumedAtSeconds: 345 }] },
+    } : mode === "saved-draft" ? {
       meetingId: "harness-meeting-1",
       state: "note",
       claims: [
@@ -490,7 +534,7 @@
       state: "available",
       currentTranscriptSha256: "0000000000000000000000000000000000000000000000000000000000000000",
       transcriptFileHandle: "transcript-file-handle-1",
-      turns: currentTurns.map((turn) => ({ ...turn })),
+      turns: (mode === "ledger" ? ledgerTurns : currentTurns).map((turn) => ({ ...turn })),
     }),
     // R30. `transcript_retry_pending` answers "is a candidate already waiting";
     // null means no, which sends `openTranscriptRetry` down the start path and
@@ -498,7 +542,7 @@
     transcript_retry_pending: () => null,
     transcript_retry_start: () => ({ ...retryComparison }),
     library_save_operator_note: (args) => (savedOperatorNote = args?.text || "", {
-      operatorNote: { text: args?.text || "", unreadable: false },
+      operatorNote: { text: args?.text || "", moments: Array.isArray(args?.moments) ? args.moments : [], unreadable: false },
       operatorNoteHandle: "note-handle-1",
     }),
     library_open_transcript_file: () => ({ state: "opened", transcriptFileHandle: "transcript-file-handle-1", message: "Synthetic file opened." }),
