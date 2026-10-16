@@ -216,8 +216,9 @@ fn show_settings_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         WebviewUrl::App("settings.html".into()),
     )
     .title("Yawn Settings")
-    .inner_size(720.0, 720.0)
-    .min_inner_size(560.0, 480.0)
+    // DESIGN.md (Rail): one 580pt window, one scrolling column of groups.
+    .inner_size(580.0, 640.0)
+    .min_inner_size(520.0, 480.0)
     .resizable(true)
     .minimizable(true)
     .maximizable(false)

@@ -41,7 +41,7 @@ step("meeting opens with note editor", Boolean(noteEditor));
 noteEditor.focus();
 document.execCommand("insertText", false, "remember the owner");
 await sleep(700); // past the 600 ms save timer
-step("library note save reached stub", q("#library-note-save-state")?.textContent === "Saved on this Mac");
+step("library note save reached stub", q("#library-note-save-state")?.textContent === "Saved");
 step("library note editor kept node identity", q('[data-field="library-operator-note"]') === noteEditor);
 const details = q("details.transcript-disclosure");
 details.open = true;

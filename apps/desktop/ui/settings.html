@@ -9,21 +9,15 @@
     <link rel="stylesheet" href="settings-window.css" />
   </head>
   <body>
+    <!-- DESIGN.md (Rail, 2026-10-15): one scrolling column of groups. Each
+         group is a section label, then rows of label and detail with the
+         state or control at the right, separated by hairlines; no tabs, no
+         cards, no description paragraphs. The window's own title bar reads
+         "Yawn Settings". The storage fact is said once, last. -->
     <main class="settings-shell">
-      <header>
-        <h1>Settings</h1>
-        <p>Meeting audio, transcripts, and notes stay on this Mac.</p>
-        <nav class="settings-nav" aria-label="Settings sections">
-          <a href="#recording">Recording</a>
-          <a href="#transcription">Transcription</a>
-          <a href="#speakers">Speakers</a>
-          <a href="#updates">Updates</a>
-          <a href="#storage">Storage</a>
-        </nav>
-      </header>
       <section id="recording" class="settings-group" tabindex="-1" aria-labelledby="audio-title">
         <div class="settings-group-title">
-          <div><h2 id="audio-title">Recording access</h2><p>Yawn needs both sources before it can record a meeting.</p></div>
+          <h2 id="audio-title">Recording</h2>
           <button class="quiet-button" type="button" data-action="refresh">Check again</button>
         </div>
         <div class="settings-group-box">
@@ -33,10 +27,7 @@
       </section>
       <section id="transcription" class="settings-group" tabindex="-1" aria-labelledby="model-title">
         <div class="settings-group-title">
-          <div>
-            <h2 id="model-title">Transcription</h2>
-            <p>Choose how Yawn transcribes on this Mac. The selected option is used for your next transcription.</p>
-          </div>
+          <h2 id="model-title">Transcription</h2>
         </div>
         <div class="settings-group-box">
           <div id="transcription-engine" class="model-list" aria-live="polite"></div>
@@ -46,10 +37,7 @@
       </section>
       <section id="speakers" class="settings-group" tabindex="-1" aria-labelledby="speaker-model-title">
         <div class="settings-group-title">
-          <div>
-            <h2 id="speaker-model-title">Speaker analysis</h2>
-            <p>An optional anonymous speaker-cluster model. It only runs when you choose Analyze speakers for a finished meeting.</p>
-          </div>
+          <h2 id="speaker-model-title">Speakers</h2>
         </div>
         <div class="settings-group-box">
           <div id="speaker-model" class="model-list" aria-live="polite"></div>
@@ -57,48 +45,43 @@
           <p class="card-message">Model: <a href="https://huggingface.co/nvidia/Nemotron-3-Diarization" target="_blank" rel="noreferrer">NVIDIA Nemotron-3-Diarization</a> (openmdw-1.1).</p>
         </div>
       </section>
+      <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">
+        <div class="settings-group-title">
+          <h2 id="privacy-title">Storage</h2>
+        </div>
+        <div class="settings-group-box">
+          <dl class="privacy-rows">
+            <div class="privacy-row">
+              <dt>Meetings</dt>
+              <dd>On this Mac, until you delete them. A deleted meeting stays in Trash for 30 days.</dd>
+            </div>
+            <div class="privacy-row">
+              <dt>Audio</dt>
+              <dd>Kept 1, 7 or 30 days, chosen at the start of each meeting.</dd>
+            </div>
+            <div class="privacy-row">
+              <dt>Transcription</dt>
+              <dd>Runs on this Mac, with Apple speech or the downloaded model selected above.</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
       <section id="updates" class="settings-group" tabindex="-1" aria-labelledby="updates-title">
         <div class="settings-group-title">
-          <div>
-            <h2 id="updates-title">Updates</h2>
-            <p>New versions of Yawn, from the Yawn release server.</p>
-          </div>
+          <h2 id="updates-title">Updates</h2>
           <button class="quiet-button" type="button" data-action="check-updates">Check now</button>
         </div>
         <div class="settings-group-box">
           <div id="update-status" class="permission-list" aria-live="polite"></div>
           <label class="update-automatic">
-            <input id="update-automatic" type="checkbox" checked />
             <span>Check for updates automatically</span>
+            <input id="update-automatic" type="checkbox" checked />
           </label>
           <p id="update-disclosure" class="card-message">Once a day, Yawn downloads a small file from the release server that names the newest version. It sends no meeting data or account details; like any download, the server can see this Mac’s internet address.</p>
           <p id="update-message" class="card-message" role="status"></p>
         </div>
       </section>
-      <section id="storage" class="settings-group" tabindex="-1" aria-labelledby="privacy-title">
-        <div class="settings-group-title">
-          <div>
-            <h2 id="privacy-title">What happens with your meeting</h2>
-            <p>Where meeting data stays and when it is deleted.</p>
-          </div>
-        </div>
-        <div class="settings-group-box">
-          <dl class="privacy-rows">
-            <div class="privacy-row">
-              <dt>What leaves this Mac</dt>
-              <dd>Nothing from your meetings. Recording and transcription run and stay here. Personal notes, transcripts, and saved drafts stay on this Mac. Yawn has no account and makes no network calls with meeting data. Its only automatic connection is the optional update check described under Updates.</dd>
-            </div>
-            <div class="privacy-row">
-              <dt>Where transcription runs</dt>
-              <dd>On this Mac, using Apple speech or the downloaded model selected in Transcription.</dd>
-            </div>
-            <div class="privacy-row">
-              <dt>What is kept, and for how long</dt>
-              <dd>Transcript and notes: until you delete them (deleted meetings stay in Trash for 30 days). Recording audio: 1, 7, or 30 days — you choose at the start of each meeting.</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
+      <p class="privacy-sentence">Nothing leaves this Mac. Yawn has no account and makes no network calls with meeting data; the optional update check above is its only connection.</p>
     </main>
     <script type="module" src="settings.js"></script>
   </body>

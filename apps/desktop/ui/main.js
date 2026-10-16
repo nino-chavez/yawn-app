@@ -311,15 +311,15 @@ function byteSizeLabel(bytes) {
 function noteSaveCopy() {
   if (state.noteUnreadable) return "Not editable";
   if (state.noteSaveState === "saving") return "Saving…";
-  if (state.noteSaveState === "saved") return "Saved on this Mac";
-  return "Stored on this Mac";
+  if (state.noteSaveState === "saved") return "Saved";
+  return "";
 }
 
 function contextSaveCopy() {
   if (state.contextUnreadable) return "Not editable";
   if (state.contextSaveState === "saving") return "Saving…";
-  if (state.contextSaveState === "saved") return "Saved on this Mac";
-  return "Stored on this Mac";
+  if (state.contextSaveState === "saved") return "Saved";
+  return "";
 }
 
 function permissionAction(permission) {
@@ -409,6 +409,7 @@ function render() {
         </div>
         <div class="toolbar-title">${escapeHtml(title)}</div>
         <div class="toolbar-right" data-tauri-drag-region="false">
+          ${view === "meeting" ? renderToolbarMeetingActions() : ""}
           <label class="search-field">
             <span class="visually-hidden">Search meetings</span>
             <input type="search" data-field="library-search" value="${escapeHtml(state.search)}" placeholder="Search meetings" aria-label="Search meetings" autocorrect="off" spellcheck="false" />
@@ -730,6 +731,63 @@ function renderToolbarRecordControl() {
     ${permissionRecoveryAction ? `<button class="btn primary" type="button" data-action="${escapeHtml(permissionRecoveryAction.action)}" ${probing ? "disabled" : ""}>${probing ? "Checking…" : escapeHtml(permissionRecoveryAction.label)}</button>` : ""}
     ${reason ? `<span id="record-unavailable-reason" class="caption" role="status" aria-live="polite">${escapeHtml(reason)}</span>` : ""}
   `;
+}
+
+// DESIGN.md (Rail, 2026-10-15): secondary actions live in the toolbar -- an
+// Export control and a More menu with rename, retry, lock, delete recording,
+// delete transcript and Move to Trash -- never as buttons inside the
+// document. The menu keeps the `meeting-manage-control` wrapper and the
+// `toggle-meeting-management` action, so open/close handling (click outside,
+// Esc, selection change) is unchanged from the in-document Manage menu it
+// replaces. Nothing is removed from the command surface.
+function renderToolbarMeetingActions() {
+  const selection = state.selected;
+  if (!selection) return "";
+  const { note, transcript } = selection;
+  const lock = meetingLockPresentation(note);
+  if (lock && lock.state !== "unlocked" && lock.state !== "open") return "";
+  if (meetingBlockingRecovery(note, transcript)) return "";
+  const recovery = meetingRecoveryPresentation(note, transcript);
+  const metadataRevision = state.library?.metadataRevision;
+  const canRename = metadataRevision != null && Number.isInteger(Number(metadataRevision));
+  const retry = transcriptRetryPresentation({
+    meetingId: note?.meetingId || selection.row?.meetingId || "",
+    transcriptMeetingId: transcript?.meetingId || "",
+    sourceTranscriptSha256: transcript?.currentTranscriptSha256 || "",
+    audioRetentionState: note?.audioRetention?.state || "",
+    capture: state.snapshot?.capture || "",
+    recovery,
+    pending: selection.transcriptRetry || null,
+  });
+  // Literal action names per item, so the lock wiring stays greppable from
+  // the test that asserts every locked action is reachable.
+  const items = [];
+  if (canRename) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="rename-meeting">Rename…</button>`);
+  if (retry) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="${escapeHtml(retry.action)}" ${state.transcriptRetry?.phase === "starting" ? "disabled" : ""}>${escapeHtml(retry.label)}</button>`);
+  if (lock?.state === "unlocked") items.push(`<button class="menu-item" type="button" role="menuitem" data-action="lock-meeting">Lock meeting…</button>`);
+  if (note?.lock?.locked) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="unlock-meeting">Remove lock…</button>`);
+  if (note?.audioDeletionHandle) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="delete-recording">Delete recording…</button>`);
+  if (note?.transcriptDeletionHandle) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="delete-transcript">Delete transcript…</button>`);
+  // Destructive, and never the primary (refit R20): a plain menu item, last.
+  if (note?.meetingDeletionHandle) items.push(`<button class="menu-item" type="button" role="menuitem" data-action="delete-meeting">Move to Trash…</button>`);
+  const canExport = Boolean(transcript?.turns?.length);
+  if (!items.length && !canExport) return "";
+  return `
+    <div class="toolbar-actions">
+      ${canExport ? `<button class="icon-button" type="button" data-action="export-meeting" title="Export" aria-label="Export this meeting">
+        <svg width="13" height="15" viewBox="0 0 13 15" fill="none" aria-hidden="true"><path d="M6.5 1v9M3.5 4l3-3 3 3M2 7v6h9V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>` : ""}
+      ${items.length ? `<div class="meeting-manage-control">
+        <button class="icon-button" type="button" data-action="toggle-meeting-management" title="More" aria-label="More actions for this meeting" aria-haspopup="menu" aria-expanded="${state.meetingManagementOpen ? "true" : "false"}" aria-controls="meeting-manage-menu">
+          <svg width="14" height="4" viewBox="0 0 14 4" aria-hidden="true"><circle cx="2" cy="2" r="1.6" fill="currentColor"/><circle cx="7" cy="2" r="1.6" fill="currentColor"/><circle cx="12" cy="2" r="1.6" fill="currentColor"/></svg>
+        </button>
+        ${state.meetingManagementOpen ? `
+        <div class="meeting-manage-menu" id="meeting-manage-menu" role="menu" aria-label="Meeting actions">
+          ${items.join("")}
+        </div>` : ""}
+      </div>` : ""}
+      ${state.transcriptRetry?.phase === "starting" ? `<span class="caption toolbar-status" role="status" aria-live="polite">Preparing retry…</span>` : ""}
+    </div>`;
 }
 
 // -- Sidebar ---------------------------------------------------------------
@@ -1193,12 +1251,10 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
       </section>
     `;
     }
-    if (note?.state !== "transcript-only") return "";
-    return `
-      <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading">
-        <p id="meeting-note-heading" class="doc-fact">Automatic note generation is no longer available. Your notes and transcript remain available.</p>
-      </section>
-    `;
+    // A transcript-only meeting has nothing to say here: the operator's notes
+    // and the transcript below are the page (brief, "Generation's retirement
+    // is not announced in the meeting view").
+    return "";
   }
   if (presentation.state === "extracts-only") {
     const count = presentation.highlights.length;
@@ -1281,31 +1337,6 @@ function transcriptRetryContext(note, transcript, pending = null) {
     recovery: meetingRecoveryPresentation(note, transcript),
     pending,
   });
-}
-
-function renderTranscriptRetryAction(note, transcript, recovery) {
-  const retry = transcriptRetryPresentation({
-    meetingId: note?.meetingId || state.selected?.row?.meetingId || "",
-    transcriptMeetingId: transcript?.meetingId || "",
-    sourceTranscriptSha256: transcript?.currentTranscriptSha256 || "",
-    audioRetentionState: note?.audioRetention?.state || "",
-    capture: state.snapshot?.capture || "",
-    recovery,
-    pending: state.selected?.transcriptRetry || null,
-  });
-  if (!retry) return "";
-  const starting = state.transcriptRetry?.phase === "starting";
-  return `
-    <section class="transcript-retry-action" aria-labelledby="transcript-retry-heading">
-      <div>
-        <h3 id="transcript-retry-heading">Transcript retry</h3>
-        <p>${retry.pending
-    ? "A retry is ready to review. Keep the retained transcript or explicitly use the retry."
-    : "Run a local retry, then compare it with the retained transcript before deciding."}</p>
-      </div>
-      <button class="btn" id="transcript-retry-action" type="button" data-action="${retry.action}" ${starting ? "disabled" : ""}>${starting ? "Preparing retry…" : escapeHtml(retry.label)}</button>
-    </section>
-  `;
 }
 
 // DESIGN.md's Inspector: the cited turn plus one neighbour on each side,
@@ -1410,30 +1441,10 @@ function renderMeetingPane() {
     : selectedNoteState === "saving"
       ? "Saving…"
       : selectedNoteState === "saved"
-        ? "Saved on this Mac"
-        : "Stored on this Mac";
+        ? "Saved"
+        : "";
   const noteEditable = !operatorNote?.unreadable && Boolean(note?.operatorNoteHandle);
   const claimEvidence = state.selected.claimEvidence || {};
-  const metadataRevision = state.library?.metadataRevision;
-  const canRename = metadataRevision != null && Number.isInteger(Number(metadataRevision));
-  const canDeleteRecording = Boolean(note?.audioDeletionHandle);
-  const canDeleteTranscript = Boolean(note?.transcriptDeletionHandle);
-  const canDeleteMeeting = Boolean(note?.meetingDeletionHandle);
-  // R34: Move to Trash renders a plain `.btn`, like the four destructive
-  // actions beside it. It used to carry `class="btn danger"`, and
-  // `.btn.danger` is defined in neither stylesheet -- so the word did nothing
-  // and the control was correct by accident. That is a trap rather than a
-  // harmless leftover: the day someone adds a `.btn.danger` rule it lands on
-  // the one control DESIGN.md says must never be styled up. The specimen
-  // carries btn, primary, record, record.live and pressed, and "a component
-  // not on it is not in the system". R20 removed this control's accent fill
-  // and left the word behind.
-  //
-  // Roadmap intake I5. Locking is offered on any readable meeting; removing a
-  // lock is offered wherever one exists.
-  const canLock = lock?.state === "unlocked";
-  const canUnlock = Boolean(note?.lock?.locked);
-  const canManage = canDeleteRecording || canDeleteTranscript || canDeleteMeeting || canLock || canUnlock;
   // A withheld saved draft is a fact about the note only; the retained audio
   // stays playable.
   const playback = retainedAudioPlaybackPresentation(
@@ -1444,22 +1455,6 @@ function renderMeetingPane() {
   const evidenceSplit = state.selected?.evidenceSplit || { open: false, ordinal: null, turnIndex: null };
   const inspectorOpen = Boolean(evidenceSplit.open && transcript?.turns?.length);
 
-  // DESIGN.md: Retry, export, rename, lock, Manage, Move to Trash stay
-  // available but demoted to the Manage menu / secondary controls next to
-  // the title -- nothing removed from the command surface.
-  const manageMenu = canManage ? `
-    <div class="meeting-manage-control">
-      <button class="btn" type="button" data-action="toggle-meeting-management" aria-expanded="${state.meetingManagementOpen ? "true" : "false"}" aria-controls="meeting-manage-menu">Manage</button>
-      ${state.meetingManagementOpen ? `
-      <div class="meeting-manage-menu" id="meeting-manage-menu" role="group" aria-label="Manage this meeting">
-        <p class="caption">These actions affect only this meeting on this Mac.</p>
-        ${canLock ? `<button class="btn" type="button" data-action="lock-meeting">Lock meeting…</button>` : ""}
-        ${canUnlock ? `<button class="btn" type="button" data-action="unlock-meeting">Remove lock…</button>` : ""}
-        ${canDeleteRecording ? `<button class="btn" type="button" data-action="delete-recording">Delete recording</button>` : ""}
-        ${canDeleteTranscript ? `<button class="btn" type="button" data-action="delete-transcript">Delete transcript</button>` : ""}
-        ${canDeleteMeeting ? `<button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
-      </div>` : ""}
-    </div>` : "";
 
   return `
     <div class="doc-wrap">
@@ -1470,15 +1465,10 @@ function renderMeetingPane() {
             <h1 id="meeting-title">${escapeHtml(title)}</h1>
             <p class="doc-caption">${escapeHtml(dateLabel(row.createdAtEpochSeconds))} · ${escapeHtml(meetingStateCaption(note?.state))}</p>
           </div>
-          <div class="doc-head-actions">
-            ${canRename ? `<button class="btn" type="button" data-action="rename-meeting">Rename</button>` : ""}
-            ${manageMenu}
-          </div>
         </div>
         ${renderMeetingCapturePauses(note?.capturePauses)}
         ${audioReleasedFact(note) ? `<p class="doc-fact">${escapeHtml(audioReleasedFact(note))}</p>` : ""}
         ${renderMeetingNote(note, claimEvidence, recovery)}
-        ${renderTranscriptRetryAction(note, transcript, recovery)}
         ${renderRetainedAudioPlayback(playback)}
         ${renderMeetingContextSection(note)}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
@@ -1486,7 +1476,7 @@ function renderMeetingPane() {
           ${operatorNote?.unreadable
             ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
             : `<textarea class="notes-area meeting-notes-editor" data-field="library-operator-note" data-meeting-id="${escapeHtml(row.meetingId || "")}" aria-label="Your meeting notes" placeholder="Write down the detail you will want to verify later." ${noteEditable ? "" : "disabled"}>${escapeHtml(state.selected?.operatorNoteDraft || "")}</textarea>
-              <p class="doc-fact">${noteEditable ? "Saved separately from the transcript. These are your notes, not generated claims." : "Reopen this meeting to edit its notes."}</p>`}
+              ${noteEditable ? "" : `<p class="doc-fact">Reopen this meeting to edit its notes.</p>`}`}
         </section>
         <div class="doc-transcript-disclosure-wrap">${renderTranscriptDisclosure(transcript, recovery, note)}</div>
       </article>
@@ -1847,7 +1837,9 @@ function closeModal() {
   // so a cancelled guided invitation never leaks its hint into the next
   // ordinary Record click.
   state.startSheetGuided = false;
-  if (retryOpen) queueMicrotask(() => root.querySelector("#transcript-retry-action")?.focus());
+  // The retry action lives in the toolbar's More menu (Rail slice 1), so
+  // focus returns to the menu button the person opened it from.
+  if (retryOpen) queueMicrotask(() => root.querySelector('[data-action="toggle-meeting-management"]')?.focus());
 }
 
 async function openVocabulary() {
@@ -2225,8 +2217,8 @@ function setLibraryNoteSaveCopy() {
     : selection.operatorNoteSaveState === "saving"
       ? "Saving…"
       : selection.operatorNoteSaveState === "saved"
-        ? "Saved on this Mac"
-        : "Stored on this Mac";
+        ? "Saved"
+        : "";
 }
 
 function reportError(error) {
@@ -2812,6 +2804,7 @@ async function openTranscriptRetry() {
   const selection = state.selected;
   const retry = transcriptRetryContext(selection?.note, selection?.transcript, selection?.transcriptRetry);
   if (!selection || !retry) return;
+  state.meetingManagementOpen = false;
   if (retry.pending) {
     state.transcriptRetry = { ...retry.pending, phase: "ready" };
     state.modal = "transcript-retry";
