@@ -12,7 +12,7 @@ export const SETTINGS_MARKUP = `
         </div>
         <div class="settings-group-box">
           <div class="permission-line">
-            <div class="permission-copy"><strong>Theme</strong><p>System follows the Mac's light or dark setting.</p></div>
+            <div class="permission-copy"><strong>Theme</strong><p id="appearance-detail"></p></div>
             <div class="appearance-choice" role="group" aria-label="Theme" id="appearance-choice"></div>
           </div>
         </div>
@@ -573,6 +573,14 @@ export function mountSettings(root = document) {
     if (!choiceRoot) return;
     const current = getAppearance();
     const labels = { system: "System", light: "Light", dark: "Dark" };
+    // The detail says what the selected choice does, so it never contradicts it.
+    const details = {
+      system: "Follows the Mac's light or dark setting.",
+      light: "Always light, whatever the Mac uses.",
+      dark: "Always dark, whatever the Mac uses.",
+    };
+    const detail = root.querySelector("#appearance-detail");
+    if (detail) detail.textContent = details[current] || details.system;
     choiceRoot.innerHTML = APPEARANCES.map((value) => `<button class="appearance-option" type="button" data-settings-action="appearance" data-value="${value}" aria-pressed="${value === current ? "true" : "false"}">${labels[value]}</button>`).join("");
   }
 

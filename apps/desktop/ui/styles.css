@@ -1595,6 +1595,12 @@ h3 {
   backdrop-filter: none;
 }
 
+/* The shared sheet border is white at 65%: invisible on light paper, a bright
+   outline on dark. In dark the sheets take the hairline instead. */
+:root[data-theme="dark"] .start-sheet {
+  border-color: var(--separator);
+}
+
 .first-run-sheet {
   width: min(480px, 100%);
   max-width: 100%;
@@ -2779,6 +2785,15 @@ html, body, #app {
 
 .row.recording-now {
   color: var(--record);
+}
+
+/* The title is a flex row (attention dot + text), and text-overflow does not
+   apply to text placed directly in a flex container, so the text span carries
+   the ellipsis itself; without it long titles were cut mid-letter. */
+.row-title > span:not(.attention-dot) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row.recording-now .row-title {
