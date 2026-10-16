@@ -123,6 +123,9 @@ export function mountSettings(root = document) {
   let speakerModelPoll = null;
   let updateStatus = null;
   let updatePoll = null;
+  // Set when the page unmounts: a refresh whose reply lands after that must
+  // not arm another poll, or it would run for the rest of the session.
+  let disposed = false;
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -279,6 +282,7 @@ export function mountSettings(root = document) {
   }
 
   function scheduleTranscriptionEnginePoll() {
+    if (disposed) return;
     clearTimeout(transcriptionEnginePoll);
     if (transcriptionEngine?.operationActive) {
       transcriptionEnginePoll = setTimeout(() => void refreshTranscriptionEngine(), 500);
@@ -304,6 +308,7 @@ export function mountSettings(root = document) {
   }
 
   function scheduleSpeakerModelPoll() {
+    if (disposed) return;
     clearTimeout(speakerModelPoll);
     if (speakerModel?.changeActive) speakerModelPoll = setTimeout(() => void refreshSpeakerModel(), 500);
     else if (!speakerModel) speakerModelPoll = setTimeout(() => void refreshSpeakerModel(), 2000);
@@ -334,6 +339,7 @@ export function mountSettings(root = document) {
   // active-download cadence) for as long as there is no snapshot yet, whether
   // that is the first check still pending or a check that just failed.
   function scheduleModelPoll() {
+    if (disposed) return;
     clearTimeout(modelPoll);
     // D-MODEL: `modelBuiltIn` is a permanent fact about this build, not a
     // transient failure -- nothing will change on a retry, so this stops
@@ -487,6 +493,7 @@ export function mountSettings(root = document) {
   }
 
   function scheduleUpdatePoll() {
+    if (disposed) return;
     clearTimeout(updatePoll);
     updatePoll = setTimeout(() => void refreshUpdates(), updatePresentation(updateStatus).poll ? 1000 : 30000);
   }
@@ -577,6 +584,7 @@ export function mountSettings(root = document) {
   void refreshUpdates();
 
   return () => {
+    disposed = true;
     for (const timer of [transcriptionEnginePoll, modelPoll, speakerModelPoll, updatePoll]) {
       clearTimeout(timer);
       clearInterval(timer);

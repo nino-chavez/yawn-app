@@ -48,3 +48,12 @@ test("dark-only values follow the app's theme attribute, not the system media qu
   const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
   assert.doesNotMatch(styles, /@media \(prefers-color-scheme: dark\)/);
 });
+
+test("an unmounted Settings page arms no further polls", async () => {
+  const settings = await readFile(new URL("./settings.js", import.meta.url), "utf8");
+  for (const name of ["scheduleTranscriptionEnginePoll", "scheduleSpeakerModelPoll", "scheduleModelPoll", "scheduleUpdatePoll"]) {
+    const body = settings.slice(settings.indexOf(`function ${name}()`), settings.indexOf(`function ${name}()`) + 120);
+    assert.match(body, /if \(disposed\) return;/, name);
+  }
+  assert.match(settings, /return \(\) => \{\n\s+disposed = true;/);
+});
