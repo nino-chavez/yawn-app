@@ -37,12 +37,12 @@
 
 /* The section label: the one uppercase in the window, tracked, in Label 3. */
 .settings-shell h2 {
-  font-size: 10px;
+  font-size: var(--t-label);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--label-3);
-  line-height: 20px;
+  line-height: calc(20px * var(--text-scale));
 }
 
 .settings-shell .settings-group-box {
@@ -72,13 +72,13 @@
   font-size: var(--t-body);
   font-weight: 500;
   color: var(--label);
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
 }
 
 .settings-shell .permission-copy p, .settings-shell .model-copy p, .settings-shell .privacy-row dd {
   margin: 1px 0 0;
   font-size: var(--t-caption);
-  line-height: 16px;
+  line-height: calc(16px * var(--text-scale));
   color: var(--label-3);
 }
 
@@ -96,8 +96,8 @@
 
 .settings-shell .model-size, .settings-shell .state {
   flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: var(--t-small);
+  line-height: calc(18px * var(--text-scale));
   color: var(--label-2);
   white-space: nowrap;
 }
@@ -143,9 +143,9 @@
   background: var(--control);
   box-shadow: var(--control-shadow);
   color: var(--label);
-  font-size: 12px;
+  font-size: var(--t-small);
   font-weight: 500;
-  line-height: 20px;
+  line-height: calc(20px * var(--text-scale));
   white-space: nowrap;
   cursor: default;
 }
@@ -179,7 +179,7 @@
 .settings-shell .card-message, .settings-shell .message {
   margin: var(--space-8) 0 0;
   font-size: var(--t-caption);
-  line-height: 16px;
+  line-height: calc(16px * var(--text-scale));
   color: var(--label-3);
 }
 
@@ -199,7 +199,7 @@
 .settings-shell .privacy-sentence {
   margin: var(--space-24) 0 0;
   font-size: var(--t-caption);
-  line-height: 16px;
+  line-height: calc(16px * var(--text-scale));
   color: var(--label-3);
 }
 
@@ -218,8 +218,8 @@
   border-radius: var(--r-control);
   background: transparent;
   color: var(--label-2);
-  font-size: 12px;
-  line-height: 20px;
+  font-size: var(--t-small);
+  line-height: calc(20px * var(--text-scale));
   cursor: default;
 }
 
@@ -242,6 +242,7 @@
 }
 
 .settings-page .settings-shell {
-  max-width: 580px;
+  /* Grows with the text size, so larger text does not just wrap sooner. */
+  max-width: calc(580px * var(--text-scale));
   padding-top: var(--space-24);
 }

@@ -57,6 +57,8 @@ const contrastLight = Object.fromEntries(Object.entries(c.contrastMore).map(([k,
 const contrastDark = Object.fromEntries(Object.entries(c.contrastMore).map(([k, v]) => [k, v.dark]));
 
 const fs_ = t.fontSize;
+// A size in px, multiplied by the root text scale.
+const scaled = (px) => `calc(${px} * var(--text-scale))`;
 const rad = t.radius;
 const layout = t.layout;
 const motion = t.motion;
@@ -74,14 +76,19 @@ function render() {
   color-scheme: light dark;
   --font: ${t.font.body};
   --font-mono: ${t.font.mono};
-  --t-caption: ${fs_.caption.size}; --t-body: ${fs_.body.size}; --t-read: ${fs_.read.size}; --t-title: ${fs_.title.size}; --t-large: ${fs_.large.size};
+  /* Text size (2026-10-16): every type size is its token times --text-scale,
+     which text-size.mjs sets on the root from the Settings choice. macOS
+     keeps its per-app Text Size list to Apple's own apps, so the scale is
+     Yawn's own preference; 1 renders the sizes below unchanged. */
+  --text-scale: 1;
+  ${Object.entries(fs_).filter(([k]) => k !== "transcript").map(([k, v]) => `--t-${k}: ${scaled(v.size)};`).join(" ")}
   --lh-body: ${fs_.body.lineHeight}; --lh-read: ${fs_.read.lineHeight};
   /* Transcript turn text is its own documented size (DESIGN.md "transcript 14
      at 1.55"), distinct from body -- the visual refit (2026-09-03) wires it
      in so styles.css's transcript rendering stops leaning on a duplicate
      --text-transcript-body custom property for a value tokens.json already
      held. */
-  --t-transcript: ${fs_.transcript.size}; --lh-transcript: ${fs_.transcript.lineHeight};
+  --t-transcript: ${scaled(fs_.transcript.size)}; --lh-transcript: ${fs_.transcript.lineHeight};
   --measure: ${t.measure};
   --r-control: ${rad.control}; --r-card: ${rad.card};
   --toolbar-h: ${layout.toolbar}; --sidebar-w: ${layout.sidebar}; --control-h: ${layout.control.default}; --control-h-secondary: ${layout.control.secondary};
@@ -125,7 +132,7 @@ body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); back
 * { box-sizing: border-box; }
 button, input { font: inherit; color: inherit; }
 .btn { display: inline-flex; min-height: var(--control-h); align-items: center; justify-content: center; padding: 0 10px; border-radius: var(--r-control); background: var(--control);
-  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; color: var(--label); }
+  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; font-size: var(--t-small); font-weight: 500; line-height: ${scaled("20px")}; white-space: nowrap; color: var(--label); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
 .btn.record.live { background: var(--record); color: var(--on-record); border-color: transparent; }
@@ -145,7 +152,7 @@ button, input { font: inherit; color: inherit; }
 .traffic { display: inline-flex; gap: 8px; margin-right: 12px; }
 .traffic i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
 .traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
-.fixture-tag { position: absolute; right: 8px; bottom: 6px; font-size: 10px; color: var(--label-3); font-family: var(--font-mono); }
+.fixture-tag { position: absolute; right: 8px; bottom: 6px; font-size: var(--t-label); color: var(--label-3); font-family: var(--font-mono); }
 
 /* Focus, pressed, disabled — one rule each, system-shaped. */
 :focus-visible { outline: 2px solid var(--moment); outline-offset: 1px; border-radius: var(--r-control); }

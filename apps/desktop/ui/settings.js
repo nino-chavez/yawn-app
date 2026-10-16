@@ -1,5 +1,6 @@
 import { mergePermissions, updatePresentation } from "./view-model.mjs";
 import { APPEARANCES, getAppearance, setAppearance } from "./appearance.mjs";
+import { TEXT_SIZES, getTextSize, setTextSize } from "./text-size.mjs";
 
 // The Settings page (Rail, 2026-10-16): mounted inside the main window's
 // document pane, opened from the sidebar gear, the Settings menu item and ⌘,.
@@ -14,6 +15,10 @@ export const SETTINGS_MARKUP = `
           <div class="permission-line">
             <div class="permission-copy"><strong>Theme</strong><p id="appearance-detail"></p></div>
             <div class="appearance-choice" role="group" aria-label="Theme" id="appearance-choice"></div>
+          </div>
+          <div class="permission-line">
+            <div class="permission-copy"><strong>Text size</strong><p id="text-size-detail"></p></div>
+            <div class="appearance-choice" role="group" aria-label="Text size" id="text-size-choice"></div>
           </div>
         </div>
       </section>
@@ -561,6 +566,7 @@ export function mountSettings(root = document) {
     if (action === "check-updates") void checkForUpdates();
     if (action === "install-update") void installUpdate();
     if (action === "appearance") { setAppearance(control.dataset.value); renderAppearance(); }
+    if (action === "text-size") { setTextSize(control.dataset.value); renderTextSize(); }
     // This page owns its controls: keep the main window's document-level
     // handler from also acting on a click that landed here.
     if (action) event.stopPropagation?.();
@@ -584,7 +590,22 @@ export function mountSettings(root = document) {
     choiceRoot.innerHTML = APPEARANCES.map((value) => `<button class="appearance-option" type="button" data-settings-action="appearance" data-value="${value}" aria-pressed="${value === current ? "true" : "false"}">${labels[value]}</button>`).join("");
   }
 
+  // Text size (2026-10-16): macOS keeps its per-app Text Size list to Apple's
+  // own apps, so Yawn offers its own steps. Each scales every type size.
+  function renderTextSize() {
+    const choiceRoot = root.querySelector("#text-size-choice");
+    if (!choiceRoot) return;
+    const current = getTextSize();
+    const labels = { default: "Default", large: "Large", larger: "Larger", largest: "Largest" };
+    const detail = root.querySelector("#text-size-detail");
+    if (detail) detail.textContent = current === "default"
+      ? "The Mac's standard size."
+      : "Larger text everywhere in Yawn.";
+    choiceRoot.innerHTML = TEXT_SIZES.map((value) => `<button class="appearance-option" type="button" data-settings-action="text-size" data-value="${value}" aria-pressed="${value === current ? "true" : "false"}">${labels[value]}</button>`).join("");
+  }
+
   renderAppearance();
+  renderTextSize();
   void refresh();
   void refreshModels();
   void refreshTranscriptionEngine();

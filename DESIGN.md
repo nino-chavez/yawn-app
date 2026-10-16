@@ -121,8 +121,9 @@ and Dynamic Type styles on the iPad.
 | Settings section label · row · detail · state | 10px uppercase tracked · 13px · 11px · 12px, Label 2 | not in scope |
 | First-run line and its caption | 20px weight 650 · 15px Label 2 · 11px Label 3 | title3 · subheadline, Label 3 |
 
-Tabular numerals on every time. Large text follows the system setting; the
-ledger's note column is a measure in characters, so it holds.
+Tabular numerals on every time. Large text: Settings → Appearance → Text size
+(Default, Large, Larger, Largest) multiplies every size above by 1, 1.15, 1.3
+or 1.5; the ledger's note column is a measure in characters, so it holds.
 
 ## Composition, Mac
 
@@ -285,8 +286,14 @@ Every shortcut is also a menu item.
 
 ## Accessibility
 
-Large text: the Mac sizes follow the system setting and the note column's
-measure is in characters. Increased contrast: separators and Label 3 darken
+Large text: every Mac type size is a token times `--text-scale`, set from
+Settings → Appearance → Text size (`text-size.mjs`); the note column's measure
+is in characters and the ledger lays out again when the size changes. Yawn
+cannot follow the Mac's own Accessibility → Display → Text Size: on macOS 27
+that per-app list holds only Apple's apps (`com.apple.universalaccess`
+`FontSizeCategory` names `com.apple.*` bundles and a global value) and offers no
+way for a third-party app to join. WebKit's `-apple-system-body` keyword
+resolves to 13px on the Mac (WebKit bug 260880), the size Yawn already uses. Increased contrast: separators and Label 3 darken
 (`prefers-contrast: more`, token override), no new colors. Reduced motion: as
 above. Reduce transparency: the sheet dim is an opaque panel. VoiceOver: a
 sidebar row is a button named "title, status, date"; a rail mark is a button
