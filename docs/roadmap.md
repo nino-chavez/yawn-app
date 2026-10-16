@@ -24,6 +24,20 @@ apps, and the Mac carries the time link, which needs a moment per typed line
 work: the brief amendment and the note-moment storage first, then the Mac
 implementation wave, with the iPad slices continuing on the same language.
 
+Built 2026-10-16. The Mac wave landed in three slices (PR #137 the tokens,
+toolbar and single-form Settings; PR #138 the ledger and the transport; PR
+#139 the live page, needs attention, first run and the Rail fidelity gate)
+and the iPad took the paper language with its components prepared (PR
+#140). Cold reviews: `evidence/screen-reviews/mac-rail-2026-10-16-cold.md`
+(five passes, WKWebView harness frames) and `ipad-paper-2026-10-16-cold.md`
+(four passes, simulator frames). Owed: the installed-build pass on the Mac
+with large text and increased contrast (the Fixture app is built and its
+root seeds a 23-minute ledger meeting), device captures on the iPad, the
+folds' expansion, a label for the playback-source chips. For the operator:
+whether the empty rail stays on first run (every cold reviewer on both
+platforms read it as a stray divider), and what an interrupted recording's
+next action is (none exists; Move to Trash stays secondary).
+
 ## Current source amendment — 2026-09-30
 
 New automatic note generation and note-model downloads are retired in source.

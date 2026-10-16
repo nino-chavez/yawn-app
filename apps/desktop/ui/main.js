@@ -1542,7 +1542,7 @@ function renderMeetingPane() {
         ${renderTransport(playback, transcript, row)}
         ${attentionFirst ? noteBlock : ""}
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
-          <div class="note-editor-head${ledgerHasTurns ? " ledger-head" : ""}">${ledgerHasTurns ? `<span class="ledger-head-rail">Typed at</span>` : ""}<span class="ledger-head-note"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></span>${ledgerHasTurns ? `<span class="ledger-head-turns">Nearest in the transcript</span>` : ""}</div>
+          <div class="note-editor-head${ledgerHasTurns ? " ledger-head" : ""}">${ledgerHasTurns ? `<span class="ledger-head-rail">Elapsed</span>` : ""}<span class="ledger-head-note"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></span>${ledgerHasTurns ? `<span class="ledger-head-turns">Nearest in the transcript</span>` : ""}</div>
           ${operatorNote?.unreadable
             ? `<p class="doc-fact">Yawn could not read this meeting’s personal note, so it was left unchanged.</p>`
             : renderNoteLedger({
@@ -1753,7 +1753,7 @@ function layoutLedgers() {
     const after = ledger.querySelector(".ledger-after");
     if (after) {
       const index = Number(after.dataset.line);
-      if (Number.isFinite(tops[index])) after.style.top = `${tops[index] - 22}px`;
+      if (Number.isFinite(tops[index])) after.style.top = `${tops[index] + heights[index] / 2 - 13}px`;
     }
     const stop = ledger.querySelector(".ledger-stop");
     if (stop) {

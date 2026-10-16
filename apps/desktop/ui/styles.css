@@ -3141,25 +3141,21 @@ html, body, #app {
   white-space: nowrap;
 }
 
+/* "After the meeting" sits in the gutter where the line's time would be,
+   level with the first line typed after Stop: the lines are consecutive, so
+   a divider between them had no room and overprinted the line above (cold
+   review 2026-10-16). */
 .ledger-after {
   position: absolute;
-  left: 76px;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  line-height: 16px;
+  left: 0;
+  width: 52px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 13px;
   color: var(--label-3);
-  white-space: nowrap;
 }
 
-.ledger-after::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--separator);
-}
+
 
 .ledger-note {
   position: relative;
@@ -3582,10 +3578,16 @@ html, body, #app {
 .note-editor-head.ledger-head {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr) 324px;
+  /* No grid gap: the ledger has none, and a gap would shift the headings
+     off the columns they name. */
+  gap: 0;
   align-items: baseline;
   max-width: none;
-  /* The page gutter is the head's own first column here, so the head starts
-     where the ledger starts and the three cells land on its three columns. */
+}
+/* The page gutter is the head's own first column here, so the head starts
+   where the ledger starts and the three cells land on its three columns
+   (the .doc-page rule above gives every other head the gutter as margin). */
+.doc-page .your-notes-section > .note-editor-head.ledger-head {
   margin-left: 0;
 }
 .ledger-head-rail {

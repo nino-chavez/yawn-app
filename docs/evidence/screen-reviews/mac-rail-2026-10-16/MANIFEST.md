@@ -23,6 +23,11 @@ the app would not come forward), so the installed pass is still owed.
 Large text and increased contrast were not captured here: the harness runner
 has no switch for either, and the installed pass owes them.
 
+The frames are from the tree of the commit that adds the cold review record
+(`mac-rail-2026-10-16-cold.md`); the record names what each of its five
+passes judged. Light and dark frames of one state show the same data: the
+stub's fixture rows carry a fixed time of day.
+
 The cold packet used neutral names: m1 ledger-light, m2 ledger-dark, m3
 capture-light, m4 capture-dark, m5 interrupted-light, m6 interrupted-dark, m7
 summary-failed-light, m8 summary-failed-dark, m9 first-run-light, m10
