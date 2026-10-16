@@ -145,7 +145,7 @@ test("the shared motion tokens are defined once and every new animation reads th
   );
   const animationDeclarations = [...styles.matchAll(/animation:\s*([^;]+);/g)].map(([, value]) => value);
   const motionDeclarations = animationDeclarations.filter((value) => value.includes("motion-fade-in") || value.includes("motion-rise-in"));
-  assert.equal(motionDeclarations.length, 4, "expected backdrop, dialog, popover, and toast to each declare one animation");
+  assert.equal(motionDeclarations.length, 5, "expected backdrop, dialog, popover, toast, and an open ledger fold to each declare one animation");
   for (const value of motionDeclarations) {
     assert.match(value, /var\(--motion-(fast|standard)\)/, `duration must read a token, not a literal: ${value}`);
     assert.doesNotMatch(value, /\d+m?s\b/, `no literal duration alongside the token: ${value}`);

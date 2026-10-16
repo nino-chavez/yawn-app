@@ -1725,10 +1725,11 @@ export function isManualTranscriptScroll(nowMs, syncSuppressedUntilMs) {
 // sheets: the innermost, most transient surface closes first. A popover
 // closing under a reader's cursor while a sheet stays open behind it is the
 // "no fighting the reader" rule read backwards.
-export function nextEscapeTarget({ popoverOpen = false, modalOpen = false, splitOpen = false } = {}) {
+export function nextEscapeTarget({ popoverOpen = false, modalOpen = false, splitOpen = false, foldOpen = false } = {}) {
   if (popoverOpen) return "popover";
   if (modalOpen) return "modal";
   if (splitOpen) return "split";
+  if (foldOpen) return "fold";
   return null;
 }
 
@@ -1966,6 +1967,34 @@ export function noteLedgerPresentation({ text, moments, turns, pauses } = {}) {
     : -1;
   const timed = rows.filter((row) => row.seconds !== null).length;
   return { rows, timed, hasRail: timed > 0, afterStopLine: after, lastTimedLine };
+}
+
+// A fold row between two shown turns (DESIGN.md, Components: collapsed,
+// expanded). Its key is the index of the turn it sits above, which stays put
+// when the note is edited, so an open fold survives typing and re-renders.
+// `turnIndexes` are the folded turns, in order; the page renders them in
+// place under the fold when it is open. VoiceOver names it as a disclosure
+// ("7 more turns", DESIGN.md Accessibility).
+export function ledgerFoldPresentation(row, openFolds = []) {
+  const count = Number(row?.foldedBefore) || 0;
+  const turnIndex = Number(row?.turnIndex);
+  if (count <= 0 || !Number.isInteger(turnIndex) || turnIndex < count) return null;
+  const turnIndexes = Array.from({ length: count }, (_, offset) => turnIndex - count + offset);
+  return {
+    key: turnIndex,
+    count,
+    expanded: Array.isArray(openFolds) && openFolds.includes(turnIndex),
+    turnIndexes,
+    visibleLabel: `${openFolds?.includes?.(turnIndex) ? "\u2212" : "+"} ${count} ${count === 1 ? "turn" : "turns"}`,
+    accessibleName: `${count} more ${count === 1 ? "turn" : "turns"}`,
+  };
+}
+
+// Opening a fold appends its key, so Escape can close the most recent one;
+// a second press removes it.
+export function toggleLedgerFold(openFolds, key) {
+  const current = Array.isArray(openFolds) ? openFolds : [];
+  return current.includes(key) ? current.filter((value) => value !== key) : [...current, key];
 }
 
 // A tick per timed turn on the transport's track, as a percentage of the

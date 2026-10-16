@@ -4,4 +4,13 @@
 // fixture app cannot reach (a recording in progress, an interrupted one).
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 await sleep(800);
+// `&open-folds=N`: open the ledger's first N folds the way a person does, by
+// pressing them, so the frame shows the expanded state.
+const openFolds = Number(new URLSearchParams(location.search).get("open-folds")) || 0;
+for (let index = 0; index < openFolds; index += 1) {
+  const fold = document.querySelectorAll(".ledger-fold[aria-expanded='false']")[0];
+  if (!fold) return { ok: false, error: `only ${index} closed folds to open` };
+  fold.click();
+  await sleep(250);
+}
 return { ok: true, errors: window.__errors || [] };

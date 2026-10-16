@@ -8,6 +8,8 @@ import {
   alignNoteMoments,
   noteMomentSeconds,
   noteLedgerPresentation,
+  ledgerFoldPresentation,
+  toggleLedgerFold,
   transportTicksPresentation,
   captureIsInProgress,
   capturePresentation,
@@ -1552,6 +1554,7 @@ function renderMeetingPane() {
               pauses: note?.capturePauses,
               field: "library-operator-note",
               meetingId: row.meetingId || "",
+              openFolds: state.selected?.openFolds || [],
               editable: noteEditable,
               placeholder: "Write down the detail you will want to verify later.",
               stop: note?.state === "recovered-interrupted" && Number.isFinite(Number(row?.durationSeconds))
@@ -1663,7 +1666,10 @@ function renderTransport(playback, transcript, row) {
           : ""}
       ${length ? `<span class="transport-time">${escapeHtml(timeLabel(length))}</span>` : ""}
       <div class="transport-track" aria-hidden="true">${ticks.map((tick) => `<i class="transport-tick ${tick.you ? "you" : "them"}" style="left:${tick.percent}%"></i>`).join("")}</div>
-      ${sources.length > 1 ? `<span class="transport-source" role="group" aria-label="Which recording to play">${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}">${escapeHtml(control.source === "microphone" ? "Microphone" : "System audio")}</button>`).join("")}</span>` : ""}
+      ${sources.length > 1 ? `<span class="transport-source" role="group" aria-labelledby="transport-source-label" title="Yawn kept two recordings of this meeting. Choose which one Play plays.">
+        <span class="transport-source-label" id="transport-source-label">Listen to</span>
+        ${sources.map((control) => `<button class="transport-source-btn" type="button" data-action="set-playback-source" data-source="${escapeHtml(control.source)}" aria-pressed="${control.source === chosen?.source ? "true" : "false"}" title="${escapeHtml(control.source === "microphone" ? "The microphone recording: your voice" : "The system audio recording: everyone else on the call")}">${escapeHtml(control.source === "microphone" ? "Microphone" : "System audio")}</button>`).join("")}
+      </span>` : ""}
       ${playingLabel ? `<span class="caption transport-status" role="status" aria-live="polite">${escapeHtml(playingLabel)}</span>` : ""}
     </div>
   `;
@@ -1675,7 +1681,7 @@ function renderTransport(playback, transcript, row) {
 // layoutLedgers() places the rail marks and the turn column beside those
 // lines. Marks come from the stored note moments, never from line position.
 // A note without moments is a plain page: no rail, no marks, no turn column.
-function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false, stop = null }) {
+function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false, stop = null, openFolds = [] }) {
   const ledger = noteLedgerPresentation({ text, moments, turns, pauses });
   const lines = String(text ?? "").split("\n");
   const timedRows = ledger.rows.filter((row) => row.seconds !== null);
@@ -1688,12 +1694,20 @@ function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, edit
   // A fold counts the turns folded between two notes (product brief, "Note
   // moments on the Mac"). Turns before the first note are not between
   // anything, so the first row carries no fold; the full transcript below
-  // has them.
+  // has them. A fold is a disclosure (DESIGN.md, Components): open, it shows
+  // the folded turns in place under it, in the turn column, and
+  // layoutLedgers() pushes the later turn rows down; the note never moves.
+  const turnBody = (turn) => {
+    const who = transcriptSpeakerLabel(turn);
+    return `<span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}`;
+  };
   const turnColumn = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat).map((row, position) => {
     const turn = turns[row.turnIndex];
-    const who = transcriptSpeakerLabel(turn);
-    return `${row.foldedBefore > 0 && position > 0 ? `<div class="ledger-fold" data-line="${row.line}">+ ${row.foldedBefore} ${row.foldedBefore === 1 ? "turn" : "turns"}</div>` : ""}
-      <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"><span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}</div>`;
+    const fold = position > 0 ? ledgerFoldPresentation(row, openFolds) : null;
+    const foldId = fold ? `ledger-fold-${escapeHtml(meetingId)}-${fold.key}` : "";
+    return `${fold ? `<button class="ledger-fold${fold.expanded ? " open" : ""}" id="${foldId}" type="button" data-action="toggle-ledger-fold" data-fold="${fold.key}" data-line="${row.line}" aria-expanded="${fold.expanded ? "true" : "false"}" aria-controls="${foldId}-turns" aria-label="${escapeHtml(fold.accessibleName)}"><span>${escapeHtml(fold.visibleLabel)}</span><svg class="ledger-fold-chevron" width="8" height="5" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      ${fold.expanded ? `<div class="ledger-fold-turns" id="${foldId}-turns" data-fold="${fold.key}" role="group" aria-label="${escapeHtml(fold.accessibleName)}">${fold.turnIndexes.map((index) => `<div class="ledger-folded-turn" data-turn-index="${escapeHtml(turns[index]?.sourceTurnIndex ?? index)}">${turnBody(turns[index])}</div>`).join("")}</div>` : ""}` : ""}
+      <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"${fold ? ` data-fold="${fold.key}"` : ""}>${turnBody(turn)}</div>`;
   }).join("") : "";
   return `
     <div class="ledger${ledger.hasRail || stop ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
@@ -1742,11 +1756,20 @@ function layoutLedgers() {
       const index = Number(turn.dataset.line);
       if (!Number.isFinite(tops[index])) continue;
       let top = tops[index];
-      const fold = turn.previousElementSibling?.classList.contains("ledger-fold") ? turn.previousElementSibling : null;
+      // The fold sits 4px above its turn; an open fold's turns sit between
+      // the fold and the turn, so the turn (and every row after it) moves
+      // down by their height while the fold stays where it was.
+      const key = turn.dataset.fold;
+      const fold = key !== undefined ? ledger.querySelector(`.ledger-fold[data-fold="${key}"]`) : null;
+      const opened = key !== undefined ? ledger.querySelector(`.ledger-fold-turns[data-fold="${key}"]`) : null;
       const foldHeight = fold ? fold.offsetHeight + 4 : 0;
+      const openedHeight = opened ? opened.offsetHeight + 8 : 0;
       if (top - foldHeight < lastBottom + 8) top = lastBottom + 8 + foldHeight;
+      const foldTop = top - foldHeight;
+      top += openedHeight;
       turn.style.top = `${top}px`;
-      if (fold) fold.style.top = `${top - 4}px`;
+      if (fold) fold.style.top = `${foldTop}px`;
+      if (opened) opened.style.top = `${foldTop + foldHeight}px`;
       lastBottom = top + turn.offsetHeight;
       bottom = Math.max(bottom, lastBottom);
     }
@@ -2924,6 +2947,10 @@ async function loadSelectedMeeting(row, lockToken = null, transcriptMatch = null
     // here rather than surviving a same-meeting refresh, the same lifecycle
     // `claimEvidence` already follows on this same object.
     evidenceSplit: { open: false, ordinal: null, turnIndex: null },
+    // Which ledger folds are open, by the turn each sits above (DESIGN.md,
+    // Fold row). Kept when the same meeting is reloaded (an ordinary
+    // refresh), cleared when another meeting opens.
+    openFolds: state.selected?.row?.meetingId && state.selected.row.meetingId === row.meetingId ? state.selected.openFolds || [] : [],
     operatorNoteDraft: operatorNote.text || "",
     operatorNoteMoments: Array.isArray(operatorNote.moments) ? operatorNote.moments : [],
     operatorNoteSaveQueue: Promise.resolve(),
@@ -3408,6 +3435,24 @@ function openEvidenceSplit(ordinal) {
   render();
 }
 
+// A fold opens and closes in place; focus stays on (or returns to) its
+// button, which keeps its id across the render patch.
+function toggleLedgerFoldAt(key) {
+  if (!state.selected || !Number.isInteger(key)) return;
+  state.selected.openFolds = toggleLedgerFold(state.selected.openFolds, key);
+  render();
+}
+
+// Escape closes the fold that holds focus, else the one opened last.
+function closeLedgerFold(focusedKey) {
+  const open = state.selected?.openFolds || [];
+  if (!open.length) return;
+  const key = focusedKey !== undefined && open.includes(Number(focusedKey)) ? Number(focusedKey) : open[open.length - 1];
+  state.selected.openFolds = open.filter((value) => value !== key);
+  render();
+  root.querySelector(`.ledger-fold[data-fold="${key}"]`)?.focus();
+}
+
 function closeEvidenceSplit() {
   if (!state.selected?.evidenceSplit?.open) return;
   state.selected.evidenceSplit = { open: false, ordinal: null, turnIndex: null };
@@ -3802,6 +3847,7 @@ function handleClick(event) {
   if (action === "home" || action === "meetings") void openMeetings();
   else if (action === "toggle-sidebar") toggleSidebar();
   else if (action === "open-full-transcript") openFullTranscriptFromInspector();
+  else if (action === "toggle-ledger-fold") { toggleLedgerFoldAt(Number(control.dataset.fold)); }
   else if (action === "set-playback-source") { state.playbackSource = control.dataset.source === "system" ? "system" : "microphone"; render(); }
   else if (action === "analyze-speakers") void analyzeSpeakers().catch(reportError);
   else if (action === "open-start") openStart();
@@ -4019,10 +4065,12 @@ function handleKeydown(event) {
       popoverOpen: Boolean(evidencePopoverEl),
       modalOpen: Boolean(state.modal),
       splitOpen: Boolean(state.selected?.evidenceSplit?.open),
+      foldOpen: Boolean(state.selected?.openFolds?.length),
     });
     if (target === "popover") { dismissEvidencePopover(); return; }
     if (target === "modal") { closeModal(); render(); return; }
     if (target === "split") { closeEvidenceSplit(); return; }
+    if (target === "fold") { closeLedgerFold(document.activeElement?.closest?.(".ledger-fold, .ledger-fold-turns")?.dataset.fold); return; }
     if (state.meetingManagementOpen) { state.meetingManagementOpen = false; render(); return; }
     return;
   }
