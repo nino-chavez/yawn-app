@@ -53,6 +53,9 @@ job questions, no rationale and no earlier pass.
   objection to a changing sign. The chevron carries the state and VoiceOver
   hears `aria-expanded`; the operator can choose a different open label.
 - The frame cropping the opened column is the window: the page scrolls.
+- Passes 1 and 4 read the rail running past the last note as empty or
+  stray. That is decided design: Nino kept the rail as the page's margin
+  (2026-10-16, PR #141, DESIGN.md First run), so it is not a defect here.
 - Recurring items outside this change, as in the Rail review: the turn
   column not aligned row for row with the notes (DESIGN.md: rows never
   reflow the note, so a pushed turn moves away from its line), "Nearest in
