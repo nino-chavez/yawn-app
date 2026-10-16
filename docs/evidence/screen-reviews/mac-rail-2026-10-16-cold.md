@@ -66,7 +66,8 @@ m12, mapping in the manifest) and no earlier pass.
   read the bare line as a stray divider. It is the Rail's page structure
   (`DESIGN.md`, Composition), selected by the operator. The operator should
   decide: keep the bare rail as the page's margin, or draw it only once a
-  mark exists.
+  mark exists. **Decided 2026-10-16:** the operator kept the bare rail as
+  the page's margin; recorded in `DESIGN.md` under First run.
 - **The interrupted state's one action.** Reviewers asked for a recovery
   action first. None exists: the product has no transcription of a
   recovered recording's kept audio (`transcriptRetryPresentation` refuses a
@@ -107,6 +108,7 @@ from the far right to beside its heading; the live page's caption to the
 state word. Hidden: nothing.
 
 **Still owed.** The installed-build pass (both appearances, large text,
-increased contrast) with the operator at the Mac; the operator's decisions
-on the empty rail and the interrupted state's action; the folds' expansion;
+increased contrast) with the operator at the Mac; the operator's decision
+on the interrupted state's action (the empty rail was decided 2026-10-16:
+kept); the folds' expansion;
 a label for the playback-source chips.

@@ -60,7 +60,8 @@ i10, mapping in the manifest) and no earlier pass.
   divider. It is Concept C's structure, which the operator selected and this
   task was told not to change. This is the one finding the operator should
   decide: keep the bare rail as the page's margin, or draw it only once a
-  mark exists.
+  mark exists. **Decided 2026-10-16:** kept as the page's margin; recorded
+  in `DESIGN.md`.
 - **The unavailable Record capsule and its caption.** Pass 1 of the slice-1
   review asked for exactly this (a disabled toolbar button faded almost out
   of sight). It ends when the recorder slice lands; `feat/ipad-recorder`

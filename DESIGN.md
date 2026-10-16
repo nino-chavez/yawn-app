@@ -181,6 +181,14 @@ meeting"), one sentence at 15px, and "⌘R, or the Record button" at 11px,
 centered. The sidebar carries one caption: "Meetings you record appear here,
 newest first."
 
+The rail stays on first run, bare, as the page's margin (operator decision,
+2026-10-16). Every cold reviewer of the Rail builds, on both platforms, read
+the empty line as a stray divider; the operator kept it because the rail is
+the page's structure, not a mark, and a page that gains its margin only once
+something is written would change shape under the first note. A cold review
+that names the bare rail is answered by this paragraph, not by a revision.
+The same holds on the iPad.
+
 Settings (the graft from Record): one window, 580pt wide, a 38pt title bar,
 one scrolling column of groups. Each group is a section label, then rows of
 label and detail with the state or control at the right, separated by
@@ -196,7 +204,8 @@ and turns, 8px the attention surface, 18px capsules.
 Status bar 24pt; nav bar 52pt on Window chrome with a hairline below; the
 page fills the rest. Landscape and portrait, Split View and Stage Manager.
 
-- **The rail** is a 2px line at 64pt from the page's left edge. A mark is a
+- **The rail** is a 2px line at 64pt from the page's left edge, drawn on
+  first run too, before any mark (see "First run" under Composition, Mac). A mark is a
   9pt dot on the rail with its time to the left; the playhead is an 11pt
   Moment dot with its time in a Moment pill; the live mark is Record.
 - **Ink** starts 92pt from the left edge and keeps 90pt clear at the right
