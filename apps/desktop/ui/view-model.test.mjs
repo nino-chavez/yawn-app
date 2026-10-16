@@ -8,6 +8,8 @@ import {
   momentAudioSeconds,
   nearestTurnIndex,
   noteLedgerPresentation,
+  ledgerFoldPresentation,
+  toggleLedgerFold,
   transportTicksPresentation,
   backgroundTranscriptionPresentation,
   canOpenStart,
@@ -1829,6 +1831,8 @@ test("Escape closes the innermost surface first: popover, then modal, then split
   assert.equal(nextEscapeTarget({ popoverOpen: true, modalOpen: true, splitOpen: true }), "popover");
   assert.equal(nextEscapeTarget({ popoverOpen: false, modalOpen: true, splitOpen: true }), "modal");
   assert.equal(nextEscapeTarget({ popoverOpen: false, modalOpen: false, splitOpen: true }), "split");
+  assert.equal(nextEscapeTarget({ splitOpen: true, foldOpen: true }), "split");
+  assert.equal(nextEscapeTarget({ foldOpen: true }), "fold", "an open ledger fold closes last, after every overlay");
   assert.equal(nextEscapeTarget({}), null);
 });
 
@@ -2392,6 +2396,27 @@ test("the ledger pairs each timed line with the nearest turn and folds the turns
   assert.equal(ledger.afterStopLine, 2, "the first non-empty untimed line after the last timed one");
   assert.equal(nearestTurnIndex(turns, 100), 3);
   assert.equal(nearestTurnIndex([], 100), -1);
+});
+
+test("a ledger fold is a disclosure over exactly the turns between two shown turns", () => {
+  const turns = [{ start: 4 }, { start: 31 }, { start: 44 }, { start: 118 }, { start: 127 }, { start: 236 }];
+  const ledger = noteLedgerPresentation({ text: "a\nb", moments: [{ line: 0, seconds: 48 }, { line: 1, seconds: 240 }], turns, pauses: null });
+  const fold = ledgerFoldPresentation(ledger.rows[1]);
+  assert.equal(fold.key, ledger.rows[1].turnIndex, "keyed by the turn it sits above, not the note line");
+  assert.equal(fold.count, 2);
+  assert.deepEqual(fold.turnIndexes, [3, 4], "the turns after the previous shown turn and before this one, in order");
+  assert.equal(fold.expanded, false, "collapsed by default");
+  assert.equal(ledgerFoldPresentation(ledger.rows[1], [fold.key]).expanded, true);
+  assert.equal(ledgerFoldPresentation({ turnIndex: 2, foldedBefore: 0 }), null, "no fold when nothing is between");
+  assert.equal(ledgerFoldPresentation({ turnIndex: -1, foldedBefore: 0 }), null);
+});
+
+test("toggling a fold opens it, a second press closes it, and the most recent stays last", () => {
+  const opened = toggleLedgerFold([], 5);
+  assert.deepEqual(opened, [5]);
+  assert.deepEqual(toggleLedgerFold(opened, 9), [5, 9]);
+  assert.deepEqual(toggleLedgerFold([5, 9], 5), [9]);
+  assert.deepEqual(toggleLedgerFold(undefined, 3), [3]);
 });
 
 test("a note without moments is a plain page: no rail, no folds, no after-the-meeting line", () => {

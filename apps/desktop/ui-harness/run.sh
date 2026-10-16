@@ -57,7 +57,7 @@ stamp_nonce() {
 
 run() {
   stamp_nonce
-  if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/$1-${HARNESS_APPEARANCE:-dark}.png"; fi
+  if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/${4:-$1}-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/harness.html?mode=$1${3:-}" "$PWD/$2"; }
 run_settings() {
   stamp_nonce
@@ -97,6 +97,8 @@ case "$mode" in
   sheets) run library sheets.js ;;
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   still) run "${2:?run.sh still <mode>}" still.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  # The ledger with its first two folds open (DESIGN.md, Fold row: expanded).
+  still-fold) run ledger still.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}&open-folds=2" ledger-fold ;;
   still-settings) run_settings still.js "&width=580&height=640&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   note-retirement-negative) run transcript-retirement note-retirement.js "&width=1080&height=900&negative-control=1" ;;
   note-retirement)
@@ -116,5 +118,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|still <mode>|still-settings|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|still <mode>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac

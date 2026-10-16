@@ -3014,12 +3014,21 @@ html, body, #app {
 
 .transport-source {
   display: inline-flex;
+  align-items: baseline;
   gap: 2px;
 }
 
+.transport-source-label {
+  margin-right: 4px;
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
 .transport-source-btn {
-  padding: 2px 6px;
-  border: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--separator-strong);
   border-radius: 4px;
   background: transparent;
   color: var(--label-3);
@@ -3030,6 +3039,8 @@ html, body, #app {
 .transport-source-btn[aria-pressed="true"] {
   color: var(--label);
   background: var(--selection);
+  border-color: var(--label-3);
+  font-weight: 600;
 }
 
 .transport-status {
@@ -3222,10 +3233,59 @@ html, body, #app {
 .ledger-fold {
   position: absolute;
   left: 0;
-  transform: translateY(-100%);
+  padding: 0 6px;
+  border: 1px solid var(--separator-strong);
+  border-radius: 4px;
+  background: none;
+  font: inherit;
   font-size: 11px;
   line-height: 14px;
-  color: var(--label-3);
+  color: var(--label-2);
+  cursor: pointer;
+}
+
+.ledger-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ledger-fold-chevron {
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+
+.ledger-fold.open .ledger-fold-chevron {
+  transform: rotate(180deg);
+}
+
+.ledger-fold:hover,
+.ledger-fold.open {
+  color: var(--label);
+  background: var(--selection);
+}
+
+.ledger-fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* An open fold: the folded turns in place under it, set like the turn rows
+   with a hairline at their left so they read as the fold's contents. */
+.ledger-fold-turns {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--label-3);
+  animation: motion-fade-in var(--motion-fast) var(--motion-ease);
+}
+
+.ledger-folded-turn {
+  font-size: var(--t-transcript);
+  line-height: var(--lh-transcript);
+  color: var(--label-2);
 }
 
 .meeting-note-label {
