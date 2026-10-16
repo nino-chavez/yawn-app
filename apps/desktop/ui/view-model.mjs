@@ -2014,3 +2014,19 @@ export function transportTicksPresentation(turns, lengthSeconds) {
   }
   return ticks;
 }
+
+// A meeting whose saved personal note cannot be read. The file is never
+// written over (operator_note refuses the write), so the copy says so, then
+// names only what this page can still do with the meeting: play the audio when
+// a playback handle came back, read the transcript when it has turns. Grafted
+// from the parallel copy-fixes branch (1eac44e); both cold passes on PR #147
+// asked for the next step.
+export function unreadableOperatorNoteCopy(note = null, transcript = null) {
+  const lead = "Yawn could not read your notes for this meeting, so they are not shown and nothing will be written over them. The file stays on this Mac.";
+  const playable = Boolean(note?.microphonePlaybackHandle || note?.systemPlaybackHandle);
+  const readable = Boolean(transcript?.turns?.length);
+  if (playable && readable) return `${lead} You can still play the audio and read the full transcript.`;
+  if (readable) return `${lead} You can still read the full transcript.`;
+  if (playable) return `${lead} You can still play the audio.`;
+  return lead;
+}
