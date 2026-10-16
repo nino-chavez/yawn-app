@@ -2336,3 +2336,15 @@ test("after Stop a new line gets no moment and the old ones follow their lines",
   // A moment that no longer names a line is dropped, never invented.
   assert.deepEqual(alignNoteMoments("a", [{ line: 3, seconds: 10 }], "a", null), []);
 });
+
+test("a line typed before Record stays untimed when edited while recording", () => {
+  // "agenda" was typed before the recording started, so it has no moment.
+  let moments = alignNoteMoments("agenda", [], "agenda v2", 720);
+  assert.deepEqual(moments, []);
+  // A new line typed below it during the recording does get the clock.
+  moments = alignNoteMoments("agenda v2", moments, "agenda v2\nowner: Sam", 731);
+  assert.deepEqual(moments, [{ line: 1, seconds: 731 }]);
+  // Editing the timed line later keeps its first moment.
+  moments = alignNoteMoments("agenda v2\nowner: Sam", moments, "agenda v2\nowner: Sam, by Friday", 900);
+  assert.deepEqual(moments, [{ line: 1, seconds: 731 }]);
+});

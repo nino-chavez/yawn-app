@@ -1880,9 +1880,18 @@ export function alignNoteMoments(previousText, previousMoments, nextText, nowSec
   const result = [];
   for (let k = 0; k < m; k++) {
     let seconds;
-    if (match.has(k)) seconds = had.get(match.get(k));
-    else if (k < n && !matchedPrevious.has(k) && had.has(k)) seconds = had.get(k); // edited in place
-    if (seconds === undefined && !match.has(k) && next[k].trim() !== "" && clock !== null) seconds = clock;
+    if (match.has(k)) {
+      seconds = had.get(match.get(k));
+    } else if (k < n && !matchedPrevious.has(k)) {
+      // Edited in place. It keeps the moment it had; a line that had none was
+      // first typed before the recording and stays untimed. Only a line that
+      // was blank before is being typed for the first time now.
+      seconds = had.get(k);
+      if (seconds === undefined && prev[k].trim() === "" && next[k].trim() !== "" && clock !== null) seconds = clock;
+    } else if (next[k].trim() !== "" && clock !== null) {
+      // A new line with no counterpart before the edit.
+      seconds = clock;
+    }
     if (Number.isInteger(seconds)) result.push({ line: k, seconds });
   }
   return result;
