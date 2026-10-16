@@ -57,3 +57,9 @@ test("an unmounted Settings page arms no further polls", async () => {
   }
   assert.match(settings, /return \(\) => \{\n\s+disposed = true;/);
 });
+
+test("the auto-select poll leaves an open Settings page alone", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  const fn = main.slice(main.indexOf("async function maybeAutoSelectMeeting"), main.indexOf("async function maybeAutoSelectMeeting") + 500);
+  assert.match(fn, /state\.settingsOpen/);
+});

@@ -4214,7 +4214,9 @@ function handleSubmit(event) {
 // snapshot+library pairing, so it is safe to call repeatedly from the poll
 // loop -- each branch is a no-op once it no longer applies.
 async function maybeAutoSelectMeeting() {
-  if (!invoke || state.autoSelecting || state.selected || state.modal || !state.library) return;
+  // An open Settings page is a deliberate place, not "nothing selected": a
+  // terminal capture must not pull the reader out of it on the next tick.
+  if (!invoke || state.autoSelecting || state.selected || state.settingsOpen || state.modal || !state.library) return;
 
   // A terminal capture state (this session's just-finished recording, or a
   // stale one left over from a previous run) is content, not the live
