@@ -33,10 +33,11 @@ and the iPad took the paper language with its components prepared (PR
 (four passes, simulator frames). Owed: the installed-build pass on the Mac
 with large text and increased contrast (the Fixture app is built and its
 root seeds a 23-minute ledger meeting), device captures on the iPad, the
-folds' expansion, a label for the playback-source chips. For the operator:
-whether the empty rail stays on first run (every cold reviewer on both
-platforms read it as a stray divider), and what an interrupted recording's
-next action is (none exists; Move to Trash stays secondary).
+folds' expansion, a label for the playback-source chips. The operator kept
+the bare rail on first run as the page's margin (2026-10-16, recorded in
+`DESIGN.md`), though every cold reviewer read it as a stray divider. Still
+for the operator: what an interrupted recording's next action is (none
+exists; Move to Trash stays secondary).
 
 ## Current source amendment — 2026-09-30
 
