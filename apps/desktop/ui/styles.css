@@ -2749,15 +2749,17 @@ html, body, #app {
   text-overflow: ellipsis;
 }
 
+/* Up to two lines, so a large text size never cuts the status ("transcript
+   available") that says what state the meeting is in. */
 .row-caption {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin-top: 2px;
   color: var(--label-3);
   font-size: var(--t-caption);
   line-height: calc(16px * var(--text-scale));
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .row-excerpt {
@@ -2991,8 +2993,11 @@ html, body, #app {
 
 /* -- transport ------------------------------------------------------------- */
 
+/* Wraps rather than squeezing the track: at a large text size the
+   recording choice moves to its own line (cold review 2026-10-16). */
 .transport {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   min-height: 30px;
@@ -3021,7 +3026,8 @@ html, body, #app {
 
 .transport-track {
   position: relative;
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 160px;
   max-width: 300px;
   height: 28px;
 }
