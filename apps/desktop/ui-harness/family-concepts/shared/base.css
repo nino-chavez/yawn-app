@@ -1,0 +1,197 @@
+/* Base layer for the family rethink concepts. Geometry of the decided frames
+   (Mac Concept A window, iPad Concept C page) and neutral defaults. Each
+   concept's styles.css sets the tokens below and overrides what its language
+   changes. Not product code. */
+
+:root {
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-ink: "Bradley Hand", "Noteworthy", "Marker Felt", cursive;
+
+  /* type */
+  --t-caption: 11px; --t-small: 12px; --t-body: 13px; --t-read: 15px; --t-title: 20px; --t-large: 24px;
+  --lh-body: 1.4; --lh-read: 1.55;
+  --measure: 640px;
+
+  /* shape */
+  --r-control: 6px; --r-card: 10px; --r-row: 6px;
+  --toolbar-h: 52px; --sidebar-w: 262px;
+
+  /* neutral defaults; concepts override */
+  --window: #f3f3f3; --sidebar: #ebebeb; --content: #ffffff; --panel: #f6f6f6;
+  --hairline: rgba(0,0,0,0.10); --hairline-strong: rgba(0,0,0,0.18);
+  --label: #1d1d1f; --label-2: #5e5e63; --label-3: #8e8e93; --label-4: #c5c5c9;
+  --accent: #0a7aff; --on-accent: #ffffff;
+  --selection: rgba(0,0,0,0.07); --selection-strong: var(--accent);
+  --control: #ffffff; --control-border: rgba(0,0,0,0.14); --control-shadow: 0 0.5px 1px rgba(0,0,0,0.12);
+  --record: #d7322a; --on-record: #ffffff; --record-soft: rgba(215,50,42,0.12);
+  --attention: #b7791f; --attention-soft: rgba(201,138,34,0.14);
+  --evidence: rgba(10,122,255,0.12);
+  --rail: rgba(0,0,0,0.18); --rail-mark: #1d1d1f;
+  --ink: #1b1a19; --ink-dim: rgba(27,26,25,0.28);
+  --page: #ffffff;
+}
+:root[data-theme="dark"] {
+  --window: #2a2a2c; --sidebar: #252527; --content: #1e1e20; --panel: #272729;
+  --hairline: rgba(255,255,255,0.10); --hairline-strong: rgba(255,255,255,0.18);
+  --label: #f2f2f4; --label-2: #a9a9ae; --label-3: #7c7c82; --label-4: #4a4a4f;
+  --accent: #3b8dff; --on-accent: #ffffff;
+  --selection: rgba(255,255,255,0.08);
+  --control: #3a3a3d; --control-border: rgba(255,255,255,0.12); --control-shadow: 0 0.5px 1px rgba(0,0,0,0.4);
+  --record: #ff5a4f; --on-record: #1a0b0a; --record-soft: rgba(255,90,79,0.16);
+  --attention: #e0a93a; --attention-soft: rgba(224,169,58,0.14);
+  --evidence: rgba(59,141,255,0.18);
+  --rail: rgba(255,255,255,0.22); --rail-mark: #f2f2f4;
+  --ink: #f0ede8; --ink-dim: rgba(240,237,232,0.3);
+  --page: #1e1e20;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #888; }
+body { font-family: var(--font); font-size: var(--t-body); line-height: var(--lh-body); color: var(--label);
+  -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; cursor: default; }
+input { font: inherit; }
+.icon { display: inline-flex; align-items: center; justify-content: center; line-height: 0; }
+.fixture-label { position: absolute; right: 10px; bottom: 8px; font-size: 10px; color: var(--label-3);
+  background: color-mix(in srgb, var(--content) 80%, transparent); padding: 2px 6px; border-radius: 4px; z-index: 50; }
+
+/* ============================================================ Mac frame */
+.mac { width: 1080px; height: 900px; position: relative; overflow: hidden; display: flex; flex-direction: column;
+  background: var(--window); border-radius: 11px; }
+.toolbar { height: var(--toolbar-h); flex: 0 0 auto; display: grid; grid-template-columns: var(--sidebar-w) 1fr auto;
+  align-items: center; padding: 0 12px 0 0; background: var(--window); border-bottom: 1px solid var(--hairline); }
+.tb-left { display: flex; align-items: center; gap: 14px; padding-left: 14px; }
+.lights { display: inline-flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #e1e1e3; border: 0.5px solid rgba(0,0,0,0.12); display: block; }
+.lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.icon-btn { width: 28px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; color: var(--label-2); }
+.icon-btn:hover { background: var(--selection); }
+.tb-title { text-align: center; font-size: var(--t-body); font-weight: 600; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 16px; }
+.tb-right { display: flex; align-items: center; gap: 10px; justify-self: end; }
+.search { display: flex; align-items: center; gap: 6px; width: 170px; height: 24px; padding: 0 8px; border-radius: 6px;
+  background: var(--selection); color: var(--label-3); }
+.search input { all: unset; flex: 1; min-width: 0; font-size: var(--t-small); color: var(--label); }
+.search input::placeholder { color: var(--label-3); }
+
+/* record control: the only red */
+.record { display: flex; align-items: center; gap: 6px; }
+.record-btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: 6px;
+  background: var(--control); border: 1px solid var(--control-border); box-shadow: var(--control-shadow);
+  font-size: var(--t-small); font-weight: 600; color: var(--record); }
+.record-glyph { width: 9px; height: 9px; border-radius: 50%; background: var(--record); display: inline-block; }
+.record-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border-radius: 6px;
+  background: var(--record); color: var(--on-record); font-size: var(--t-small); font-weight: 600; font-variant-numeric: tabular-nums; }
+.record-badge .record-glyph { background: var(--on-record); }
+.record-paused .record-badge { background: var(--record-soft); color: var(--record); }
+.record-paused .record-badge .record-glyph { background: var(--record); }
+.record-pause, .record-stop { color: var(--label); background: var(--control); border: 1px solid var(--control-border); box-shadow: var(--control-shadow); width: 28px; }
+
+.mac-body { flex: 1; min-height: 0; display: flex; }
+.sidebar { width: var(--sidebar-w); flex: 0 0 auto; background: var(--sidebar); border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column; overflow: hidden; }
+.mac-sidebar-hidden .sidebar { display: none; }
+.sb-scroll { flex: 1; overflow: hidden; padding: 6px 0; }
+.group-label { padding: 12px 18px 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--label-3); }
+.group-label:first-child { padding-top: 8px; }
+.row { margin: 1px 8px; padding: 6px 10px; border-radius: var(--r-row); }
+.row-title { font-size: var(--t-body); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.row-caption { font-size: var(--t-caption); color: var(--label-3); margin-top: 1px; }
+.row-excerpt { font-size: var(--t-caption); color: var(--label-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-selected { background: var(--selection); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--attention); display: inline-block; flex: 0 0 auto; }
+.dot-live { background: var(--record); }
+.trash-row { display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--hairline); color: var(--label-2); font-size: var(--t-body); }
+.doc { flex: 1; min-width: 0; background: var(--content); position: relative; overflow: hidden; }
+
+/* native-looking controls */
+.push { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 10px; border-radius: 5px;
+  background: var(--control); border: 1px solid var(--control-border); box-shadow: var(--control-shadow);
+  font-size: var(--t-small); color: var(--label); white-space: nowrap; }
+.push-primary { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.push-menu .icon { color: var(--label-3); }
+.caption { font-size: var(--t-caption); color: var(--label-3); }
+.hairline { height: 1px; background: var(--hairline); }
+
+/* ============================================================ iPad frame */
+.ipad { width: 1180px; height: 820px; position: relative; overflow: hidden; display: flex; flex-direction: column;
+  background: var(--page); color: var(--label); }
+.statusbar { height: 24px; flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; font-size: 12px; }
+.status-left { display: flex; gap: 8px; } .status-left b { font-weight: 600; }
+.status-right { display: flex; gap: 6px; align-items: center; font-weight: 600; }
+.navbar { height: 52px; flex: 0 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 16px; }
+.nav-left { display: flex; align-items: center; gap: 10px; }
+.nav-center { display: flex; align-items: center; justify-content: center; gap: 10px; text-align: center; }
+.nav-right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.ipad-body { flex: 1; min-height: 0; position: relative; display: flex; }
+.page { flex: 1; min-width: 0; position: relative; overflow: hidden; background: var(--page); }
+.capsule { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: 18px; font-size: 15px; font-weight: 600;
+  background: var(--selection); color: var(--label); }
+.capsule.tint-record { background: var(--record); color: var(--on-record); }
+.capsule.tint-soft { background: var(--selection); }
+.ipad-icon-btn { width: 36px; height: 36px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; color: var(--label); }
+.ipad-sidebar { width: 320px; flex: 0 0 auto; margin: 0 0 8px 8px; border-radius: 20px; background: var(--sidebar); display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.10), 0 0 0 0.5px var(--hairline); }
+.ipad-sb-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 8px 18px; }
+.ipad-sb-title { font-size: 17px; font-weight: 600; }
+.ipad-sb-list { flex: 1; overflow: hidden; padding: 0 8px; }
+.ipad-row { padding: 10px 10px; border-radius: 12px; }
+.ipad-row-day { font-size: 15px; font-weight: 600; }
+.ipad-row-caption { font-size: 12px; color: var(--label-3); margin-top: 1px; }
+.ipad-row-ink { font-family: var(--font-ink); font-weight: 700; font-size: 16px; color: var(--label-2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ipad-row-selected { background: var(--selection); }
+.ipad-group { padding: 14px 10px 4px; font-size: 12px; font-weight: 600; color: var(--label-3); }
+.mini-rail { position: relative; height: 10px; margin: 6px 0 2px; }
+.mini-rail::before { content: ""; position: absolute; left: 0; right: 0; top: 4.5px; height: 1px; background: var(--rail); }
+.mini-rail i { position: absolute; top: 2px; width: 6px; height: 6px; border-radius: 50%; background: var(--rail-mark); transform: translateX(-3px); }
+
+/* the page, the rail, and ink */
+.rail { position: absolute; top: 0; bottom: 0; left: 64px; width: 2px; background: var(--rail); }
+.rail-mark { position: absolute; left: 60px; display: flex; align-items: center; gap: 6px; transform: translateY(-50%); }
+.rail-mark i { width: 9px; height: 9px; border-radius: 50%; background: var(--rail-mark); display: block; flex: 0 0 auto; }
+.rail-mark span { font-size: 11px; color: var(--label-3); font-variant-numeric: tabular-nums; position: absolute; right: calc(100% + 8px); white-space: nowrap; }
+.rail-mark.live i { background: var(--record); }
+.rail-mark.live span { color: var(--record); font-weight: 600; }
+.rail-mark.head i { background: var(--accent); width: 11px; height: 11px; }
+.rail-mark.head span { background: var(--accent); color: var(--on-accent); font-weight: 600; padding: 1px 6px; border-radius: 6px; }
+.ink-lines { position: absolute; left: 92px; right: 90px; top: 0; }
+.ink { font-family: var(--font-ink); font-weight: 700; color: var(--ink); line-height: 1.1; white-space: nowrap; transform-origin: left center; }
+.ink-dim { color: var(--ink-dim); }
+.ink-tapped { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 8px; display: inline-block; background: var(--evidence); }
+.toolcol { position: absolute; right: 0; top: 0; bottom: 0; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 18px; padding-top: 18px; color: var(--label-2); }
+.toolcol .icon-pen { color: var(--accent); }
+.after-divider { display: flex; align-items: center; gap: 12px; margin: 10px 90px 0 92px; font-size: 12px; color: var(--label-3); }
+.after-divider::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
+
+/* consent step */
+.consent-screen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.consent { width: 420px; display: flex; flex-direction: column; gap: 16px; }
+.consent h1 { font-size: 24px; font-weight: 700; margin: 0; }
+.consent p { margin: 0; font-size: 15px; color: var(--label-2); line-height: 1.4; }
+.consent-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 15px; font-weight: 500; }
+.switch { width: 51px; height: 31px; border-radius: 16px; background: var(--label-4); position: relative; flex: 0 0 auto; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.switch.on { background: #34c759; } .switch.on::after { left: 22px; }
+.segmented { display: flex; background: var(--selection); border-radius: 9px; padding: 2px; }
+.segmented span { flex: 1; text-align: center; font-size: 13px; font-weight: 500; padding: 6px 0; border-radius: 7px; }
+.segmented .on { background: var(--control); box-shadow: var(--control-shadow); }
+.consent-fact { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--label-3); }
+.big-btn { height: 50px; border-radius: 14px; font-size: 17px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.big-btn.disabled { background: var(--selection); color: var(--label-3); }
+.big-btn.primary { background: var(--record); color: var(--on-record); }
+.link-btn { text-align: center; font-size: 15px; color: var(--accent); }
+
+/* transcript beside the page */
+.turn { font-size: 14px; line-height: 1.4; color: var(--label); }
+.turn-time { font-size: 11px; color: var(--label-3); font-variant-numeric: tabular-nums; }
+.turn-fold { font-size: 12px; color: var(--label-3); }
+.turn-current { background: var(--evidence); border-radius: 8px; }
+
+/* reduced motion: concepts are static frames; no transitions declared */
+
+/* iPad recording badge and horizontal tool cluster (shared) */
+.ipad-record-badge { height: 32px; font-size: 15px; border-radius: 16px; padding: 0 14px 0 12px; background: var(--record-soft); color: var(--record); }
+.ipad-record-badge .record-glyph { background: var(--record); }
+.tools-h { display: flex; gap: 14px; align-items: center; }
+.turn-text { }

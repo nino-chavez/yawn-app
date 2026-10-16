@@ -1,7 +1,20 @@
 # Yawn — design direction
 
-design_intent: refit
+design_intent: rethink
 design_direction: docs/design-direction-decision.md
+<!-- 2026-10-15: the operator asked for a rethink of the UI, UX and visual
+     style of both apps. Brief: docs/experience-brief-family-2026-10-15.md.
+     Baseline blind review of the shipped Mac app (seven of seven revise):
+     docs/evidence/screen-reviews/desktop-rethink-baseline-2026-10-15-cold.md.
+     Three concepts on nine states, both platforms, both appearances:
+     docs/design/concepts/family-2026-10-15/ (compare.html). The selection
+     record, once the operator chooses, is decisions/family-direction-
+     2026-10-15.md and replaces the pointer above. The Mac window frame
+     (Concept A, 2026-09-02) and the iPad structure (Concept C, 2026-10-14)
+     stay fixed through this rethink; what is open is the Mac document pane,
+     the During canvas, Settings, and the visual language on both devices.
+     Everything below is the prior direction's record and still governs the
+     shipped app until the selection lands. -->
 <!-- 2026-09-02: the rethink concluded. The operator selected Concept A
      (source list beside document) from three rendered concepts; the
      selection ADR above is the structure record. DESIGN.md's visual authority

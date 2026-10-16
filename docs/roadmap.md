@@ -5,6 +5,21 @@ Status: active product direction; release status reconciled on 2026-09-08.
 This roadmap sequences product work. It does not claim that a listed feature is
 shipped. The current product contract remains [the product brief](product-brief.md).
 
+## Family design rethink — 2026-10-15
+
+The operator asked for a rethink of the UI, UX and visual style of both apps.
+Phase 1 ran the judged-screen pattern's own path: a blind cold review of the
+shipped Mac app (seven of seven frames revise, `evidence/screen-reviews/
+desktop-rethink-baseline-2026-10-15-cold.md`), a family experience brief
+(`experience-brief-family-2026-10-15.md`), and three divergent concepts on nine
+states, both platforms, both appearances (`design/concepts/family-2026-10-15/`,
+harness at `apps/desktop/ui-harness/family-concepts/`). The Mac window frame
+and the iPad structure stay as selected; the Mac document pane, During canvas,
+Settings and the visual language on both devices are what the concepts answer.
+The selection record, pending the operator's choice, is
+`decisions/family-direction-2026-10-15.md`. `DIRECTION.md` reads
+`design_intent: rethink` until it lands.
+
 ## Current source amendment — 2026-09-30
 
 New automatic note generation and note-model downloads are retired in source.

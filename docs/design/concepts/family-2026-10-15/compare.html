@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Yawn family rethink — three concepts, nine states, both appearances</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f3f2ef; --fg: #1d1c1a; --muted: #6b675f; --line: rgba(0,0,0,0.12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1c1b19; --fg: #ece8df; --muted: #9c978b; --line: rgba(255,255,255,0.12); } }
+  body { margin: 0; padding: 24px 28px 60px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .lede { color: var(--muted); max-width: 90ch; margin: 0 0 20px; }
+  .lede b { color: var(--fg); }
+  nav a { margin-right: 14px; color: inherit; }
+  h2 { font-size: 15px; margin: 34px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .cols { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .cols.three { grid-template-columns: 1fr repeat(3, 1fr); }
+  figure { margin: 0; }
+  figcaption { font-size: 11px; color: var(--muted); margin: 4px 0 8px; }
+  figcaption b { color: var(--fg); font-weight: 600; }
+  img { width: 100%; height: auto; display: block; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.15), 0 0 0 0.5px var(--line); background: #888; }
+  .none { aspect-ratio: 6/5; border-radius: 6px; border: 1px dashed var(--line); display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+  .note { font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Yawn family rethink — three concepts on nine states</h1>
+<p class="lede">Each row is one state in one appearance. The first column is the <b>current shipped Mac app</b> (installed captures, 2026-09-30 to 2026-10-09; the control) where a capture of that state exists. The next three are the concepts, rendered from the same invented fixtures: <b>1 Notebook</b> (system language; notes as the document, transcript beneath), <b>2 Rail</b> (paper; the time rail on both devices, transcript folded beside the notes), <b>3 Record</b> (instrument; the transcript as the document, notes pinned above). Every meeting, note and transcript line is invented. The iPad structure is Concept C on every row; the concepts differ in language there and in document composition on the Mac.</p>
+<nav>
+  <a href="#s1">1 Mac After</a><a href="#s2">2 Mac During</a><a href="#s3">3 Mac Needs attention</a><a href="#s4">4 Mac Settings</a><a href="#s5">5 Mac First run</a>
+  <a href="#s6">6 iPad During</a><a href="#s7">7 iPad After</a><a href="#s8">8 iPad Before</a><a href="#s9">9 iPad List</a>
+</nav>
+<div id="rows"></div>
+<script>
+const states = {
+  1: ["Mac · After, transcript ready", { light: "../../../evidence/transcribing-meeting-2026-10-07/landed-light.png", dark: "../../../evidence/transcribing-meeting-2026-10-07/landed-dark.png" }],
+  2: ["Mac · During, 4:12 in", { dark: "../../../evidence/screen-reviews/captures/stop-recording-2026-09-29/transcribing.png" }, "current: just after Stop, transcribing"],
+  3: ["Mac · Needs attention", {}],
+  4: ["Mac · Settings", { light: "../../../evidence/screen-reviews/captures/note-retirement-2026-09-30/settings-light.png", dark: "../../../evidence/screen-reviews/captures/note-retirement-2026-09-30/settings-dark.png" }],
+  5: ["Mac · First run", {}],
+  6: ["iPad · During, 4:12 in", {}],
+  7: ["iPad · After, replay paused at 11:30", {}],
+  8: ["iPad · Before, consent", {}],
+  9: ["iPad · Meeting list", {}],
+};
+const concepts = [["1", "1 Notebook"], ["2", "2 Rail"], ["3", "3 Record"]];
+const rows = document.getElementById("rows");
+for (const [n, [title, current, note]] of Object.entries(states)) {
+  const h = document.createElement("h2"); h.id = "s" + n; h.textContent = `${n} · ${title}`; rows.append(h);
+  for (const theme of ["light", "dark"]) {
+    const g = document.createElement("div"); g.className = "cols";
+    const cur = document.createElement("figure");
+    if (current[theme]) { cur.innerHTML = `<img src="${current[theme]}" alt="Current app, ${title}, ${theme}"><figcaption><b>Current</b> · ${theme}${note ? " · " + note : ""}</figcaption>`; }
+    else { cur.innerHTML = `<div class="none">no capture of this state in the current app</div><figcaption><b>Current</b> · ${theme}</figcaption>`; }
+    g.append(cur);
+    for (const [c, name] of concepts) {
+      const f = document.createElement("figure");
+      f.innerHTML = `<img src="${c}-${n}-${theme}.png" alt="Concept ${name}, ${title}, ${theme}"><figcaption><b>${name}</b> · ${theme}</figcaption>`;
+      g.append(f);
+    }
+    rows.append(g);
+  }
+}
+</script>
+</body>
+</html>
