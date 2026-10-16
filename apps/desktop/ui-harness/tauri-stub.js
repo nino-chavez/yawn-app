@@ -15,6 +15,14 @@
 // above the columns), and each fork has a reading only a fixture can show.
 (() => {
   const mode = new URLSearchParams(location.search).get("mode") || "capture";
+  // A fixed time of day for the fixture rows, so two captures of one state
+  // minutes apart (light, then dark) show the same meta line.
+  const fixtureEpoch = (daysAgo, hour, minute) => {
+    const at = new Date();
+    at.setDate(at.getDate() - daysAgo);
+    at.setHours(hour, minute, 0, 0);
+    return Math.floor(at.getTime() / 1000);
+  };
   const captureSnapshot = {
     startup: "ready",
     capture: "recording",
@@ -71,7 +79,7 @@
     meetingId: "harness-meeting-1",
     label: "Harness meeting",
     labelSource: "operator",
-    createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 3600,
+    createdAtEpochSeconds: fixtureEpoch(1, 14, 10),
     transcriptAvailable: true,
   };
   // mode=transcribing-meeting / transcribing-meeting-lands: the state right
@@ -231,6 +239,10 @@
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
       : mode === "mic-change-resume-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_RESUME_FAILED }
       : mode === "startup" ? { ...idleSnapshot, startup: "checking", startup_message: "Verifying on-device speech models." }
+      // first-run: idle, permissions granted, and no meetings (the library
+      // branch below returns no rows for it), so the window shows the
+      // first-run page from DESIGN.md.
+      : mode === "first-run" ? { ...idleSnapshot }
       : mode === "native-ready" ? { ...idleSnapshot, transcriptionEngine: { selected: "apple-native", canChange: true, operationActive: false, apple: { state: "ready", reason: null, locale: "en-US" }, whisper: { state: "ready", reason: null } } }
       : mode === "apple-assets-required" ? { ...idleSnapshot, startup: "model-required", transcriptionEngine: { selected: null, canChange: true, operationActive: false, apple: { state: "assets-required", reason: "Apple speech needs a one-time preparation.", locale: "en-US" }, whisper: { state: "download-required", reason: null } }, model_setup: { state: "idle", selectedModelId: "", options: [
           { id: "whisper-large-v3-turbo-q4", title: "Smaller download", detail: "A 4-bit local transcription model that uses about 464 MB.", downloadBytes: 463665005, installedBytes: 463665005 },
@@ -278,7 +290,7 @@
               transcriptAvailable: false, transcriptPending: true, recovery: null, durationSeconds: 1079 },
           ]),
           ...(stopLandsSelected ? [{ ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null }] : []),
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null }] : []),
         ];
         return { rows, total: rows.length, metadataRevision: 1, searchProbeEnabled: false };
       })()
@@ -288,7 +300,7 @@
           { ...libraryRow, createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 60, transcriptAvailable: false,
             transcriptPending: true, recovery: null },
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
       : transcribingMode ? {
         rows: [
@@ -297,15 +309,15 @@
           { ...libraryRow, label: "", labelSource: "date", createdAtEpochSeconds: Math.floor(Date.now() / 1000) - 90,
             transcriptAvailable: transcriptLanded, transcriptPending: legacyContract ? undefined : !transcriptLanded, recovery: null, durationSeconds: 1832 },
           { ...libraryRow, handle: "row-handle-2", meetingId: "harness-meeting-2", label: "Earlier harness meeting",
-            createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60), transcriptPending: false, recovery: null },
+            createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
-      : mode === "library" || mode === "ledger" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
-      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : {}) }, {
+      : mode === "library" || mode === "ledger" || mode === "interrupted" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
+      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : {}) }, {
           ...libraryRow,
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",
           label: "Earlier harness meeting",
-          createdAtEpochSeconds: Math.floor(Date.now() / 1000) - (9 * 24 * 60 * 60),
+          createdAtEpochSeconds: fixtureEpoch(9, 9, 30),
         }], total: 2, metadataRevision: 1, searchProbeEnabled: searchMode }
       : { rows: [], total: 0, metadataRevision: 1 }),
     preview_list_trash: () => ({ entries: [] }),
@@ -457,7 +469,22 @@
       transcriptHandle: "transcript-handle-2",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
-    } : sheetMode ? { ...sheetNote } : mode === "ledger" ? {
+    } : sheetMode ? { ...sheetNote } : mode === "interrupted" ? {
+      // mode=interrupted (Rail): a recording that stopped at 6:41 with its
+      // audio kept and one timed line typed before the stop. Invented.
+      meetingId: "harness-meeting-1",
+      state: "recovered-interrupted",
+      claims: [],
+      noteGenerationAvailable: false,
+      operatorNote: { text: "gutters: get a second quote", moments: [{ line: 0, seconds: 95 }], unreadable: false },
+      operatorNoteHandle: "note-handle-1",
+      transcriptHandle: null,
+      microphonePlaybackHandle: "mic-playback-1",
+      meetingDeletionHandle: "deletion-handle-1",
+      message: "The recording was interrupted before it could be transcribed. The audio it kept can still be played.",
+      audioRetention: { state: "retained", policy: "7-days", deadlineEpochSeconds: Math.floor(Date.now() / 1000) + 6 * 24 * 60 * 60, message: "Audio retained on this Mac." },
+      capturePauses: { state: "not-paused", count: 0, totalPausedSeconds: 0, message: "Recording was not paused during this meeting.", spans: [] },
+    } : mode === "ledger" ? {
       meetingId: "harness-meeting-1",
       state: "transcript-only",
       claims: [],

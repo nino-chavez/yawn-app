@@ -453,8 +453,8 @@ h3 {
 .note-editor-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-16);
+  justify-content: flex-start;
+  gap: var(--space-12);
   max-width: var(--measure);
   margin: 0 0 var(--space-8);
   padding: 0;
@@ -2843,6 +2843,45 @@ html, body, #app {
   gap: var(--space-6);
 }
 
+/* DESIGN.md (Rail), first run: the page with its empty rail, one line, one
+   sentence, the shortcut. */
+.first-run-page {
+  position: relative;
+  padding: 0 120px 0 150px;
+  text-align: center;
+}
+
+.first-run-page .empty-rail {
+  display: block;
+  position: absolute;
+  left: 80px;
+  top: 28px;
+  bottom: 28px;
+  width: 2px;
+  background: var(--rail);
+}
+
+.empty-doc h1 {
+  margin: 0 0 var(--space-8);
+  font-size: var(--t-large);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.empty-doc p {
+  margin: 0;
+  max-width: 44ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--label-2);
+}
+
+.empty-doc .caption {
+  margin-top: var(--space-8);
+  color: var(--label-3);
+}
+
 .doc-wrap {
   overflow-wrap: anywhere;
   flex: 1;
@@ -3019,9 +3058,10 @@ html, body, #app {
   margin-top: var(--space-6);
 }
 
+/* The note column starts at the page gutter (76px) in every state; the
+   turn column carries its own 24px gap so the gutter never shifts. */
 .ledger.has-turns {
-  grid-template-columns: 76px minmax(0, 1fr) 300px;
-  column-gap: 24px;
+  grid-template-columns: 76px minmax(0, 1fr) 324px;
 }
 
 .ledger-rail {
@@ -3080,25 +3120,42 @@ html, body, #app {
   font-weight: 600;
 }
 
-.ledger-after {
-  position: absolute;
-  left: 76px;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* An interrupted recording: the rail ends with a square Attention mark at
+   the stop time and says so in words. */
+.ledger-mark.stop i {
+  border-radius: 2px;
+  background: var(--attention);
+}
+
+.ledger-mark.stop span {
+  color: var(--attention);
+  font-weight: 600;
+}
+
+.ledger-mark.stop em {
+  margin-left: var(--space-8);
+  font-style: normal;
   font-size: 12px;
   line-height: 16px;
-  color: var(--label-3);
+  color: var(--attention);
   white-space: nowrap;
 }
 
-.ledger-after::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--separator);
+/* "After the meeting" sits in the gutter where the line's time would be,
+   level with the first line typed after Stop: the lines are consecutive, so
+   a divider between them had no room and overprinted the line above (cold
+   review 2026-10-16). */
+.ledger-after {
+  position: absolute;
+  left: 0;
+  width: 52px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--label-3);
 }
+
+
 
 .ledger-note {
   position: relative;
@@ -3139,6 +3196,7 @@ html, body, #app {
   position: relative;
   grid-column: 3;
   min-width: 0;
+  padding-left: 24px;
 }
 
 .ledger-turn {
@@ -3307,6 +3365,9 @@ html, body, #app {
 
 /* -- canvas (During capture) ------------------------------------------------ */
 
+/* DESIGN.md (Rail), During: the capture canvas is the same page as a
+   finished meeting -- the rail gutter, the meta line and the title -- with a
+   one-column ledger and nothing else. */
 .canvas-wrap {
   overflow-wrap: anywhere;
   flex: 1;
@@ -3314,13 +3375,27 @@ html, body, #app {
   display: flex;
   flex-direction: column;
   gap: var(--space-12);
-  padding: var(--space-24) var(--space-48) var(--space-24);
+  padding: 28px 40px 54px 28px;
   overflow-y: auto;
 }
 
-.canvas-wrap .notes-area {
-  flex: 1;
-  min-height: 200px;
+.canvas-wrap > .canvas-terminal-actions,
+.canvas-wrap > .activity-monitor,
+.canvas-wrap > .canvas-context-note,
+.canvas-wrap > .canvas-context-disclosure {
+  margin-left: 76px;
+}
+
+.canvas-wrap .your-notes-section {
+  margin-top: var(--space-6);
+}
+
+.canvas-wrap .ledger {
+  min-height: 240px;
+}
+
+.canvas-wrap .ledger-editor {
+  flex: none;
 }
 
 .canvas-context-note[data-tone="attention"] {
@@ -3359,21 +3434,29 @@ html, body, #app {
 
 /* Tonal Ledger — Canvas keeps recovery close to the meeting header instead
    of floating it in the center of an otherwise empty document pane. */
+/* DESIGN.md (Rail): a problem is a bounded attention surface -- Attention
+   soft, a 3px Attention locator, 8px radius -- with the headline, the detail,
+   one primary and one secondary action. Never a banner, no eyebrow. */
 .attention-pane {
   flex: 1;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
-  padding: 64px clamp(26px, 5vw, 68px);
+  justify-content: flex-start;
+  padding: 28px 40px 28px 28px;
 }
 
 .attention-state {
-  width: min(520px, 100%);
-  padding: var(--space-18) var(--space-18) var(--space-16);
-  border: 1px solid var(--notes-border);
-  border-left: 3px solid var(--attention);
-  border-radius: var(--r-card);
+  width: min(620px, 100%);
+  padding: 12px 16px 14px;
+  border: 0;
+  border-radius: 8px;
   background: var(--attention-bg);
+  box-shadow: inset 3px 0 0 var(--attention);
+}
+
+.attention-inline {
+  margin-top: 0;
+  margin-bottom: var(--space-18);
 }
 
 .attention-label {
@@ -3386,26 +3469,25 @@ html, body, #app {
 }
 
 .attention-headline {
-  font-size: 24px;
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.025em;
-  margin: 0;
-  max-width: var(--measure);
+  font-size: var(--t-body);
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: 0;
+  margin: 0 0 2px;
+  color: var(--label);
 }
 
 .attention-detail {
-  font-size: var(--t-read);
-  line-height: var(--lh-read);
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--label-2);
-  margin: var(--space-8) 0 0;
-  max-width: var(--measure);
+  margin: 0;
 }
 
 .attention-actions {
   display: flex;
   gap: var(--space-8);
-  margin-top: var(--space-8);
+  margin-top: 10px;
 }
 
 /* -- inspector --------------------------------------------------------------- */
@@ -3489,3 +3571,61 @@ html, body, #app {
 
 /* Keep optional model choices separate from the first-run selection. */
 .model-setup-secondary { margin-top: 12px; }
+
+/* The ledger's head row shares the ledger's note and turn columns, so the
+   turn column's heading sits level with "Your notes" (cold review
+   2026-10-16: the column of quotes was unexplained). */
+.note-editor-head.ledger-head {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  /* No grid gap: the ledger has none, and a gap would shift the headings
+     off the columns they name. */
+  gap: 0;
+  align-items: baseline;
+  max-width: none;
+}
+/* The page gutter is the head's own first column here, so the head starts
+   where the ledger starts and the three cells land on its three columns
+   (the .doc-page rule above gives every other head the gutter as margin). */
+.doc-page .your-notes-section > .note-editor-head.ledger-head {
+  margin-left: 0;
+}
+.ledger-head-rail {
+  padding-right: 24px;
+  text-align: right;
+  font-size: 11px;
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--label-3);
+}
+/* With a turn column beside it the note keeps a gutter of its own, so a long
+   line stops short of the turns instead of touching them. The mirror is
+   absolutely positioned against the column's padding box, so it takes the
+   same inset explicitly: the editor and the mirror must wrap at one width. */
+.ledger.has-turns .ledger-note {
+  padding-right: 24px;
+}
+.ledger.has-turns .ledger-mirror {
+  width: auto;
+  right: 24px;
+}
+.ledger-head-note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-12);
+  min-width: 0;
+}
+.ledger-head-turns {
+  padding-left: 24px;
+  font-size: 11px;
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--label-3);
+}
+/* A neutral note-area state is one caption with room above it, apart from
+   the editor's placeholder (cold review 2026-10-16: the two read as one
+   block). */
+.meeting-note-unavailable .meeting-note-fact {
+  margin: var(--space-18) 0 0;
+  max-width: var(--measure);
+}

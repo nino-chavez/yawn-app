@@ -87,6 +87,39 @@ const NOTE_MEETING_ID: &str = "33333333-3333-4333-8333-333333333333";
 /// an unlock.
 const LOCKED_MEETING_ID: &str = "88888888-8888-4888-8888-888888888888";
 
+/// A 23-minute meeting whose transcript runs at a talking pace and whose
+/// operator note carries note moments (`operator-note/2`): the state the Rail
+/// ledger is designed for (DESIGN.md, "What the implementation must prove":
+/// the page at 1080 by 900 shows the note and at least eight nearest turns
+/// without a click). Every other seeded meeting is seconds long, which is
+/// enough for the storage and retry states but renders a rail with marks at
+/// 0:00, 0:01 and 0:02. Seven lines are timed, two were typed after Stop,
+/// and one timed line falls inside the pause so the pause subtraction shows.
+const LEDGER_MEETING_ID: &str = "99999999-9999-4999-8999-999999999999";
+/// 23:05 of audio with one 45-second pause five minutes in.
+const LEDGER_AUDIO_SECONDS: usize = 1_385;
+const LEDGER_PAUSE_SECONDS: (u64, u64) = (300, 345);
+
+/// What the seeded root covers, written into SYNTHETIC_FIXTURE.json and
+/// checked again before an archive or a model install, so a root seeded by
+/// another build of this binary is refused rather than mistaken for this one.
+const COVERED_STATES: &[&str] = &[
+    "retained meeting",
+    "verified audio",
+    "quality and device projections",
+    "pending transcript retry",
+    "capture pauses",
+    "retry diff computed with differences",
+    "retry diff computed with no differences",
+    "retry diff skipped over budget",
+    "trashed meeting pending restore",
+    "export withheld-artifact manifest",
+    "generated note row preview and reverse citation map",
+    "read-only pre-meeting context",
+    "locked meeting behind the local barrier",
+    "note moments on a 23-minute ledger with one pause",
+];
+
 /// Sample rate the capture-pause schema is measured in (`capture_quality.rs`'s
 /// `CAPTURE_RATE`) — a normalized processing rate, independent of the
 /// fixture's own 8 kHz synthetic WAV sample rate above.
@@ -366,6 +399,7 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
     seed_export_tampered_meeting(&storage)?;
     seed_note_meeting(&storage)?;
     seed_locked_meeting(&storage)?;
+    seed_ledger_meeting(&storage)?;
 
     let marker = json!({
         "schema": "synthetic-fixture-evidence/1",
@@ -375,21 +409,7 @@ fn seed(root: &Path, repository: PathBuf) -> Result<(), FixtureError> {
         "content": "deterministic invented review fixture",
         "meeting_id": MEETING_ID,
         "retry_operation_id": OPERATION_ID,
-        "covered_states": [
-            "retained meeting",
-            "verified audio",
-            "quality and device projections",
-            "pending transcript retry",
-            "capture pauses",
-            "retry diff computed with differences",
-            "retry diff computed with no differences",
-            "retry diff skipped over budget",
-            "trashed meeting pending restore",
-            "export withheld-artifact manifest",
-            "generated note row preview and reverse citation map",
-            "read-only pre-meeting context",
-            "locked meeting behind the local barrier"
-        ],
+        "covered_states": COVERED_STATES,
         "note": "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time. One meeting (LOCKED_MEETING_ID) is locked via the meeting-lock/1 sidecar; this fixture can only show the locked barrier, never an unlock, because the real confirmation is Touch ID or the login password (live-run evidence by design) and its scripted stand-in is compiled only under cfg(test)."
     });
     write_new(
@@ -418,6 +438,30 @@ fn seed_plain_meeting(
     created_at: u64,
     source_bytes: Vec<u8>,
 ) -> Result<PlainMeeting, FixtureError> {
+    seed_meeting_shell(
+        storage,
+        meeting_id,
+        created_at,
+        source_bytes,
+        AUDIO_FRAMES / AUDIO_SAMPLE_RATE as usize,
+        &[],
+        "2023-11-14T22:13:21+0000",
+    )
+}
+
+/// [`seed_plain_meeting`] with the audio length in seconds, the capture
+/// pauses (in seconds since the recording started, converted to the capture
+/// ledger's 16 kHz sample units) and the receipt's finalized time spelled out.
+fn seed_meeting_shell(
+    storage: &StorageRoot,
+    meeting_id: &str,
+    created_at: u64,
+    source_bytes: Vec<u8>,
+    audio_seconds: usize,
+    pauses: &[(u64, u64)],
+    finalized_at: &str,
+) -> Result<PlainMeeting, FixtureError> {
+    let frames = AUDIO_SAMPLE_RATE as usize * audio_seconds;
     let meeting_dir = storage.path().join("meetings").join(meeting_id);
     for child in ["", "capture", "transcript", "notes"] {
         create_private_dir(&meeting_dir.join(child))?;
@@ -449,22 +493,22 @@ fn seed_plain_meeting(
 "#,
     )?;
 
-    let mic = wav(AUDIO_FRAMES);
-    let system = wav(AUDIO_FRAMES);
+    let mic = wav(frames);
+    let system = wav(frames);
     write_new(&meeting_dir.join("capture/mic.wav"), &mic)?;
     write_new(&meeting_dir.join("capture/system.wav"), &system)?;
     let mic_ref = artifact_ref(&meeting_dir, "capture/mic.wav")?;
     let system_ref = artifact_ref(&meeting_dir, "capture/system.wav")?;
-    let receipt = json!({
+    let mut receipt = json!({
         "schema": "capture-session/2",
         "status": "complete",
         "started_at": "2023-11-14T22:13:20+0000",
-        "finalized_at": "2023-11-14T22:13:21+0000",
+        "finalized_at": finalized_at,
         "health": {"schema":"capture-health/1","usable":true},
         "quality": {
             "schema": "capture-quality/1",
-            "source": {"leg":"mic","artifact":"mic.wav","samples":AUDIO_FRAMES,"sha256":mic_ref.sha256},
-            "metrics": {"duration_s":8.0},
+            "source": {"leg":"mic","artifact":"mic.wav","samples":frames,"sha256":mic_ref.sha256},
+            "metrics": {"duration_s": audio_seconds as f64},
             "observations": {
                 "silence":{"status":"not_observed","detail":"synthetic"},
                 "clipping":{"status":"not_observed","detail":"synthetic"},
@@ -479,6 +523,18 @@ fn seed_plain_meeting(
             {"name":"system.wav","bytes":system.len(),"sha256":system_ref.sha256,"mode":"0600"}
         ]
     });
+    if !pauses.is_empty() {
+        receipt["pauses"] = json!({
+            "schema": "capture-pauses/1",
+            "spans": pauses
+                .iter()
+                .map(|(paused_at, resumed_at)| json!({
+                    "paused_at_samples": paused_at * PAUSE_SAMPLE_RATE,
+                    "resumed_at_samples": resumed_at * PAUSE_SAMPLE_RATE,
+                }))
+                .collect::<Vec<_>>(),
+        });
+    }
     write_new(
         &meeting_dir.join("capture/session.json"),
         &serde_json::to_vec_pretty(&receipt)?,
@@ -870,6 +926,103 @@ fn seed_locked_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
     Ok(())
 }
 
+/// The Rail ledger's representative state: a 23-minute recording, a
+/// transcript at a talking pace, one pause, and an `operator-note/2` whose
+/// moments are wall-clock seconds since the recording started (pauses
+/// included). Line 2 was typed during the pause, so it maps to 5:00 in the
+/// audio; the lines after the pause map 45 seconds earlier than their
+/// moments; lines 7 and 8 were typed after Stop and carry no moment. Every
+/// word is invented.
+fn seed_ledger_meeting(storage: &StorageRoot) -> Result<(), FixtureError> {
+    let turns: &[(f64, f64, &str, &str)] = &[
+        (12.0, 19.0, "Me", "Fixture: this is the launch checklist review, recorded as a synthetic meeting."),
+        (24.0, 38.0, "Them", "Fixture: the rendered comparison is the first item, and it is ready to show."),
+        (45.0, 61.0, "Me", "Fixture: then the rail should read on its own, before anyone opens the transcript."),
+        (70.0, 92.0, "Them", "Fixture: the marks come from the stored moments, so a saved note from before shows none."),
+        (104.0, 118.0, "Me", "Fixture: agreed, and a plain page without marks is the right reading of an old note."),
+        (131.0, 150.0, "Them", "Fixture: the second item is the token file; the generator writes both apps from it."),
+        (160.0, 178.0, "Me", "Fixture: typed values in a view are the drift we are preventing, so none are allowed."),
+        (190.0, 212.0, "Them", "Fixture: the third item is the pause: the recording stops, the clock keeps counting."),
+        (221.0, 240.0, "Me", "Fixture: a line typed during a pause takes the paused moment, which is what the brief says."),
+        (252.0, 275.0, "Them", "Fixture: we will pause at five minutes to check the room, then pick this back up."),
+        (284.0, 298.0, "Me", "Fixture: pausing now."),
+        (350.0, 372.0, "Them", "Fixture: back. The fourth item is the first-run page, which nobody has seen installed yet."),
+        (380.0, 401.0, "Me", "Fixture: the harness shows it, but the installed build is the capture that counts."),
+        (412.0, 430.0, "Them", "Fixture: the fifth item is the test build; it follows the cold review, not the other way round."),
+        (441.0, 466.0, "Me", "Fixture: the review judges captures of the installed app, both appearances, large text too."),
+        (478.0, 497.0, "Them", "Fixture: the sixth item is the dim ink rule during replay; that is an iPad behavior."),
+        (508.0, 531.0, "Me", "Fixture: it waits for the replay slice, so we note it and move on."),
+        (545.0, 569.0, "Them", "Fixture: the seventh item is the attention surface; one headline, one detail, two actions."),
+        (580.0, 603.0, "Me", "Fixture: never a banner, and never for a fact a caption already states."),
+        (615.0, 640.0, "Them", "Fixture: the eighth item is the Settings window: one form, no sidebar, 580 wide."),
+        (652.0, 678.0, "Me", "Fixture: the speech model picker is a popover there, and the retention choice is a segmented control."),
+        (690.0, 714.0, "Them", "Fixture: the ninth item is the sidebar rows: title, caption, excerpt, and the attention dot."),
+        (726.0, 752.0, "Me", "Fixture: the selected row keeps its text; only the surface and the locator change."),
+        (768.0, 790.0, "Them", "Fixture: the tenth item is the transport; ticks per turn, the knob in the moment color."),
+        (802.0, 828.0, "Me", "Fixture: arrow keys move the playhead by one note, not by one second."),
+        (843.0, 866.0, "Them", "Fixture: the eleventh item is the fold row: plus seven turns, opening in place."),
+        (880.0, 905.0, "Me", "Fixture: the count is shown, not hidden; that is the product brief's rule."),
+        (921.0, 948.0, "Them", "Fixture: the twelfth item is the menu-bar pill, which is the only other red on the Mac."),
+        (962.0, 989.0, "Me", "Fixture: and the live mark on the rail, which goes away when Stop lands."),
+        (1004.0, 1030.0, "Them", "Fixture: the thirteenth item is the export; the manifest withholds nothing it cannot verify."),
+        (1044.0, 1071.0, "Me", "Fixture: the tampered artifact state is already seeded, so the review can see it."),
+        (1086.0, 1112.0, "Them", "Fixture: the fourteenth item is the lock; Touch ID or the login password, never a stand-in."),
+        (1126.0, 1150.0, "Me", "Fixture: the fixture shows the barrier only, which is the honest limit."),
+        (1166.0, 1192.0, "Them", "Fixture: the last item is the capture set itself; both appearances, large text, increased contrast."),
+        (1205.0, 1232.0, "Me", "Fixture: the reviewer gets the frames and nothing else; no brief, no rationale."),
+        (1246.0, 1270.0, "Them", "Fixture: then we are done. The checklist is complete for this synthetic meeting."),
+        (1283.0, 1301.0, "Me", "Fixture: stopping the recording now. None of this is a real meeting."),
+        (1312.0, 1330.0, "Them", "Fixture: the trailing turn after the last note, so the fold under the final line has something to count."),
+        (1341.0, 1362.0, "Me", "Fixture: one more, for the same reason."),
+    ];
+    let source = transcript_bytes_timed(turns, "synthetic-fixture-ledger");
+    let shell = seed_meeting_shell(
+        storage,
+        LEDGER_MEETING_ID,
+        CREATED_AT + 7,
+        source,
+        LEDGER_AUDIO_SECONDS,
+        &[LEDGER_PAUSE_SECONDS],
+        "2023-11-14T22:37:10+0000",
+    )?;
+    write_meeting_record(
+        &shell,
+        LEDGER_MEETING_ID,
+        MeetingLifecycle::TranscriptReady,
+        None,
+    )?;
+    verify_record_artifacts(&shell.meeting_dir, &load_meeting(&shell.meeting_dir)?)?;
+
+    // The operator's own note, as apps/desktop/src-tauri/src/operator_note.rs
+    // writes it: `line` is the zero-based paragraph, `seconds` the moment it
+    // was first typed. Lines 7 and 8 have no moment: typed after Stop.
+    let text = [
+        "Checklist review opens; Them owns the rendered comparison.",
+        "Fixture question: does the rail read without the transcript?",
+        "Paused here to check the room; nothing recorded in the gap.",
+        "Decision: keep the paper tokens generated, never typed in by hand.",
+        "Open item: the first-run page has not been seen installed.",
+        "Them will cut the test build after the cold review lands.",
+        "Last point: the dim ink rule waits for replay on the iPad.",
+        "After the meeting: send the capture set to the reviewer.",
+        "Also: the fixture holds no real meeting material.",
+    ]
+    .join("\n");
+    let moments = [(0, 42), (1, 130), (2, 330), (3, 545), (4, 768), (5, 1040), (6, 1275)]
+        .iter()
+        .map(|(line, seconds)| json!({"line": line, "seconds": seconds}))
+        .collect::<Vec<_>>();
+    write_new(
+        &shell.meeting_dir.join("operator-note.json"),
+        &serde_json::to_vec_pretty(&json!({
+            "schema": "operator-note/2",
+            "text": text,
+            "moments": moments,
+        }))?,
+    )?;
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SyntheticFixtureMarker {
@@ -1235,22 +1388,7 @@ fn validate_synthetic_marker(root: &Path) -> Result<(), FixtureError> {
         || marker.content != "deterministic invented review fixture"
         || marker.meeting_id != MEETING_ID
         || marker.retry_operation_id != OPERATION_ID
-        || marker.covered_states
-            != vec![
-                "retained meeting",
-                "verified audio",
-                "quality and device projections",
-                "pending transcript retry",
-                "capture pauses",
-                "retry diff computed with differences",
-                "retry diff computed with no differences",
-                "retry diff skipped over budget",
-                "trashed meeting pending restore",
-                "export withheld-artifact manifest",
-                "generated note row preview and reverse citation map",
-                "read-only pre-meeting context",
-                "locked meeting behind the local barrier",
-            ]
+        || marker.covered_states != COVERED_STATES
         || marker.note
             != "One meeting (NOTE_MEETING_ID) carries a real, validator-passing generated note; every other seeded meeting remains TranscriptReady or Ready without invoking a note worker at seed time. One meeting (LOCKED_MEETING_ID) is locked via the meeting-lock/1 sidecar; this fixture can only show the locked barrier, never an unlock, because the real confirmation is Touch ID or the login password (live-run evidence by design) and its scripted stand-in is compiled only under cfg(test)."
     {
@@ -1475,6 +1613,29 @@ fn transcript_bytes_tagged(turns: &[(&str, &str)], source_tag: &str) -> Vec<u8> 
             })
         })
         .collect::<Vec<_>>();
+    transcript_envelope(turns, source_tag)
+}
+
+/// Turns with their own start and end seconds, for a transcript that has to
+/// run at a talking pace (the ledger meeting pairs note moments with the
+/// nearest turn by time, so a one-second-per-turn transcript proves nothing).
+fn transcript_bytes_timed(turns: &[(f64, f64, &str, &str)], source_tag: &str) -> Vec<u8> {
+    let turns = turns
+        .iter()
+        .map(|(start, end, speaker, text)| {
+            json!({
+                "start": start,
+                "end": end,
+                "speaker": speaker,
+                "text": text,
+                "gated": false
+            })
+        })
+        .collect::<Vec<_>>();
+    transcript_envelope(turns, source_tag)
+}
+
+fn transcript_envelope(turns: Vec<serde_json::Value>, source_tag: &str) -> Vec<u8> {
     serde_json::to_vec_pretty(&json!({
         "schema":"capture-transcript/1",
         "source":source_tag,

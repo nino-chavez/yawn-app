@@ -21,7 +21,7 @@ trap cleanup EXIT
 serve="$build_dir/serve"
 mkdir "$serve"
 ln -s "$PWD/../ui/main.js" "$PWD/../ui/view-model.mjs" "$PWD/../ui/dom-patch.mjs" "$PWD/../ui/styles.css" "$PWD/../ui/tokens.css" "$PWD/../ui/settings.js" "$PWD/../ui/settings.html" "$PWD/../ui/settings-window.css" "$serve/"
-ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/tonal-ledger-canvas.contract.json" "$PWD/settings-retirement.html" "$serve/"
+ln -s "$PWD/harness.html" "$PWD/tauri-stub.js" "$PWD/rail.contract.json" "$PWD/settings-retirement.html" "$serve/"
 ready_token="$(uuidgen)"
 printf '%s' "$ready_token" > "$serve/harness-ready.txt"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
@@ -95,7 +95,9 @@ case "$mode" in
     ;;
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
-  fidelity) run fidelity fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  still) run "${2:?run.sh still <mode>}" still.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  still-settings) run_settings still.js "&width=580&height=640&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   note-retirement-negative) run transcript-retirement note-retirement.js "&width=1080&height=900&negative-control=1" ;;
   note-retirement)
     run transcript-retirement note-retirement.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
@@ -114,5 +116,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|still <mode>|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac
