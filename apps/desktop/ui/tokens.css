@@ -7,14 +7,18 @@
   color-scheme: light dark;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --t-caption: 11px; --t-body: 13px; --t-read: 16px; --t-title: 17px; --t-large: 20px;
+  /* Text size (2026-10-16): every type size is its token times --text-scale,
+     which text-size.mjs sets on the root from the Settings choice (or View >
+     Bigger / Smaller); 1 renders the sizes below unchanged. */
+  --text-scale: 1;
+  --t-label: calc(10px * var(--text-scale)); --t-caption: calc(11px * var(--text-scale)); --t-small: calc(12px * var(--text-scale)); --t-body: calc(13px * var(--text-scale)); --t-read: calc(16px * var(--text-scale)); --t-title: calc(17px * var(--text-scale)); --t-large: calc(20px * var(--text-scale));
   --lh-body: 1.4; --lh-read: 1.5;
   /* Transcript turn text is its own documented size (DESIGN.md "transcript 14
      at 1.55"), distinct from body -- the visual refit (2026-09-03) wires it
      in so styles.css's transcript rendering stops leaning on a duplicate
      --text-transcript-body custom property for a value tokens.json already
      held. */
-  --t-transcript: 13px; --lh-transcript: 1.45;
+  --t-transcript: calc(13px * var(--text-scale)); --lh-transcript: 1.45;
   --measure: 64ch;
   --r-control: 5px; --r-card: 8px;
   --toolbar-h: 52px; --sidebar-w: 262px; --control-h: 22px; --control-h-secondary: 22px;
@@ -58,7 +62,7 @@ body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); back
 * { box-sizing: border-box; }
 button, input { font: inherit; color: inherit; }
 .btn { display: inline-flex; min-height: var(--control-h); align-items: center; justify-content: center; padding: 0 10px; border-radius: var(--r-control); background: var(--control);
-  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap; color: var(--label); }
+  border: 1px solid var(--control-border); box-shadow: var(--control-shadow); cursor: default; font-size: var(--t-small); font-weight: 500; line-height: calc(20px * var(--text-scale)); white-space: nowrap; color: var(--label); }
 .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .btn.record { color: var(--record); font-weight: 600; }
 .btn.record.live { background: var(--record); color: var(--on-record); border-color: transparent; }
@@ -78,7 +82,7 @@ button, input { font: inherit; color: inherit; }
 .traffic { display: inline-flex; gap: 8px; margin-right: 12px; }
 .traffic i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
 .traffic i:nth-child(1){background:#ff5f57}.traffic i:nth-child(2){background:#febc2e}.traffic i:nth-child(3){background:#28c840}
-.fixture-tag { position: absolute; right: 8px; bottom: 6px; font-size: 10px; color: var(--label-3); font-family: var(--font-mono); }
+.fixture-tag { position: absolute; right: 8px; bottom: 6px; font-size: var(--t-label); color: var(--label-3); font-family: var(--font-mono); }
 
 /* Focus, pressed, disabled — one rule each, system-shaped. */
 :focus-visible { outline: 2px solid var(--moment); outline-offset: 1px; border-radius: var(--r-control); }

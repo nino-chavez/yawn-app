@@ -181,9 +181,9 @@ textarea:focus-visible {
   color: var(--label);
   background: var(--control);
   box-shadow: none;
-  font-size: 12px;
+  font-size: var(--t-small);
   font-weight: 620;
-  line-height: 17px;
+  line-height: calc(17px * var(--text-scale));
   white-space: nowrap;
   cursor: default;
 }
@@ -213,7 +213,7 @@ textarea:focus-visible {
 .button.small {
   min-height: var(--control-h-secondary);
   padding: 3px 9px;
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 
 .icon-button {
@@ -603,7 +603,7 @@ h3 {
 .button-small {
   min-height: var(--control-h-secondary);
   padding: 3px 9px;
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 
 .transcript-action-status {
@@ -653,7 +653,7 @@ h3 {
 .transcript-line-meta span {
   overflow: hidden;
   color: var(--ink-soft);
-  font-size: 10px;
+  font-size: var(--t-label);
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wide);
   line-height: 1.25;
@@ -683,7 +683,7 @@ h3 {
 .speaker-label-button small {
   margin-top: 3px;
   color: var(--accent);
-  font-size: 9px;
+  font-size: calc(9px * var(--text-scale));
   font-weight: var(--weight-bold);
   letter-spacing: var(--tracking-wide);
   line-height: 1.2;
@@ -763,7 +763,7 @@ h3 {
   color: var(--label);
   font: inherit;
   font-size: var(--t-body);
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
   text-align: left;
   cursor: default;
 }
@@ -811,13 +811,13 @@ h3 {
 .your-notes-section .note-editor-head h3 {
   margin: 0;
   font-weight: 680;
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
 }
 
 .your-notes-section .note-editor-head .doc-fact {
   color: var(--label-3);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--t-caption);
+  line-height: calc(16px * var(--text-scale));
 }
 
 .retained-audio-section .note-editor-help {
@@ -851,8 +851,8 @@ h3 {
 .your-notes-section > .doc-fact:last-child {
   margin: 9px 0 0;
   color: var(--label-3);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: var(--t-caption);
+  line-height: calc(16px * var(--text-scale));
 }
 
 .notes-area::placeholder {
@@ -1008,7 +1008,7 @@ h3 {
 
 .transcript-disclosure > summary {
   padding: 14px 0;
-  font-size: 12px;
+  font-size: var(--t-small);
   font-weight: 580;
   line-height: normal;
   color: var(--label-2);
@@ -1287,7 +1287,7 @@ h3 {
   display: block;
   margin-bottom: var(--space-6);
   color: #687ca4;
-  font-size: 10px;
+  font-size: var(--t-label);
   font-weight: var(--weight-bold-plus);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
@@ -1324,7 +1324,7 @@ h3 {
 .evidence-popover-meta {
   margin: 0 0 var(--space-6);
   color: var(--accent);
-  font-size: 10px;
+  font-size: var(--t-label);
   font-weight: var(--weight-bold-plus);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
@@ -1395,7 +1395,7 @@ h3 {
 }
 
 .startup-card.attention h1 {
-  font-size: 24px;
+  font-size: calc(24px * var(--text-scale));
   font-weight: 650;
   line-height: 1.15;
   letter-spacing: -0.025em;
@@ -2592,8 +2592,8 @@ html, body, #app {
 
 .search-field {
   display: inline-flex;
-  width: 170px;
-  height: 24px;
+  width: calc(170px * var(--text-scale));
+  min-height: 24px;
   align-items: center;
   padding: 0 8px;
   border: 1px solid var(--control-border);
@@ -2609,7 +2609,7 @@ html, body, #app {
   outline: 0;
   background: transparent;
   color: var(--label);
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 
 .search-field input::placeholder {
@@ -2641,7 +2641,7 @@ html, body, #app {
 .record-live-badge::before {
   content: "●";
   margin-right: var(--space-6);
-  font-size: 8px;
+  font-size: calc(8px * var(--text-scale));
   vertical-align: 1px;
 }
 
@@ -2691,12 +2691,12 @@ html, body, #app {
 .group-label {
   margin: 0 0 5px;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: var(--t-label);
   font-weight: 650;
   color: var(--label-3);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  line-height: 15px;
+  line-height: calc(15px * var(--text-scale));
 }
 
 .meeting-group + .meeting-group {
@@ -2743,21 +2743,23 @@ html, body, #app {
   color: var(--label);
   font-weight: 580;
   letter-spacing: -0.008em;
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Up to two lines, so a large text size never cuts the status ("transcript
+   available") that says what state the meeting is in. */
 .row-caption {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin-top: 2px;
   color: var(--label-3);
-  font-size: 11px;
-  line-height: 16px;
-  white-space: nowrap;
+  font-size: var(--t-caption);
+  line-height: calc(16px * var(--text-scale));
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .row-excerpt {
@@ -2765,7 +2767,7 @@ html, body, #app {
   margin-top: 2px;
   font-size: var(--t-caption);
   color: var(--label-3);
-  line-height: 15px;
+  line-height: calc(15px * var(--text-scale));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2803,7 +2805,7 @@ html, body, #app {
 
 .row.recording-now .row-title::before {
   content: "●";
-  font-size: 8px;
+  font-size: calc(8px * var(--text-scale));
 }
 
 .row.recording-now .row-caption {
@@ -2823,7 +2825,7 @@ html, body, #app {
   background: transparent;
   color: var(--label-2);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--t-small);
   text-align: left;
   cursor: default;
 }
@@ -2912,7 +2914,7 @@ html, body, #app {
 .empty-doc p {
   margin: 0;
   max-width: 44ch;
-  font-size: 15px;
+  font-size: calc(15px * var(--text-scale));
   line-height: 1.5;
   color: var(--label-2);
 }
@@ -2978,25 +2980,28 @@ html, body, #app {
 .doc-page .your-notes-section > .note-editor-head,
 .doc-page .your-notes-section > .doc-fact,
 .doc-page .doc-transcript-disclosure-wrap {
-  margin-left: 76px;
+  margin-left: var(--ledger-gutter);
 }
 
 .doc-meta {
   margin: 0 0 4px;
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--t-small);
+  line-height: calc(17px * var(--text-scale));
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
 }
 
 /* -- transport ------------------------------------------------------------- */
 
+/* Wraps rather than squeezing the track: at a large text size the
+   recording choice moves to its own line (cold review 2026-10-16). */
 .transport {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   min-height: 30px;
-  margin: 0 0 var(--space-12) 76px;
+  margin: 0 0 var(--space-12) var(--ledger-gutter);
 }
 
 .transport-play {
@@ -3014,14 +3019,15 @@ html, body, #app {
 }
 
 .transport-time {
-  font-size: 11px;
+  font-size: var(--t-caption);
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
 }
 
 .transport-track {
   position: relative;
-  flex: 1;
+  flex: 1 1 160px;
+  min-width: 160px;
   max-width: 300px;
   height: 28px;
 }
@@ -3061,8 +3067,8 @@ html, body, #app {
 .transport-source-label {
   margin-right: 4px;
   color: var(--label-3);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--t-caption);
+  line-height: calc(14px * var(--text-scale));
   white-space: nowrap;
 }
 
@@ -3072,8 +3078,8 @@ html, body, #app {
   border-radius: 4px;
   background: transparent;
   color: var(--label-3);
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--t-caption);
+  line-height: calc(14px * var(--text-scale));
 }
 
 .transport-source-btn[aria-pressed="true"] {
@@ -3097,28 +3103,37 @@ html, body, #app {
   border: 0;
   background: transparent;
   color: var(--label-2);
-  font-size: 12px;
+  font-size: var(--t-small);
 }
 
 /* -- the ledger: rail | note | nearest turn -------------------------------- */
 
+/* The rail gutter grows with the text size so an elapsed time never breaks
+   across lines; the rail line sits 12px past the time column, where the
+   mark's dot centers (8px gap + half of the 9px dot). */
+:root {
+  --ledger-time-w: calc(40px * var(--text-scale));
+  --ledger-rail-x: calc(var(--ledger-time-w) + 12px);
+  --ledger-gutter: calc(var(--ledger-time-w) + 36px);
+}
+
 .ledger {
   position: relative;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr);
   margin-top: var(--space-6);
 }
 
 /* The note column starts at the page gutter (76px) in every state; the
    turn column carries its own 24px gap so the gutter never shifts. */
 .ledger.has-turns {
-  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr) 324px;
 }
 
 .ledger-rail {
   display: none;
   position: absolute;
-  left: 52px;
+  left: var(--ledger-rail-x);
   top: 2px;
   bottom: 0;
   width: 2px;
@@ -3144,10 +3159,10 @@ html, body, #app {
 }
 
 .ledger-mark span {
-  width: 40px;
+  width: var(--ledger-time-w);
   text-align: right;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--t-caption);
+  line-height: calc(14px * var(--text-scale));
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
 }
@@ -3186,8 +3201,8 @@ html, body, #app {
 .ledger-mark.stop em {
   margin-left: var(--space-8);
   font-style: normal;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: var(--t-small);
+  line-height: calc(16px * var(--text-scale));
   color: var(--attention);
   white-space: nowrap;
 }
@@ -3199,10 +3214,10 @@ html, body, #app {
 .ledger-after {
   position: absolute;
   left: 0;
-  width: 52px;
+  width: var(--ledger-rail-x);
   text-align: right;
-  font-size: 11px;
-  line-height: 13px;
+  font-size: var(--t-caption);
+  line-height: calc(13px * var(--text-scale));
   color: var(--label-3);
 }
 
@@ -3264,8 +3279,8 @@ html, body, #app {
 
 .ledger-turn-time {
   display: block;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--t-caption);
+  line-height: calc(14px * var(--text-scale));
   color: var(--label-3);
   font-variant-numeric: tabular-nums;
 }
@@ -3278,8 +3293,8 @@ html, body, #app {
   border-radius: 4px;
   background: none;
   font: inherit;
-  font-size: 11px;
-  line-height: 14px;
+  font-size: var(--t-caption);
+  line-height: calc(14px * var(--text-scale));
   color: var(--label-2);
   cursor: pointer;
 }
@@ -3361,8 +3376,8 @@ html, body, #app {
 }
 
 .doc-caption {
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--t-small);
+  line-height: calc(17px * var(--text-scale));
   color: var(--label-3);
   margin: 4px 0 0;
 }
@@ -3387,7 +3402,7 @@ html, body, #app {
   margin: 13px 0 28px;
   padding-left: 11px;
   border-left: 2px solid var(--separator-strong);
-  line-height: 20px;
+  line-height: calc(20px * var(--text-scale));
 }
 
 .note-help {
@@ -3417,7 +3432,7 @@ html, body, #app {
   color: var(--label);
   font-size: var(--t-body);
   font-weight: 680;
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
 }
 
 .doc-wrap > .trash-pane {
@@ -3483,7 +3498,7 @@ html, body, #app {
 .canvas-wrap > .activity-monitor,
 .canvas-wrap > .canvas-context-note,
 .canvas-wrap > .canvas-context-disclosure {
-  margin-left: 76px;
+  margin-left: var(--ledger-gutter);
 }
 
 .canvas-wrap .your-notes-section {
@@ -3571,14 +3586,14 @@ html, body, #app {
 .attention-headline {
   font-size: var(--t-body);
   font-weight: 600;
-  line-height: 18px;
+  line-height: calc(18px * var(--text-scale));
   letter-spacing: 0;
   margin: 0 0 2px;
   color: var(--label);
 }
 
 .attention-detail {
-  font-size: 12px;
+  font-size: var(--t-small);
   line-height: 1.45;
   color: var(--label-2);
   margin: 0;
@@ -3677,7 +3692,7 @@ html, body, #app {
    2026-10-16: the column of quotes was unexplained). */
 .note-editor-head.ledger-head {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 324px;
+  grid-template-columns: var(--ledger-gutter) minmax(0, 1fr) 324px;
   /* No grid gap: the ledger has none, and a gap would shift the headings
      off the columns they name. */
   gap: 0;
@@ -3693,7 +3708,7 @@ html, body, #app {
 .ledger-head-rail {
   padding-right: 24px;
   text-align: right;
-  font-size: 11px;
+  font-size: var(--t-caption);
   line-height: var(--lh-body);
   font-weight: 600;
   color: var(--label-3);
@@ -3717,7 +3732,7 @@ html, body, #app {
 }
 .ledger-head-turns {
   padding-left: 24px;
-  font-size: 11px;
+  font-size: var(--t-caption);
   line-height: var(--lh-body);
   font-weight: 600;
   color: var(--label-3);

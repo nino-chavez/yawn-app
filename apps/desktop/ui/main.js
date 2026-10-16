@@ -73,6 +73,7 @@ import {
 } from "./view-model.mjs";
 import { patchInto } from "./dom-patch.mjs";
 import { applyAppearance, watchSystemAppearance } from "./appearance.mjs";
+import { applyTextSize, setTextSize, stepTextSize, TEXT_SIZE_EVENT } from "./text-size.mjs";
 import { mountSettings } from "./settings.js";
 
 const root = document.querySelector("#app");
@@ -592,6 +593,9 @@ function listenForMenuEvents() {
   tauriListen("menu:toggle-sidebar", () => toggleSidebar()).catch(() => {});
   tauriListen("menu:open-transcript", () => openFullTranscriptFromInspector()).catch(() => {});
   tauriListen("menu:open-settings", () => { void openSettings().catch(reportError); }).catch(() => {});
+  tauriListen("menu:text-bigger", () => setTextSize(stepTextSize(1))).catch(() => {});
+  tauriListen("menu:text-smaller", () => setTextSize(stepTextSize(-1))).catch(() => {});
+  tauriListen("menu:text-actual", () => setTextSize(stepTextSize(0))).catch(() => {});
 }
 
 // Theme: appearance.mjs owns html[data-theme] (System, Light or Dark, set in
@@ -599,6 +603,10 @@ function listenForMenuEvents() {
 function syncThemeFromSystem() {
   applyAppearance();
   watchSystemAppearance();
+  // Text size: text-size.mjs owns --text-scale. The ledger places its marks
+  // and turns from measured line positions, so a new size lays it out again.
+  globalThis.addEventListener?.(TEXT_SIZE_EVENT, () => globalThis.requestAnimationFrame?.(layoutLedgers));
+  applyTextSize();
 }
 
 function renderBrowserNotice() {
@@ -1824,7 +1832,7 @@ function layoutLedgers() {
     const after = ledger.querySelector(".ledger-after");
     if (after) {
       const index = Number(after.dataset.line);
-      if (Number.isFinite(tops[index])) after.style.top = `${tops[index] + heights[index] / 2 - 13}px`;
+      if (Number.isFinite(tops[index])) after.style.top = `${tops[index] + heights[index] / 2 - after.offsetHeight / 2}px`;
     }
     const stop = ledger.querySelector(".ledger-stop");
     if (stop) {

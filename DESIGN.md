@@ -121,8 +121,11 @@ and Dynamic Type styles on the iPad.
 | Settings section label · row · detail · state | 10px uppercase tracked · 13px · 11px · 12px, Label 2 | not in scope |
 | First-run line and its caption | 20px weight 650 · 15px Label 2 · 11px Label 3 | title3 · subheadline, Label 3 |
 
-Tabular numerals on every time. Large text follows the system setting; the
-ledger's note column is a measure in characters, so it holds.
+Tabular numerals on every time. Large text: Settings → Appearance → Text size
+(Default, Large, Larger, Largest), or View → Bigger, Smaller and Actual Size
+(⌘+, ⌘−, ⌘0), multiplies every size above by 1, 1.15, 1.3 or 1.5. The rail
+gutter grows with it; the turn column stays 324px, so the note column takes
+what is left and notes wrap sooner at the larger sizes.
 
 ## Composition, Mac
 
@@ -285,8 +288,16 @@ Every shortcut is also a menu item.
 
 ## Accessibility
 
-Large text: the Mac sizes follow the system setting and the note column's
-measure is in characters. Increased contrast: separators and Label 3 darken
+Large text: every Mac type size is a token times `--text-scale`, set from
+Settings → Appearance → Text size or View → Bigger / Smaller / Actual Size
+(`text-size.mjs`); the ledger lays out again when the size changes. This is
+the Mac's own pattern for an app's text: Apple's Text Size setting (Accessibility
+→ Display) applies to "the apps listed", and Apple's apps such as Mail and
+Messages change their text in the app with ⌘+ and ⌘− (Apple Support, "Increase
+font size and icons on Mac", macOS 27). On this Mac that list holds only
+`com.apple.*` apps (`com.apple.universalaccess` `FontSizeCategory`), and no API
+was found for another app to join it. WebKit's `-apple-system-body` keyword
+resolves to 13px on the Mac (WebKit bug 260880), the size Yawn already uses. Increased contrast: separators and Label 3 darken
 (`prefers-contrast: more`, token override), no new colors. Reduced motion: as
 above. Reduce transparency: the sheet dim is an opaque panel. VoiceOver: a
 sidebar row is a button named "title, status, date"; a rail mark is a button
@@ -315,6 +326,9 @@ these in the frames only.
   marks and no fold rows.
 - Both appearances, large text and increased contrast, cold-reviewed from
   device captures of the installed build; on the iPad, from the device.
+  Large text on the Mac: `docs/evidence/screen-reviews/mac-text-size-installed-2026-10-16-cold.md`
+  (Default and Largest, Dark, 1080 by 900; ledger and Settings). Still owed
+  on the Mac: increased contrast, and large text in Light.
 
 ## Family invariants (shared with Minder)
 
