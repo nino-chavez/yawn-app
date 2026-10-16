@@ -90,6 +90,7 @@ import {
   trashListPresentation,
   turnCitationPresentation,
   withheldTurnPresentation,
+  unreadableOperatorNoteCopy,
 } from "./view-model.mjs";
 
 test("capture states lead with the actual next condition", () => {
@@ -2436,4 +2437,15 @@ test("transport ticks place each timed turn on the track and tell the operator's
   const ticks = transportTicksPresentation([{ start: 0, speaker: "You" }, { start: 50 }, { start: 200 }, { start: 100, speaker: "You" }], 100);
   assert.deepEqual(ticks, [{ percent: 0, you: true }, { percent: 50, you: false }, { percent: 100, you: true }]);
   assert.deepEqual(transportTicksPresentation([{ start: 1 }], 0), []);
+});
+
+test("an unreadable saved note says the file is kept and names only what the page can still do", () => {
+  const turns = { turns: [{ text: "hello" }] };
+  const both = unreadableOperatorNoteCopy({ microphonePlaybackHandle: "m" }, turns);
+  assert.match(both, /nothing will be written over them/);
+  assert.match(both, /play the audio and read the full transcript\.$/);
+  assert.match(unreadableOperatorNoteCopy({}, turns), /read the full transcript\.$/);
+  assert.doesNotMatch(unreadableOperatorNoteCopy({}, turns), /play the audio/);
+  assert.match(unreadableOperatorNoteCopy({ systemPlaybackHandle: "s" }, null), /play the audio\.$/);
+  assert.doesNotMatch(unreadableOperatorNoteCopy(null, null), /You can still/);
 });

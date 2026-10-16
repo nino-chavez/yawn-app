@@ -70,6 +70,7 @@ import {
   trashListPresentation,
   turnCitationPresentation,
   withheldTurnPresentation,
+  unreadableOperatorNoteCopy,
 } from "./view-model.mjs";
 import { patchInto } from "./dom-patch.mjs";
 import { applyAppearance, watchSystemAppearance } from "./appearance.mjs";
@@ -1578,7 +1579,7 @@ function renderMeetingPane() {
         <section class="note-section your-notes-section" id="meeting-your-notes" aria-labelledby="operator-note-heading">
           <div class="note-editor-head${ledgerHasTurns ? " ledger-head" : ""}">${ledgerHasTurns ? `<span class="ledger-head-rail">Elapsed</span>` : ""}<span class="ledger-head-note"><h3 id="operator-note-heading">Your notes</h3><span class="doc-fact" id="library-note-save-state">${escapeHtml(selectedNoteCopy)}</span></span>${ledgerHasTurns ? `<span class="ledger-head-turns">Nearest in the transcript</span>` : ""}</div>
           ${operatorNote?.unreadable
-            ? `<p class="doc-fact note-unreadable">Yawn could not read your notes for this meeting, so they are not shown and nothing will be written over them. The file stays on this Mac, and the rest of this meeting is not affected.</p>`
+            ? `<p class="doc-fact note-unreadable">${escapeHtml(unreadableOperatorNoteCopy(note, transcript))}</p>`
             : renderNoteLedger({
               text: state.selected?.operatorNoteDraft || "",
               moments: state.selected?.operatorNoteMoments || [],

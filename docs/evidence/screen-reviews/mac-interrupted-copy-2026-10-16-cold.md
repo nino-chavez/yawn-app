@@ -63,3 +63,23 @@ around it, it does not explain it.
 **Removed, combined, demoted, or hidden.** Hidden: the unverifiable-pause fact
 on an interrupted meeting. Removed: the banner's second "interrupted". Nothing
 combined or demoted.
+
+## Pass 3: the next step on the unreadable-note line
+
+**Change.** Grafted from the parallel copy-fixes branch (`claude/gallant-goldberg-52b21d`,
+1eac44e), which both passes above asked for: the line now ends with what the page can
+still do, chosen from what the meeting has ("You can still play the audio and read the
+full transcript.", or only the half it has, or nothing when it has neither).
+
+**Pass 3 (one fresh reviewer, the two note-unreadable frames): revise.** The line says
+what happened, what it means and what the reader can still do, and reads comfortably in
+both appearances. Remaining findings and their disposition:
+
+- **"Full transcript" is small for the only offered action; reveal the file or retry.**
+  No reveal or repair action is built; the disclosure is the transcript's standing control
+  on every meeting. Kept.
+- **"Audio kept" with no player.** Stub data: the harness meeting reports retained audio
+  but issues no playback handle, so the copy correctly names only the transcript. A real
+  meeting with playable audio gets the player and the longer sentence.
+- **"Not editable" repeats the line; demote Record on a past meeting; the toolbar repeats
+  the title; no participants.** Page-wide design, not this line's; kept.
