@@ -233,6 +233,10 @@
 /* In the main window the page sits in the document pane: a centered column
    at the width the Settings window used to have. */
 .settings-page {
+  /* .content is a flex row: fill it, so the column centers in the pane and
+     the scroll bar sits at the pane's edge. */
+  flex: 1;
+  min-width: 0;
   height: 100%;
   overflow-y: auto;
 }
