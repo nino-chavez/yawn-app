@@ -189,6 +189,115 @@ From the v1.6.11 source; clean-room, no code reproduced.
 | 9 | "Speaker labels are automatic and may not be exact. Click a name to fix it." | Good: states the limit and the fix in one line | — |
 | 10 | Every transcript turn has Edit and Audio (play this segment) | Good: correction and checking are one click from the text | — |
 
+### Colors and style: what Yawn can adopt or adapt
+
+Added the same day at the operator's request, from six operator screenshots
+(onboarding permissions, the Fluid Intelligence carousel, the mode-switch
+demo, the Dashboard, General settings).
+
+**The short answer.** Very little of FluidVoice's color can carry over.
+[DESIGN.md](../../DESIGN.md) makes color mean something: red for recording,
+amber for attention, blue for a moment in the recording, and graphite chrome
+for everything else. FluidVoice uses color for brand and emphasis. What
+carries over is one type idea, which needs your decision, and four
+copy-and-layout patterns that fit the rules as written.
+
+**Measured palette** (approximate, read from JPEG screenshots; evidence, not
+tokens):
+
+| Role in FluidVoice | Dark value | Yawn's nearest role (dark) |
+|---|---|---|
+| Sidebar | `#1f212e` (blue-navy) | Sidebar `#1f1e1a` (warm graphite) |
+| Content | `#24252a`, settings card `#1f2025` | Page `#262521` |
+| Stat card | `#141414`, darker than the content behind it | No cards; the page has no enclosing card |
+| Selected row fill | `#3fc7c7` (teal), with white text | Selection `rgba(255,250,235,0.07)` plus a graphite locator |
+| Primary button | `#0078ff` (system-like blue) | Graphite `#d6cfbf` |
+| Promo card | `#1b2423` (teal-tinted) | None; no pitch in steady state |
+| Onboarding background | `#0e0d12`, glowing to `#0c1b32` | None |
+
+Two contrast failures, computed from those values:
+
+- **White on the teal selection, 2.06:1.** This fails WCAG AA by a wide margin.
+  It covers the selected sidebar row and the Check for Updates button.
+- **White on the blue `#0078ff`, 4.09:1.** That passes for large bold text
+  (Enable, Continue) but fails for the small "Try it" button.
+
+Hue separates FluidVoice's sidebar from its content, not lightness: the two
+differ by 1.04:1. Yawn separates by a value step, 1.09:1, warm on warm.
+
+#### Fits the current rules
+
+None of these needs a design-system change.
+
+1. **Settings describe what Off does.** FluidVoice: "When off, FluidVoice
+   starts silently in the menu bar at login." Yawn's Settings details say what
+   a setting is, never what turning it off changes (no "when off" phrasing
+   exists in `settings.js`). Copy only; new strings go through DIRECTION.md's
+   content-reads table.
+2. **A disabled control says why.** Rollback is disabled, with "No rollback
+   backup found." directly under it (operator screenshot 6, General
+   settings). This fits "a fact is a caption".
+3. **A permission row: step number, plain state word, one action.**
+   "Microphone access allowed · Ready" and "Enable Accessibility Access ·
+   Needed · Open Settings". This suits Yawn's first-run sheet, which a cold
+   review faulted for sitting over a system-audio gate it never mentioned
+   (cold-41c026b). Take the words and the one action. Leave the green and
+   blue pills: state in words, no new color.
+4. **An input-level meter beside the microphone picker.** FluidVoice shows a
+   live level the moment the mic is chosen. Yawn has no level meter. It would
+   help the consent and headphone confirmation by proving the right input is
+   live. Draw it in Label and Label 4, not color.
+
+#### Needs a DESIGN.md amendment (your decision)
+
+5. **The meeting title in Apple's system serif (New York, `ui-serif`).**
+   FluidVoice sets display headings in a serif ("Good evening, Nino.",
+   "Change modes with one click") and keeps body text in SF.
+   - Breaks: DESIGN.md "System font throughout, no second family."
+   - History: serif was tried on 2026-09-03 and not selected. Native
+     Editorial's "display type made long titles too forceful". Private
+     Notebook's "serif treatment read as a notebook or article product"
+     ([comparison](screen-reviews/visual-treatment-comparison-2026-09-03.md)).
+     Tonal Ledger, then Rail, removed it.
+   - What is new: both earlier treatments set the title large and the note
+     in serif too. FluidVoice's narrower use was never tested: serif on the
+     title only, at Yawn's existing 20px, with the notes and transcript left
+     in SF.
+   - Probe: the review harness ledger with only `.doc-head h1` switched to
+     `ui-serif` at weight 600. Captured in both appearances:
+     [sans dark](comparables-fluidvoice-2026-10-16/19-yawn-title-sans-dark.jpg) ·
+     [serif dark](comparables-fluidvoice-2026-10-16/20-yawn-title-serif-dark.jpg) ·
+     [serif light](comparables-fluidvoice-2026-10-16/21-yawn-title-serif-light.jpg) ·
+     [sans light](comparables-fluidvoice-2026-10-16/22-yawn-title-sans-light.jpg).
+     The serif version gives the page a document voice that suits
+     "paper-first". The operator's notes stay the largest type, and a
+     20px title does not become display type.
+   - Unproven: one state, one reviewer who knew the hypothesis, and short
+     synthetic titles. A long title, the first-run page and Largest text size
+     were not checked. Adopting it means a `tokens.json` font role, a
+     DESIGN.md amendment, and a cold review per the judged-screen rule.
+   - Minder: none. DESIGN.md's family invariants share no type or palette.
+6. **A hue-tinted sidebar.** Not recommended. FluidVoice's navy sidebar works
+   only through hue, and Yawn's character gives hue to meaning alone. If the
+   sidebar needs more separation, take a value step within the graphite.
+
+#### Conflicts with product rules, not taste
+
+These are DIRECTION.md anti-goals or brief rules, so no amendment applies.
+
+- **Streak, words-dictated and time-saved cards.** Engagement mechanics, an
+  anti-goal.
+- **The before-and-after AI demo.** Generation is retired, and a first run
+  must not counterfeit content the operator did not produce.
+- **The accent-color picker.** Color is meaning in Yawn, so a user-chosen
+  accent would erase it.
+- **The teal selection fill.** It fails contrast, and DESIGN.md keeps
+  selection quiet: a locator, not a bright row.
+- **Glow backgrounds, the 3D tilted demo and 90px pill buttons.** Not
+  Mac-native, and "motion makes state changes legible; it does not perform."
+- **The personalized greeting** ("Good evening, Nino."). Explanatory chrome
+  in steady state.
+
 ## Yawn against FluidMeet
 
 Yawn's facts come from the [product brief](../product-brief.md),
