@@ -1,7 +1,9 @@
 # FluidVoice-derived palettes, light and dark, 2026-10-16
 
-Status: a study, not a selection. Rail stays the production palette until the
-operator picks. Nothing in `tokens.json` changed.
+Status: closed 2026-10-16. The operator kept Rail's warm palette in both
+appearances. Neither candidate was adopted, and `tokens.json` is unchanged.
+Kept as a record so a future session does not reopen FluidVoice's colors
+without a new decision.
 
 The question: which of FluidVoice's colors could Yawn adopt in both
 appearances? The source values were sampled from the operator's FluidVoice

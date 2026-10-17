@@ -282,7 +282,7 @@ None of these needs a design-system change.
 6. **A hue-tinted sidebar.** Rendered with the full cool palette on
    2026-10-16, in both appearances:
    [palette study](../../apps/desktop/ui-harness/palette-studies/fluidvoice-2026-10-16/NOTES.md).
-   The earlier verdict follows. Not recommended. FluidVoice's navy sidebar works
+   Closed 2026-10-16: the operator kept Rail. The earlier verdict follows. Not recommended. FluidVoice's navy sidebar works
    only through hue, and Yawn's character gives hue to meaning alone. If the
    sidebar needs more separation, take a value step within the graphite.
 
