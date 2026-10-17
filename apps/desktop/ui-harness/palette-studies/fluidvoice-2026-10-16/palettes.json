@@ -1,0 +1,9 @@
+[
+ {"id":"rail","name":"Rail (current)","summary":"Warm paper page, graphite chrome, blue moment. The selected system; no overrides.","light":{},"dark":{}},
+ {"id":"cool","name":"Cool Paper","summary":"FluidVoice's cool neutrals across the whole window: blue-gray chrome and page. Semantic colors unchanged.",
+  "light":{"window":"#e9eaee","sidebar":"#e2e4ea","content":"#fafbfc","panel":"#f1f2f6","notes":"#fafbfc","notes-border":"rgba(28,34,50,0.12)","separator":"rgba(28,34,50,0.12)","separator-strong":"rgba(28,34,50,0.22)","label":"#1c1e24","label-2":"#5c616c","label-3":"#5d626c","label-4":"#c8ccd4","control":"#ffffff","control-border":"rgba(28,34,50,0.18)","selection":"rgba(28,34,50,0.07)","selection-active":"rgba(28,34,50,0.07)","selection-line":"#363a44","on-selection":"#1c1e24","accent":"#363a44","on-accent":"#fafbfc","rail":"#c9cdd6","rail-mark":"#1c1e24"},
+  "dark":{"window":"#1a1b21","sidebar":"#1f212e","content":"#24252a","panel":"#2a2b31","notes":"#24252a","notes-border":"rgba(235,240,255,0.10)","separator":"rgba(235,240,255,0.10)","separator-strong":"rgba(235,240,255,0.20)","label":"#e8eaf0","label-2":"#a0a5b0","label-3":"#979ca7","label-4":"#40434c","control":"#33353d","control-border":"rgba(235,240,255,0.14)","selection":"rgba(235,240,255,0.07)","selection-active":"rgba(235,240,255,0.07)","selection-line":"#cfd3dc","on-selection":"#e8eaf0","accent":"#cfd3dc","on-accent":"#1a1b21","rail":"#464955","rail-mark":"#e8eaf0"}},
+ {"id":"navy","name":"Navy Chrome, Teal Moment","summary":"Rail's warm page kept; FluidVoice's navy-tinted sidebar and toolbar, and its teal as the one moment color.",
+  "light":{"window":"#e7eaf0","sidebar":"#e1e5ed","moment":"#0f6b6d","on-moment":"#ffffff","moment-soft":"rgba(15,107,109,0.12)","evidence":"rgba(15,107,109,0.12)"},
+  "dark":{"window":"#1b1d26","sidebar":"#1f212e","moment":"#4fcfcf","on-moment":"#0b2626","moment-soft":"rgba(79,207,207,0.16)","evidence":"rgba(79,207,207,0.16)"}}
+]
