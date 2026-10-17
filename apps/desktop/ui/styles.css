@@ -3368,6 +3368,7 @@ html, body, #app {
 /* DESIGN.md (Rail): the title is small and stable; the operator's words are
    the largest type on the page. */
 .doc-head h1 {
+  font-family: var(--font-title);
   font-size: var(--t-large);
   font-weight: 650;
   line-height: 1.25;

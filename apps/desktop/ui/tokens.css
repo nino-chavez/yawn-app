@@ -7,6 +7,8 @@
   color-scheme: light dark;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* The meeting title only (DESIGN.md Type, amended 2026-10-16). */
+  --font-title: ui-serif, "New York", Georgia, serif;
   /* Text size (2026-10-16): every type size is its token times --text-scale,
      which text-size.mjs sets on the root from the Settings choice (or View >
      Bigger / Smaller); 1 renders the sizes below unchanged. */
