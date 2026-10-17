@@ -102,13 +102,23 @@ and the ticks on them carry the meaning and use Label or Moment.
 
 ## Type
 
-System font throughout, no second family. Sizes are fixed pixels on the Mac
-and Dynamic Type styles on the iPad.
+The system sans throughout, with one exception: on the Mac, the meeting
+title in the document pane uses Apple's system serif (New York, `ui-serif`;
+token `font.title`). Nothing else takes the serif: not the operator's notes,
+the transcript, the sidebar rows, the toolbar title, the rename field or the
+first-run line. No font is bundled; the stack falls back to Georgia. Sizes are
+fixed pixels on the Mac and Dynamic Type styles on the iPad.
+
+Amended 2026-10-16 by operator decision, after the FluidVoice comparison
+(`docs/evidence/comparables-fluidvoice-2026-10-16.md`). The 2026-09-03 serif
+treatments set the note and a large display title in serif and were not
+selected; this narrower use keeps the title at its Rail size and weight. The
+iPad title is unchanged until a separate decision.
 
 | Element | Mac | iPad |
 |---|---|---|
 | The operator's note | 16px / 1.5, Label | Ink, the hand's own size; the handwriting stand-in is never shipped |
-| Meeting title | 20px / 1.25, weight 650, Label | Nav bar title 17pt semibold |
+| Meeting title | 20px / 1.25, weight 650, Label, system serif | Nav bar title 17pt semibold |
 | Meta line (date · time · length · audio kept) | 12px, Label 3 | Nav bar subtitle 12pt, Label 3 |
 | Transcript turn | 13px / 1.45, Label 2; the current turn in Label | 14pt / 1.4, Label; the current turn on Moment soft |
 | Turn time and speaker | 11px, tabular, Label 3 | 11pt tabular, Label 3 |

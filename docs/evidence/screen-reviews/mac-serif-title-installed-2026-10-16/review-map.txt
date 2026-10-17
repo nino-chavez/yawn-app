@@ -1,0 +1,9 @@
+s01.png dark-ledger-largest.png
+s02.png dark-firstrun-sheet.png
+s03.png light-ledger-largest.png
+s04.png dark-firstrun.png
+s05.png light-ledger-default.png
+s06.png dark-ledger-default.png
+s07.png light-firstrun-largest.png
+s08.png light-firstrun.png
+s09.png light-firstrun-sheet.png

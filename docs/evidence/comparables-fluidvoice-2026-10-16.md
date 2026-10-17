@@ -251,6 +251,8 @@ None of these needs a design-system change.
 #### Needs a DESIGN.md amendment (your decision)
 
 5. **The meeting title in Apple's system serif (New York, `ui-serif`).**
+   *Adopted 2026-10-16 by operator decision: DESIGN.md Type, and the cold review
+   in [mac-serif-title-installed-2026-10-16-cold](screen-reviews/mac-serif-title-installed-2026-10-16-cold.md).*
    FluidVoice sets display headings in a serif ("Good evening, Nino.",
    "Change modes with one click") and keeps body text in SF.
    - Breaks: DESIGN.md "System font throughout, no second family."

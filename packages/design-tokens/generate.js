@@ -76,6 +76,8 @@ function render() {
   color-scheme: light dark;
   --font: ${t.font.body};
   --font-mono: ${t.font.mono};
+  /* The meeting title only (DESIGN.md Type, amended 2026-10-16). */
+  --font-title: ${t.font.title};
   /* Text size (2026-10-16): every type size is its token times --text-scale,
      which text-size.mjs sets on the root from the Settings choice (or View >
      Bigger / Smaller); 1 renders the sizes below unchanged. */
