@@ -146,7 +146,7 @@ pub fn write(meeting_dir: &Path, text: &str, moments: &[NoteMoment]) -> Result<(
     let line_count = text.split('\n').count();
     let mut previous: Option<u32> = None;
     for moment in moments {
-        let in_order = previous.map_or(true, |last| moment.line > last);
+        let in_order = previous.is_none_or(|last| moment.line > last);
         if !in_order || moment.line as usize >= line_count {
             return Err("That note's moments do not match its lines, so it was not saved.".into());
         }
