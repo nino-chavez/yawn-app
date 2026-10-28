@@ -174,6 +174,16 @@ const CAPTURE_STOP_TIMEOUT: Duration = Duration::from_secs(20);
 /// it with permission already granted.
 const CAPTURE_PAUSE_TIMEOUT: Duration = Duration::from_secs(20);
 const WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Finalizing reads, measures and hashes both retained legs more than once, so
+/// its cost grows with the recording. On the operator's Mac a 66-minute meeting
+/// ran past the flat worker deadline and was recovered as interrupted with
+/// complete, healthy audio (2026-10-28); re-running the installed finalize on a
+/// copy of that audio took 39.5 s, about 0.6 s per recorded minute. The
+/// allowance below is about three times that rate on top of the flat floor (162
+/// s, four times the measured pass, for that meeting), so the deadline still
+/// catches a hung worker without failing a long meeting. See
+/// `capture_finalize_timeout`.
+const CAPTURE_FINALIZE_SECONDS_PER_RECORDED_MINUTE: u64 = 2;
 const SPEAKER_ANALYSIS_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const NEMOTRON_MODEL_ID: &str = "nemotron-3-diarization-q8";
 const NEMOTRON_MODEL_REVISION: &str = "f667ed73aee57d40cc39428eb768b4fd87a0a29e";
@@ -8204,7 +8214,7 @@ fn run_capture_task(
             "capture_elapsed_samples": capture_elapsed_samples,
             "pauses": pauses,
         }),
-        WORKER_REQUEST_TIMEOUT,
+        capture_finalize_timeout(capture_elapsed_samples),
     );
     let capture_digests = match capture_result {
         Ok(result) => match exact_digests(
@@ -9675,6 +9685,16 @@ fn elapsed_samples(duration: Duration) -> Result<u64, String> {
         return Err("capture elapsed time is outside the supported range".into());
     }
     Ok(samples.round() as u64)
+}
+
+/// The `capture.finalize` deadline for a recording of this many recorded
+/// samples: the flat worker floor plus a per-minute allowance, because the
+/// worker's integrity pass reads every sample of both legs. Partial minutes
+/// count as whole ones.
+fn capture_finalize_timeout(capture_elapsed_samples: u64) -> Duration {
+    let recorded_minutes = capture_elapsed_samples.div_ceil(16_000 * 60);
+    WORKER_REQUEST_TIMEOUT
+        + Duration::from_secs(recorded_minutes * CAPTURE_FINALIZE_SECONDS_PER_RECORDED_MINUTE)
 }
 
 /// The arming failure says what actually happened: the WAV pair opens only
@@ -11571,6 +11591,33 @@ mod tests {
                 .iter()
                 .all(|span| { span["resumed_at_samples"].as_u64().unwrap() <= recorded + paused })
         );
+    }
+
+    /// The 2026-10-28 regression: a healthy 3,947 s recording (63,156,837
+    /// recorded samples) needed 39.5 s to finalize and failed the flat 30 s
+    /// deadline, so the meeting was recovered as interrupted and never
+    /// transcribed. The deadline must grow with the recording and leave several
+    /// times the measured cost.
+    #[test]
+    fn the_finalize_deadline_grows_with_the_recording() {
+        let short = capture_finalize_timeout(elapsed_samples(Duration::from_secs(12)).unwrap());
+        assert!(short >= WORKER_REQUEST_TIMEOUT);
+        assert!(short <= Duration::from_secs(60));
+
+        let regression = capture_finalize_timeout(63_156_837);
+        assert!(
+            regression >= Duration::from_secs(3 * 40),
+            "a 66-minute recording needs several times its measured 39.5 s finalize cost, got {regression:?}"
+        );
+
+        let one_hour = capture_finalize_timeout(16_000 * 60 * 60);
+        let two_hours = capture_finalize_timeout(16_000 * 60 * 60 * 2);
+        assert!(two_hours > one_hour);
+
+        // The longest recording `elapsed_samples` accepts still has a bounded
+        // deadline, so a hung worker is eventually caught.
+        let longest = capture_finalize_timeout(16_000 * 60 * 60 * 24);
+        assert!(longest <= Duration::from_secs(60 * 60));
     }
 
     #[test]
