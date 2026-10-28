@@ -27,7 +27,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use local_meeting_notes_session_core::meeting::{
-    AudioState, load_meeting, read_private_bytes, verify_record_artifacts,
+    ArtifactRef, AudioState, MAX_RECEIPT_BYTES, load_meeting, read_private_bytes, resolve_artifact,
+    verify_record_artifacts,
 };
 use local_meeting_notes_session_core::meeting_coordination::MeetingStorageCoordination;
 use local_meeting_notes_session_core::operations::{
@@ -56,7 +57,48 @@ use crate::product_facade::{
     CoordinatorError, MeetingOperationSource, ProductOperationCoordinator, TranscriptRetryDecision,
     TranscriptRetryOperation,
 };
-use crate::{StorageContext, WORKER_REQUEST_TIMEOUT};
+use crate::{StorageContext, TRANSCRIPT_REQUEST_TIMEOUT, WORKER_REQUEST_TIMEOUT};
+
+/// A retry hashes every retained source before and after, verifies the
+/// capture, and transcribes both legs again, so its cost grows with the
+/// recording. On the operator's Mac the installed 0.6.16 worker's Apple-speech
+/// retry took 28.4 s for a 12.8-minute meeting and 112.5 s for a 66-minute
+/// one, run on cloned copies (2026-10-28): the flat worker deadline already
+/// failed retries past about 13 minutes. Whisper was not installed there; the
+/// 2026-09-07 engine comparison puts its decoding at about 2.3 times Apple
+/// speech's, an estimated 3.3 s per recorded minute. The allowance below is
+/// about 3.6 times the higher measured rate (2.2 s per minute, the short
+/// meeting's) and over twice that Whisper estimate. See
+/// `transcript_retry_timeout`.
+const TRANSCRIPT_RETRY_SECONDS_PER_RECORDED_MINUTE: u64 = 8;
+
+/// The `transcript.retry` deadline for a capture whose longer leg holds this
+/// many samples: the flat worker floor plus a per-minute allowance, never more
+/// than the first transcription's own deadline, since a retry repeats that
+/// work. Partial minutes count as whole ones.
+fn transcript_retry_timeout(recorded_samples: u64) -> Duration {
+    let recorded_minutes = recorded_samples.div_ceil(16_000 * 60);
+    (WORKER_REQUEST_TIMEOUT
+        + Duration::from_secs(recorded_minutes * TRANSCRIPT_RETRY_SECONDS_PER_RECORDED_MINUTE))
+    .min(TRANSCRIPT_REQUEST_TIMEOUT)
+}
+
+/// The longer leg's recorded samples from the capture receipt's acquisition
+/// health. The bytes are re-hashed against the record's reference, so the
+/// length belongs to the capture the worker will transcribe. `None` when the
+/// receipt carries no such health, which the worker refuses to transcribe.
+fn retained_capture_samples(meeting_dir: &Path, capture: &ArtifactRef) -> Option<u64> {
+    let path = resolve_artifact(meeting_dir, &capture.relative_path).ok()?;
+    let bytes = read_private_bytes(&path, MAX_RECEIPT_BYTES).ok()?;
+    if format!("{:x}", Sha256::digest(&bytes)) != capture.sha256 {
+        return None;
+    }
+    let receipt: Value = serde_json::from_slice(&bytes).ok()?;
+    let legs = &receipt["health"]["legs"];
+    let microphone = legs["mic"]["samples"].as_u64()?;
+    let system = legs["system"]["samples"].as_u64()?;
+    Some(microphone.max(system))
+}
 
 /// One request/response exchange with the worker process. The seam exists so
 /// bridge translation can be exercised without a live subprocess; the real
@@ -250,11 +292,12 @@ impl DesktopProductCoordinator {
     /// Reads the complete source identity while holding the meeting lease. It
     /// is deliberately separate from the worker result: the webview never
     /// names audio paths or digests, and the worker's echoed values are only
-    /// compared to this locally reverified binding.
+    /// compared to this locally reverified binding. The recorded length, read
+    /// under the same lease, sizes the retry's worker deadline.
     fn retry_source_binding(
         &self,
         args: &TranscriptRetryUiArgs,
-    ) -> Result<(StorageRoot, TranscriptRetrySourceBinding), CoordinatorError> {
+    ) -> Result<(StorageRoot, TranscriptRetrySourceBinding, Option<u64>), CoordinatorError> {
         let storage = self.storage_root()?;
         let coordination = self.coordination()?;
         let _lease = coordination
@@ -294,6 +337,7 @@ impl DesktopProductCoordinator {
         if current.sha256 != args.source_transcript_sha256 {
             return Err(CoordinatorError::Refused);
         }
+        let recorded_samples = retained_capture_samples(&meeting_dir, capture);
         Ok((
             storage,
             TranscriptRetrySourceBinding {
@@ -304,6 +348,7 @@ impl DesktopProductCoordinator {
                 // Filled only after the worker candidate bytes are re-read.
                 candidate_transcript_sha256: String::new(),
             },
+            recorded_samples,
         ))
     }
 
@@ -429,10 +474,13 @@ impl ProductOperationCoordinator for DesktopProductCoordinator {
         &self,
         args: &TranscriptRetryUiArgs,
     ) -> Result<TranscriptRetryOperation, CoordinatorError> {
-        let (storage, expected) = self.retry_source_binding(args)?;
+        let (storage, expected, recorded_samples) = self.retry_source_binding(args)?;
         if let Some(pending) = self.discover_pending_retry(args)? {
             return Ok(pending);
         }
+        // Without a recorded length the deadline could only fall back to the
+        // flat floor, which a meeting of ordinary length cannot meet.
+        let recorded_samples = recorded_samples.ok_or(CoordinatorError::Refused)?;
         let worker_result = self
             .port
             .request_transcript_retry(
@@ -443,7 +491,7 @@ impl ProductOperationCoordinator for DesktopProductCoordinator {
                     "microphone_audio_sha256": expected.microphone_audio_sha256,
                     "system_audio_sha256": expected.system_audio_sha256,
                 }),
-                WORKER_REQUEST_TIMEOUT,
+                transcript_retry_timeout(recorded_samples),
             )
             .map_err(|_| CoordinatorError::Unavailable)?;
         if !worker_result.ok {
@@ -570,6 +618,7 @@ mod tests {
 
     use local_meeting_notes_session_core::meeting::AudioState;
     use local_meeting_notes_session_core::meeting::MeetingLifecycle;
+    use local_meeting_notes_session_core::meeting::{artifact_ref, write_meeting};
     use local_meeting_notes_session_core::operations::{
         RegenerateNoteUiArgs, RestoreWithheldTurnUiArgs, SpeakerLabelOverride,
         TranscriptRetryUiArgs,
@@ -592,6 +641,7 @@ mod tests {
 
     struct FakePort {
         requests: Mutex<Vec<(Operation, Value)>>,
+        timeouts: Mutex<Vec<Duration>>,
         outcome: FakeOutcome,
     }
 
@@ -599,6 +649,7 @@ mod tests {
         fn new(outcome: FakeOutcome) -> Self {
             Self {
                 requests: Mutex::new(Vec::new()),
+                timeouts: Mutex::new(Vec::new()),
                 outcome,
             }
         }
@@ -609,9 +660,10 @@ mod tests {
             &self,
             operation: Operation,
             arguments: Value,
-            _timeout: Duration,
+            timeout: Duration,
         ) -> Result<WorkerResult, WorkerPortUnavailable> {
             self.requests.lock().unwrap().push((operation, arguments));
+            self.timeouts.lock().unwrap().push(timeout);
             match &self.outcome {
                 FakeOutcome::Accept(digests) => Ok(worker_result(true, digests.clone())),
                 FakeOutcome::Refuse => Ok(worker_result(false, HashMap::new())),
@@ -783,6 +835,44 @@ mod tests {
         ])
     }
 
+    /// The shared fixture's capture receipt is `{}`. A retry needs the
+    /// recorded length a real receipt carries, so this replaces it with one
+    /// whose longer leg holds `recorded_samples` (the system leg ends a second
+    /// earlier) and rebinds the meeting record.
+    fn retry_fixture(recorded_samples: u64) -> RuntimeFixture {
+        let fixture = runtime_fixture(gated_turns());
+        let directory = fixture
+            .state
+            .storage
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .storage
+            .resolve(&Path::new("meetings").join(fixture.meeting_id.to_string()))
+            .unwrap();
+        let receipt = directory.join("capture/session.json");
+        std::fs::remove_file(&receipt).unwrap();
+        durable_create_new(
+            &receipt,
+            &serde_json::to_vec(&json!({
+                "health": {
+                    "legs": {
+                        "mic": { "samples": recorded_samples },
+                        "system": { "samples": recorded_samples.saturating_sub(16_000) },
+                    },
+                },
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut meeting = load_meeting(&directory).unwrap();
+        meeting.artifacts.capture_session =
+            Some(artifact_ref(&directory, "capture/session.json").unwrap());
+        write_meeting(&directory, &meeting).unwrap();
+        fixture
+    }
+
     fn retry_args(fixture: &RuntimeFixture) -> TranscriptRetryUiArgs {
         TranscriptRetryUiArgs {
             meeting_id: fixture.meeting_id,
@@ -903,7 +993,7 @@ mod tests {
 
     #[test]
     fn retry_start_keeps_the_current_pointer_and_keep_is_the_only_receipt_change() {
-        let fixture = runtime_fixture(gated_turns());
+        let fixture = retry_fixture(12_302_541);
         let candidate = serde_json::to_vec(&json!({
             "schema": "capture-transcript/1",
             "source": "retry",
@@ -971,7 +1061,7 @@ mod tests {
 
     #[test]
     fn retry_promotion_changes_only_the_current_transcript_pointer() {
-        let fixture = runtime_fixture(gated_turns());
+        let fixture = retry_fixture(12_302_541);
         let candidate = serde_json::to_vec(&json!({
             "schema": "capture-transcript/1",
             "source": "retry",
@@ -1014,6 +1104,77 @@ mod tests {
         );
         assert!(meeting.artifacts.current_note.is_none());
         assert_eq!(meeting.lifecycle, MeetingLifecycle::TranscriptReady);
+    }
+
+    /// The 2026-10-28 measurements: on cloned copies, the installed worker's
+    /// retry took 28.4 s for a 12.8-minute meeting (12,302,541 samples on its
+    /// longer leg) and 112.5 s for a 66-minute one (63,157,026). Both are past
+    /// or at the flat 30 s deadline. The deadline must grow with the recording
+    /// and leave several times the measured cost, yet stay bounded.
+    #[test]
+    fn the_retry_deadline_grows_with_the_recording() {
+        let short = transcript_retry_timeout(16_000 * 12);
+        assert!(short >= WORKER_REQUEST_TIMEOUT);
+        assert!(short <= Duration::from_secs(60));
+
+        let thirteen_minutes = transcript_retry_timeout(12_302_541);
+        assert!(
+            thirteen_minutes >= Duration::from_secs_f64(3.0 * 28.4),
+            "a 12.8-minute retry needs several times its measured 28.4 s, got {thirteen_minutes:?}"
+        );
+        let sixty_six_minutes = transcript_retry_timeout(63_157_026);
+        assert!(
+            sixty_six_minutes >= Duration::from_secs_f64(3.0 * 112.5),
+            "a 66-minute retry needs several times its measured 112.5 s, got {sixty_six_minutes:?}"
+        );
+
+        let one_hour = transcript_retry_timeout(16_000 * 60 * 60);
+        let two_hours = transcript_retry_timeout(16_000 * 60 * 60 * 2);
+        assert!(two_hours > one_hour);
+
+        // A retry repeats the first transcription, so it never waits longer
+        // than that transcription may; a hung worker is still caught.
+        let longest = transcript_retry_timeout(16_000 * 60 * 60 * 24);
+        assert_eq!(longest, TRANSCRIPT_REQUEST_TIMEOUT);
+    }
+
+    /// The deadline must reach the worker, not only exist as a function.
+    #[test]
+    fn retry_start_gives_the_worker_a_deadline_sized_to_the_recording() {
+        let fixture = retry_fixture(63_157_026);
+        let candidate = serde_json::to_vec(&json!({
+            "schema": "capture-transcript/1",
+            "source": "retry",
+            "attribution": "channel",
+            "bleed": null,
+            "voiceprint": null,
+            "capture_health": {},
+            "turns": [{ "start": 0.0, "end": 1.0, "speaker": "Me", "text": "retry" }],
+        }))
+        .unwrap();
+        let port = Arc::new(FakePort::new(FakeOutcome::Accept(retry_digests(
+            &fixture, &candidate,
+        ))));
+        coordinator_for(&fixture, port.clone())
+            .start_transcript_retry(&retry_args(&fixture))
+            .unwrap();
+        let timeouts = port.timeouts.lock().unwrap();
+        assert_eq!(*timeouts, vec![transcript_retry_timeout(63_157_026)]);
+        assert!(timeouts[0] > WORKER_REQUEST_TIMEOUT);
+    }
+
+    /// A receipt with no recorded length could only get the flat floor, which
+    /// fails any meeting of ordinary length, so the retry stops before the
+    /// worker runs.
+    #[test]
+    fn retry_start_refuses_a_capture_receipt_without_a_recorded_length() {
+        let fixture = runtime_fixture(gated_turns());
+        let port = Arc::new(FakePort::new(FakeOutcome::Refuse));
+        assert_eq!(
+            coordinator_for(&fixture, port.clone()).start_transcript_retry(&retry_args(&fixture)),
+            Err(CoordinatorError::Refused)
+        );
+        assert!(port.requests.lock().unwrap().is_empty());
     }
 
     #[test]
