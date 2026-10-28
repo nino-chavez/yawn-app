@@ -175,13 +175,14 @@ const CAPTURE_STOP_TIMEOUT: Duration = Duration::from_secs(20);
 const CAPTURE_PAUSE_TIMEOUT: Duration = Duration::from_secs(20);
 const WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Finalizing reads, measures and hashes both retained legs more than once, so
-/// its cost grows with the recording. On the operator's Mac a 13-minute meeting
-/// reached its session receipt about 6 s after stop and a 66-minute one about
-/// 26 s after; the 66-minute one then ran past the flat worker deadline and was
-/// recovered as interrupted with complete, healthy audio (2026-10-28). The
-/// allowance below is about four times that measured rate on top of the flat
-/// floor, so the deadline still catches a hung worker without failing a long
-/// meeting. See `capture_finalize_timeout`.
+/// its cost grows with the recording. On the operator's Mac a 66-minute meeting
+/// ran past the flat worker deadline and was recovered as interrupted with
+/// complete, healthy audio (2026-10-28); re-running the installed finalize on a
+/// copy of that audio took 39.5 s, about 0.6 s per recorded minute. The
+/// allowance below is about three times that rate on top of the flat floor (162
+/// s, four times the measured pass, for that meeting), so the deadline still
+/// catches a hung worker without failing a long meeting. See
+/// `capture_finalize_timeout`.
 const CAPTURE_FINALIZE_SECONDS_PER_RECORDED_MINUTE: u64 = 2;
 const SPEAKER_ANALYSIS_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const NEMOTRON_MODEL_ID: &str = "nemotron-3-diarization-q8";
@@ -11593,10 +11594,10 @@ mod tests {
     }
 
     /// The 2026-10-28 regression: a healthy 3,947 s recording (63,156,837
-    /// recorded samples) took about 26 s to reach its session receipt and
-    /// failed the flat 30 s finalize deadline, so the meeting was recovered as
-    /// interrupted and never transcribed. The deadline must grow with the
-    /// recording and leave several times the measured cost.
+    /// recorded samples) needed 39.5 s to finalize and failed the flat 30 s
+    /// deadline, so the meeting was recovered as interrupted and never
+    /// transcribed. The deadline must grow with the recording and leave several
+    /// times the measured cost.
     #[test]
     fn the_finalize_deadline_grows_with_the_recording() {
         let short = capture_finalize_timeout(elapsed_samples(Duration::from_secs(12)).unwrap());
@@ -11605,8 +11606,8 @@ mod tests {
 
         let regression = capture_finalize_timeout(63_156_837);
         assert!(
-            regression >= Duration::from_secs(4 * 30),
-            "a 66-minute recording needs several times its ~30 s finalize cost, got {regression:?}"
+            regression >= Duration::from_secs(3 * 40),
+            "a 66-minute recording needs several times its measured 39.5 s finalize cost, got {regression:?}"
         );
 
         let one_hour = capture_finalize_timeout(16_000 * 60 * 60);
