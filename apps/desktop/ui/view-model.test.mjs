@@ -2672,3 +2672,64 @@ test("main.js lets the hold follow every render and every poll", async () => {
   // The poll writes the new amount, then settles the hold from the same note.
   assert.match(main, /current\.transcriptionProgress = amount \?\? null;\s*transcriptionProgressHold = heldTranscriptionAmount\(transcriptionProgressHold, current\);/);
 });
+
+// The bar's colors and size are measured, not eyeballed (WCAG 1.4.11 for the
+// bar, 1.4.3 for the percent), from the tokens the stylesheet reads, in both
+// appearances. The harness `progress` scenario measures the same ratios on the
+// colors the page actually draws.
+const hexChannels = (hex) => [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16));
+const relativeLuminance = (hex) => {
+  const [r, g, b] = hexChannels(hex).map((value) => {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrastRatio = (a, b) => {
+  const [high, low] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return (high + 0.05) / (low + 0.05);
+};
+
+test("the progress bar's fill, track and percent meet WCAG contrast in both appearances", async () => {
+  const tokens = await readFile(new URL("./tokens.css", import.meta.url), "utf8");
+  const darkAt = tokens.indexOf(':root[data-theme="dark"]');
+  assert.ok(darkAt > 0);
+  const appearances = { light: tokens.slice(0, darkAt), dark: tokens.slice(darkAt) };
+  for (const [name, block] of Object.entries(appearances)) {
+    const token = (property) => {
+      const found = new RegExp(`${property}:\\s*(#[0-9a-fA-F]{6})`).exec(block);
+      assert.ok(found, `${property} in the ${name} block`);
+      return found[1];
+    };
+    const page = token("--content");
+    const fill = token("--label");
+    const track = token("--progress-track");
+    assert.ok(contrastRatio(fill, track) >= 3, `${name}: fill on track ${contrastRatio(fill, track)}`);
+    assert.ok(contrastRatio(track, page) >= 3, `${name}: track on page ${contrastRatio(track, page)}`);
+    assert.ok(contrastRatio(fill, page) >= 3, `${name}: fill on page ${contrastRatio(fill, page)}`);
+    assert.ok(contrastRatio(fill, page) >= 4.5, `${name}: percent text on page ${contrastRatio(fill, page)}`);
+  }
+});
+
+test("the bar line spans the status sentence's measure, and its percent is the sentence's size in tabular digits", async () => {
+  const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+  const rule = (selector) => {
+    const at = styles.indexOf(`\n${selector} {`);
+    assert.ok(at >= 0, selector);
+    return styles.slice(at, styles.indexOf("}", at));
+  };
+  const line = rule(".transcription-progress");
+  assert.match(line, /max-width: var\(--measure\)/);
+  assert.match(line, /font-size: var\(--t-body\)/);
+  // The status sentence is a .doc-fact at the same size and measure.
+  assert.match(rule(".doc-fact"), /max-width: var\(--measure\)/);
+  assert.match(rule(".doc-fact"), /font-size: var\(--t-body\)/);
+  const percent = rule(".transcription-progress-percent");
+  assert.match(percent, /font-variant-numeric: tabular-nums/);
+  assert.match(percent, /color: var\(--label\)/);
+  assert.match(percent, /flex: 0 0 4ch/);
+  const bar = rule(".transcription-progress-bar");
+  assert.match(bar, /background: var\(--progress-track\)/);
+  assert.match(bar, /color: var\(--label\)/);
+  assert.match(bar, /flex: 1 1 auto/);
+});

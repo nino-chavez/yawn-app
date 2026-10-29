@@ -31,7 +31,7 @@ const t = JSON.parse(fs.readFileSync(TOKENS_PATH, "utf8"));
 const c = t.color;
 const light = {
   moment: c.moment.light, onMoment: c.onMoment.light, momentSoft: c.momentSoft.light,
-  rail: c.rail.light, railMark: c.railMark.light, recordSoft: c.recordSoft.light, inkDim: c.inkDim.light,
+  rail: c.rail.light, railMark: c.railMark.light, recordSoft: c.recordSoft.light, inkDim: c.inkDim.light, progressTrack: c.progressTrack.light,
   accent: c.accent.light,
   onAccent: c.onAccent.light,
   record: c.record.light,
@@ -43,7 +43,7 @@ const light = {
 };
 const dark = {
   moment: c.moment.dark, onMoment: c.onMoment.dark, momentSoft: c.momentSoft.dark,
-  rail: c.rail.dark, railMark: c.railMark.dark, recordSoft: c.recordSoft.dark, inkDim: c.inkDim.dark,
+  rail: c.rail.dark, railMark: c.railMark.dark, recordSoft: c.recordSoft.dark, inkDim: c.inkDim.dark, progressTrack: c.progressTrack.dark,
   accent: c.accent.dark,
   onAccent: c.onAccent.dark,
   record: c.record.dark,
@@ -113,6 +113,7 @@ function render() {
   --evidence: ${light.evidence};  /* the current turn's surface; the same tint as --moment-soft */
   --moment: ${light.moment}; --on-moment: ${light.onMoment}; --moment-soft: ${light.momentSoft};  /* the playhead, a tapped line, the current turn */
   --rail: ${light.rail}; --rail-mark: ${light.railMark}; --record-soft: ${light.recordSoft}; --ink-dim: ${light.inkDim};
+  --progress-track: ${light.progressTrack};  /* the unfilled part of a progress bar: 3:1 against the page and against --label, both appearances */
 }
 :root[data-theme="dark"] {
   --window: ${dark.window}; --sidebar: ${dark.sidebar}; --content: ${dark.content}; --panel: ${dark.panel};
@@ -126,6 +127,7 @@ function render() {
   --evidence: ${dark.evidence};
   --moment: ${dark.moment}; --on-moment: ${dark.onMoment}; --moment-soft: ${dark.momentSoft};
   --rail: ${dark.rail}; --rail-mark: ${dark.railMark}; --record-soft: ${dark.recordSoft}; --ink-dim: ${dark.inkDim};
+  --progress-track: ${dark.progressTrack};
 }
 html, body { margin: 0; height: 100%; }
 body { font: var(--t-body)/var(--lh-body) var(--font); color: var(--label); background: var(--window);
