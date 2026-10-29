@@ -489,11 +489,14 @@ h3 {
   transition: width var(--motion);
 }
 
-/* A fixed 4ch box, so the bar does not change length when the value goes from
-   9% to 10%: tabular digits are one width, and "99%" is the widest it gets. */
+/* "<n>% transcribed" in one fixed box, so the bar does not change length when
+   the value goes from 9% to 10% to 99%: tabular digits are one width each, and
+   15ch holds the widest read ("99% transcribed", about 13ch) with room to spare.
+   Right-aligned, so the words stay put and only the digits grow leftward. */
 .transcription-progress-percent {
-  flex: 0 0 4ch;
+  flex: 0 0 15ch;
   text-align: right;
+  white-space: nowrap;
   color: var(--label);
   font-variant-numeric: tabular-nums;
 }
