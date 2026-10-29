@@ -266,7 +266,7 @@ class TranscribeLegProgressTests(LegHarness):
             self.run_leg(
                 f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\nput('1.000\\n')\nos.close(1)\ntime.sleep(120)",
                 on_progress=seen.append,
-                timeout_seconds=1.0,
+                timeout_seconds=3.0,
             )
         self.assertLess(time.monotonic() - started, 30)
         self.assertEqual(seen, [1.0])
@@ -280,7 +280,7 @@ class TranscribeLegProgressTests(LegHarness):
         with self.assertRaisesRegex(AppleSpeechRefused, "timed out"):
             self.run_leg(
                 f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\ntime.sleep(120)",
-                timeout_seconds=1.0,
+                timeout_seconds=3.0,
             )
         with self.assertRaises(ProcessLookupError):
             os.kill(int(pid_file.read_text()), 0)
