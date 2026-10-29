@@ -375,6 +375,12 @@
           "markdownDescription": "Enables the library_stop_retained_audio command without any pre-configured scope."
         },
         {
+          "description": "Enables the library_transcribe_interrupted_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-library-transcribe-interrupted-meeting",
+          "markdownDescription": "Enables the library_transcribe_interrupted_meeting command without any pre-configured scope."
+        },
+        {
           "description": "Enables the local_vocabulary_add command without any pre-configured scope.",
           "type": "string",
           "const": "allow-local-vocabulary-add",
@@ -883,6 +889,12 @@
           "type": "string",
           "const": "deny-library-stop-retained-audio",
           "markdownDescription": "Denies the library_stop_retained_audio command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the library_transcribe_interrupted_meeting command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-library-transcribe-interrupted-meeting",
+          "markdownDescription": "Denies the library_transcribe_interrupted_meeting command without any pre-configured scope."
         },
         {
           "description": "Denies the local_vocabulary_add command without any pre-configured scope.",

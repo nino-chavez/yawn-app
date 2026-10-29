@@ -131,6 +131,7 @@ use local_meeting_notes_session_core::protocol::{
     CaptureProgressState, Operation, ProgressEvent, ProtocolError, WorkerProgress, WorkerResult,
 };
 use local_meeting_notes_session_core::recovery::{
+    InterruptedTranscriptionOutcome, transcribe_finished_interrupted_capture,
     RecoveryCode, RecoveryDisposition, scan_and_recover,
 };
 use local_meeting_notes_session_core::reducer::{
@@ -4379,6 +4380,107 @@ fn preview_delete_meeting_audio_for(
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct InterruptedTranscriptionResponse {
+    state: &'static str,
+    message: String,
+}
+
+/// Hands an interrupted meeting whose recording finished back to
+/// transcription. The library issues the handle only for such a meeting
+/// (`recovery::interrupted_capture_is_transcribable`), and session-core checks
+/// again under the meeting's lease before it changes anything. The command
+/// writes no queue request itself: the background executor requests a
+/// transcript for a captured meeting that has none, as it does after a quit.
+#[tauri::command(async)]
+fn library_transcribe_interrupted_meeting(
+    handle: String,
+    state: State<'_, ApplicationState>,
+) -> InterruptedTranscriptionResponse {
+    library_transcribe_interrupted_meeting_for(handle, &state)
+}
+
+fn library_transcribe_interrupted_meeting_for(
+    handle: String,
+    state: &ApplicationState,
+) -> InterruptedTranscriptionResponse {
+    let unavailable = || InterruptedTranscriptionResponse {
+        state: "unavailable",
+        message: "Yawn could not transcribe this recording. Reopen it and try again.".into(),
+    };
+    let Ok(_command) = state.command_lock.lock() else {
+        return unavailable();
+    };
+    let (startup, capture) = match state.model.lock() {
+        Ok(model) => (model.reducer.startup(), model.reducer.capture()),
+        Err(_) => return unavailable(),
+    };
+    if startup != StartupState::Ready {
+        return InterruptedTranscriptionResponse {
+            state: "not-ready",
+            message: "Yawn can transcribe this recording once it has finished starting.".into(),
+        };
+    }
+    if !matches!(capture, CaptureState::Idle | CaptureState::TranscriptReady) {
+        return InterruptedTranscriptionResponse {
+            state: "capture-active",
+            message: "Finish the current recording first.".into(),
+        };
+    }
+    // A full queue would refuse the executor's request after the meeting is
+    // already captured, leaving it waiting until the next launch. Refuse here
+    // instead, while nothing has changed.
+    if transcription_capacity_full(state) {
+        return InterruptedTranscriptionResponse {
+            state: "queue-full",
+            message: "Wait for the current transcription to finish.".into(),
+        };
+    }
+    let meeting_id = state.with_preview_library(
+        || None,
+        |reader, active| reader.authorize_interrupted_transcription(&handle, active),
+    );
+    if with_preview_library_invalidated(state, || ()).is_err() {
+        return unavailable();
+    }
+    let Some(meeting_id) = meeting_id else {
+        return InterruptedTranscriptionResponse {
+            state: "stale",
+            message: "This meeting changed. Reopen it and try again.".into(),
+        };
+    };
+    let Ok(storage) = preview_storage_clone(state) else {
+        return unavailable();
+    };
+    let Ok(coordination) = state.meeting_storage_coordination() else {
+        return unavailable();
+    };
+    match transcribe_finished_interrupted_capture(&storage, &coordination, &meeting_id) {
+        Ok(InterruptedTranscriptionOutcome::HandedToQueue) => {
+            InterruptedTranscriptionResponse {
+                state: "queued",
+                message: "Yawn is transcribing this recording.".into(),
+            }
+        }
+        Ok(InterruptedTranscriptionOutcome::DeferredActive) => {
+            InterruptedTranscriptionResponse {
+                state: "deferred-active",
+                message: "Another action for this meeting is in progress. Try again in a moment."
+                    .into(),
+            }
+        }
+        Err(error) => {
+            write_diagnostic(state, "interrupted_transcription_refused", &error.to_string());
+            InterruptedTranscriptionResponse {
+                state: "refused",
+                message: "Yawn could not transcribe this recording. Nothing about it was changed."
+                    .into(),
+            }
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PreviewTranscriptDeletionResponse {
     state: &'static str,
     message: String,
@@ -6348,6 +6450,7 @@ fn main() {
             library_save_operator_note,
             preview_delete_meeting_audio,
             preview_delete_meeting_transcript,
+            library_transcribe_interrupted_meeting,
             preview_delete_meeting,
             preview_list_trash,
             restore_meeting_from_trash_command,

@@ -57,6 +57,7 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "library_save_operator_note",
     "preview_delete_meeting_audio",
     "preview_delete_meeting_transcript",
+    "library_transcribe_interrupted_meeting",
     "preview_delete_meeting",
     // Roadmap intake I9: local trash for whole-meeting deletion. Listing is
     // the quiet secondary surface; restoring is the recovery path within the
@@ -139,6 +140,7 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-library-save-operator-note",
     "allow-preview-delete-meeting-audio",
     "allow-preview-delete-meeting-transcript",
+    "allow-library-transcribe-interrupted-meeting",
     "allow-preview-delete-meeting",
     "allow-preview-list-trash",
     "allow-restore-meeting-from-trash-command",

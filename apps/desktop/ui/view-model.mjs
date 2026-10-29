@@ -1549,6 +1549,18 @@ export function meetingRecoveryPresentation(note, transcript) {
         action: null,
       };
     }
+    // The recording itself finished; Yawn stopped before handing it to
+    // transcription. The library issues this handle only for such a meeting,
+    // so the page can say it finished and offer to transcribe it now.
+    if (note?.interruptedTranscriptionHandle) {
+      return {
+        state: "recovered-interrupted",
+        tone: "attention",
+        title: "This recording was not transcribed.",
+        detail: message || "The recording finished, but Yawn stopped before transcribing it. Its audio is kept on this Mac.",
+        action: { action: "transcribe-interrupted", label: "Transcribe" },
+      };
+    }
     return {
       state: "recovered-interrupted",
       tone: "attention",

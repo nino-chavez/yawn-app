@@ -22,6 +22,7 @@ use local_meeting_notes_session_core::meeting::{
     resolve_artifact, verify_record_artifacts, verify_record_static_artifacts,
 };
 use local_meeting_notes_session_core::meeting_title;
+use local_meeting_notes_session_core::recovery;
 use local_meeting_notes_session_core::note_projection::{
     ClaimType, NoteProjector, UnavailableProjector,
 };
@@ -112,6 +113,7 @@ pub(crate) struct LibraryReader {
     audio_playback_handles: HashMap<String, RetainedAudioPlaybackHandle>,
     transcript_deletion_handles: HashMap<String, LibraryHit>,
     meeting_deletion_handles: HashMap<String, LibraryHit>,
+    interrupted_transcription_handles: HashMap<String, LibraryHit>,
 }
 
 /// The filter as the shell states it, before it becomes a `LibraryFilter`.
@@ -474,6 +476,11 @@ pub(crate) struct LibraryNoteResponse {
     /// meeting rather than only for one holding retained audio: a meeting whose
     /// audio has already been released can still be removed in full.
     pub(crate) meeting_deletion_handle: Option<String>,
+    /// Issued only for an interrupted meeting whose recording finished and is
+    /// still kept whole (`recovery::interrupted_capture_is_transcribable`), so
+    /// it can be handed back to transcription. Spent by
+    /// `authorize_interrupted_transcription`.
+    pub(crate) interrupted_transcription_handle: Option<String>,
     pub(crate) meeting_id: String,
     /// The retained current transcript's digest when this meeting is eligible
     /// to create or replace a generated note. It is the exact source pin the
@@ -837,6 +844,7 @@ impl LibraryReader {
             audio_playback_handles: HashMap::new(),
             transcript_deletion_handles: HashMap::new(),
             meeting_deletion_handles: HashMap::new(),
+            interrupted_transcription_handles: HashMap::new(),
         }
     }
 
@@ -1362,6 +1370,7 @@ impl LibraryReader {
                 // whose confirmation is unavailable permanently undeletable.
                 // The lock rides the move to Trash and comes back with it.
                 meeting_deletion_handle: self.retain_meeting_deletion_handle(&meeting_id),
+                interrupted_transcription_handle: None,
                 meeting_id: meeting_id.clone(),
                 regeneration_source_sha256: None,
                 note_generation_available: false,
@@ -1449,6 +1458,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    interrupted_transcription_handle: None,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     note_generation_available: false,
@@ -1488,7 +1498,15 @@ impl LibraryReader {
                 // be false.
                 let playable =
                     microphone_playback_handle.is_some() || system_playback_handle.is_some();
-                let message = if playable {
+                // A recording that finished whole but was never handed to
+                // transcription (its finishing step failed, not the
+                // recording) can be transcribed now. Say what is true of
+                // this one: it did finish.
+                let interrupted_transcription_handle =
+                    self.retain_interrupted_transcription_handle(&meeting_id);
+                let message = if interrupted_transcription_handle.is_some() {
+                    "The recording finished, but Yawn stopped before transcribing it. Its audio is kept on this Mac."
+                } else if playable {
                     "It was not transcribed. Its audio is kept on this Mac and can still be played."
                 } else if audio_retention.state == "released" {
                     "This recording was interrupted before it could be transcribed. Its audio has since been deleted."
@@ -1504,6 +1522,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    interrupted_transcription_handle,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     note_generation_available: false,
@@ -1533,6 +1552,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    interrupted_transcription_handle: None,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256: None,
                     note_generation_available: false,
@@ -1567,6 +1587,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    interrupted_transcription_handle: None,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256: None,
                     note_generation_available: false,
@@ -1595,6 +1616,7 @@ impl LibraryReader {
                     system_playback_handle,
                     transcript_deletion_handle,
                     meeting_deletion_handle,
+                    interrupted_transcription_handle: None,
                     meeting_id: meeting_id.clone(),
                     regeneration_source_sha256,
                     note_generation_available: false,
@@ -1687,6 +1709,7 @@ impl LibraryReader {
             system_playback_handle,
             transcript_deletion_handle,
             meeting_deletion_handle,
+            interrupted_transcription_handle: None,
             meeting_id,
             regeneration_source_sha256: None,
             note_generation_available: false,
@@ -1891,6 +1914,7 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
+            interrupted_transcription_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             note_generation_available: false,
@@ -2059,6 +2083,44 @@ impl LibraryReader {
         let handle = Uuid::new_v4().to_string();
         self.transcript_deletion_handles.insert(handle.clone(), hit);
         Some(handle)
+    }
+
+    /// Only for a meeting `recovery::interrupted_capture_is_transcribable`
+    /// admits right now. The command re-checks under the meeting's lease, so
+    /// this decides what to offer, not what is allowed.
+    fn retain_interrupted_transcription_handle(&mut self, meeting_id: &str) -> Option<String> {
+        if !self.interrupted_capture_is_transcribable(meeting_id) {
+            return None;
+        }
+        let hit = self.projection.meeting_handle(meeting_id).ok()?;
+        let handle = Uuid::new_v4().to_string();
+        self.interrupted_transcription_handles.insert(handle.clone(), hit);
+        Some(handle)
+    }
+
+    fn interrupted_capture_is_transcribable(&self, meeting_id: &str) -> bool {
+        meeting_dir(&self.storage, meeting_id)
+            .is_ok_and(|directory| recovery::interrupted_capture_is_transcribable(&directory))
+    }
+
+    /// Spends a handle `retain_interrupted_transcription_handle` minted and
+    /// names its meeting, but only while the meeting still qualifies.
+    pub(crate) fn authorize_interrupted_transcription(
+        &mut self,
+        handle: &str,
+        active_meeting_ids: &HashSet<String>,
+    ) -> Option<String> {
+        if !self.revalidate(active_meeting_ids) {
+            return None;
+        }
+        let hit = self.interrupted_transcription_handles.get(handle).cloned();
+        self.clear_handles();
+        let meeting_id = match self.projection.open_snapshot(&hit?) {
+            Ok(OpenedLibraryHit::Meeting { meeting_id, .. }) => meeting_id,
+            Ok(_) | Err(_) => return None,
+        };
+        self.interrupted_capture_is_transcribable(&meeting_id)
+            .then_some(meeting_id)
     }
 
     /// Issued for any meeting the projection can resolve, unlike the audio
@@ -2390,6 +2452,7 @@ impl LibraryReader {
         self.audio_playback_handles.clear();
         self.transcript_deletion_handles.clear();
         self.meeting_deletion_handles.clear();
+        self.interrupted_transcription_handles.clear();
     }
 
     /// A new snapshot generation, a changed active set, or opening a different
@@ -2790,6 +2853,7 @@ impl LibraryReader {
             system_playback_handle: None,
             transcript_deletion_handle: None,
             meeting_deletion_handle: None,
+            interrupted_transcription_handle: None,
             meeting_id: meeting_id.into(),
             regeneration_source_sha256: None,
             note_generation_available: false,
@@ -4775,6 +4839,14 @@ mod tests {
     /// bound as its audio and no transcript, matching what the two affected
     /// meetings on the operator's Mac look like on disk.
     fn recovered_interrupted_fixture() -> Fixture {
+        recovered_interrupted_fixture_shaped(false)
+    }
+
+    /// `finished`: the worker finished the capture (canonical legs and its
+    /// own complete `capture-session/2` receipt) but the app failed the task
+    /// before recording that, as when `capture.finalize` outran its deadline.
+    /// Otherwise the capture stopped mid-recording and left partial legs.
+    fn recovered_interrupted_fixture_shaped(finished: bool) -> Fixture {
         use local_meeting_notes_session_core::recovery::{RecoveryDisposition, scan_and_recover};
         use local_meeting_notes_session_core::supervision::{
             GroupSignaler, OwnershipReceipt, OwnershipSchema, ProcessIdentity, ProcessInspection,
@@ -4865,8 +4937,35 @@ mod tests {
         };
         write_meeting(&directory, &record).unwrap();
 
-        durable_create_new(&directory.join("capture/.mic.wav.partial"), &[7_u8; 44]).unwrap();
-        durable_create_new(&directory.join("capture/.system.wav.partial"), &[8_u8; 44]).unwrap();
+        if finished {
+            durable_create_new(&directory.join("capture/mic.wav"), &[7_u8; 44]).unwrap();
+            durable_create_new(&directory.join("capture/system.wav"), &[8_u8; 44]).unwrap();
+            let leg = |name: &str| {
+                json!({
+                    "name": name,
+                    "bytes": 44,
+                    "sha256": local_meeting_notes_session_core::meeting::hash_private_file(&directory.join("capture").join(name)).unwrap(),
+                    "mode": "0600",
+                })
+            };
+            let receipt = json!({
+                "schema": "capture-session/2",
+                "status": "complete",
+                "started_at": "2026-10-28T19:07:00+0000",
+                "finalized_at": "2026-10-28T20:13:00+0000",
+                "health": {"schema": "capture-health/1", "usable": true},
+                "reconciliation": {"legs": {}},
+                "artifacts": [leg("mic.wav"), leg("system.wav")],
+            });
+            durable_create_new(
+                &directory.join("capture/session.json"),
+                &serde_json::to_vec_pretty(&receipt).unwrap(),
+            )
+            .unwrap();
+        } else {
+            durable_create_new(&directory.join("capture/.mic.wav.partial"), &[7_u8; 44]).unwrap();
+            durable_create_new(&directory.join("capture/.system.wav.partial"), &[8_u8; 44]).unwrap();
+        }
 
         let report = scan_and_recover(
             &storage,
@@ -4938,6 +5037,61 @@ mod tests {
             note.message.contains("can still be played"),
             playable,
             "the interrupted message says the audio can be played exactly when a playback handle exists"
+        );
+    }
+
+    #[test]
+    fn a_finished_interrupted_recording_offers_transcription_and_says_it_finished() {
+        let fixture = recovered_interrupted_fixture_shaped(true);
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+
+        assert_eq!(note.state, "recovered-interrupted");
+        let handle = note
+            .interrupted_transcription_handle
+            .expect("a finished recording can be transcribed");
+        assert!(note.message.contains("The recording finished"));
+        assert_eq!(
+            reader.authorize_interrupted_transcription(&handle, &HashSet::new()),
+            Some(MEETING_ID.to_string())
+        );
+        // Spent: every handle the note carried is cleared by the first use.
+        assert_eq!(
+            reader.authorize_interrupted_transcription(&handle, &HashSet::new()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_recording_that_stopped_partway_offers_no_transcription() {
+        let fixture = recovered_interrupted_fixture();
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+
+        assert_eq!(note.state, "recovered-interrupted");
+        assert_eq!(note.interrupted_transcription_handle, None);
+        assert!(!note.message.contains("The recording finished"));
+    }
+
+    #[test]
+    fn a_finished_recording_whose_audio_changed_is_not_authorized() {
+        let fixture = recovered_interrupted_fixture_shaped(true);
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+        let handle = note.interrupted_transcription_handle.unwrap();
+        local_meeting_notes_session_core::storage::durable_replace(&fixture.directory.join("capture/mic.wav"), &[9_u8; 44]).unwrap();
+
+        assert_eq!(
+            reader.authorize_interrupted_transcription(&handle, &HashSet::new()),
+            None
         );
     }
 
