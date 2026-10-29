@@ -551,7 +551,10 @@ printf '{"schema":"worker-result/2","request_id":"%s","ok":false,"code":"transcr
             .request_transcript_retry(json!({"meeting_id": Uuid::new_v4()}), TIMEOUT)
             .expect("retry completes");
         assert!(result.ok);
-        assert_eq!(result.artifact_digests["candidate-transcript"], "b".repeat(64));
+        assert_eq!(
+            result.artifact_digests["candidate-transcript"],
+            "b".repeat(64)
+        );
         stop(&worker);
     }
 
