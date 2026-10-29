@@ -12867,6 +12867,92 @@ exit 0"#
         assert_eq!(discovery.items.len(), 1, "the next launch enqueues it");
     }
 
+    // The transcribing status tells the person that quitting Yawn makes the
+    // transcription start over at the next launch. That is this: a quit stops
+    // the worker (its liveness pipe closes and it exits) and the executor thread
+    // with it, so a claim is left with no release receipt. The next launch's
+    // recovery pass must release it, and the meeting must be claimable again,
+    // with nothing carried over from the interrupted run.
+    #[test]
+    fn a_claim_left_by_a_quit_mid_run_is_released_and_the_meeting_is_claimed_again_from_scratch() {
+        use local_meeting_notes_session_core::transcription_queue::{
+            TranscriptionQueueError, TranscriptionRequestSchema,
+        };
+        let (_temporary, storage) = test_storage();
+        let runtime = queue_test_runtime();
+        let directory = write_captured_orphan_fixture(&storage, "meeting-quit-mid-run");
+        let meeting = load_meeting(&directory).unwrap();
+        let request_id = Uuid::new_v4();
+        let queue = TranscriptionQueue::open(&storage).unwrap();
+        queue
+            .enqueue(TranscriptionRequest {
+                schema: TranscriptionRequestSchema::V1,
+                request_id,
+                meeting_id: "meeting-quit-mid-run".into(),
+                capture_session_sha256: meeting.artifacts.capture_session.unwrap().sha256,
+                microphone_audio_sha256: meeting.artifacts.microphone_audio.unwrap().sha256,
+                system_audio_sha256: meeting.artifacts.system_audio.unwrap().sha256,
+                model_identity: "whisper-model".into(),
+                producer: Some(runtime.transcription_producer.clone()),
+                worker_runtime_identity: "worker-executable".into(),
+                enqueued_at_epoch_seconds: 1,
+            })
+            .unwrap();
+
+        // The executor claims it and the worker starts. Then the person quits:
+        // nothing writes a release, a result or a terminal.
+        let interrupted = queue
+            .claim(request_id, "worker-executable".into(), 2)
+            .unwrap();
+        assert!(!queue_item_is_eligible(&interrupted));
+        let interrupted_claim = interrupted.claim.expect("the executor holds the claim");
+        assert!(
+            matches!(
+                queue.claim(request_id, "worker-executable".into(), 3),
+                Err(TranscriptionQueueError::AlreadyClaimed)
+            ),
+            "while the claim stands, the meeting cannot be claimed again"
+        );
+
+        // The next launch: a fresh queue handle and a fresh application state.
+        let state = ApplicationState::default();
+        let relaunched_queue = TranscriptionQueue::open(&storage).unwrap();
+        let discovery = recover_transcription_queue(
+            &state,
+            &storage,
+            &runtime,
+            &relaunched_queue,
+            &mut HashSet::new(),
+        )
+        .expect("recovery completes");
+
+        let recovered = discovery
+            .items
+            .iter()
+            .find(|item| item.request.request_id == request_id)
+            .expect("the meeting is still queued");
+        assert!(recovered.claim.is_none(), "the stale claim is released");
+        assert!(
+            recovered.result.is_none() && recovered.commit.is_none() && recovered.terminal.is_none(),
+            "nothing is kept from the interrupted run"
+        );
+        assert!(queue_item_is_eligible(recovered), "the executor can pick it up");
+        assert_eq!(
+            discovery.items.len(),
+            1,
+            "recovery did not enqueue a second request for the same meeting"
+        );
+
+        let reclaimed = relaunched_queue
+            .claim(request_id, "worker-executable".into(), 4)
+            .expect("the meeting is claimed again");
+        let reclaimed_claim = reclaimed.claim.expect("a new claim");
+        assert_ne!(
+            reclaimed_claim.claim_id, interrupted_claim.claim_id,
+            "it starts over under a new claim"
+        );
+    }
+
     #[test]
     fn view_current_transcript_resolves_with_restored_turn_visible() {
         use local_meeting_notes_session_core::operations::{TranscriptView, TranscriptViewSchema};

@@ -37,10 +37,13 @@ use uuid::Uuid;
 const STALE_MESSAGE: &str = "That view is no longer current. Reopen it and try again.";
 const UNAVAILABLE_MESSAGE: &str = "The local library is unavailable. Reopen the app and try again.";
 /// What a just-recorded meeting says while its transcript is still being made.
-/// The frontend renders its own copy of this sentence (`TRANSCRIBING_DETAIL`
+/// The frontend renders its own copy of this status (`TRANSCRIBING_DETAIL`
 /// in `ui/view-model.mjs`, with a typographic apostrophe); this one is for
-/// any consumer that reads the response's `message` directly.
-const TRANSCRIBING_MESSAGE: &str = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.";
+/// any consumer that reads the response's `message` directly. A UI test pins
+/// the two together. The last two sentences are true because closing the
+/// window only hides it (the queue executor is a backend thread), while a quit
+/// stops the worker and the next launch releases the claim and starts over.
+const TRANSCRIBING_MESSAGE: &str = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready. You can leave this page or close the window. If you quit Yawn, transcription starts over the next time you open it.";
 const SAVED_NOTE_UNREADABLE_MESSAGE: &str = "Yawn no longer includes AI notes, so it can't show this meeting's saved AI draft. The draft is still saved on this Mac, and nothing is needed from you.";
 /// Roadmap intake I5. Said the same way everywhere a locked meeting refuses,
 /// and deliberately not a security claim: the meeting is behind a local

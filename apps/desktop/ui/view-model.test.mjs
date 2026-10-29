@@ -2576,6 +2576,41 @@ test("the page's transcribing status line is unchanged by progress", () => {
   assert.equal(presentation.detail, TRANSCRIBING_DETAIL);
 });
 
+// The transcribing status says what leaving does. Its wording is listed in
+// DIRECTION.md's content-reads table (2026-10-29), so it is asserted whole, and
+// the backend's own message must say the same thing.
+const TRANSCRIBING_STATUS = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it\u2019s ready. You can leave this page or close the window. If you quit Yawn, transcription starts over the next time you open it.";
+
+test("the transcribing status says what leaving does, and the backend message says the same", async () => {
+  assert.equal(TRANSCRIBING_DETAIL, TRANSCRIBING_STATUS);
+  assert.equal(meetingTranscribingPresentation({ state: "transcribing" }).detail, TRANSCRIBING_STATUS);
+  assert.equal(meetingTranscribingPresentation({ state: "transcript-only" }), null);
+  const rust = await readFile(new URL("../src-tauri/src/library_reader.rs", import.meta.url), "utf8");
+  const message = /const TRANSCRIBING_MESSAGE: &str = "([^"]*)";/.exec(rust);
+  assert.ok(message, "TRANSCRIBING_MESSAGE in library_reader.rs");
+  assert.equal(message[1], TRANSCRIBING_STATUS.replaceAll("\u2019", "'"));
+  // Only what is verified is claimed: nothing about sleep, and no estimate.
+  assert.doesNotMatch(TRANSCRIBING_DETAIL, /sleep|minutes?|remaining|resume|pause/i);
+});
+
+test("DIRECTION.md lists the transcribing status once, as the row that replaced the 2026-10-07 sentence", async () => {
+  const direction = await readFile(new URL("../../../DIRECTION.md", import.meta.url), "utf8");
+  const rows = direction.split("\n").filter((line) => line.startsWith("| 2026-10-29 | Transcribing status, what leaving does"));
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].includes(`"${TRANSCRIBING_STATUS}"`));
+  assert.ok(rows[0].includes("Replaces the status sentence and backend message in the 2026-10-07 row"));
+  assert.ok(rows[0].includes("agent-drafted") || rows[0].includes("Agent-drafted"));
+  assert.ok(rows[0].includes("It says nothing about sleep"));
+  // The progress row names the status by pointing at it, not by quoting it.
+  const progress = direction.split("\n").find((line) => line.startsWith("| 2026-10-29 | Transcription progress ("));
+  assert.ok(progress);
+  assert.ok(!progress.includes("The transcript will appear here"));
+  assert.ok(progress.includes("whose wording is the row above"));
+  // The 2026-10-07 row stays as history, with the sentence it had.
+  const history = direction.split("\n").find((line) => line.startsWith("| 2026-10-07 | Meeting still being transcribed"));
+  assert.ok(history && history.includes("The transcript will appear here when it’s ready.\" Caption"));
+});
+
 test("DIRECTION.md lists the progress wording the bar and the percent use", async () => {
   const direction = await readFile(new URL("../../../DIRECTION.md", import.meta.url), "utf8");
   const row = direction.split("\n").find((line) => line.includes("Transcription progress (`transcriptionProgressPresentation`"));
