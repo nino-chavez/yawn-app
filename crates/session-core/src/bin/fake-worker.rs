@@ -153,6 +153,122 @@ fn main() {
                 io::stdout().flush().unwrap();
             }
         }
+        // The Apple speech path's `transcription.progress` measurements, with
+        // every frame the app must ignore mixed in among the usable ones.
+        // Usable, in order: 0/100, 40/100, 100/100.
+        "transcription-progress" => {
+            ready();
+            for line in io::stdin().lock().lines() {
+                let command: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+                let frame = |request_id: &serde_json::Value,
+                             meeting_id: &serde_json::Value,
+                             done: serde_json::Value,
+                             total: serde_json::Value| {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "schema": "worker-event/2",
+                            "request_id": request_id,
+                            "event": "transcription.progress",
+                            "meeting_id": meeting_id,
+                            "audio_seconds_done": done,
+                            "audio_seconds_total": total
+                        })
+                    );
+                };
+                let request_id = &command["request_id"];
+                let meeting_id = &command["arguments"]["meeting_id"];
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "worker-event/2",
+                        "request_id": request_id,
+                        "event": "capture.state",
+                        "state": "transcribing",
+                        "meeting_id": meeting_id
+                    })
+                );
+                let other = serde_json::json!(Uuid::new_v4());
+                frame(request_id, meeting_id, 0.into(), 100.into());
+                frame(request_id, meeting_id, 150.into(), 100.into());
+                frame(request_id, meeting_id, 5.into(), 0.into());
+                frame(request_id, meeting_id, (-1).into(), 100.into());
+                frame(request_id, meeting_id, serde_json::json!(12.5), 100.into());
+                frame(request_id, &other, 50.into(), 100.into());
+                frame(&other, meeting_id, 50.into(), 100.into());
+                frame(request_id, meeting_id, 40.into(), 100.into());
+                // Backwards, and a different total.
+                frame(request_id, meeting_id, 30.into(), 100.into());
+                frame(request_id, meeting_id, 60.into(), 200.into());
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "worker-event/2",
+                        "request_id": request_id,
+                        "event": "capture.state",
+                        "state": "transcribing",
+                        "meeting_id": meeting_id
+                    })
+                );
+                frame(request_id, meeting_id, 100.into(), 100.into());
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "worker-result/2",
+                        "request_id": request_id,
+                        "ok": true,
+                        "code": null,
+                        "recoverable": null,
+                        "artifact_digests": {"fixture": "digest"}
+                    })
+                );
+                // A late frame for the finished request, which must also be
+                // dropped without hurting the next one.
+                frame(request_id, meeting_id, 100.into(), 100.into());
+                io::stdout().flush().unwrap();
+            }
+        }
+        // A frame outside the closed shape is still a protocol failure.
+        "transcription-progress-malformed" => {
+            ready();
+            let line = io::stdin().lock().lines().next().unwrap().unwrap();
+            let command: serde_json::Value = serde_json::from_str(&line).unwrap();
+            println!(
+                "{}",
+                serde_json::json!({
+                    "schema": "worker-event/2",
+                    "request_id": command["request_id"],
+                    "event": "transcription.progress",
+                    "meeting_id": command["arguments"]["meeting_id"],
+                    "audio_seconds_done": 1,
+                    "audio_seconds_total": 2,
+                    "transcript_text": "never"
+                })
+            );
+            io::stdout().flush().unwrap();
+            read_parent_liveness(parent_fd()).unwrap();
+        }
+        // Ignored frames still count against the progress rate bound.
+        "transcription-progress-flood" => {
+            ready();
+            let line = io::stdin().lock().lines().next().unwrap().unwrap();
+            let command: serde_json::Value = serde_json::from_str(&line).unwrap();
+            for _ in 0..64 {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema": "worker-event/2",
+                        "request_id": command["request_id"],
+                        "event": "transcription.progress",
+                        "meeting_id": command["arguments"]["meeting_id"],
+                        "audio_seconds_done": 9,
+                        "audio_seconds_total": 1
+                    })
+                );
+            }
+            io::stdout().flush().unwrap();
+            read_parent_liveness(parent_fd()).unwrap();
+        }
         "wrong-progress" => {
             ready();
             let line = io::stdin().lock().lines().next().unwrap().unwrap();
