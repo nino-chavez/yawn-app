@@ -88,7 +88,7 @@ export const SETTINGS_MARKUP = `
           <p id="update-message" class="card-message" role="status"></p>
         </div>
       </section>
-      <p class="privacy-sentence">Nothing leaves this Mac. Yawn has no account and makes no network calls with meeting data; the optional update check above is its only connection.</p>
+      <p class="privacy-sentence">Nothing from your meetings leaves this Mac, and Yawn has no account. It connects to the internet only for the updates above and to download the models or speech files you choose.</p>
 `;
 
 export function mountSettings(root = document) {

@@ -1770,7 +1770,7 @@ export function meetingDeletionConfirmationCopy(kind) {
 // or meeting data rides on it, but the server sees the Mac's address, as for
 // any download. The disclosure says exactly that, and follows the switch.
 const UPDATE_DISCLOSURE_ON = "Once a day, Yawn downloads a small file from the release server that names the newest version. It sends no meeting data or account details; like any download, the server can see this Mac’s internet address.";
-const UPDATE_DISCLOSURE_OFF = "Automatic checks are off. Yawn contacts the release server only when you choose Check now.";
+const UPDATE_DISCLOSURE_OFF = "Automatic checks are off. Yawn checks for updates only when you choose Check now.";
 
 export function updatePresentation(status) {
   if (!status) {

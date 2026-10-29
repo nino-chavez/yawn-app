@@ -1,0 +1,2 @@
+frame-1 = pass-2/settings-bottom-dark (content unchanged in pass 3)
+frame-2 = pass-3/settings-bottom-light-automatic-off

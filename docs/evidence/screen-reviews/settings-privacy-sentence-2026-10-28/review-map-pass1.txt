@@ -1,0 +1,3 @@
+frame-1 = settings-bottom-light-automatic-off
+frame-2 = settings-bottom-dark
+frame-3 = settings-bottom-light
