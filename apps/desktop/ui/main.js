@@ -1318,19 +1318,22 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
       // here is an interrupted recording, and it never had a transcript, so
       // no transcript retry applies (transcriptRetryPresentation refuses any
       // meeting in recovery) and the audio it kept already plays from the
-      // transport above. What is left to offer is Move to Trash, as a
-      // secondary control: a destructive action is never the primary. A fact
-      // that needs no action keeps the plain headline and detail.
+      // transport above. A recording that finished can be transcribed now:
+      // that is the primary action. Move to Trash is always secondary: a
+      // destructive action is never the primary. A fact that needs no action
+      // keeps the plain headline and detail.
       const attention = recovery.tone === "attention";
       const canTrash = attention && Boolean(note?.meetingDeletionHandle);
+      const primary = attention ? recovery.action : null;
       return `
         <section class="meeting-note meeting-note-unavailable${attention ? " attention-state attention-inline" : ""}" aria-labelledby="meeting-note-heading" data-note-recovery="${escapeHtml(recovery.state)}">
           ${attention
             ? `<p id="meeting-note-heading" class="attention-headline">${escapeHtml(recovery.title)}</p>
           <p class="attention-detail">${escapeHtml(recovery.detail)}</p>`
             : `<p id="meeting-note-heading" class="doc-fact meeting-note-fact">${recovery.state === "summary-failed" ? escapeHtml(recovery.detail) : `${escapeHtml(recovery.title)} ${escapeHtml(recovery.detail)}`}</p>`}
-          ${canTrash ? `<div class="attention-actions">
-            <button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>
+          ${primary || canTrash ? `<div class="attention-actions">
+            ${primary ? `<button class="btn primary" type="button" data-action="${escapeHtml(primary.action)}">${escapeHtml(primary.label)}</button>` : ""}
+            ${canTrash ? `<button class="btn" type="button" data-action="delete-meeting">Move to Trash…</button>` : ""}
           </div>` : ""}
         </section>
       `;
@@ -1590,7 +1593,9 @@ function renderMeetingPane() {
               openFolds: state.selected?.openFolds || [],
               editable: noteEditable,
               placeholder: "Write down the detail you will want to verify later.",
-              stop: note?.state === "recovered-interrupted" && Number.isFinite(Number(row?.durationSeconds))
+              // A recording that ran to its end did not stop early; only a
+              // cut-off recording gets the stop mark.
+              stop: note?.state === "recovered-interrupted" && !note?.interruptedTranscriptionHandle && Number.isFinite(Number(row?.durationSeconds))
                 ? { seconds: Number(row.durationSeconds), label: "Recording stopped here" }
                 : null,
             })}
@@ -1661,7 +1666,7 @@ function renderDocMeta(row, note) {
   if (audio) parts.push(audio);
   // The ordinary meeting (a transcript, the operator's notes) states nothing
   // here: the page shows what it has. Other states keep their word.
-  if (note?.state !== "transcript-only") parts.push(meetingStateCaption(note?.state));
+  if (note?.state !== "transcript-only") parts.push(meetingStateCaption(note?.state, { recordingFinished: Boolean(note?.interruptedTranscriptionHandle) }));
   return `<p class="doc-meta">${escapeHtml(parts.filter(Boolean).join(" · "))}</p>`;
 }
 
@@ -3331,6 +3336,28 @@ async function deleteSelectedTranscript() {
   });
 }
 
+// The library issued the handle only for an interrupted meeting whose
+// recording finished. The meeting becomes captured again and the background
+// queue transcribes it; reopening shows it as transcribing, and the page
+// picks up the transcript when it lands.
+async function transcribeInterruptedMeeting() {
+  const selection = state.selected;
+  const handle = selection?.note?.interruptedTranscriptionHandle;
+  if (!selection?.row?.meetingId || !handle) {
+    reportError(new Error("Reopen this meeting before transcribing it."));
+    return;
+  }
+  await flushSelectedNoteSave();
+  await runBusy("transcribe-interrupted", async () => {
+    const response = await invoke("library_transcribe_interrupted_meeting", { handle });
+    if (response?.state !== "queued") {
+      throwRecoverableResponse(response, "Yawn could not transcribe this recording.");
+    }
+    if (state.selected !== selection) return;
+    await reopenSelectedMeeting(selection.row.meetingId);
+  });
+}
+
 async function deleteSelectedMeeting() {
   const selection = state.selected;
   const handle = selection?.note?.meetingDeletionHandle;
@@ -4040,6 +4067,7 @@ function handleClick(event) {
   else if (action === "delete-recording") openMeetingDeletion("delete-recording");
   else if (action === "delete-transcript") openMeetingDeletion("delete-transcript");
   else if (action === "delete-meeting") openMeetingDeletion("delete-meeting");
+  else if (action === "transcribe-interrupted") void transcribeInterruptedMeeting().catch(reportError);
   else if (action === "open-trash") openTrash();
   else if (action === "close-trash") closeTrash();
   else if (action === "restore-trash-entry") void restoreTrashEntry(control.dataset.meetingId);

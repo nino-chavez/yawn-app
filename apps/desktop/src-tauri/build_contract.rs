@@ -75,6 +75,7 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "library_save_operator_note",
     "preview_delete_meeting_audio",
     "preview_delete_meeting_transcript",
+    "library_transcribe_interrupted_meeting",
     "preview_delete_meeting",
     "preview_list_trash",
     "restore_meeting_from_trash_command",

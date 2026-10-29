@@ -2027,6 +2027,47 @@ test("a recovered-interrupted meeting with retained partial audio renders its wo
   assert.equal(meetingBlockingRecovery(note, null), null);
 });
 
+test("a finished interrupted recording offers Transcribe as its action, beside the workspace", () => {
+  const note = {
+    state: "recovered-interrupted",
+    meetingId: "m-ri",
+    audioRetention: { state: "retained" },
+    microphonePlaybackHandle: "mic-1",
+    meetingDeletionHandle: "del-1",
+    interruptedTranscriptionHandle: "tx-1",
+  };
+  const recovery = meetingRecoveryPresentation(note, null);
+  assert.equal(recovery.state, "recovered-interrupted");
+  assert.equal(recovery.tone, "attention");
+  assert.equal(recovery.action.action, "transcribe-interrupted");
+  assert.equal(recovery.action.destructive, undefined);
+  // Still the workspace with its fact, not a blocking pane: the audio plays.
+  assert.equal(meetingBlockingRecovery(note, null), null);
+  // The caption and the row agree with the page: not transcribed, not
+  // interrupted. A recording cut off partway keeps "Interrupted".
+  assert.notEqual(meetingStateCaption("recovered-interrupted", { recordingFinished: true }), meetingStateCaption("recovered-interrupted"));
+  const finishedRow = libraryRowMetaPresentation({ recovery: "recovered-interrupted", recordingFinished: true });
+  const cutOffRow = libraryRowMetaPresentation({ recovery: "recovered-interrupted" });
+  assert.notEqual(finishedRow.label, cutOffRow.label);
+  assert.equal(finishedRow.needsAttention, true);
+  // With a retention deadline the panel names it; without one it does not
+  // invent one.
+  const dated = meetingRecoveryPresentation({ ...note, audioRetention: { state: "retained", deadlineEpochSeconds: 1_793_000_000 } }, null);
+  assert.notEqual(dated.detail, recovery.detail);
+});
+
+test("the Transcribe action calls the interrupted-transcription command with the library's handle", async () => {
+  const source = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  assert.match(source, /else if \(action === "transcribe-interrupted"\) void transcribeInterruptedMeeting\(\)/);
+  assert.match(source, /const handle = selection\?\.note\?\.interruptedTranscriptionHandle;/);
+  assert.match(source, /invoke\("library_transcribe_interrupted_meeting", \{ handle \}\)/);
+  // The inline interrupted state renders the presentation's action as the
+  // primary button, with Move to Trash kept secondary.
+  assert.match(source, /const primary = attention \? recovery\.action : null;/);
+  // A recording that ran to its end gets no early-stop mark on the rail.
+  assert.match(source, /stop: note\?\.state === "recovered-interrupted" && !note\?\.interruptedTranscriptionHandle/);
+});
+
 test("a sidebar row for a recovered-interrupted meeting says interrupted, never note only", () => {
   const meta = libraryRowMetaPresentation({ recovery: "recovered-interrupted", transcriptAvailable: false });
   assert.equal(meta.label, "interrupted");

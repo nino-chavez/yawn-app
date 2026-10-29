@@ -507,9 +507,13 @@ export function finishedMeetingStep({
   return nowMs - lastAttemptMs >= backoffMs ? "refresh" : "wait";
 }
 
-export function meetingStateCaption(noteState) {
+// `recordingFinished`: an interrupted meeting whose recording ran to its end
+// but was never transcribed. "Interrupted" would contradict the page, which
+// says the recording finished and offers to transcribe it.
+export function meetingStateCaption(noteState, { recordingFinished = false } = {}) {
   const key = String(noteState || "");
   if (!key) return "Loading note";
+  if (key === "recovered-interrupted" && recordingFinished) return "Not transcribed";
   return MEETING_STATE_CAPTIONS[key] || humanize(key);
 }
 
@@ -1008,7 +1012,7 @@ export function libraryRowMetaPresentation(row) {
     locked: false,
     transcribing,
     label: row?.recovery === "recovered-interrupted"
-      ? "interrupted"
+      ? row?.recordingFinished === true ? "not transcribed" : "interrupted"
       : transcribing
         ? "transcribing"
         : row?.transcriptAvailable ? "transcript available" : "note only",
@@ -1547,6 +1551,26 @@ export function meetingRecoveryPresentation(note, transcript) {
         title: "This recording did not finish.",
         detail: message || "The recording was interrupted before it could be transcribed, and its audio has since been deleted. Nothing else was kept.",
         action: null,
+      };
+    }
+    // The recording itself finished; Yawn stopped before handing it to
+    // transcription. The library issues this handle only for such a meeting,
+    // so the page can say it finished and offer to transcribe it now.
+    // The audio's deletion date is the deadline for transcribing it, so the
+    // panel names it rather than leaving it to the caption above.
+    if (note?.interruptedTranscriptionHandle) {
+      const deadline = Number(note?.audioRetention?.deadlineEpochSeconds);
+      const keptUntil = Number.isFinite(deadline) && deadline > 0
+        ? ` until ${new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(deadline * 1000)).replace(/ /g, "\u00a0")}`
+        : "";
+      return {
+        state: "recovered-interrupted",
+        tone: "attention",
+        title: "This recording was not transcribed.",
+        detail: keptUntil
+          ? `The recording finished, but Yawn stopped before transcribing it. Its audio is kept on this Mac${keptUntil}.`
+          : message || "The recording finished, but Yawn stopped before transcribing it. Its audio is kept on this Mac.",
+        action: { action: "transcribe-interrupted", label: "Transcribe" },
       };
     }
     return {
