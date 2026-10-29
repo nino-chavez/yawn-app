@@ -478,6 +478,7 @@ def transcript_create(
     apple_speech_helper: Path | None = None,
     apple_speech_helper_sha256: str | None = None,
     apple_speech_os_version: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, str]:
     values = _exact_arguments(arguments, {"meeting_id"})
     meeting_id = opaque_id(values["meeting_id"], "meeting_id")
@@ -518,7 +519,7 @@ def transcript_create(
         transcript_digest = _create_apple_native_transcript(
             root, capture_dir, target_dir, encoder_digest, encoder_path,
             speech_locale, apple_speech_helper, apple_speech_helper_sha256,
-            apple_speech_os_version,
+            apple_speech_os_version, progress,
         )
     else:
         raise AdapterRefused("transcription engine is unsupported")
@@ -528,17 +529,24 @@ def transcript_create(
 def _create_apple_native_transcript(
     root: Path, capture_dir: Path, target_dir: Path, encoder_digest: str,
     encoder_path: Path | None, locale: str, helper: Path | None, helper_sha256: str | None, os_version: str | None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> str:
-    """Run both retained legs through the explicit signed Apple helper."""
-    from .apple_speech import AppleSpeechRefused, make_producer, transcribe_leg, write_provenance
+    """Run both retained legs through the explicit signed Apple helper.
+
+    ``progress(done, total)`` receives whole audio seconds, best effort: a failing
+    progress callback never changes the transcript or fails the operation.
+    """
+    from .apple_speech import AppleSpeechRefused, make_producer, transcribe_legs, write_provenance
     from .transcription import create_transcript_revision_from_segments
     try:
         producer = make_producer(helper=helper, helper_sha256=helper_sha256, locale=locale, os_version=os_version or "")
         # This capture verifier precedes any native process, mirroring Whisper.
         from verify_capture import verify_acquisition
         verify_acquisition(capture_dir)
-        mic, mic_receipt = transcribe_leg(producer, capture_dir / "mic.wav", temporary_parent=target_dir)
-        system, system_receipt = transcribe_leg(producer, capture_dir / "system.wav", temporary_parent=target_dir)
+        (mic, mic_receipt), (system, system_receipt) = transcribe_legs(
+            producer, capture_dir / "mic.wav", capture_dir / "system.wav",
+            temporary_parent=target_dir, emit_progress=progress,
+        )
         digest, _ = create_transcript_revision_from_segments(
             capture_dir, target_dir, mic_segments=mic, system_segments=system,
             gate_filter=_installed_voiceprint_gate(root, encoder_digest, encoder_path),
@@ -714,6 +722,7 @@ def transcript_retry(
     apple_speech_helper: Path | None = None,
     apple_speech_helper_sha256: str | None = None,
     apple_speech_os_version: str | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, str]:
     """Create an uncommitted immutable transcript candidate from retained audio."""
     root = require_private_root(root)
@@ -753,7 +762,7 @@ def transcript_retry(
             candidate_digest = _create_apple_native_transcript(
                 root, capture_dir, target_dir, encoder_digest, encoder_path,
                 speech_locale, apple_speech_helper, apple_speech_helper_sha256,
-                apple_speech_os_version,
+                apple_speech_os_version, progress,
             )
             candidate_path = _transcript_path(root, values["meeting_id"], candidate_digest)
         except AppleSpeechRefused as exc:
@@ -1863,6 +1872,7 @@ def dispatch(
     apple_speech_os_version: str | None = None,
     diarizer_executable: Path | None = None,
     diarizer_model: Path | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, str]:
     adapters = {
         "profile.inspect": lambda: profile_inspect(root, arguments, encoder_digest),
@@ -1881,6 +1891,7 @@ def dispatch(
             transcription_engine=transcription_engine, speech_locale=speech_locale,
             apple_speech_helper=apple_speech_helper, apple_speech_helper_sha256=apple_speech_helper_sha256,
             apple_speech_os_version=apple_speech_os_version,
+            progress=progress,
         ),
         "transcript.retry": lambda: transcript_retry(
             root,
@@ -1892,6 +1903,7 @@ def dispatch(
             transcription_engine=transcription_engine, speech_locale=speech_locale,
             apple_speech_helper=apple_speech_helper, apple_speech_helper_sha256=apple_speech_helper_sha256,
             apple_speech_os_version=apple_speech_os_version,
+            progress=progress,
         ),
         "sitting.derive": lambda: sitting_derive(
             root,

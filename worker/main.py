@@ -13,6 +13,7 @@ import sys
 import threading
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from worker.adapters import AdapterRefused, dispatch
 from worker.storage import StorageRefused, require_private_root
@@ -114,6 +115,56 @@ def emit_progress(
         },
         protocol_output=protocol_output,
     )
+
+
+def make_transcription_progress_emitter(
+    request_id: str,
+    operation: str,
+    arguments: object,
+    *,
+    protocol_output,
+) -> Callable[[int, int], None] | None:
+    """Build the wire emitter for one transcript.create or transcript.retry request.
+
+    This is the last check before a value reaches the desktop: whole seconds only,
+    ``total`` positive and constant, ``0 <= done <= total``, and ``done`` never
+    lower than the last one sent.  A value that fails is dropped, never sent.
+    The adapter has no way to learn that it was dropped, so a bad progress value
+    cannot change a transcript.
+    """
+    if operation not in {"transcript.create", "transcript.retry"} or not isinstance(arguments, dict):
+        return None
+    meeting_id = arguments.get("meeting_id")
+    try:
+        if not isinstance(request_id, str) or not isinstance(meeting_id, str):
+            return None
+        uuid.UUID(request_id)
+        uuid.UUID(meeting_id)
+    except ValueError:
+        return None
+    lock = threading.Lock()
+    sent: dict[str, int | None] = {"done": None, "total": None}
+
+    def emit_transcription_progress(done: int, total: int) -> None:
+        if type(done) is not int or type(total) is not int or total <= 0 or not 0 <= done <= total:
+            return
+        with lock:
+            if sent["total"] is not None and (total != sent["total"] or done < sent["done"]):
+                return
+            emit(
+                {
+                    "schema": "worker-event/2",
+                    "request_id": request_id,
+                    "event": "transcription.progress",
+                    "meeting_id": meeting_id,
+                    "audio_seconds_done": done,
+                    "audio_seconds_total": total,
+                },
+                protocol_output=protocol_output,
+            )
+            sent["done"], sent["total"] = done, total
+
+    return emit_transcription_progress
 
 
 def start_transcription_heartbeat(
@@ -469,6 +520,7 @@ def dispatch_without_protocol_output(
     apple_speech_os_version: str | None = None,
     diarizer_executable: Path | None = None,
     diarizer_model: Path | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict:
     # The worker owns stdout as a newline-delimited JSON protocol. Research
     # adapters and model libraries may print progress on data-dependent paths;
@@ -493,6 +545,7 @@ def dispatch_without_protocol_output(
                 apple_speech_os_version=apple_speech_os_version,
                 diarizer_executable=diarizer_executable,
                 diarizer_model=diarizer_model,
+                progress=progress,
             )
 
 
@@ -590,6 +643,13 @@ def run(
                 arguments,
                 protocol_output=protocol_output,
             )
+            # Only the Apple speech path ever calls this; Whisper emits nothing.
+            progress = make_transcription_progress_emitter(
+                request_id,
+                operation,
+                arguments,
+                protocol_output=protocol_output,
+            )
             try:
                 digests = dispatch_without_protocol_output(
                     root,
@@ -607,6 +667,7 @@ def run(
                     apple_speech_os_version=apple_os_version,
                     diarizer_executable=diarizer_executable,
                     diarizer_model=diarizer_model,
+                    progress=progress,
                 )
             finally:
                 if heartbeat is not None:
