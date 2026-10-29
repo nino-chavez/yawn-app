@@ -536,13 +536,21 @@ def _create_apple_native_transcript(
     ``progress(done, total)`` receives whole audio seconds, best effort: a failing
     progress callback never changes the transcript or fails the operation.
     """
-    from .apple_speech import AppleSpeechRefused, make_producer, transcribe_legs, write_provenance
+    from .apple_speech import (
+        AppleSpeechRefused,
+        make_producer,
+        sweep_stale_leg_directories,
+        transcribe_legs,
+        write_provenance,
+    )
     from .transcription import create_transcript_revision_from_segments
     try:
         producer = make_producer(helper=helper, helper_sha256=helper_sha256, locale=locale, os_version=os_version or "")
         # This capture verifier precedes any native process, mirroring Whisper.
         from verify_capture import verify_acquisition
         verify_acquisition(capture_dir)
+        # Leftovers of a worker that was killed mid-leg hold raw result text.
+        sweep_stale_leg_directories(target_dir)
         (mic, mic_receipt), (system, system_receipt) = transcribe_legs(
             producer, capture_dir / "mic.wav", capture_dir / "system.wav",
             temporary_parent=target_dir, emit_progress=progress,
