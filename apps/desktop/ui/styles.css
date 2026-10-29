@@ -443,24 +443,29 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
-/* Transcription progress. DESIGN.md (Rail): the transport's scrub track is the
-   one bar in the product, 3px with the elapsed part in Label 2 on the strong
-   hairline, so this reads as the same instrument. No fill color: progress is a
-   fact, not a state (the accent and the moment color are spent elsewhere). It
-   sits under the activity line or the page's status sentence, never in the
-   status region itself. */
+/* Transcription progress: a bar and its percent on one line, under the
+   transcribing status sentence and spanning the same measure as that
+   paragraph (same left edge, same max width, so the two stay the same width at
+   any window size; the percent takes its own width and the bar fills the rest).
+   Colors are chosen to be read, not to sit quietly: the fill is the page's ink
+   (--label) on --progress-track, so the fill against the track and the track
+   against the page are each at least 3:1 (WCAG 1.4.11) in both appearances,
+   and the percent is --label text at the sentence's own size (well over 4.5:1).
+   It is never inside the status region, so its value is not announced. */
 .transcription-progress {
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  max-width: 300px;
+  max-width: var(--measure);
   margin: var(--space-8) 0 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
   font-variant-numeric: tabular-nums;
 }
 
 .transcription-progress-bar {
   flex: 1 1 auto;
-  min-width: 120px;
+  min-width: 0;
   height: 3px;
   margin: 0;
   padding: 0;
@@ -469,27 +474,28 @@ h3 {
   appearance: none;
   -webkit-appearance: none;
   overflow: hidden;
-  background: var(--separator-strong);
-  color: var(--label-2);
+  background: var(--progress-track);
+  color: var(--label);
 }
 
 .transcription-progress-bar::-webkit-progress-bar {
   border-radius: 2px;
-  background: var(--separator-strong);
+  background: var(--progress-track);
 }
 
 .transcription-progress-bar::-webkit-progress-value {
   border-radius: 2px;
-  background: var(--label-2);
+  background: currentColor;
   transition: width var(--motion);
 }
 
+/* A fixed 4ch box, so the bar does not change length when the value goes from
+   9% to 10%: tabular digits are one width, and "99%" is the widest it gets. */
 .transcription-progress-percent {
-  min-width: 3ch;
-  font-size: var(--t-caption);
-  line-height: 1;
+  flex: 0 0 4ch;
   text-align: right;
-  color: var(--label-3);
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
 }
 
 /* On the meeting page the bar follows the transcribing status sentence and

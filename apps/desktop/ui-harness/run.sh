@@ -106,8 +106,10 @@ case "$mode" in
   # Transcription progress on the meeting page: the page follows the amount,
   # patches only the bar and percent, and leaves the editor alone.
   progress)
-    run transcribing-progress progress.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
-    run transcribing-progress-none progress.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    for appearance in light dark; do
+      run transcribing-progress progress.js "&width=1080&height=900&appearance=$appearance"
+      run transcribing-progress-none progress.js "&width=1080&height=900&appearance=$appearance"
+    done
     ;;
   # The three states the cold review looks at, in both appearances, at the size
   # the 2026-10-28 review used (1080 by 760). Needs HARNESS_CAPTURE_DIR; writes
