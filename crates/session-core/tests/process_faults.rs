@@ -99,6 +99,119 @@ fn supervised_worker_dispatches_repeatable_transcription_heartbeats() {
     assert!(result.ok);
 }
 
+/// Runs `operation` against the progress fake worker and returns the heartbeat
+/// count, the admitted measurements and the result.
+fn run_transcription_with_progress(
+    child: &mut OwnedChild,
+    operation: Operation,
+) -> (
+    usize,
+    Vec<(u32, u32)>,
+    Result<local_meeting_notes_session_core::protocol::WorkerResult, SupervisionError>,
+) {
+    let meeting_id = uuid::Uuid::new_v4();
+    let request = WorkerCommand::new(operation, serde_json::json!({"meeting_id": meeting_id}));
+    let mut heartbeats = 0;
+    let mut measured = Vec::new();
+    let result = child.request_observing(
+        &request,
+        Instant::now() + Duration::from_secs(2),
+        |_| {
+            heartbeats += 1;
+            Ok(())
+        },
+        |progress| {
+            assert_eq!(progress.meeting_id, meeting_id);
+            measured.push((progress.audio_seconds_done, progress.audio_seconds_total));
+        },
+    );
+    (heartbeats, measured, result)
+}
+
+#[test]
+fn transcription_progress_mid_request_never_stops_the_request_and_only_usable_values_arrive() {
+    // The transcript commits only from an Ok result carrying its digests, so
+    // "the request still returns its result" is what is proved here for both
+    // operations the worker emits progress for.
+    for operation in [Operation::TranscriptCreate, Operation::TranscriptRetry] {
+        let mut command = Command::new(FAKE_WORKER);
+        command.args(["--mode", "transcription-progress"]);
+        let mut child = OwnedChild::spawn(&mut command).unwrap();
+        child
+            .wait_ready(Duration::from_secs(1), &protocol_fixture_operations())
+            .unwrap();
+        let (heartbeats, measured, result) = run_transcription_with_progress(&mut child, operation);
+        let result = result.unwrap();
+        assert!(result.ok);
+        assert_eq!(result.artifact_digests["fixture"], "digest");
+        assert_eq!(heartbeats, 2, "the 3 s heartbeat is unchanged");
+        assert_eq!(measured, vec![(0, 100), (40, 100), (100, 100)]);
+        child.stop_and_wait(Duration::from_millis(200)).unwrap();
+    }
+}
+
+#[test]
+fn a_progress_frame_after_the_result_is_dropped_and_the_next_request_still_completes() {
+    let mut command = Command::new(FAKE_WORKER);
+    command.args(["--mode", "transcription-progress"]);
+    let mut child = OwnedChild::spawn(&mut command).unwrap();
+    child
+        .wait_ready(Duration::from_secs(1), &protocol_fixture_operations())
+        .unwrap();
+    let (_, measured, result) =
+        run_transcription_with_progress(&mut child, Operation::TranscriptCreate);
+    assert!(result.unwrap().ok);
+    assert_eq!(measured, vec![(0, 100), (40, 100), (100, 100)]);
+
+    // The progress rate bound is per second, and the worker's frames for one
+    // request already use most of it; the late frame itself was sent after
+    // that request's result.
+    std::thread::sleep(Duration::from_millis(1100));
+    let (_, measured, result) =
+        run_transcription_with_progress(&mut child, Operation::TranscriptRetry);
+    assert!(result.unwrap().ok);
+    assert_eq!(measured, vec![(0, 100), (40, 100), (100, 100)]);
+    child.stop_and_wait(Duration::from_millis(200)).unwrap();
+}
+
+#[test]
+fn a_malformed_progress_frame_still_stops_and_reaps_the_worker() {
+    let mut command = Command::new(FAKE_WORKER);
+    command.args(["--mode", "transcription-progress-malformed"]);
+    let mut child = OwnedChild::spawn(&mut command).unwrap();
+    let pid = child.pid();
+    child
+        .wait_ready(Duration::from_secs(1), &protocol_fixture_operations())
+        .unwrap();
+    let (_, measured, result) =
+        run_transcription_with_progress(&mut child, Operation::TranscriptCreate);
+    assert!(matches!(
+        result,
+        Err(SupervisionError::Protocol(ProtocolError::Malformed))
+    ));
+    assert!(measured.is_empty());
+    assert!(wait_until_gone(pid, Duration::from_secs(3)));
+}
+
+#[test]
+fn a_flood_of_ignored_progress_still_trips_the_rate_bound() {
+    let mut command = Command::new(FAKE_WORKER);
+    command.args(["--mode", "transcription-progress-flood"]);
+    let mut child = OwnedChild::spawn(&mut command).unwrap();
+    let pid = child.pid();
+    child
+        .wait_ready(Duration::from_secs(1), &protocol_fixture_operations())
+        .unwrap();
+    let (_, measured, result) =
+        run_transcription_with_progress(&mut child, Operation::TranscriptCreate);
+    assert!(matches!(
+        result,
+        Err(SupervisionError::Protocol(ProtocolError::EventRateExceeded))
+    ));
+    assert!(measured.is_empty());
+    assert!(wait_until_gone(pid, Duration::from_secs(3)));
+}
+
 #[test]
 fn unknown_progress_request_stops_and_reaps_worker() {
     let mut command = Command::new(FAKE_WORKER);

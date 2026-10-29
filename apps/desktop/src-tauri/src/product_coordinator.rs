@@ -35,8 +35,8 @@ use local_meeting_notes_session_core::operations::{
     TranscriptRestoreWorkerArgs, TranscriptRetryUiArgs,
 };
 use local_meeting_notes_session_core::protocol::{
-    CaptureProgressState, Operation, ProgressEvent, ProtocolError, WorkerCommand, WorkerProgress,
-    WorkerResult,
+    CaptureProgressState, Operation, ProgressEvent, ProtocolError, TranscriptionProgress,
+    WorkerCommand, WorkerProgress, WorkerResult,
 };
 use local_meeting_notes_session_core::retention::AppDataWriterLock;
 use local_meeting_notes_session_core::storage::StorageRoot;
@@ -148,6 +148,25 @@ impl ProcessWorkerPort {
     where
         F: FnMut(&WorkerProgress) -> Result<(), ProtocolError>,
     {
+        self.request_observing(operation, arguments, timeout, on_progress, |_| {})
+    }
+
+    /// `request_with_progress`, plus a sink for the worker's
+    /// `transcription.progress` measurements. The sink returns nothing, so a
+    /// progress event can never fail the request; the supervisor drops any
+    /// measurement it cannot use before it gets here.
+    pub(crate) fn request_observing<F, M>(
+        &self,
+        operation: Operation,
+        arguments: Value,
+        timeout: Duration,
+        on_progress: F,
+        on_measure: M,
+    ) -> Result<WorkerResult, WorkerPortUnavailable>
+    where
+        F: FnMut(&WorkerProgress) -> Result<(), ProtocolError>,
+        M: FnMut(&TranscriptionProgress),
+    {
         let command = WorkerCommand::new(operation, arguments);
         let mut guard = self
             .worker
@@ -156,7 +175,12 @@ impl ProcessWorkerPort {
         let Some(worker) = guard.as_mut() else {
             return Err(WorkerPortUnavailable("worker is unavailable".into()));
         };
-        match worker.request_until(&command, Instant::now() + timeout, on_progress) {
+        match worker.request_observing(
+            &command,
+            Instant::now() + timeout,
+            on_progress,
+            on_measure,
+        ) {
             Ok(result) => Ok(result),
             Err(error) => {
                 guard.take();

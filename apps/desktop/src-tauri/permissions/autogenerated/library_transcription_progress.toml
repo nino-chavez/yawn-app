@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-library-transcription-progress"
+description = "Enables the library_transcription_progress command without any pre-configured scope."
+commands.allow = ["library_transcription_progress"]
+
+[[permission]]
+identifier = "deny-library-transcription-progress"
+description = "Denies the library_transcription_progress command without any pre-configured scope."
+commands.deny = ["library_transcription_progress"]

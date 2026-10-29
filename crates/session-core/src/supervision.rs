@@ -17,8 +17,8 @@ use thiserror::Error;
 
 use crate::protocol::{
     MAX_FRAME_BYTES, MAX_PROGRESS_EVENTS_PER_SECOND, MAX_QUEUED_OUTPUTS, Operation, ProtocolError,
-    RequestTracker, WorkerCommand, WorkerOutput, WorkerProgress, WorkerReady, WorkerResult,
-    parse_output, parse_ready,
+    RequestTracker, TranscriptionProgress, WorkerCommand, WorkerOutput, WorkerProgress,
+    WorkerReady, WorkerResult, parse_output, parse_ready,
 };
 
 pub const PARENT_FD_ENV: &str = "LMN_PARENT_LIVENESS_FD";
@@ -107,9 +107,18 @@ struct ProcessControl {
     cleanup_failure_injection: Mutex<Option<CleanupFailure>>,
 }
 
+/// What the dispatcher queues for the request loop. A `transcription.progress`
+/// frame that was ignored at admission is never queued, so the loop only ever
+/// sees a measurement that belongs to its request.
+enum Dispatched {
+    Progress(WorkerProgress),
+    Measured(TranscriptionProgress),
+    Result(WorkerResult),
+}
+
 struct DispatchItem {
     received_at: Instant,
-    output: WorkerOutput,
+    output: Dispatched,
 }
 
 pub struct OwnedChild {
@@ -294,10 +303,31 @@ impl OwnedChild {
         &mut self,
         command: &WorkerCommand,
         deadline: Instant,
-        mut on_progress: F,
+        on_progress: F,
     ) -> Result<WorkerResult, SupervisionError>
     where
         F: FnMut(&WorkerProgress) -> Result<(), ProtocolError>,
+    {
+        self.request_observing(command, deadline, on_progress, |_| {})
+    }
+
+    /// `request_until`, plus a sink for `transcription.progress` measurements.
+    ///
+    /// `on_progress` sees only the closed `capture.state` heartbeats and may
+    /// fail the request. `on_measure` sees only admitted measurements and
+    /// returns nothing, so it cannot: progress is best-effort, and the type
+    /// makes a failing progress consumer impossible to write. A measurement the
+    /// app cannot use never reaches it.
+    pub fn request_observing<F, M>(
+        &mut self,
+        command: &WorkerCommand,
+        deadline: Instant,
+        mut on_progress: F,
+        mut on_measure: M,
+    ) -> Result<WorkerResult, SupervisionError>
+    where
+        F: FnMut(&WorkerProgress) -> Result<(), ProtocolError>,
+        M: FnMut(&TranscriptionProgress),
     {
         if self.stopped || self.output_receiver.is_none() {
             return Err(SupervisionError::Unavailable);
@@ -375,7 +405,7 @@ impl OwnedChild {
                 return Err(self.abort_error(SupervisionError::RequestTimeout));
             }
             match item.output {
-                WorkerOutput::Progress(progress) => {
+                Dispatched::Progress(progress) => {
                     if let Some(fault) = self.current_fault_record()
                         && !queued_output_precedes_eof(fault, item.received_at)
                     {
@@ -388,7 +418,17 @@ impl OwnedChild {
                         return Err(self.abort_error(error.into()));
                     }
                 }
-                WorkerOutput::Result(result) => {
+                Dispatched::Measured(measured) => {
+                    if let Some(fault) = self.current_fault_record()
+                        && !queued_output_precedes_eof(fault, item.received_at)
+                    {
+                        let error = worker_fault_error(fault.fault);
+                        self.cancel_request(command.request_id);
+                        return Err(self.abort_error(error));
+                    }
+                    on_measure(&measured);
+                }
+                Dispatched::Result(result) => {
                     if let Some(fault) = self.current_fault_record()
                         && !queued_output_precedes_eof(fault, item.received_at)
                     {
@@ -749,7 +789,10 @@ fn spawn_dispatcher(
                 }
             };
             let received_at = Instant::now();
-            if matches!(output, WorkerOutput::Progress(_)) {
+            if matches!(
+                output,
+                WorkerOutput::Progress(_) | WorkerOutput::TranscriptionProgress(_)
+            ) {
                 if received_at.duration_since(progress_window) >= Duration::from_secs(1) {
                     progress_window = received_at;
                     progress_events = 0;
@@ -764,17 +807,30 @@ fn spawn_dispatcher(
                     break;
                 }
             }
-            let validation = {
+            let dispatched = {
                 let mut tracker = requests.lock().expect("request tracker lock");
-                match &output {
-                    WorkerOutput::Progress(progress) => tracker.progress(progress),
-                    WorkerOutput::Result(result) => tracker.terminal(result),
+                match output {
+                    WorkerOutput::Progress(progress) => tracker
+                        .progress(&progress)
+                        .map(|()| Some(Dispatched::Progress(progress))),
+                    // Best-effort: a frame the tracker will not admit is dropped
+                    // here, not faulted. Its rate was already counted above.
+                    WorkerOutput::TranscriptionProgress(progress) => Ok(tracker
+                        .transcription_progress(&progress)
+                        .map(Dispatched::Measured)),
+                    WorkerOutput::Result(result) => tracker
+                        .terminal(&result)
+                        .map(|()| Some(Dispatched::Result(result))),
                 }
             };
-            if let Err(error) = validation {
-                install_fault(WorkerFault::Protocol(error), &fault, &control);
-                break;
-            }
+            let output = match dispatched {
+                Ok(Some(output)) => output,
+                Ok(None) => continue,
+                Err(error) => {
+                    install_fault(WorkerFault::Protocol(error), &fault, &control);
+                    break;
+                }
+            };
             match sender.try_send(DispatchItem {
                 received_at,
                 output,
