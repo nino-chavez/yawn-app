@@ -89,6 +89,14 @@ private func writeJSON<T: Encodable>(_ value: T, to output: URL) throws {
     try data.write(to: output, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)
 }
+/// Progress for the worker: one line per final result, its end time in seconds.
+/// Standard output carries only these numbers and never any transcript text; the
+/// private result file is the only place text exists. The write is best effort,
+/// so a closed or full pipe can never fail a transcription.
+private func reportProgress(endSeconds: Double) {
+    guard endSeconds.isFinite, endSeconds >= 0 else { return }
+    try? FileHandle.standardOutput.write(contentsOf: Data(String(format: "%.3f\n", endSeconds).utf8))
+}
 private func monotonicSeconds() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000 }
 private func peakRSS() -> UInt64 { var value = rusage(); return getrusage(RUSAGE_SELF, &value) == 0 ? UInt64(value.ru_maxrss) : 0 }
 
@@ -164,6 +172,7 @@ private func transcribe(_ url: URL, locale identifier: String) async throws -> R
         for try await item in transcriber.results where item.isFinal {
             let text = String(item.text.characters).trimmingCharacters(in: .whitespacesAndNewlines)
             let start = CMTimeGetSeconds(item.range.start); let end = CMTimeGetSeconds(CMTimeRangeGetEnd(item.range))
+            reportProgress(endSeconds: end)
             let utterance = !text.isEmpty && start.isFinite && end.isFinite && end > start ? Utterance(text: text, start: start, end: end) : nil
             let timed = timedSegments(item.text)
             final.append((text, timed.0, utterance, timed.1 + ((text.isEmpty || utterance != nil) ? 0 : 1)))
@@ -192,6 +201,7 @@ private func transcribe(_ url: URL, locale identifier: String) async throws -> R
                 try await installAssets(locale: arguments.locale)
                 try writeJSON(await capability(locale: arguments.locale), to: arguments.output)
             case .transcribe:
+                signal(SIGPIPE, SIG_IGN)  // progress on stdout is best effort; a closed pipe must not kill the run
                 guard #available(macOS 26.0, *) else { throw HelperError.unavailable("Apple SpeechTranscriber requires macOS 26 or later") }
                 let current = await capability(locale: arguments.locale)
                 guard current.state == "ready" else { throw HelperError.unavailable(current.reason ?? "Apple speech assets are not ready") }

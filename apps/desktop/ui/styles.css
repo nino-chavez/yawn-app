@@ -443,6 +443,77 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Transcription progress: a bar and its percent on one line, under the
+   transcribing status sentence and spanning the same measure as that
+   paragraph (same left edge, same max width, so the two stay the same width at
+   any window size; the percent takes its own width and the bar fills the rest).
+   Colors are chosen to be read, not to sit quietly: the fill is the page's ink
+   (--label) on --progress-track, so the fill against the track and the track
+   against the page are each at least 3:1 (WCAG 1.4.11) in both appearances,
+   and the percent is --label text at the sentence's own size (well over 4.5:1).
+   It is never inside the status region, so its value is not announced. */
+.transcription-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: var(--measure);
+  margin: var(--space-8) 0 0;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcription-progress-bar {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 3px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  appearance: none;
+  -webkit-appearance: none;
+  overflow: hidden;
+  background: var(--progress-track);
+  color: var(--label);
+}
+
+.transcription-progress-bar::-webkit-progress-bar {
+  border-radius: 2px;
+  background: var(--progress-track);
+}
+
+.transcription-progress-bar::-webkit-progress-value {
+  border-radius: 2px;
+  background: currentColor;
+  transition: width var(--motion);
+}
+
+/* "<n>% transcribed" in one fixed box, so the bar does not change length when
+   the value goes from 9% to 10% to 99%: tabular digits are one width each, and
+   15ch holds the widest read ("99% transcribed", about 13ch) with room to spare.
+   Right-aligned, so the words stay put and only the digits grow leftward. */
+.transcription-progress-percent {
+  flex: 0 0 15ch;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--label);
+  font-variant-numeric: tabular-nums;
+}
+
+/* On the meeting page the bar follows the transcribing status sentence and
+   shares its column: the one the title, the transport and "Your notes" use,
+   past the ledger gutter. */
+.doc-page > .transcription-progress {
+  margin-left: var(--ledger-gutter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcription-progress-bar::-webkit-progress-value {
+    transition: none;
+  }
+}
+
 .note-workbench {
   overflow: hidden;
   border: 1px solid var(--line-strong);
@@ -3422,10 +3493,15 @@ html, body, #app {
 }
 
 /* The selected no-note frame keeps its quiet fact compact without turning a
-   transcript-only meeting into an empty result. */
+   transcript-only meeting into an empty result. It is a section of the page
+   like the others: it takes the column `.doc-page .meeting-note-unavailable`
+   gives every note-area state (a `margin: 0` here used to cancel that, which
+   left the sentence 76px left of the title and the notes), and the 24px the
+   page puts between sections, so it no longer reads as part of the notes
+   placeholder above it. */
 .meeting-note-unavailable.no-note-state {
   max-width: var(--measure);
-  margin: 0;
+  margin-top: var(--space-24);
 }
 
 .no-note-state .empty-note-state {

@@ -67,6 +67,9 @@ import {
   transcriptTurnsMatching,
   speakerSuggestionPresentation,
   transcriptionWorkerHeartbeatAgeSeconds,
+  heldTranscriptionAmount,
+  noteTranscriptionProgress,
+  transcriptionProgressMarkup,
   trashListPresentation,
   turnCitationPresentation,
   withheldTurnPresentation,
@@ -180,6 +183,11 @@ let systemAudioAutoProbeAttempted = false;
 let systemAudioAutoProbeTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
+// The last transcription amount this page view showed for the open meeting, so
+// the bar does not vanish in the moment between the worker finishing and the
+// transcript landing. Kept or let go by `heldTranscriptionAmount` in every
+// render and every progress poll.
+let transcriptionProgressHold = null;
 // Every route into a meeting reader gets an epoch. A slower search-result
 // open must never overwrite a newer direct meeting selection (or vice versa).
 let meetingOpenEpoch = 0;
@@ -349,6 +357,9 @@ function permissionAction(permission) {
 const SIDEBAR_COLLAPSE_WIDTH = 900;
 
 function render() {
+  // The last transcription amount this page view showed for the open meeting,
+  // kept or let go before anything is drawn (see `heldTranscriptionAmount`).
+  transcriptionProgressHold = heldTranscriptionAmount(transcriptionProgressHold, state.selected?.note);
   const editorFocus = captureEditorFocus();
   const view = contentView({
     hasInvoke: Boolean(invoke),
@@ -1343,10 +1354,14 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
     // untouched, so the person can keep writing.
     const transcribing = meetingTranscribingPresentation(note);
     if (transcribing) {
+      // The bar follows the status line as its sibling, outside the
+      // `role="status"` region, so its changing value is never announced as
+      // a status update. `pollTranscriptionProgress` patches it in place.
       return `
       <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading" role="status" data-meeting-status="${escapeHtml(transcribing.state)}">
         <p id="meeting-note-heading" class="doc-fact">${escapeHtml(transcribing.detail)}</p>
       </section>
+      ${transcriptionProgressMarkup(noteTranscriptionProgress(note, transcriptionProgressHold))}
     `;
     }
     // A transcript-only meeting has nothing to say here: the operator's notes
@@ -4328,6 +4343,56 @@ async function maybeAutoSelectMeeting() {
 // typing is flushed first and carried across if they typed during the read.
 const pendingTranscriptRefresh = { inFlight: false, lastAttemptMs: 0, attempts: 0 };
 
+// While the open meeting's note says "transcribing", ask the backend how far
+// the worker has got, about once a second (the poll tick). The answer is
+// written to the same note the render reads (`note.transcriptionProgress`),
+// so a full render and this patch can never disagree. It re-reads nothing but
+// the in-memory amount: `library_open_note` would stop audio playback and
+// spend the page's handles on every tick. When the backend stops reporting an
+// amount while the note still says "transcribing" (the request has finished,
+// the transcript has not landed), the page keeps the last amount it showed:
+// `transcriptionProgressHold`.
+//
+// Only the bar and the percent are patched. A render happens only when the bar
+// appears or goes away, and render() patches the tree in place too, so typing
+// in the note editor is never disturbed.
+const transcriptionProgressPoll = { inFlight: false };
+
+function patchTranscriptionProgress(progress) {
+  for (const holder of root.querySelectorAll("[data-transcription-progress]")) {
+    const bar = holder.querySelector("progress");
+    const percent = holder.querySelector(".transcription-progress-percent");
+    if (bar) {
+      bar.value = progress.percent;
+      bar.setAttribute("aria-valuenow", String(progress.percent));
+    }
+    if (percent) percent.textContent = progress.text;
+  }
+}
+
+async function pollTranscriptionProgress() {
+  if (!invoke || transcriptionProgressPoll.inFlight) return;
+  const note = state.selected?.note;
+  if (note?.state !== "transcribing" || !note.meetingId) return;
+  const meetingId = note.meetingId;
+  transcriptionProgressPoll.inFlight = true;
+  try {
+    const amount = await invoke("library_transcription_progress", { meetingId });
+    // The person may have opened another meeting, or the transcript may have
+    // landed and the page been re-read, while the answer was on its way.
+    const current = state.selected?.note;
+    if (!current || current.meetingId !== meetingId || current.state !== "transcribing") return;
+    const before = noteTranscriptionProgress(current, transcriptionProgressHold);
+    current.transcriptionProgress = amount ?? null;
+    transcriptionProgressHold = heldTranscriptionAmount(transcriptionProgressHold, current);
+    const after = noteTranscriptionProgress(current, transcriptionProgressHold);
+    if (Boolean(before) !== Boolean(after)) render();
+    else if (after) patchTranscriptionProgress(after);
+  } finally {
+    transcriptionProgressPoll.inFlight = false;
+  }
+}
+
 async function maybeRefreshPendingTranscripts() {
   if (!invoke || pendingTranscriptRefresh.inFlight) return;
   // The backend visibly working is the "still going" signal; restart the
@@ -4462,6 +4527,7 @@ async function initialize() {
     }
     void refreshRetainedAudioPlayback();
     void maybeRefreshPendingTranscripts().catch(reportError);
+    void pollTranscriptionProgress().catch(() => {});
     void maybeShowFinishedMeeting().catch(reportError);
     // Startup may become ready after the first permission status; probe once
     // when that is the only remaining Record gate (no-op after attempted).

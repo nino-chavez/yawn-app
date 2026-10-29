@@ -447,6 +447,66 @@ export function meetingTranscribingPresentation(note) {
   return { state: "transcribing", detail: TRANSCRIBING_DETAIL };
 }
 
+// How far transcription has got, as the worker measures it: seconds of audio
+// covered out of the meeting's seconds, from the Apple speech path only. It is
+// a best-effort extra on the meeting page's transcribing status; without a
+// usable amount the surface is exactly what it was.
+//
+// The percent is floor(done / total * 100), computed in integers so 29 of 100
+// is 29, and it never reads above 99: the transcript is written after the last
+// audio is covered, and the screen does not claim 100% before one exists. No
+// time estimate or "remaining" is derived from it. An amount that cannot be
+// used (not whole seconds, a zero total, more done than total) is no amount.
+export const TRANSCRIPTION_PROGRESS_NAME = "Transcription progress";
+export function transcriptionProgressPresentation(done, total) {
+  if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
+  if (total <= 0 || done < 0 || done > total) return null;
+  const percent = Math.min(99, Math.floor((done * 100) / total));
+  return { percent, name: TRANSCRIPTION_PROGRESS_NAME, text: `${percent}% transcribed` };
+}
+
+// The meeting page's `transcriptionProgress` (camelCase, like the rest of the
+// library payload), read only while its note state is transcribing. Without a
+// usable amount of its own it falls back to `held`, the last amount this page
+// view showed for this same meeting (see `heldTranscriptionAmount`).
+export function noteTranscriptionProgress(note, held = null) {
+  if (note?.state !== "transcribing") return null;
+  const amount = note.transcriptionProgress;
+  const fresh = transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal);
+  if (fresh) return fresh;
+  if (!held || held.meetingId !== note.meetingId) return null;
+  return transcriptionProgressPresentation(held.audioSecondsDone, held.audioSecondsTotal);
+}
+
+// What a page view remembers so the bar does not vanish at the very end. The
+// worker's request finishes (and the backend forgets the amount) a moment
+// before the transcript lands and the page is re-read, so for that gap the
+// backend says "no amount" while the note still says "transcribing". Once this
+// view has shown an amount for this meeting it keeps the last one, which reads
+// 99 at most, for as long as the open note stays in the transcribing state. It
+// lets go when the note changes state (a transcript, a failure) or another
+// meeting opens. A meeting that never had an amount never gets one, so it keeps
+// the plain surface.
+export function heldTranscriptionAmount(held, note) {
+  if (note?.state !== "transcribing" || !note.meetingId) return null;
+  const amount = note.transcriptionProgress;
+  if (transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal)) {
+    return { meetingId: note.meetingId, audioSecondsDone: amount.audioSecondsDone, audioSecondsTotal: amount.audioSecondsTotal };
+  }
+  return held?.meetingId === note.meetingId ? held : null;
+}
+
+// One native progress element carrying its role and values explicitly, and the
+// percent beside it for sighted readers (hidden from assistive technology,
+// which reads the value from the bar). Deliberately not inside a live region:
+// the page's status line is one, and a percent that changes every second would
+// be announced every second. `aria-valuenow` and `value` stay equal so the
+// poll can patch the bar and the percent in place without a render.
+export function transcriptionProgressMarkup(progress) {
+  if (!progress) return "";
+  return `<div class="transcription-progress" data-transcription-progress><progress class="transcription-progress-bar" role="progressbar" aria-label="${progress.name}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}" max="100" value="${progress.percent}"></progress><span class="transcription-progress-percent" aria-hidden="true">${progress.text}</span></div>`;
+}
+
 // Nothing pushes "the transcript landed" to an open page, so the page asks.
 // True when something on screen still says "transcribing" (the open meeting or
 // a library row), the backend is no longer visibly working, and the backoff

@@ -103,6 +103,26 @@ case "$mode" in
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  # Transcription progress on the meeting page: the page follows the amount,
+  # patches only the bar and percent, and leaves the editor alone.
+  progress)
+    for appearance in light dark; do
+      run transcribing-progress progress.js "&width=1080&height=900&appearance=$appearance"
+      run transcribing-progress-none progress.js "&width=1080&height=900&appearance=$appearance"
+    done
+    ;;
+  # The three states the cold review looks at, in both appearances, at the size
+  # the 2026-10-28 review used (1080 by 760). Needs HARNESS_CAPTURE_DIR; writes
+  # <state>-<appearance>.png at 2x. The caller scales and maps them.
+  progress-frames)
+    : "${HARNESS_CAPTURE_DIR:?run.sh progress-frames needs HARNESS_CAPTURE_DIR}"
+    for appearance in light dark; do
+      export HARNESS_APPEARANCE="$appearance"
+      for frame in transcribing-progress transcribing-progress-cap transcribing-progress-none; do
+        run "$frame" still.js "&width=1080&height=760&appearance=$appearance"
+      done
+    done
+    ;;
   still) run "${2:?run.sh still <mode>}" still.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   # The ledger with its first two folds open (DESIGN.md, Fold row: expanded).
   palette) run "${2:?run.sh palette <mode> <scenario> <name>}" "${3:?scenario}" "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" "${4:?name}" ;;
@@ -126,5 +146,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|library|search|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac

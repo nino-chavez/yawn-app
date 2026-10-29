@@ -57,6 +57,7 @@ const PRODUCT_COMMANDS: &[&str] = &[
     "dismiss_first_run_sheet",
     "library_set_meeting_title",
     "library_open_note",
+    "library_transcription_progress",
     "library_play_retained_audio",
     "library_retained_audio_playback_status",
     "library_stop_retained_audio",
