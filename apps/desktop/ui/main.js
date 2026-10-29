@@ -1593,7 +1593,9 @@ function renderMeetingPane() {
               openFolds: state.selected?.openFolds || [],
               editable: noteEditable,
               placeholder: "Write down the detail you will want to verify later.",
-              stop: note?.state === "recovered-interrupted" && Number.isFinite(Number(row?.durationSeconds))
+              // A recording that ran to its end did not stop early; only a
+              // cut-off recording gets the stop mark.
+              stop: note?.state === "recovered-interrupted" && !note?.interruptedTranscriptionHandle && Number.isFinite(Number(row?.durationSeconds))
                 ? { seconds: Number(row.durationSeconds), label: "Recording stopped here" }
                 : null,
             })}
@@ -1664,7 +1666,7 @@ function renderDocMeta(row, note) {
   if (audio) parts.push(audio);
   // The ordinary meeting (a transcript, the operator's notes) states nothing
   // here: the page shows what it has. Other states keep their word.
-  if (note?.state !== "transcript-only") parts.push(meetingStateCaption(note?.state));
+  if (note?.state !== "transcript-only") parts.push(meetingStateCaption(note?.state, { recordingFinished: Boolean(note?.interruptedTranscriptionHandle) }));
   return `<p class="doc-meta">${escapeHtml(parts.filter(Boolean).join(" · "))}</p>`;
 }
 

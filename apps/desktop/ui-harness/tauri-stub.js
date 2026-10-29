@@ -312,7 +312,7 @@
             createdAtEpochSeconds: fixtureEpoch(9, 9, 30), transcriptPending: false, recovery: null },
         ], total: 2, metadataRevision: 1, searchProbeEnabled: false }
       : mode === "library" || mode === "note-unreadable" || mode === "ledger" || mode === "interrupted" || mode === "interrupted-finished" || mode === "fidelity" || mode === "mic-change-failed" || mode === "mic-change-resume-failed" || mode === "transcript-retirement" || mode === "summary-failed" || mode === "saved-draft" || mode === "saved-draft-unreadable" || sheetMode || searchMode
-      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" || mode === "interrupted-finished" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : {}) }, {
+      ? { rows: [{ ...libraryRow, ...(mode === "ledger" ? { durationSeconds: 1458 } : mode === "interrupted" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false } : mode === "interrupted-finished" ? { durationSeconds: 401, recovery: "recovered-interrupted", transcriptAvailable: false, recordingFinished: true } : {}) }, {
           ...libraryRow,
           handle: "row-handle-2",
           meetingId: "harness-meeting-2",

@@ -513,14 +513,24 @@ pub enum InterruptedTranscriptionOutcome {
     DeferredActive,
 }
 
-/// Whether an interrupted meeting's recording actually finished, so that it
-/// can be handed back to transcription. A read: it takes no lease and changes
-/// nothing, so the library can decide what to offer. The command re-checks
-/// under the meeting's lease before it writes.
+/// Whether an interrupted meeting's recording finished, by its records
+/// alone: the receipt, health verdict, audio paths and retention. It reads
+/// no audio, so the library can ask it for every interrupted row when it
+/// decides what to call the meeting and what to offer.
+pub fn interrupted_recording_finished(meeting_dir: &Path) -> bool {
+    load_meeting(meeting_dir)
+        .map_err(InterruptedTranscriptionError::from)
+        .and_then(|meeting| check_transcribable_interrupted_capture(meeting_dir, &meeting, false))
+        .is_ok()
+}
+
+/// `interrupted_recording_finished`, plus the audio files still matching the
+/// record. A read: it takes no lease and changes nothing. The hand-back
+/// re-checks all of it under the meeting's lease before it writes.
 pub fn interrupted_capture_is_transcribable(meeting_dir: &Path) -> bool {
     load_meeting(meeting_dir)
         .map_err(InterruptedTranscriptionError::from)
-        .and_then(|meeting| check_transcribable_interrupted_capture(meeting_dir, &meeting))
+        .and_then(|meeting| check_transcribable_interrupted_capture(meeting_dir, &meeting, true))
         .is_ok()
 }
 
@@ -566,7 +576,7 @@ pub fn transcribe_finished_interrupted_capture(
     if meeting.meeting_id != meeting_id {
         return Err(MeetingError::Malformed("meeting identifier mismatch").into());
     }
-    check_transcribable_interrupted_capture(&meeting_dir, &meeting)?;
+    check_transcribable_interrupted_capture(&meeting_dir, &meeting, true)?;
     meeting.lifecycle = MeetingLifecycle::Captured;
     write_meeting(&meeting_dir, &meeting)?;
     Ok(InterruptedTranscriptionOutcome::HandedToQueue)
@@ -575,6 +585,7 @@ pub fn transcribe_finished_interrupted_capture(
 fn check_transcribable_interrupted_capture(
     meeting_dir: &Path,
     meeting: &MeetingRecord,
+    verify_audio: bool,
 ) -> Result<(), InterruptedTranscriptionError> {
     if meeting.lifecycle != MeetingLifecycle::RecoveredInterrupted
         || meeting.artifacts.current_transcript.is_some()
@@ -611,7 +622,9 @@ fn check_transcribable_interrupted_capture(
     if fs::symlink_metadata(meeting_dir.join("transcription-queue")).is_ok() {
         return Err(InterruptedTranscriptionError::TranscriptionAlreadyRequested);
     }
-    verify_record_artifacts(meeting_dir, meeting)?;
+    if verify_audio {
+        verify_record_artifacts(meeting_dir, meeting)?;
+    }
     Ok(())
 }
 
@@ -1563,6 +1576,7 @@ mod tests {
         assert_eq!(meeting.lifecycle, MeetingLifecycle::RecoveredInterrupted);
         assert_eq!(meeting.retention.state, AudioState::Retained);
         assert_eq!(capture_bytes(&directory), before);
+        assert!(interrupted_recording_finished(&directory));
         assert!(interrupted_capture_is_transcribable(&directory));
     }
 
@@ -1615,7 +1629,7 @@ mod tests {
         recover(&storage);
         let record = fs::read(directory.join("meeting.json")).unwrap();
 
-        assert!(!interrupted_capture_is_transcribable(&directory));
+        assert!(!interrupted_recording_finished(&directory));
         let error = transcribe_finished_interrupted_capture(
             &storage,
             &MeetingStorageCoordination::default(),
@@ -1653,6 +1667,8 @@ mod tests {
         let record = fs::read(directory.join("meeting.json")).unwrap();
         durable_replace(&directory.join("capture/mic.wav"), &private_wav(3)).unwrap();
 
+        // The records still say it finished; only the audio check catches it.
+        assert!(interrupted_recording_finished(&directory));
         assert!(!interrupted_capture_is_transcribable(&directory));
         let error = transcribe_finished_interrupted_capture(
             &storage,

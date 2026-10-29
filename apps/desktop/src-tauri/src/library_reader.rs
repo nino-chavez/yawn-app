@@ -264,6 +264,11 @@ pub(crate) struct LibrarySnapshotRow {
     /// as needing attention. False for a transcript that was deleted, a
     /// request that ended without one, and every meeting that has a transcript.
     pub(crate) transcript_pending: bool,
+    /// True for an interrupted meeting whose recording finished but was never
+    /// transcribed (`recovery::interrupted_recording_finished`, records only,
+    /// no audio read). The row then says "not transcribed", not "interrupted",
+    /// matching the page, which offers to transcribe it.
+    pub(crate) recording_finished: bool,
 }
 
 /// Operator title, then the meeting's own opening line, then nothing.
@@ -476,10 +481,10 @@ pub(crate) struct LibraryNoteResponse {
     /// meeting rather than only for one holding retained audio: a meeting whose
     /// audio has already been released can still be removed in full.
     pub(crate) meeting_deletion_handle: Option<String>,
-    /// Issued only for an interrupted meeting whose recording finished and is
-    /// still kept whole (`recovery::interrupted_capture_is_transcribable`), so
-    /// it can be handed back to transcription. Spent by
-    /// `authorize_interrupted_transcription`.
+    /// Issued only for an interrupted meeting whose recording finished
+    /// (`recovery::interrupted_recording_finished`), so it can be handed back
+    /// to transcription. Spent by `authorize_interrupted_transcription`, which
+    /// also checks the audio still matches the record.
     pub(crate) interrupted_transcription_handle: Option<String>,
     pub(crate) meeting_id: String,
     /// The retained current transcript's digest when this meeting is eligible
@@ -1023,6 +1028,8 @@ impl LibraryReader {
             };
             let transcript_pending =
                 Self::transcript_pending(&self.storage, &meeting_id, lifecycle);
+            let recording_finished = lifecycle == MeetingLifecycle::RecoveredInterrupted
+                && Self::interrupted_recording_finished(&self.storage, &meeting_id);
             rows.push(LibrarySnapshotRow {
                 handle: self.retain_handle(hit),
                 meeting_id,
@@ -1036,6 +1043,7 @@ impl LibraryReader {
                 duration_seconds,
                 recovery: Self::recovery_state_for(lifecycle),
                 transcript_pending,
+                recording_finished,
             });
         }
         LibrarySnapshot {
@@ -2085,11 +2093,12 @@ impl LibraryReader {
         Some(handle)
     }
 
-    /// Only for a meeting `recovery::interrupted_capture_is_transcribable`
-    /// admits right now. The command re-checks under the meeting's lease, so
+    /// Only for a meeting whose records say the recording finished
+    /// (`recovery::interrupted_recording_finished`). Spending it checks the
+    /// audio too, and the command re-checks under the meeting's lease, so
     /// this decides what to offer, not what is allowed.
     fn retain_interrupted_transcription_handle(&mut self, meeting_id: &str) -> Option<String> {
-        if !self.interrupted_capture_is_transcribable(meeting_id) {
+        if !Self::interrupted_recording_finished(&self.storage, meeting_id) {
             return None;
         }
         let hit = self.projection.meeting_handle(meeting_id).ok()?;
@@ -2098,6 +2107,12 @@ impl LibraryReader {
         Some(handle)
     }
 
+    fn interrupted_recording_finished(storage: &StorageRoot, meeting_id: &str) -> bool {
+        meeting_dir(storage, meeting_id)
+            .is_ok_and(|directory| recovery::interrupted_recording_finished(&directory))
+    }
+
+    /// Also hashes the audio: spent once, when the person presses Transcribe.
     fn interrupted_capture_is_transcribable(&self, meeting_id: &str) -> bool {
         meeting_dir(&self.storage, meeting_id)
             .is_ok_and(|directory| recovery::interrupted_capture_is_transcribable(&directory))
@@ -5047,6 +5062,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
 
+        assert!(snapshot.rows[0].recording_finished);
         let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
 
         assert_eq!(note.state, "recovered-interrupted");
@@ -5072,6 +5088,7 @@ mod tests {
         let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
         let snapshot = reader.snapshot(&HashSet::new());
 
+        assert!(!snapshot.rows[0].recording_finished);
         let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
 
         assert_eq!(note.state, "recovered-interrupted");
