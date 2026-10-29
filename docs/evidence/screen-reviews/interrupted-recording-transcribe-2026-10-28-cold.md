@@ -24,6 +24,7 @@ verdict: revise on every pass; pass 3 found no contradiction and its reader woul
 
 **Changed:**
 - Pass 1. For a finished recording, the caption under the title reads "Not transcribed" and the sidebar row reads "not transcribed". The rail has no early-stop mark. The row learns this from a new `recordingFinished` field. It is computed from the meeting's records only, with no audio read, so library refreshes stay cheap.
+- After the passes (house commit review). The page's Transcribe handle, and with it the caption, panel and rail, is issued only after the audio is hashed against its record when the meeting is opened. The sidebar row stays on the records-only check. The library's own revalidation already reads changed audio as stale, so this is a second guard, not a reachable fix.
 - Pass 2. The panel names the deletion date when the meeting has one: "Its audio is kept on this Mac until Nov 3, 2026." The date is kept on one line.
 
 Frames: `interrupted-recording-transcribe-2026-10-28/pass-1/`, `pass-2/`, `pass-3/`, with neutral-name maps in `review-map-pass*.txt`. Pass 3's frames are the final state.

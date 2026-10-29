@@ -481,10 +481,11 @@ pub(crate) struct LibraryNoteResponse {
     /// meeting rather than only for one holding retained audio: a meeting whose
     /// audio has already been released can still be removed in full.
     pub(crate) meeting_deletion_handle: Option<String>,
-    /// Issued only for an interrupted meeting whose recording finished
-    /// (`recovery::interrupted_recording_finished`), so it can be handed back
-    /// to transcription. Spent by `authorize_interrupted_transcription`, which
-    /// also checks the audio still matches the record.
+    /// Issued only for an interrupted meeting whose recording finished and
+    /// whose audio still matches its record
+    /// (`recovery::interrupted_capture_is_transcribable`), so it can be handed
+    /// back to transcription. Spent by `authorize_interrupted_transcription`,
+    /// which checks again.
     pub(crate) interrupted_transcription_handle: Option<String>,
     pub(crate) meeting_id: String,
     /// The retained current transcript's digest when this meeting is eligible
@@ -2093,12 +2094,15 @@ impl LibraryReader {
         Some(handle)
     }
 
-    /// Only for a meeting whose records say the recording finished
-    /// (`recovery::interrupted_recording_finished`). Spending it checks the
-    /// audio too, and the command re-checks under the meeting's lease, so
-    /// this decides what to offer, not what is allowed.
+    /// Only for a meeting whose recording finished and whose audio still
+    /// matches its record (`recovery::interrupted_capture_is_transcribable`).
+    /// The audio is hashed once, when the meeting is opened: offering
+    /// Transcribe on records alone would put a button on a meeting whose
+    /// audio changed that could only ever fail, and reopening would offer it
+    /// again. The command re-checks under the meeting's lease, so this
+    /// decides what to offer, not what is allowed.
     fn retain_interrupted_transcription_handle(&mut self, meeting_id: &str) -> Option<String> {
-        if !Self::interrupted_recording_finished(&self.storage, meeting_id) {
+        if !self.interrupted_capture_is_transcribable(meeting_id) {
             return None;
         }
         let hit = self.projection.meeting_handle(meeting_id).ok()?;
@@ -2112,7 +2116,8 @@ impl LibraryReader {
             .is_ok_and(|directory| recovery::interrupted_recording_finished(&directory))
     }
 
-    /// Also hashes the audio: spent once, when the person presses Transcribe.
+    /// Also hashes the audio: once when the meeting is opened, and again when
+    /// the person presses Transcribe.
     fn interrupted_capture_is_transcribable(&self, meeting_id: &str) -> bool {
         meeting_dir(&self.storage, meeting_id)
             .is_ok_and(|directory| recovery::interrupted_capture_is_transcribable(&directory))
@@ -5092,6 +5097,25 @@ mod tests {
         let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
 
         assert_eq!(note.state, "recovered-interrupted");
+        assert_eq!(note.interrupted_transcription_handle, None);
+        assert!(!note.message.contains("The recording finished"));
+    }
+
+    #[test]
+    fn a_finished_recording_whose_audio_changed_is_not_offered_transcription() {
+        // Listed while the audio still matched; changed before it is opened.
+        let fixture = recovered_interrupted_fixture_shaped(true);
+        let projection = LibraryProjection::rebuild(&fixture.storage, Default::default()).unwrap();
+        let mut reader = LibraryReader::new(fixture.storage.clone(), projection);
+        let snapshot = reader.snapshot(&HashSet::new());
+        local_meeting_notes_session_core::storage::durable_replace(&fixture.directory.join("capture/mic.wav"), &[9_u8; 44]).unwrap();
+
+        let note = reader.open_note(&snapshot.rows[0].handle, &HashSet::new(), None);
+
+        // The library's revalidation already reads the changed file as a
+        // stale snapshot, before the handle check runs. Either way the page
+        // never offers Transcribe on audio that no longer matches.
+        assert_eq!(note.state, "stale");
         assert_eq!(note.interrupted_transcription_handle, None);
         assert!(!note.message.contains("The recording finished"));
     }
