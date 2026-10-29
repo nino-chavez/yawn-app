@@ -381,6 +381,12 @@
           "markdownDescription": "Enables the library_transcribe_interrupted_meeting command without any pre-configured scope."
         },
         {
+          "description": "Enables the library_transcription_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-library-transcription-progress",
+          "markdownDescription": "Enables the library_transcription_progress command without any pre-configured scope."
+        },
+        {
           "description": "Enables the local_vocabulary_add command without any pre-configured scope.",
           "type": "string",
           "const": "allow-local-vocabulary-add",
@@ -895,6 +901,12 @@
           "type": "string",
           "const": "deny-library-transcribe-interrupted-meeting",
           "markdownDescription": "Denies the library_transcribe_interrupted_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the library_transcription_progress command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-library-transcription-progress",
+          "markdownDescription": "Denies the library_transcription_progress command without any pre-configured scope."
         },
         {
           "description": "Denies the local_vocabulary_add command without any pre-configured scope.",

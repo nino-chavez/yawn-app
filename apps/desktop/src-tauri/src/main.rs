@@ -84,6 +84,7 @@ mod capture_timing;
 mod apple_speech;
 mod error_codes;
 mod updater;
+mod transcription_progress;
 
 use manual_delete_facade::{
     AudioDeletionReview, ManualAudioDeletionFacadeError, ManualAudioDeletionFacadeOutcome,
@@ -128,7 +129,8 @@ use local_meeting_notes_session_core::note_projector_process::{
 };
 use local_meeting_notes_session_core::operations::TranscriptRetryUiArgs;
 use local_meeting_notes_session_core::protocol::{
-    CaptureProgressState, Operation, ProgressEvent, ProtocolError, WorkerProgress, WorkerResult,
+    CaptureProgressState, Operation, ProgressEvent, ProtocolError, TranscriptionProgress,
+    WorkerProgress, WorkerResult,
 };
 use local_meeting_notes_session_core::recovery::{
     InterruptedTranscriptionOutcome, transcribe_finished_interrupted_capture,
@@ -251,6 +253,10 @@ struct ApplicationState {
     worker: Arc<Mutex<Option<OwnedChild>>>,
     transcription_worker: Arc<Mutex<Option<OwnedChild>>>,
     transcription_executor: Mutex<Option<TranscriptionExecutorControl>>,
+    /// Progress of the transcription now running, in memory only. The model
+    /// holds the same store, so the live snapshot reads it without a second
+    /// lock order; nothing holds this store while taking another lock.
+    transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
     capture_task: Mutex<Option<CaptureTaskControl>>,
     command_lock: Mutex<()>,
     // The slot holds an Arc so a long-running owner can hold the writer
@@ -303,13 +309,15 @@ struct ApplicationState {
 
 impl Default for ApplicationState {
     fn default() -> Self {
+        let transcription_progress = Arc::new(transcription_progress::TranscriptionProgressStore::default());
         Self {
-            model: Mutex::new(AppModel::default()),
+            model: Mutex::new(AppModel::with_progress_store(transcription_progress.clone())),
             storage: Arc::new(Mutex::new(None)),
             runtime: Mutex::new(None),
             worker: Arc::new(Mutex::new(None)),
             transcription_worker: Arc::new(Mutex::new(None)),
             transcription_executor: Mutex::new(None),
+            transcription_progress,
             capture_task: Mutex::new(None),
             command_lock: Mutex::new(()),
             app_data_writer_lock: Arc::new(Mutex::new(None)),
@@ -505,6 +513,9 @@ struct AppModel {
     started_at_epoch_seconds: Option<u64>,
     capture_state_started_at_epoch_seconds: Option<u64>,
     transcription_last_worker_heartbeat_at_epoch_seconds: Option<u64>,
+    /// Where the worker's transcription measurements land. Read only by
+    /// `snapshot`, and only while the capture is `transcribing`.
+    transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
@@ -531,6 +542,14 @@ struct AppModel {
 
 impl Default for AppModel {
     fn default() -> Self {
+        Self::with_progress_store(Arc::default())
+    }
+}
+
+impl AppModel {
+    fn with_progress_store(
+        transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
+    ) -> Self {
         Self {
             reducer: Reducer::default(),
             admission: "internal-alpha".into(),
@@ -542,6 +561,7 @@ impl Default for AppModel {
             started_at_epoch_seconds: None,
             capture_state_started_at_epoch_seconds: None,
             transcription_last_worker_heartbeat_at_epoch_seconds: None,
+            transcription_progress,
             background_transcription_active: false,
             background_transcription_queued_count: 0,
             degraded: false,
@@ -572,6 +592,7 @@ impl AppModel {
             capture_state_started_at_epoch_seconds: self.capture_state_started_at_epoch_seconds,
             transcription_last_worker_heartbeat_at_epoch_seconds: self
                 .transcription_last_worker_heartbeat_at_epoch_seconds,
+            transcription_progress: self.live_transcription_progress(),
             background_transcription_active: self.background_transcription_active,
             background_transcription_queued_count: self.background_transcription_queued_count,
             degraded: self.degraded,
@@ -584,6 +605,17 @@ impl AppModel {
             error: self.error.clone(),
             capture_notice: self.capture_notice.clone(),
         }
+    }
+
+    /// The just-stopped meeting's transcription progress: only while the
+    /// capture itself is `transcribing`, only for that meeting, and `None`
+    /// until the worker has reported an amount.
+    fn live_transcription_progress(&self) -> Option<transcription_progress::AudioProgress> {
+        if self.reducer.capture() != CaptureState::Transcribing {
+            return None;
+        }
+        let meeting_id = Uuid::parse_str(self.meeting_id.as_deref()?).ok()?;
+        self.transcription_progress.latest(meeting_id)
     }
 
     fn clear_meeting_projection(&mut self) {
@@ -617,6 +649,9 @@ struct AppSnapshot {
     started_at_epoch_seconds: Option<u64>,
     capture_state_started_at_epoch_seconds: Option<u64>,
     transcription_last_worker_heartbeat_at_epoch_seconds: Option<u64>,
+    /// `{audio_seconds_done, audio_seconds_total}` while the capture is
+    /// `transcribing` and the worker has reported an amount, else `null`.
+    transcription_progress: Option<transcription_progress::AudioProgress>,
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
@@ -4077,6 +4112,10 @@ fn library_open_note_for(
     // A fact about this Mac, not this meeting. See the field's docs for why it
     // rides the note response and what it may and may not decide.
     response.can_confirm_operator = state.confirmation.available();
+    if response.state == "transcribing" {
+        response.transcription_progress =
+            transcription_progress::library_progress(&state.transcription_progress, &response.meeting_id);
+    }
 
     // This is a fixed retirement fact. Opening a meeting never verifies a
     // model or runtime merely to decorate a saved-note response.
@@ -4092,6 +4131,19 @@ fn library_open_note_for(
             Some(authority.mint(&response.meeting_id, meeting_lock::LockedAction::Open));
     }
     response
+}
+
+/// The open page's transcription progress, polled about once a second while its
+/// note state is `"transcribing"`. It reads only the in-memory store, so it
+/// takes no lock but the store's own, spends no handle, and touches neither
+/// storage nor audio playback (which `library_open_note` would stop). `null`
+/// when the meeting is not being transcribed or the worker has reported nothing.
+#[tauri::command]
+fn library_transcription_progress(
+    meeting_id: String,
+    state: State<'_, ApplicationState>,
+) -> Option<transcription_progress::LibraryAudioProgress> {
+    transcription_progress::library_progress(&state.transcription_progress, &meeting_id)
 }
 
 /// Starts the only retained-audio playback route. `handle` is an opaque,
@@ -5487,6 +5539,7 @@ fn analyze_speakers(
             }),
             SPEAKER_ANALYSIS_TIMEOUT,
             |_| Err(ProtocolError::InvalidEvent),
+            |_| {},
         );
         let _ = temporary
             .lock()
@@ -6429,6 +6482,7 @@ fn main() {
             dismiss_first_run_sheet,
             library_set_meeting_title,
             library_open_note,
+            library_transcription_progress,
             library_play_retained_audio,
             library_retained_audio_playback_status,
             library_stop_retained_audio,
@@ -8599,9 +8653,13 @@ fn request_worker(
 ) -> Result<HashMap<String, String>, WorkerCallError> {
     let port = product_coordinator::ProcessWorkerPort::new(state.worker.clone());
     let result: WorkerResult = port
-        .request_with_progress(operation, arguments, timeout, |progress| {
-            record_transcription_heartbeat(state, progress)
-        })
+        .request_observing(
+            operation,
+            arguments,
+            timeout,
+            |progress| record_transcription_heartbeat(state, progress),
+            |measured| state.transcription_progress.record(measured),
+        )
         .map_err(|unavailable| WorkerCallError::Supervisor(unavailable.0))?;
     if !result.ok {
         return Err(WorkerCallError::Rejected);
@@ -8615,12 +8673,17 @@ fn request_worker_on(
     arguments: Value,
     timeout: Duration,
     mut heartbeat: impl FnMut(&WorkerProgress) -> Result<(), ProtocolError>,
+    measure: impl FnMut(&TranscriptionProgress),
 ) -> Result<HashMap<String, String>, WorkerCallError> {
     let port = product_coordinator::ProcessWorkerPort::new(worker);
     let result: WorkerResult = port
-        .request_with_progress(operation, arguments, timeout, |progress| {
-            heartbeat(progress)
-        })
+        .request_observing(
+            operation,
+            arguments,
+            timeout,
+            |progress| heartbeat(progress),
+            measure,
+        )
         .map_err(|unavailable| WorkerCallError::Supervisor(unavailable.0))?;
     if !result.ok {
         return Err(WorkerCallError::Rejected);
@@ -8736,24 +8799,12 @@ fn start_transcription_queue_executor(
                     continue;
                 }
             };
-            let worker = state.transcription_worker.clone();
-            let worker_request_id = Arc::new(Mutex::new(None::<Uuid>));
-            let heartbeat_id = worker_request_id.clone();
-            let result = request_worker_on(
-                worker,
-                Operation::TranscriptCreate,
-                json!({"meeting_id": item.request.meeting_id}),
+            let result = transcription_progress::request_queued_transcription(
+                state.transcription_worker.clone(),
+                &state.transcription_progress,
+                &item.request.meeting_id,
+                expected_meeting,
                 TRANSCRIPT_REQUEST_TIMEOUT,
-                |progress| {
-                    if progress.event != ProgressEvent::CaptureState || progress.state != CaptureProgressState::Transcribing || progress.meeting_id != expected_meeting {
-                        return Err(ProtocolError::InvalidEvent);
-                    }
-                    let mut id = heartbeat_id.lock().map_err(|_| ProtocolError::InvalidEvent)?;
-                    if let Some(existing) = *id {
-                        if existing != progress.request_id { return Err(ProtocolError::InvalidEvent); }
-                    } else { *id = Some(progress.request_id); }
-                    Ok(())
-                },
             );
             match result {
                 Ok(digests) => {
@@ -9897,6 +9948,108 @@ mod tests {
             assert!(message.starts_with("Recording stopped"));
             assert!(message.contains("Nothing was marked complete"));
         }
+    }
+
+    /// A meeting exactly as Stop leaves it: audio retained, lifecycle
+    /// `Captured`, no transcript yet. Returns the meeting id.
+    fn captured_meeting_awaiting_transcript(storage: &StorageRoot) -> String {
+        let meeting_id = Uuid::new_v4().to_string();
+        let transcript_path = write_transcript_fixture(
+            storage,
+            &meeting_id,
+            10,
+            AudioState::Retained,
+            "synthetic transcript",
+        );
+        let directory = transcript_path.parent().unwrap().parent().unwrap();
+        let mut meeting = load_meeting(directory).unwrap();
+        let transcript = meeting.artifacts.current_transcript.take().unwrap();
+        fs::remove_file(directory.join(transcript.relative_path)).unwrap();
+        meeting.lifecycle = MeetingLifecycle::Captured;
+        write_meeting(directory, &meeting).unwrap();
+        meeting_id
+    }
+
+    #[test]
+    fn opening_a_transcribing_meeting_carries_its_progress_and_clearing_it_drops_it() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = captured_meeting_awaiting_transcript(&storage);
+        let state = ApplicationState::default();
+        *state.storage.lock().unwrap() = Some(StorageContext {
+            storage: storage.clone(),
+            resource_root: PathBuf::new(),
+            manifest_path: PathBuf::new(),
+            diagnostics: PathBuf::new(),
+        });
+        ensure_app_data_writer_lock(&state, &storage).unwrap();
+
+        // Before the worker has reported anything: the page is as it was.
+        let snapshot = library_snapshot_for(&state);
+        let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
+        assert_eq!(opened.state, "transcribing");
+        assert_eq!(opened.transcription_progress, None);
+        assert_eq!(
+            serde_json::to_value(&opened).unwrap()["transcriptionProgress"],
+            serde_json::Value::Null
+        );
+
+        let id = Uuid::parse_str(&meeting_id).unwrap();
+        state.transcription_progress.record(&TranscriptionProgress {
+            meeting_id: id,
+            audio_seconds_done: 1234,
+            audio_seconds_total: 7920,
+        });
+        let snapshot = library_snapshot_for(&state);
+        let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
+        assert_eq!(
+            serde_json::to_value(&opened).unwrap()["transcriptionProgress"],
+            json!({"audioSecondsDone": 1234, "audioSecondsTotal": 7920})
+        );
+        // The named command the page polls reads the same store.
+        assert_eq!(
+            serde_json::to_value(transcription_progress::library_progress(
+                &state.transcription_progress,
+                &meeting_id
+            ))
+            .unwrap(),
+            json!({"audioSecondsDone": 1234, "audioSecondsTotal": 7920})
+        );
+
+        state.transcription_progress.clear(id);
+        let snapshot = library_snapshot_for(&state);
+        let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
+        assert_eq!(opened.transcription_progress, None);
+    }
+
+    #[test]
+    fn a_meeting_that_is_not_transcribing_never_carries_progress() {
+        let (_temporary, storage) = test_storage();
+        let meeting_id = Uuid::new_v4();
+        write_transcript_fixture(
+            &storage,
+            &meeting_id.to_string(),
+            10,
+            AudioState::Retained,
+            "synthetic transcript",
+        );
+        let state = ApplicationState::default();
+        *state.storage.lock().unwrap() = Some(StorageContext {
+            storage: storage.clone(),
+            resource_root: PathBuf::new(),
+            manifest_path: PathBuf::new(),
+            diagnostics: PathBuf::new(),
+        });
+        ensure_app_data_writer_lock(&state, &storage).unwrap();
+        // A stale value for a meeting that already has its transcript.
+        state.transcription_progress.record(&TranscriptionProgress {
+            meeting_id,
+            audio_seconds_done: 5,
+            audio_seconds_total: 10,
+        });
+        let snapshot = library_snapshot_for(&state);
+        let opened = library_open_note_for(snapshot.rows[0].handle.clone(), None, &state);
+        assert_ne!(opened.state, "transcribing");
+        assert_eq!(opened.transcription_progress, None);
     }
 
     #[test]

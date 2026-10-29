@@ -569,6 +569,16 @@ pub(crate) struct LibraryNoteResponse {
     /// Defaults to `false` in every content-free constructor here, so a
     /// response that never reached the command layer cannot invite a lock.
     pub(crate) can_confirm_operator: bool,
+    /// How much of this meeting's audio is transcribed, while `state` is
+    /// `"transcribing"` and the worker has reported an amount; otherwise
+    /// `None`, and the page reads exactly as it did before progress existed.
+    ///
+    /// Like `lock_token`, it is set by the command (`library_open_note`), never
+    /// by this reader: it is live, in-memory state, not something the library
+    /// reads from storage, and every constructor here leaves it empty. The page
+    /// then follows it through `library_transcription_progress`.
+    pub(crate) transcription_progress:
+        Option<crate::transcription_progress::LibraryAudioProgress>,
     pub(crate) message: String,
 }
 
@@ -1398,6 +1408,7 @@ impl LibraryReader {
                 lock,
                 lock_token: None,
                 can_confirm_operator: false,
+                transcription_progress: None,
                 message: "This meeting is locked on this Mac.".into(),
             };
         }
@@ -1481,6 +1492,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
+                    transcription_progress: None,
                     message: "A note was not produced. Retained transcript text remains available."
                         .into(),
                 };
@@ -1545,6 +1557,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
+                    transcription_progress: None,
                     message: message.into(),
                 };
             }
@@ -1575,6 +1588,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
+                    transcription_progress: None,
                     message: SAVED_NOTE_UNREADABLE_MESSAGE.into(),
                 };
             }
@@ -1610,6 +1624,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
+                    transcription_progress: None,
                     message: TRANSCRIBING_MESSAGE.into(),
                 };
             }
@@ -1639,6 +1654,7 @@ impl LibraryReader {
                     lock,
                     lock_token: None,
                     can_confirm_operator: false,
+                    transcription_progress: None,
                     message: if transcript_handle.is_some() {
                         "No admitted note is available. Retained transcript text remains available."
                             .into()
@@ -1732,6 +1748,7 @@ impl LibraryReader {
             lock,
             lock_token: None,
             can_confirm_operator: false,
+            transcription_progress: None,
             message: "Claim words can be opened against their exact transcript locators.".into(),
         }
     }
@@ -1939,6 +1956,7 @@ impl LibraryReader {
             lock: crate::meeting_lock::MeetingLock::none(),
             lock_token: None,
             can_confirm_operator: false,
+            transcription_progress: None,
             message: UNAVAILABLE_MESSAGE.into(),
         }
     }
@@ -2889,6 +2907,7 @@ impl LibraryReader {
             lock: crate::meeting_lock::MeetingLock::none(),
             lock_token: None,
             can_confirm_operator: false,
+            transcription_progress: None,
             message: STALE_MESSAGE.into(),
         }
     }
