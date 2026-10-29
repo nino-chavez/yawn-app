@@ -2498,7 +2498,7 @@ test("an unreadable saved note says the file is kept and names only what the pag
 });
 
 // Transcription progress. The wording below ("Transcription progress" and the
-// "<n>%" read) is listed in DIRECTION.md's content-reads table, so it is
+// "<n>% transcribed" read) is listed in DIRECTION.md's content-reads table, so it is
 // asserted here; everything else asserts state and role.
 
 test("the percent is floor(done / total * 100), computed in integers, and capped at 99", () => {
@@ -2512,6 +2512,15 @@ test("the percent is floor(done / total * 100), computed in integers, and capped
   assert.equal(percent(7919, 7920), 99, "just short of done floors to 99");
   assert.equal(percent(7920, 7920), 99, "done is not 100 until a transcript exists");
   assert.equal(percent(1, 1), 99);
+});
+
+test("the visible read says what the number is a percent of", () => {
+  const text = (done, total) => transcriptionProgressPresentation(done, total)?.text;
+  assert.equal(text(2, 5), "40% transcribed");
+  assert.equal(text(9, 100), "9% transcribed");
+  assert.equal(text(10, 100), "10% transcribed");
+  assert.equal(text(7920, 7920), "99% transcribed");
+  assert.equal(text(0, 10), "0% transcribed");
 });
 
 test("an amount the screen cannot use is no amount, so the surface is unchanged", () => {
@@ -2553,7 +2562,7 @@ test("the bar is a determinate progressbar with its role, range, value and name"
   assert.match(markup, new RegExp(`aria-label="${TRANSCRIPTION_PROGRESS_NAME}"`));
   assert.equal(TRANSCRIPTION_PROGRESS_NAME, "Transcription progress");
   // The visible percent is hidden from assistive technology; the bar carries it.
-  assert.match(markup, /<span class="transcription-progress-percent" aria-hidden="true">40%<\/span>/);
+  assert.match(markup, /<span class="transcription-progress-percent" aria-hidden="true">40% transcribed<\/span>/);
   assert.equal(transcriptionProgressMarkup(null), "");
 });
 
@@ -2572,7 +2581,7 @@ test("DIRECTION.md lists the progress wording the bar and the percent use", asyn
   const row = direction.split("\n").find((line) => line.includes("Transcription progress (`transcriptionProgressPresentation`"));
   assert.ok(row, "the content-reads row exists");
   assert.ok(row.includes(`"${TRANSCRIPTION_PROGRESS_NAME}"`));
-  assert.ok(row.includes('"<n>%"'));
+  assert.ok(row.includes('"<n>% transcribed"'));
   assert.ok(row.includes("never above 99"));
   assert.ok(row.includes("No time estimate"));
 });
@@ -2727,7 +2736,8 @@ test("the bar line spans the status sentence's measure, and its percent is the s
   const percent = rule(".transcription-progress-percent");
   assert.match(percent, /font-variant-numeric: tabular-nums/);
   assert.match(percent, /color: var\(--label\)/);
-  assert.match(percent, /flex: 0 0 4ch/);
+  assert.match(percent, /flex: 0 0 15ch/);
+  assert.match(percent, /white-space: nowrap/);
   const bar = rule(".transcription-progress-bar");
   assert.match(bar, /background: var\(--progress-track\)/);
   assert.match(bar, /color: var\(--label\)/);

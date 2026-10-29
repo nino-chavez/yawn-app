@@ -86,8 +86,8 @@ step("bar is a determinate progressbar with its range and name",
   bar.getAttribute("role") === "progressbar" && bar.getAttribute("aria-valuemin") === "0"
   && bar.getAttribute("aria-valuemax") === "100" && bar.getAttribute("aria-valuenow") === "40"
   && Boolean(bar.getAttribute("aria-label")), bar.outerHTML);
-step("percent beside it is hidden from assistive technology and agrees",
-  holder().querySelector('.transcription-progress-percent').getAttribute("aria-hidden") === "true" && percentText() === "40%", percentText());
+step("the read beside it is hidden from assistive technology and says what the number is of",
+  holder().querySelector('.transcription-progress-percent').getAttribute("aria-hidden") === "true" && percentText() === "40% transcribed", percentText());
 step("bar is outside the status region", !bar.closest('[role="status"]') && Boolean(q('[data-meeting-status="transcribing"]')));
 step("bar is in the same column as the sentence", left(holder()) === left(sentence), `${left(holder())} vs ${left(sentence)}`);
 step("bar has a drawn width", bar.getBoundingClientRect().width > 100 && bar.getBoundingClientRect().height >= 2, JSON.stringify(bar.getBoundingClientRect()));
@@ -104,7 +104,7 @@ const widths = () => ({
 const measured = widths();
 const gapPx = parseFloat(getComputedStyle(holder()).columnGap);
 step("bar line is as wide as the status sentence, from the same left edge", Math.abs(measured.line - measured.sentence) <= 0.5 && left(holder()) === left(sentence), JSON.stringify(measured));
-step("the bar fills what the percent leaves", Math.abs(measured.bar - (measured.line - measured.percent - gapPx)) <= 1 && measured.bar > measured.line * 0.8, JSON.stringify({ ...measured, gapPx }));
+step("the bar fills what the percent leaves", Math.abs(measured.bar - (measured.line - measured.percent - gapPx)) <= 1 && measured.bar > measured.line * 0.7, JSON.stringify({ ...measured, gapPx }));
 step("percent is the status sentence's size and tabular", getComputedStyle(percentEl).fontSize === getComputedStyle(sentence).fontSize
   && getComputedStyle(percentEl).fontVariantNumeric.includes("tabular-nums"), `${getComputedStyle(percentEl).fontSize} ${getComputedStyle(percentEl).fontVariantNumeric}`);
 
@@ -144,7 +144,7 @@ const pollsBefore = calls("library_transcription_progress");
 window.__harnessSetProgress(2748, 3664);
 await sleep(2300);
 bar = q('[data-transcription-progress] progress');
-step("bar follows a new amount, same node", bar === barBefore && bar.value === 75 && bar.getAttribute("aria-valuenow") === "75" && percentText() === "75%",
+step("bar follows a new amount, same node", bar === barBefore && bar.value === 75 && bar.getAttribute("aria-valuenow") === "75" && percentText() === "75% transcribed",
   `${bar?.value} ${percentText()}`);
 step("polled about once a second", calls("library_transcription_progress") - pollsBefore >= 2, calls("library_transcription_progress") - pollsBefore);
 step("never re-read the meeting", calls("library_open_note") === opensBefore, calls("library_open_note") - opensBefore);
@@ -154,28 +154,35 @@ step("note editor kept its node, focus and text", q('[data-field="library-operat
 // 9% and 10% have different digits but the same box: the bar does not change length.
 window.__harnessSetProgress(330, 3664);
 await sleep(1500);
-const at9 = { text: percentText(), ...widths() };
+const fits = () => percentEl.scrollWidth <= percentEl.clientWidth + 0.5;
+const at9 = { text: percentText(), fits: fits(), ...widths() };
 window.__harnessSetProgress(368, 3664);
 await sleep(1500);
-const at10 = { text: percentText(), ...widths() };
-step("bar and percent keep their widths from 9% to 10%", at9.text === "9%" && at10.text === "10%" && at9.bar === at10.bar && at9.percent === at10.percent, JSON.stringify({ at9, at10 }));
+const at10 = { text: percentText(), fits: fits(), ...widths() };
+window.__harnessSetProgress(3600, 3664);
+await sleep(1500);
+const at98 = { text: percentText(), fits: fits(), ...widths() };
+step("bar and label keep their widths from 9% to 10% to 98%, and the words fit",
+  at9.text === "9% transcribed" && at10.text === "10% transcribed" && at98.text === "98% transcribed"
+  && at9.bar === at10.bar && at10.bar === at98.bar && at9.percent === at10.percent && at10.percent === at98.percent
+  && at9.fits && at10.fits && at98.fits, JSON.stringify({ at9, at10, at98 }));
 
 // Everything covered and no transcript yet reads 99, never 100.
 window.__harnessSetProgress(3664, 3664);
 await sleep(1500);
-step("capped at 99", q('[data-transcription-progress] progress')?.value === 99 && percentText() === "99%", percentText());
+step("capped at 99", q('[data-transcription-progress] progress')?.value === 99 && percentText() === "99% transcribed", percentText());
 
 // An amount the page cannot use changes nothing.
 window.__harnessSetProgress(5000, 3664);
 await sleep(1500);
-step("an impossible amount leaves the last one showing", q('[data-transcription-progress] progress')?.value === 99 && percentText() === "99%", percentText());
+step("an impossible amount leaves the last one showing", q('[data-transcription-progress] progress')?.value === 99 && percentText() === "99% transcribed", percentText());
 
 // The request ends and the backend forgets the amount, but the transcript has not
 // landed: the note still says "transcribing", and the bar stays at the last value.
 window.__harnessSetProgress(null);
 await sleep(2300);
 step("backend reports none, note still transcribing: bar stays at 99",
-  q('[data-transcription-progress] progress') === barBefore && barBefore.value === 99 && percentText() === "99%"
+  q('[data-transcription-progress] progress') === barBefore && barBefore.value === 99 && percentText() === "99% transcribed"
   && Boolean(q('[data-meeting-status="transcribing"]')), percentText());
 step("it was still polling", calls("library_transcription_progress") - pollsBefore >= 5, calls("library_transcription_progress") - pollsBefore);
 step("editor survived all of it", q('[data-field="library-operator-note"]') === editorBefore && document.activeElement === editorBefore && editorBefore.value.endsWith("kept"));

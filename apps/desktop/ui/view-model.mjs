@@ -462,7 +462,7 @@ export function transcriptionProgressPresentation(done, total) {
   if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
   if (total <= 0 || done < 0 || done > total) return null;
   const percent = Math.min(99, Math.floor((done * 100) / total));
-  return { percent, name: TRANSCRIPTION_PROGRESS_NAME, text: `${percent}%` };
+  return { percent, name: TRANSCRIPTION_PROGRESS_NAME, text: `${percent}% transcribed` };
 }
 
 // The meeting page's `transcriptionProgress` (camelCase, like the rest of the
