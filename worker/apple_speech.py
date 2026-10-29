@@ -7,6 +7,7 @@ the newer path an explicit, source-bound choice.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import math
@@ -137,6 +138,10 @@ def _drain_progress(stream: Any, duration: float, on_progress: Callable[[float],
         try:
             chunk = stream.readline(_MAX_PROGRESS_LINE)
         except (OSError, ValueError):
+            # Close our end so the helper's later progress writes fail harmlessly
+            # (it ignores SIGPIPE) instead of filling the pipe and stalling the leg.
+            with contextlib.suppress(OSError, ValueError):
+                stream.close()
             return
         if not chunk:
             return

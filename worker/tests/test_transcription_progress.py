@@ -36,6 +36,7 @@ from worker import adapters  # noqa: E402
 from worker.apple_speech import (  # noqa: E402
     AppleSpeechRefused,
     TranscriptionProgress,
+    _drain_progress,
     leg_timeout_seconds,
     make_producer,
     transcribe_leg,
@@ -253,6 +254,26 @@ class TranscribeLegProgressTests(LegHarness):
         )
         self.assertEqual(calls, [1.0])
         self.assert_transcript_unchanged(result)
+
+    def test_a_reader_that_cannot_read_closes_its_end_instead_of_leaving_the_helper_to_stall(self) -> None:
+        class BrokenPipe:
+            def __init__(self) -> None:
+                self.lines = [b"1.000\n", b"2.000\n"]
+                self.closed = False
+
+            def readline(self, _limit: int) -> bytes:
+                if self.lines:
+                    return self.lines.pop(0)
+                raise OSError("read failed")
+
+            def close(self) -> None:
+                self.closed = True
+
+        seen: list[float] = []
+        stream = BrokenPipe()
+        _drain_progress(stream, 10.0, seen.append, threading.Event())
+        self.assertEqual(seen, [1.0, 2.0])
+        self.assertTrue(stream.closed)
 
     def test_no_progress_thread_outlives_a_leg(self) -> None:
         self.run_leg("put('1.000\\n')", on_progress=lambda _seconds: None)
