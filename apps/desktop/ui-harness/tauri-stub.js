@@ -91,7 +91,31 @@
   // arrive, after which the same meeting reads as an ordinary transcript-ready
   // one and the queue is empty. The personal note a person typed is kept, as
   // the real `library_save_operator_note` keeps it.
-  const transcribingMode = mode === "transcribing-meeting" || mode === "transcribing-meeting-lands";
+  // mode=transcribing-progress / transcribing-progress-cap / transcribing-progress-none:
+  // the same page while the worker reports how much audio it has covered, about
+  // 40% in, at the cap (everything covered, no transcript yet, which reads 99%),
+  // and with nothing reported (the Whisper path, or before the first report),
+  // which must read exactly like transcribing-meeting. The meeting's audio is
+  // two 1832 s legs, so its total is 3664 s. `window.__harnessSetProgress(done, total)`
+  // moves the amount the way the worker would, and the page follows it through
+  // `library_transcription_progress`, as the app does.
+  const progressMode = mode === "transcribing-progress" || mode === "transcribing-progress-cap"
+    || mode === "transcribing-progress-none";
+  const transcribingMode = mode === "transcribing-meeting" || mode === "transcribing-meeting-lands" || progressMode;
+  // mode=live-transcribing-progress / live-transcribing-none: the just-stopped
+  // capture while its capture state is "transcribing" (the legacy live panel;
+  // a normal Stop now goes straight to the library page above), with and
+  // without an amount. Invented.
+  const liveProgressMode = mode === "live-transcribing-progress" || mode === "live-transcribing-none";
+  let harnessProgress = mode === "transcribing-progress" ? { audioSecondsDone: 1466, audioSecondsTotal: 3664 }
+    : mode === "transcribing-progress-cap" ? { audioSecondsDone: 3664, audioSecondsTotal: 3664 }
+    : null;
+  window.__harnessSetProgress = (done, total) => {
+    harnessProgress = done === null ? null : { audioSecondsDone: done, audioSecondsTotal: total };
+  };
+  const liveProgress = mode === "live-transcribing-progress"
+    ? { audio_seconds_done: 1466, audio_seconds_total: 3664 }
+    : null;
   // `&legacy=1` answers with the backend contract from before the fix: the
   // just-stopped meeting opens as "transcript-only" with the retained-meeting
   // message, and its row carries no pending flag. It is the negative control --
@@ -234,6 +258,13 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : transcribingMode ? { ...idleSnapshot, background_transcription_active: !transcriptLanded, background_transcription_queued_count: transcriptLanded ? 0 : 1 }
+      : liveProgressMode ? {
+        ...captureSnapshot,
+        capture: "transcribing",
+        capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000) - 95,
+        transcription_last_worker_heartbeat_at_epoch_seconds: Math.floor(Date.now() / 1000) - 1,
+        transcription_progress: liveProgress,
+      }
       : mode === "stop-status" || stopLandsMode ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }
@@ -407,6 +438,9 @@
         message: "Opening the exact retained transcript turn that matched.",
       };
     },
+    // The page's poll while its note says "transcribing": the in-memory amount
+    // the worker last reported, or null. Null in every mode that reports none.
+    library_transcription_progress: () => harnessProgress,
     // mode=summary-failed: the same meeting after a rejected generation,
     // audio released, with a source pin so the retry control renders (R23).
     library_open_note: ({ handle } = {}) => (stopLandsMode && handle === "row-handle-2" ? {
@@ -444,6 +478,7 @@
       // audio and personal note as for any captured meeting. After: the
       // ordinary transcript-ready note.
       state: transcriptLanded || legacyContract ? "transcript-only" : "transcribing",
+      transcriptionProgress: transcriptLanded || legacyContract ? null : harnessProgress,
       claims: [],
       noteGenerationAvailable: false,
       operatorNote: { text: savedOperatorNote, unreadable: false },

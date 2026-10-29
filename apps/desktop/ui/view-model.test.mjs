@@ -36,6 +36,12 @@ import {
   libraryRecoveryPresentation,
   libraryRowMetaPresentation,
   meetingTranscribingPresentation,
+  transcriptionProgressPresentation,
+  liveTranscriptionProgress,
+  noteTranscriptionProgress,
+  transcriptionProgressMarkup,
+  TRANSCRIPTION_PROGRESS_NAME,
+  TRANSCRIBING_DETAIL,
   pendingTranscriptRefreshDue,
   finishedMeetingStep,
   FINISHED_MEETING_ROW_ATTEMPTS,
@@ -2489,4 +2495,112 @@ test("an unreadable saved note says the file is kept and names only what the pag
   assert.doesNotMatch(unreadableOperatorNoteCopy({}, turns), /play the audio/);
   assert.match(unreadableOperatorNoteCopy({ systemPlaybackHandle: "s" }, null), /play the audio\.$/);
   assert.doesNotMatch(unreadableOperatorNoteCopy(null, null), /You can still/);
+});
+
+// Transcription progress. The wording below ("Transcription progress" and the
+// "<n>%" read) is listed in DIRECTION.md's content-reads table, so it is
+// asserted here; everything else asserts state and role.
+
+test("the percent is floor(done / total * 100), computed in integers, and capped at 99", () => {
+  const percent = (done, total) => transcriptionProgressPresentation(done, total)?.percent;
+  assert.equal(percent(0, 7920), 0);
+  assert.equal(percent(1234, 7920), 15);
+  // 29 / 100 * 100 is 28.999... in floating point; the integer form is exact.
+  assert.equal(percent(29, 100), 29);
+  assert.equal(percent(57, 100), 57);
+  assert.equal(percent(99, 100), 99);
+  assert.equal(percent(7919, 7920), 99, "just short of done floors to 99");
+  assert.equal(percent(7920, 7920), 99, "done is not 100 until a transcript exists");
+  assert.equal(percent(1, 1), 99);
+});
+
+test("an amount the screen cannot use is no amount, so the surface is unchanged", () => {
+  for (const [done, total] of [
+    [undefined, undefined],
+    [null, 10],
+    [5, 0],
+    [11, 10],
+    [-1, 10],
+    [1.5, 10],
+    ["5", "10"],
+    [Number.NaN, 10],
+    [5, Number.POSITIVE_INFINITY],
+  ]) {
+    assert.equal(transcriptionProgressPresentation(done, total), null, `${done}/${total}`);
+  }
+});
+
+test("live progress is read from the snapshot only while the capture is transcribing", () => {
+  const amount = { audio_seconds_done: 40, audio_seconds_total: 100 };
+  assert.equal(liveTranscriptionProgress({ capture: "transcribing", transcription_progress: amount }).percent, 40);
+  assert.equal(liveTranscriptionProgress({ capture: "transcribing", transcription_progress: null }), null);
+  assert.equal(liveTranscriptionProgress({ capture: "transcribing" }), null);
+  assert.equal(liveTranscriptionProgress({ capture: "recording", transcription_progress: amount }), null);
+  assert.equal(liveTranscriptionProgress({ capture: "transcript-ready", transcription_progress: amount }), null);
+  assert.equal(liveTranscriptionProgress(null), null);
+});
+
+test("page progress is read from the note only while its state is transcribing, in the library's casing", () => {
+  const amount = { audioSecondsDone: 1234, audioSecondsTotal: 7920 };
+  assert.equal(noteTranscriptionProgress({ state: "transcribing", transcriptionProgress: amount }).percent, 15);
+  assert.equal(noteTranscriptionProgress({ state: "transcribing", transcriptionProgress: null }), null);
+  assert.equal(noteTranscriptionProgress({ state: "transcribing" }), null);
+  assert.equal(noteTranscriptionProgress({ state: "transcript-only", transcriptionProgress: amount }), null);
+  // The snapshot's snake_case is not the library's shape.
+  assert.equal(
+    noteTranscriptionProgress({ state: "transcribing", transcriptionProgress: { audio_seconds_done: 1, audio_seconds_total: 2 } }),
+    null,
+  );
+});
+
+test("the bar is a determinate progressbar with its role, range, value and name", () => {
+  const markup = transcriptionProgressMarkup(transcriptionProgressPresentation(2, 5));
+  assert.match(markup, /role="progressbar"/);
+  assert.match(markup, /aria-valuemin="0"/);
+  assert.match(markup, /aria-valuemax="100"/);
+  assert.match(markup, /aria-valuenow="40"/);
+  assert.match(markup, /max="100" value="40"/);
+  assert.match(markup, new RegExp(`aria-label="${TRANSCRIPTION_PROGRESS_NAME}"`));
+  assert.equal(TRANSCRIPTION_PROGRESS_NAME, "Transcription progress");
+  // The visible percent is hidden from assistive technology; the bar carries it.
+  assert.match(markup, /<span class="transcription-progress-percent" aria-hidden="true">40%<\/span>/);
+  assert.equal(transcriptionProgressMarkup(null), "");
+});
+
+test("progress offers no time estimate and does not borrow the note-generation word", () => {
+  const markup = transcriptionProgressMarkup(transcriptionProgressPresentation(3, 9));
+  assert.doesNotMatch(markup, /remaining|left|minute|second|estimate|Finishing/i);
+});
+
+test("the page's transcribing status line is unchanged by progress", () => {
+  const presentation = meetingTranscribingPresentation({ state: "transcribing", transcriptionProgress: { audioSecondsDone: 1, audioSecondsTotal: 2 } });
+  assert.equal(presentation.detail, TRANSCRIBING_DETAIL);
+});
+
+test("DIRECTION.md lists the progress wording the bar and the percent use", async () => {
+  const direction = await readFile(new URL("../../../DIRECTION.md", import.meta.url), "utf8");
+  const row = direction.split("\n").find((line) => line.includes("Transcription progress (`transcriptionProgressPresentation`"));
+  assert.ok(row, "the content-reads row exists");
+  assert.ok(row.includes(`"${TRANSCRIPTION_PROGRESS_NAME}"`));
+  assert.ok(row.includes('"<n>%"'));
+  assert.ok(row.includes("never above 99"));
+  assert.ok(row.includes("No time estimate"));
+});
+
+test("the bar sits outside the status region and the page polls the in-memory amount, not the page", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // The status line is a live region; the bar is its sibling, so a value that
+  // changes every second is not announced as a status update.
+  assert.match(main, /<\/section>\s*\$\{transcriptionProgressMarkup\(noteTranscriptionProgress\(note\)\)\}/);
+  // The activity line's bar follows its closing div for the same reason.
+  assert.match(main, /<\/div>\s*\$\{transcriptionProgressMarkup\(liveTranscriptionProgress\(snapshot\)\)\}/);
+  // library_open_note stops playback and spends handles; the poll must use
+  // the dedicated command and run on the existing tick.
+  assert.match(main, /invoke\("library_transcription_progress", \{ meetingId \}\)/);
+  assert.match(main, /void pollTranscriptionProgress\(\)/);
+  const poll = main.slice(main.indexOf("async function pollTranscriptionProgress"), main.indexOf("async function maybeRefreshPendingTranscripts"));
+  assert.doesNotMatch(poll, /library_open_note|refreshLibrary/);
+  // Patch the bar and the percent only; render only when the bar appears or goes.
+  assert.match(poll, /if \(Boolean\(before\) !== Boolean\(after\)\) render\(\);/);
+  assert.match(poll, /else if \(after\) patchTranscriptionProgress\(after\);/);
 });

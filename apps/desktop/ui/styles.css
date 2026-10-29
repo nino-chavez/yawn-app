@@ -443,6 +443,70 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
+/* Transcription progress. DESIGN.md (Rail): the transport's scrub track is the
+   one bar in the product, 3px with the elapsed part in Label 2 on the strong
+   hairline, so this reads as the same instrument. No fill color: progress is a
+   fact, not a state (the accent and the moment color are spent elsewhere). It
+   sits under the activity line or the page's status sentence, never in the
+   status region itself. */
+.transcription-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  max-width: 300px;
+  margin: var(--space-8) 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.transcription-progress-bar {
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 3px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  appearance: none;
+  -webkit-appearance: none;
+  overflow: hidden;
+  background: var(--separator-strong);
+  color: var(--label-2);
+}
+
+.transcription-progress-bar::-webkit-progress-bar {
+  border-radius: 2px;
+  background: var(--separator-strong);
+}
+
+.transcription-progress-bar::-webkit-progress-value {
+  border-radius: 2px;
+  background: var(--label-2);
+  transition: width var(--motion);
+}
+
+.transcription-progress-percent {
+  min-width: 3ch;
+  font-size: var(--t-caption);
+  line-height: 1;
+  text-align: right;
+  color: var(--label-3);
+}
+
+/* On the During canvas the bar shares the activity line's left edge, past the
+   ledger gutter. On the meeting page it follows the status sentence above it,
+   which sits at the page's own left edge (`.meeting-note-unavailable.no-note-state`
+   zeroes its margin), so it takes no gutter either. If that sentence is ever
+   aligned to the notes column, this bar moves with it. */
+.canvas-wrap > .transcription-progress {
+  margin-left: var(--ledger-gutter);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcription-progress-bar::-webkit-progress-value {
+    transition: none;
+  }
+}
+
 .note-workbench {
   overflow: hidden;
   border: 1px solid var(--line-strong);

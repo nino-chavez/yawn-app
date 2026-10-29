@@ -447,6 +447,52 @@ export function meetingTranscribingPresentation(note) {
   return { state: "transcribing", detail: TRANSCRIBING_DETAIL };
 }
 
+// How far transcription has got, as the worker measures it: seconds of audio
+// covered out of the meeting's seconds, from the Apple speech path only. It is
+// a best-effort extra on two existing surfaces (the just-stopped capture's
+// activity line and the meeting page's transcribing status); without a usable
+// amount the surface is exactly what it was.
+//
+// The percent is floor(done / total * 100), computed in integers so 29 of 100
+// is 29, and it never reads above 99: the transcript is written after the last
+// audio is covered, and the screen does not claim 100% before one exists. No
+// time estimate or "remaining" is derived from it. An amount that cannot be
+// used (not whole seconds, a zero total, more done than total) is no amount.
+export const TRANSCRIPTION_PROGRESS_NAME = "Transcription progress";
+export function transcriptionProgressPresentation(done, total) {
+  if (!Number.isInteger(done) || !Number.isInteger(total)) return null;
+  if (total <= 0 || done < 0 || done > total) return null;
+  const percent = Math.min(99, Math.floor((done * 100) / total));
+  return { percent, name: TRANSCRIPTION_PROGRESS_NAME, text: `${percent}%` };
+}
+
+// The live snapshot's `transcription_progress` (snake_case), read only while
+// the capture itself is transcribing.
+export function liveTranscriptionProgress(snapshot) {
+  if (snapshot?.capture !== "transcribing") return null;
+  const amount = snapshot.transcription_progress;
+  return transcriptionProgressPresentation(amount?.audio_seconds_done, amount?.audio_seconds_total);
+}
+
+// The meeting page's `transcriptionProgress` (camelCase, like the rest of the
+// library payload), read only while its note state is transcribing.
+export function noteTranscriptionProgress(note) {
+  if (note?.state !== "transcribing") return null;
+  const amount = note.transcriptionProgress;
+  return transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal);
+}
+
+// One native progress element carrying its role and values explicitly, and the
+// percent beside it for sighted readers (hidden from assistive technology,
+// which reads the value from the bar). Deliberately not inside a live region:
+// the page's status line is one, and a percent that changes every second would
+// be announced every second. `aria-valuenow` and `value` stay equal so the
+// poll can patch the bar and the percent in place without a render.
+export function transcriptionProgressMarkup(progress) {
+  if (!progress) return "";
+  return `<div class="transcription-progress" data-transcription-progress><progress class="transcription-progress-bar" role="progressbar" aria-label="${progress.name}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}" max="100" value="${progress.percent}"></progress><span class="transcription-progress-percent" aria-hidden="true">${progress.text}</span></div>`;
+}
+
 // Nothing pushes "the transcript landed" to an open page, so the page asks.
 // True when something on screen still says "transcribing" (the open meeting or
 // a library row), the backend is no longer visibly working, and the backoff
