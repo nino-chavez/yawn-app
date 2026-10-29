@@ -1,0 +1,6 @@
+frame-1 = meeting-page-no-progress-dark
+frame-2 = meeting-page-40-light
+frame-3 = meeting-page-99-cap-dark
+frame-4 = meeting-page-no-progress-light
+frame-5 = meeting-page-99-cap-light
+frame-6 = meeting-page-40-dark
