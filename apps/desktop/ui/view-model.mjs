@@ -439,9 +439,12 @@ const MEETING_STATE_CAPTIONS = Object.freeze({
 // The backend names that state ("transcribing", and the row's
 // `transcriptPending`) only while the transcript is positively still being
 // made; a failed transcription or a deleted transcript never carries it. The
-// sentence matches `TRANSCRIBING_MESSAGE` in library_reader.rs, and a Rust test
-// pins them together.
-export const TRANSCRIBING_DETAIL = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it\u2019s ready.";
+// status matches `TRANSCRIBING_MESSAGE` in library_reader.rs (a straight
+// apostrophe there), and a test in view-model.test.mjs pins them together. Its
+// last two sentences say what leaving does: the page and the window can be left,
+// and only quitting Yawn restarts the transcription (the claim is released at
+// the next launch and the meeting is transcribed again from the start).
+export const TRANSCRIBING_DETAIL = "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it\u2019s ready. You can leave this page or close the window. If you quit Yawn, transcription starts over the next time you open it.";
 export function meetingTranscribingPresentation(note) {
   if (note?.state !== "transcribing") return null;
   return { state: "transcribing", detail: TRANSCRIBING_DETAIL };

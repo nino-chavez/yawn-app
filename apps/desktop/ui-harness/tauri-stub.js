@@ -455,7 +455,7 @@
       transcriptHandle: null,
       microphonePlaybackHandle: "mic-playback-1",
       systemPlaybackHandle: "system-playback-1",
-      message: "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.",
+      message: "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready. You can leave this page or close the window. If you quit Yawn, transcription starts over the next time you open it.",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     } : transcribingMode ? {
@@ -477,7 +477,7 @@
         ? "No admitted note is available. Retained transcript text remains available."
         : legacyContract
           ? "No transcript was created for this retained meeting."
-          : "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready.",
+          : "Your audio is saved on this Mac and is being transcribed. The transcript will appear here when it's ready. You can leave this page or close the window. If you quit Yawn, transcription starts over the next time you open it.",
       audioRetention: { state: "retained", message: "Audio retained on this Mac." },
       capturePauses: null,
     } : searchMode && openedSearchMeeting ? {
