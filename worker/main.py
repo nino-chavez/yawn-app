@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 from worker.adapters import AdapterRefused, dispatch
+from worker.apple_speech import kill_running_helpers
 from worker.storage import StorageRefused, require_private_root
 
 MAX_FRAME_BYTES = 64 * 1024
@@ -482,6 +483,22 @@ def parent_is_alive(parent_fd: int) -> bool:
     return os.read(parent_fd, 1) != b""
 
 
+def exit_after_stopping_helpers(code: int) -> None:
+    """End this worker without cleanup, first stopping the speech helper it started.
+
+    The desktop runs no exit handler when it quits, so when the liveness pipe
+    closes nothing else would stop a helper in the middle of a leg: it would
+    finish its track and leave raw result text behind.  Only the helpers this
+    worker started are stopped.  No process group is signalled: the desktop also
+    puts the meeting capture helper in this worker's group, and that helper must
+    be left to finalize a recording on its own liveness pipe.
+    """
+    try:
+        kill_running_helpers()
+    finally:
+        os._exit(code)
+
+
 def start_parent_liveness_watchdog(parent_fd: int) -> threading.Thread:
     def exit_at_eof() -> None:
         while True:
@@ -490,9 +507,11 @@ def start_parent_liveness_watchdog(parent_fd: int) -> threading.Thread:
             except InterruptedError:
                 continue
             except OSError:
-                os._exit(2)
+                exit_after_stopping_helpers(2)
+                return
             if value == b"":
-                os._exit(0)
+                exit_after_stopping_helpers(0)
+                return
 
     thread = threading.Thread(
         target=exit_at_eof,

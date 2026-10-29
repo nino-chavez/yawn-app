@@ -171,6 +171,54 @@ def _drain_progress(stream: Any, duration: float, on_progress: Callable[[float],
                 reporting = False
 
 
+class _HelperRegistry:
+    """The speech helpers this worker has running, so the watchdog can stop them.
+
+    The desktop puts other processes in the worker's process group (the meeting
+    capture helper, whose own liveness pipe makes it finalize a recording when
+    the app quits), so the watchdog must stop exactly the helpers this worker
+    started and signal no group.  Once stopping, no new helper may start: a leg
+    that begins just as the app quits would otherwise be missed.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._running: set[subprocess.Popen] = set()
+        self._stopping = False
+
+    def start(self, argv: list[str]) -> subprocess.Popen:
+        with self._lock:
+            if self._stopping:
+                raise AppleSpeechRefused("Apple speech transcription stopped because the app is closing")
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            self._running.add(process)
+            return process
+
+    def finished(self, process: subprocess.Popen) -> None:
+        with self._lock:
+            self._running.discard(process)
+
+    def kill_all(self) -> None:
+        with self._lock:
+            self._stopping = True
+            for process in list(self._running):
+                with contextlib.suppress(OSError):
+                    process.kill()
+
+
+_HELPERS = _HelperRegistry()
+
+
+def kill_running_helpers() -> None:
+    """Stop every speech helper this worker started, and start no more."""
+    _HELPERS.kill_all()
+
+
 def _run_transcribe_helper(
     argv: list[str],
     *,
@@ -183,12 +231,7 @@ def _run_transcribe_helper(
     The deadline is enforced on the process itself, not on stdout: a helper that
     closes stdout but keeps running is still killed when time is up.
     """
-    process = subprocess.Popen(
-        argv,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
+    process = _HELPERS.start(argv)
     closed = threading.Event()
     reader = threading.Thread(
         target=_drain_progress,
@@ -215,6 +258,7 @@ def _run_transcribe_helper(
         closed.set()
         if not reader.is_alive():
             process.stdout.close()
+        _HELPERS.finished(process)
     if timed_out:
         raise AppleSpeechRefused("Apple speech transcription timed out")
     return returncode
