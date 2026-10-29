@@ -79,30 +79,13 @@ impl Drop for ProgressGuard {
     }
 }
 
-/// The live snapshot's shape: `{"audio_seconds_done": 3, "audio_seconds_total": 9}`,
-/// in the snapshot's own snake_case.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub(crate) struct AudioProgress {
-    pub(crate) audio_seconds_done: u32,
-    pub(crate) audio_seconds_total: u32,
-}
-
 /// The library payload's shape, in its camelCase:
 /// `{"audioSecondsDone": 3, "audioSecondsTotal": 9}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct LibraryAudioProgress {
+pub(crate) struct AudioProgress {
     pub(crate) audio_seconds_done: u32,
     pub(crate) audio_seconds_total: u32,
-}
-
-impl From<AudioProgress> for LibraryAudioProgress {
-    fn from(progress: AudioProgress) -> Self {
-        Self {
-            audio_seconds_done: progress.audio_seconds_done,
-            audio_seconds_total: progress.audio_seconds_total,
-        }
-    }
 }
 
 /// The library page's progress for one meeting, or `None` when it has none,
@@ -110,9 +93,9 @@ impl From<AudioProgress> for LibraryAudioProgress {
 pub(crate) fn library_progress(
     store: &TranscriptionProgressStore,
     meeting_id: &str,
-) -> Option<LibraryAudioProgress> {
+) -> Option<AudioProgress> {
     let meeting_id = Uuid::parse_str(meeting_id).ok()?;
-    store.latest(meeting_id).map(Into::into)
+    store.latest(meeting_id)
 }
 
 /// One queued `transcript.create` request, start to finish.
@@ -171,12 +154,11 @@ mod tests {
     use std::process::Command;
     use std::time::{Duration, Instant};
 
-    use local_meeting_notes_session_core::reducer::CaptureState;
     use local_meeting_notes_session_core::supervision::OwnedChild;
 
     use super::*;
     use crate::product_coordinator::{ProcessWorkerPort, WorkerPort};
-    use crate::{AppModel, ApplicationState, request_worker, transition_capture};
+    use crate::{ApplicationState, request_worker};
 
     fn measurement(meeting_id: Uuid, done: u32, total: u32) -> TranscriptionProgress {
         TranscriptionProgress {
@@ -211,17 +193,13 @@ mod tests {
     }
 
     #[test]
-    fn the_two_payloads_keep_their_own_casing() {
+    fn the_payload_is_camel_case_like_the_rest_of_the_library() {
         let progress = AudioProgress {
             audio_seconds_done: 3,
             audio_seconds_total: 9,
         };
         assert_eq!(
             serde_json::to_value(progress).unwrap(),
-            json!({"audio_seconds_done": 3, "audio_seconds_total": 9})
-        );
-        assert_eq!(
-            serde_json::to_value(LibraryAudioProgress::from(progress)).unwrap(),
             json!({"audioSecondsDone": 3, "audioSecondsTotal": 9})
         );
     }
@@ -274,72 +252,6 @@ mod tests {
         store.record(&measurement(meeting_id, 1, 2));
         assert!(store.latest(meeting_id).is_some());
         store.clear(meeting_id);
-    }
-
-    fn transcribing_model(store: &Arc<TranscriptionProgressStore>, meeting_id: Uuid) -> AppModel {
-        let mut model = AppModel::with_progress_store(store.clone());
-        model.meeting_id = Some(meeting_id.to_string());
-        transition_capture(&mut model, CaptureState::Arming).unwrap();
-        transition_capture(&mut model, CaptureState::Recording).unwrap();
-        transition_capture(&mut model, CaptureState::Stopping).unwrap();
-        transition_capture(&mut model, CaptureState::Captured).unwrap();
-        model
-    }
-
-    #[test]
-    fn the_live_snapshot_carries_progress_only_while_transcribing_that_meeting() {
-        let store = Arc::new(TranscriptionProgressStore::default());
-        let meeting_id = Uuid::new_v4();
-        let mut model = transcribing_model(&store, meeting_id);
-        store.record(&measurement(meeting_id, 40, 100));
-
-        // Captured, not yet transcribing: the value is not shown.
-        assert_eq!(model.snapshot().transcription_progress, None);
-
-        transition_capture(&mut model, CaptureState::Transcribing).unwrap();
-        let snapshot = model.snapshot();
-        assert_eq!(
-            serde_json::to_value(&snapshot).unwrap()["transcription_progress"],
-            json!({"audio_seconds_done": 40, "audio_seconds_total": 100})
-        );
-
-        // Another meeting's value is never shown for this one.
-        store.clear(meeting_id);
-        store.record(&measurement(Uuid::new_v4(), 90, 100));
-        assert_eq!(
-            serde_json::to_value(model.snapshot()).unwrap()["transcription_progress"],
-            serde_json::Value::Null
-        );
-    }
-
-    #[test]
-    fn an_idle_model_snapshot_says_null_for_progress() {
-        let state = ApplicationState::default();
-        let value = serde_json::to_value(state.model.lock().unwrap().snapshot()).unwrap();
-        assert_eq!(value["transcription_progress"], serde_json::Value::Null);
-    }
-
-    #[test]
-    fn the_applications_model_and_store_are_the_same_store() {
-        let state = ApplicationState::default();
-        let meeting_id = Uuid::new_v4();
-        {
-            let mut model = state.model.lock().unwrap();
-            *model = transcribing_model(&state.transcription_progress, meeting_id);
-            transition_capture(&mut model, CaptureState::Transcribing).unwrap();
-        }
-        state
-            .transcription_progress
-            .record(&measurement(meeting_id, 7, 70));
-        assert!(
-            state
-                .model
-                .lock()
-                .unwrap()
-                .snapshot()
-                .transcription_progress
-                .is_some()
-        );
     }
 
     // ---- The request paths, against a real worker process -----------------
@@ -560,9 +472,10 @@ printf '{"schema":"worker-result/2","request_id":"%s","ok":false,"code":"transcr
 
     #[test]
     fn a_stray_progress_event_on_a_capture_request_is_ignored_not_fatal() {
-        // `request_worker` is the path `record_transcription_heartbeat` serves.
-        // A worker never measures a capture, but if one frame arrives it is
-        // dropped; it neither fails the request nor lands in the store.
+        // `request_worker` is the path `record_transcription_heartbeat` serves,
+        // and it records no progress. A worker never measures a capture, but
+        // if one frame arrives it is dropped: it neither fails the request nor
+        // lands in the store.
         let directory = tempfile::tempdir().unwrap();
         let worker = scripted_worker(
             directory.path(),

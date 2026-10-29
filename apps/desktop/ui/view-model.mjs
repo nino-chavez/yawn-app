@@ -449,9 +449,8 @@ export function meetingTranscribingPresentation(note) {
 
 // How far transcription has got, as the worker measures it: seconds of audio
 // covered out of the meeting's seconds, from the Apple speech path only. It is
-// a best-effort extra on two existing surfaces (the just-stopped capture's
-// activity line and the meeting page's transcribing status); without a usable
-// amount the surface is exactly what it was.
+// a best-effort extra on the meeting page's transcribing status; without a
+// usable amount the surface is exactly what it was.
 //
 // The percent is floor(done / total * 100), computed in integers so 29 of 100
 // is 29, and it never reads above 99: the transcript is written after the last
@@ -466,20 +465,35 @@ export function transcriptionProgressPresentation(done, total) {
   return { percent, name: TRANSCRIPTION_PROGRESS_NAME, text: `${percent}%` };
 }
 
-// The live snapshot's `transcription_progress` (snake_case), read only while
-// the capture itself is transcribing.
-export function liveTranscriptionProgress(snapshot) {
-  if (snapshot?.capture !== "transcribing") return null;
-  const amount = snapshot.transcription_progress;
-  return transcriptionProgressPresentation(amount?.audio_seconds_done, amount?.audio_seconds_total);
-}
-
 // The meeting page's `transcriptionProgress` (camelCase, like the rest of the
-// library payload), read only while its note state is transcribing.
-export function noteTranscriptionProgress(note) {
+// library payload), read only while its note state is transcribing. Without a
+// usable amount of its own it falls back to `held`, the last amount this page
+// view showed for this same meeting (see `heldTranscriptionAmount`).
+export function noteTranscriptionProgress(note, held = null) {
   if (note?.state !== "transcribing") return null;
   const amount = note.transcriptionProgress;
-  return transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal);
+  const fresh = transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal);
+  if (fresh) return fresh;
+  if (!held || held.meetingId !== note.meetingId) return null;
+  return transcriptionProgressPresentation(held.audioSecondsDone, held.audioSecondsTotal);
+}
+
+// What a page view remembers so the bar does not vanish at the very end. The
+// worker's request finishes (and the backend forgets the amount) a moment
+// before the transcript lands and the page is re-read, so for that gap the
+// backend says "no amount" while the note still says "transcribing". Once this
+// view has shown an amount for this meeting it keeps the last one, which reads
+// 99 at most, for as long as the open note stays in the transcribing state. It
+// lets go when the note changes state (a transcript, a failure) or another
+// meeting opens. A meeting that never had an amount never gets one, so it keeps
+// the plain surface.
+export function heldTranscriptionAmount(held, note) {
+  if (note?.state !== "transcribing" || !note.meetingId) return null;
+  const amount = note.transcriptionProgress;
+  if (transcriptionProgressPresentation(amount?.audioSecondsDone, amount?.audioSecondsTotal)) {
+    return { meetingId: note.meetingId, audioSecondsDone: amount.audioSecondsDone, audioSecondsTotal: amount.audioSecondsTotal };
+  }
+  return held?.meetingId === note.meetingId ? held : null;
 }
 
 // One native progress element carrying its role and values explicitly, and the

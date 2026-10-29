@@ -37,7 +37,7 @@ import {
   libraryRowMetaPresentation,
   meetingTranscribingPresentation,
   transcriptionProgressPresentation,
-  liveTranscriptionProgress,
+  heldTranscriptionAmount,
   noteTranscriptionProgress,
   transcriptionProgressMarkup,
   TRANSCRIPTION_PROGRESS_NAME,
@@ -2530,16 +2530,6 @@ test("an amount the screen cannot use is no amount, so the surface is unchanged"
   }
 });
 
-test("live progress is read from the snapshot only while the capture is transcribing", () => {
-  const amount = { audio_seconds_done: 40, audio_seconds_total: 100 };
-  assert.equal(liveTranscriptionProgress({ capture: "transcribing", transcription_progress: amount }).percent, 40);
-  assert.equal(liveTranscriptionProgress({ capture: "transcribing", transcription_progress: null }), null);
-  assert.equal(liveTranscriptionProgress({ capture: "transcribing" }), null);
-  assert.equal(liveTranscriptionProgress({ capture: "recording", transcription_progress: amount }), null);
-  assert.equal(liveTranscriptionProgress({ capture: "transcript-ready", transcription_progress: amount }), null);
-  assert.equal(liveTranscriptionProgress(null), null);
-});
-
 test("page progress is read from the note only while its state is transcribing, in the library's casing", () => {
   const amount = { audioSecondsDone: 1234, audioSecondsTotal: 7920 };
   assert.equal(noteTranscriptionProgress({ state: "transcribing", transcriptionProgress: amount }).percent, 15);
@@ -2591,9 +2581,7 @@ test("the bar sits outside the status region and the page polls the in-memory am
   const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
   // The status line is a live region; the bar is its sibling, so a value that
   // changes every second is not announced as a status update.
-  assert.match(main, /<\/section>\s*\$\{transcriptionProgressMarkup\(noteTranscriptionProgress\(note\)\)\}/);
-  // The activity line's bar follows its closing div for the same reason.
-  assert.match(main, /<\/div>\s*\$\{transcriptionProgressMarkup\(liveTranscriptionProgress\(snapshot\)\)\}/);
+  assert.match(main, /<\/section>\s*\$\{transcriptionProgressMarkup\(noteTranscriptionProgress\(note, transcriptionProgressHold\)\)\}/);
   // library_open_note stops playback and spends handles; the poll must use
   // the dedicated command and run on the existing tick.
   assert.match(main, /invoke\("library_transcription_progress", \{ meetingId \}\)/);
@@ -2603,4 +2591,84 @@ test("the bar sits outside the status region and the page polls the in-memory am
   // Patch the bar and the percent only; render only when the bar appears or goes.
   assert.match(poll, /if \(Boolean\(before\) !== Boolean\(after\)\) render\(\);/);
   assert.match(poll, /else if \(after\) patchTranscriptionProgress\(after\);/);
+});
+
+// The bar must not vanish in the gap between the worker's request finishing
+// (the backend forgets the amount) and the transcript landing (the page is
+// re-read). A page view that has shown an amount keeps the last one.
+const transcribingNote = (meetingId, amount) => ({ state: "transcribing", meetingId, transcriptionProgress: amount });
+const amountOf = (done, total) => ({ audioSecondsDone: done, audioSecondsTotal: total });
+
+test("an amount, then none while the note still says transcribing, keeps showing the last amount", () => {
+  let held = null;
+  let note = transcribingNote("meeting-a", amountOf(2000, 3664));
+  held = heldTranscriptionAmount(held, note);
+  assert.equal(noteTranscriptionProgress(note, held).percent, 54);
+
+  // The backend forgets the amount; the page keeps showing it.
+  note = transcribingNote("meeting-a", null);
+  held = heldTranscriptionAmount(held, note);
+  assert.equal(noteTranscriptionProgress(note, held).percent, 54);
+
+  // Everything covered, then forgotten: still 99, never 100 and never gone.
+  note = transcribingNote("meeting-a", amountOf(3664, 3664));
+  held = heldTranscriptionAmount(held, note);
+  assert.equal(noteTranscriptionProgress(note, held).percent, 99);
+  note = transcribingNote("meeting-a", null);
+  held = heldTranscriptionAmount(held, note);
+  assert.equal(noteTranscriptionProgress(note, held).percent, 99);
+  assert.match(transcriptionProgressMarkup(noteTranscriptionProgress(note, held)), /aria-valuenow="99"/);
+  // An amount the page cannot use changes nothing either.
+  note = transcribingNote("meeting-a", amountOf(9999, 3664));
+  held = heldTranscriptionAmount(held, note);
+  assert.equal(noteTranscriptionProgress(note, held).percent, 99);
+
+  // The note's state changes (a transcript, a failure): the amount is gone.
+  for (const state of ["transcript-only", "note", "transcription-failed", "recovered-interrupted", "unavailable", "locked"]) {
+    const changed = { state, meetingId: "meeting-a", transcriptionProgress: null };
+    const afterChange = heldTranscriptionAmount(held, changed);
+    assert.equal(afterChange, null, state);
+    assert.equal(noteTranscriptionProgress(changed, held), null, state);
+    assert.equal(noteTranscriptionProgress(changed, afterChange), null, state);
+  }
+  // And it does not come back if the same meeting reads "transcribing" again
+  // with no amount: that view's amount was let go.
+  const dropped = heldTranscriptionAmount(held, { state: "transcript-only", meetingId: "meeting-a" });
+  assert.equal(noteTranscriptionProgress(transcribingNote("meeting-a", null), heldTranscriptionAmount(dropped, transcribingNote("meeting-a", null))), null);
+});
+
+test("a held amount belongs to its meeting: another meeting never inherits it", () => {
+  const held = heldTranscriptionAmount(null, transcribingNote("meeting-a", amountOf(1000, 2000)));
+  const other = transcribingNote("meeting-b", null);
+  assert.equal(noteTranscriptionProgress(other, held), null);
+  assert.equal(heldTranscriptionAmount(held, other), null);
+  // Nothing open at all lets it go too.
+  assert.equal(heldTranscriptionAmount(held, null), null);
+  assert.equal(heldTranscriptionAmount(held, undefined), null);
+});
+
+test("a meeting that never had an amount keeps today's plain surface", () => {
+  const note = transcribingNote("meeting-a", null);
+  assert.equal(heldTranscriptionAmount(null, note), null);
+  assert.equal(noteTranscriptionProgress(note, null), null);
+  assert.equal(transcriptionProgressMarkup(noteTranscriptionProgress(note, null)), "");
+  // An impossible first amount is no amount.
+  const bad = transcribingNote("meeting-a", amountOf(5, 0));
+  assert.equal(heldTranscriptionAmount(null, bad), null);
+  assert.equal(noteTranscriptionProgress(bad, null), null);
+});
+
+test("a fresh amount always wins over the held one", () => {
+  const held = heldTranscriptionAmount(null, transcribingNote("meeting-a", amountOf(1000, 2000)));
+  const fresh = transcribingNote("meeting-a", amountOf(1500, 2000));
+  assert.equal(noteTranscriptionProgress(fresh, held).percent, 75);
+  assert.deepEqual(heldTranscriptionAmount(held, fresh), { meetingId: "meeting-a", audioSecondsDone: 1500, audioSecondsTotal: 2000 });
+});
+
+test("main.js lets the hold follow every render and every poll", async () => {
+  const main = await readFile(new URL("./main.js", import.meta.url), "utf8");
+  // render() settles the hold from the open note before it draws anything.
+  assert.match(main, /function render\(\) \{[^}]*transcriptionProgressHold = heldTranscriptionAmount\(transcriptionProgressHold, state\.selected\?\.note\);/s);
+  // The poll writes the new amount, then settles the hold from the same note.
+  assert.match(main, /current\.transcriptionProgress = amount \?\? null;\s*transcriptionProgressHold = heldTranscriptionAmount\(transcriptionProgressHold, current\);/);
 });

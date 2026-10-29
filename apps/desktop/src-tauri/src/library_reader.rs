@@ -578,7 +578,7 @@ pub(crate) struct LibraryNoteResponse {
     /// reads from storage, and every constructor here leaves it empty. The page
     /// then follows it through `library_transcription_progress`.
     pub(crate) transcription_progress:
-        Option<crate::transcription_progress::LibraryAudioProgress>,
+        Option<crate::transcription_progress::AudioProgress>,
     pub(crate) message: String,
 }
 

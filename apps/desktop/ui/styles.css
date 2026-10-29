@@ -492,12 +492,10 @@ h3 {
   color: var(--label-3);
 }
 
-/* On the During canvas the bar shares the activity line's left edge, past the
-   ledger gutter. On the meeting page it follows the status sentence above it,
-   which sits at the page's own left edge (`.meeting-note-unavailable.no-note-state`
-   zeroes its margin), so it takes no gutter either. If that sentence is ever
-   aligned to the notes column, this bar moves with it. */
-.canvas-wrap > .transcription-progress {
+/* On the meeting page the bar follows the transcribing status sentence and
+   shares its column: the one the title, the transport and "Your notes" use,
+   past the ledger gutter. */
+.doc-page > .transcription-progress {
   margin-left: var(--ledger-gutter);
 }
 
@@ -3486,10 +3484,15 @@ html, body, #app {
 }
 
 /* The selected no-note frame keeps its quiet fact compact without turning a
-   transcript-only meeting into an empty result. */
+   transcript-only meeting into an empty result. It is a section of the page
+   like the others: it takes the column `.doc-page .meeting-note-unavailable`
+   gives every note-area state (a `margin: 0` here used to cancel that, which
+   left the sentence 76px left of the title and the notes), and the 24px the
+   page puts between sections, so it no longer reads as part of the notes
+   placeholder above it. */
 .meeting-note-unavailable.no-note-state {
   max-width: var(--measure);
-  margin: 0;
+  margin-top: var(--space-24);
 }
 
 .no-note-state .empty-note-state {

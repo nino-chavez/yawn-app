@@ -54,22 +54,24 @@ result. Requires the Xcode toolchain (`swiftc`) and python3.
   transcripts through the stub, and opens the saved draft’s source inspector.
 - `note-retirement-negative` — injects a known generation button. Expected
   result: exit 1. This proves the absence check can detect its defect.
-- `progress` — transcription progress on the meeting page (stub mode
-  `transcribing-progress`, scenario `progress.js`): a progressbar with its role,
-  range and name sits outside the `role="status"` line; the page follows the
-  amount about once a second through `library_transcription_progress`, patching
-  the same `<progress>` node and never calling `library_open_note`; the note
-  editor keeps its node, focus and text; the amount reads 99 when everything is
-  covered; no amount, or an impossible one, shows no bar. Healthy: every step
-  `ok`, `errors` empty. `window.__harnessSetProgress(done, total)` moves the
-  amount; `null` removes it.
+- `progress` — transcription progress on the meeting page (stub modes
+  `transcribing-progress` and `transcribing-progress-none`, scenario
+  `progress.js`). With an amount: a progressbar with its role, range and name
+  sits outside the `role="status"` line, aligned with the page's content column;
+  the page follows the amount about once a second through
+  `library_transcription_progress`, patching the same `<progress>` node and
+  never calling `library_open_note`; the note editor keeps its node, focus and
+  text; everything covered reads 99; an impossible amount changes nothing; once
+  an amount has been shown, the backend reporting none while the note still says
+  "transcribing" keeps the last one on screen, and it goes only when the
+  transcript lands. With no amount ever reported, the page shows no bar and its
+  status sentence stays in the same column. Healthy: every step `ok`, `errors`
+  empty. `window.__harnessSetProgress(done, total)` moves the amount; `null`
+  removes it; `window.__harnessLandTranscript()` lands the transcript.
 - `progress-frames` — not a check: with `HARNESS_CAPTURE_DIR` set it writes the
-  five states a cold review looks at, in light and dark, at 1080 × 760 and 2x
-  (`transcribing-progress`, `transcribing-progress-cap`,
-  `live-transcribing-progress`, and the two no-amount fallbacks
-  `transcribing-progress-none` and `live-transcribing-none`). A normal Stop goes
-  straight to the library page, so the `live-` modes show the legacy
-  `capture: "transcribing"` panel, which only the snapshot can still reach.
+  three states a cold review looks at, in light and dark, at 1080 × 760 and 2x
+  (`transcribing-progress` about 40%, `transcribing-progress-cap` at the 99% cap,
+  and the no-amount fallback `transcribing-progress-none`).
 - `transcribing-meeting` — the state right after a normal Stop: capture is idle,
   the newest meeting is listed and open, and its transcript is still being made.
   Checks that the page and its sidebar row say so by state and role, that no

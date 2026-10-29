@@ -67,7 +67,7 @@ import {
   transcriptTurnsMatching,
   speakerSuggestionPresentation,
   transcriptionWorkerHeartbeatAgeSeconds,
-  liveTranscriptionProgress,
+  heldTranscriptionAmount,
   noteTranscriptionProgress,
   transcriptionProgressMarkup,
   trashListPresentation,
@@ -183,6 +183,11 @@ let systemAudioAutoProbeAttempted = false;
 let systemAudioAutoProbeTask;
 let activityTimer;
 let audioPlaybackPollActive = false;
+// The last transcription amount this page view showed for the open meeting, so
+// the bar does not vanish in the moment between the worker finishing and the
+// transcript landing. Kept or let go by `heldTranscriptionAmount` in every
+// render and every progress poll.
+let transcriptionProgressHold = null;
 // Every route into a meeting reader gets an epoch. A slower search-result
 // open must never overwrite a newer direct meeting selection (or vice versa).
 let meetingOpenEpoch = 0;
@@ -352,6 +357,9 @@ function permissionAction(permission) {
 const SIDEBAR_COLLAPSE_WIDTH = 900;
 
 function render() {
+  // The last transcription amount this page view showed for the open meeting,
+  // kept or let go before anything is drawn (see `heldTranscriptionAmount`).
+  transcriptionProgressHold = heldTranscriptionAmount(transcriptionProgressHold, state.selected?.note);
   const editorFocus = captureEditorFocus();
   const view = contentView({
     hasInvoke: Boolean(invoke),
@@ -1128,8 +1136,6 @@ function renderActivityMonitor(snapshot) {
   const elapsed = captureActivityElapsedSeconds(snapshot);
   const heartbeatAt = Number(snapshot.transcription_last_worker_heartbeat_at_epoch_seconds);
   const heartbeatAge = transcriptionWorkerHeartbeatAgeSeconds(snapshot);
-  // A sibling of the line, not inside it: the line's heartbeat is a live
-  // region, and the bar's value must not be announced every second.
   return `
     <div class="activity-monitor caption" data-tone="${escapeHtml(activity.tone)}" aria-label="${escapeHtml(activity.label)}">
       <span>${escapeHtml(activity.label)} · ${escapeHtml(activity.detail)}</span>
@@ -1138,7 +1144,6 @@ function renderActivityMonitor(snapshot) {
         ${snapshot.capture === "transcribing" ? `<span class="activity-heartbeat" data-transcription-heartbeat data-transcription-heartbeat-at="${Number.isFinite(heartbeatAt) ? heartbeatAt : ""}" aria-live="polite">${heartbeatAge === null ? "Waiting for transcription status" : `Transcription last confirmed ${elapsedAgoLabel(heartbeatAge)}`}</span>` : ""}
       </span>
     </div>
-    ${transcriptionProgressMarkup(liveTranscriptionProgress(snapshot))}
   `;
 }
 
@@ -1356,7 +1361,7 @@ function renderMeetingNote(note, claimEvidence, recovery = null) {
       <section class="meeting-note meeting-note-unavailable no-note-state" aria-labelledby="meeting-note-heading" role="status" data-meeting-status="${escapeHtml(transcribing.state)}">
         <p id="meeting-note-heading" class="doc-fact">${escapeHtml(transcribing.detail)}</p>
       </section>
-      ${transcriptionProgressMarkup(noteTranscriptionProgress(note))}
+      ${transcriptionProgressMarkup(noteTranscriptionProgress(note, transcriptionProgressHold))}
     `;
     }
     // A transcript-only meeting has nothing to say here: the operator's notes
@@ -4343,7 +4348,10 @@ const pendingTranscriptRefresh = { inFlight: false, lastAttemptMs: 0, attempts: 
 // written to the same note the render reads (`note.transcriptionProgress`),
 // so a full render and this patch can never disagree. It re-reads nothing but
 // the in-memory amount: `library_open_note` would stop audio playback and
-// spend the page's handles on every tick.
+// spend the page's handles on every tick. When the backend stops reporting an
+// amount while the note still says "transcribing" (the request has finished,
+// the transcript has not landed), the page keeps the last amount it showed:
+// `transcriptionProgressHold`.
 //
 // Only the bar and the percent are patched. A render happens only when the bar
 // appears or goes away, and render() patches the tree in place too, so typing
@@ -4374,9 +4382,10 @@ async function pollTranscriptionProgress() {
     // landed and the page been re-read, while the answer was on its way.
     const current = state.selected?.note;
     if (!current || current.meetingId !== meetingId || current.state !== "transcribing") return;
-    const before = noteTranscriptionProgress(current);
+    const before = noteTranscriptionProgress(current, transcriptionProgressHold);
     current.transcriptionProgress = amount ?? null;
-    const after = noteTranscriptionProgress(current);
+    transcriptionProgressHold = heldTranscriptionAmount(transcriptionProgressHold, current);
+    const after = noteTranscriptionProgress(current, transcriptionProgressHold);
     if (Boolean(before) !== Boolean(after)) render();
     else if (after) patchTranscriptionProgress(after);
   } finally {

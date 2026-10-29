@@ -253,9 +253,8 @@ struct ApplicationState {
     worker: Arc<Mutex<Option<OwnedChild>>>,
     transcription_worker: Arc<Mutex<Option<OwnedChild>>>,
     transcription_executor: Mutex<Option<TranscriptionExecutorControl>>,
-    /// Progress of the transcription now running, in memory only. The model
-    /// holds the same store, so the live snapshot reads it without a second
-    /// lock order; nothing holds this store while taking another lock.
+    /// Progress of the transcription now running, in memory only, read by the
+    /// library meeting page. Nothing holds this store while taking another lock.
     transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
     capture_task: Mutex<Option<CaptureTaskControl>>,
     command_lock: Mutex<()>,
@@ -309,15 +308,14 @@ struct ApplicationState {
 
 impl Default for ApplicationState {
     fn default() -> Self {
-        let transcription_progress = Arc::new(transcription_progress::TranscriptionProgressStore::default());
         Self {
-            model: Mutex::new(AppModel::with_progress_store(transcription_progress.clone())),
+            model: Mutex::new(AppModel::default()),
             storage: Arc::new(Mutex::new(None)),
             runtime: Mutex::new(None),
             worker: Arc::new(Mutex::new(None)),
             transcription_worker: Arc::new(Mutex::new(None)),
             transcription_executor: Mutex::new(None),
-            transcription_progress,
+            transcription_progress: Arc::default(),
             capture_task: Mutex::new(None),
             command_lock: Mutex::new(()),
             app_data_writer_lock: Arc::new(Mutex::new(None)),
@@ -513,9 +511,6 @@ struct AppModel {
     started_at_epoch_seconds: Option<u64>,
     capture_state_started_at_epoch_seconds: Option<u64>,
     transcription_last_worker_heartbeat_at_epoch_seconds: Option<u64>,
-    /// Where the worker's transcription measurements land. Read only by
-    /// `snapshot`, and only while the capture is `transcribing`.
-    transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
@@ -542,14 +537,6 @@ struct AppModel {
 
 impl Default for AppModel {
     fn default() -> Self {
-        Self::with_progress_store(Arc::default())
-    }
-}
-
-impl AppModel {
-    fn with_progress_store(
-        transcription_progress: Arc<transcription_progress::TranscriptionProgressStore>,
-    ) -> Self {
         Self {
             reducer: Reducer::default(),
             admission: "internal-alpha".into(),
@@ -561,7 +548,6 @@ impl AppModel {
             started_at_epoch_seconds: None,
             capture_state_started_at_epoch_seconds: None,
             transcription_last_worker_heartbeat_at_epoch_seconds: None,
-            transcription_progress,
             background_transcription_active: false,
             background_transcription_queued_count: 0,
             degraded: false,
@@ -592,7 +578,6 @@ impl AppModel {
             capture_state_started_at_epoch_seconds: self.capture_state_started_at_epoch_seconds,
             transcription_last_worker_heartbeat_at_epoch_seconds: self
                 .transcription_last_worker_heartbeat_at_epoch_seconds,
-            transcription_progress: self.live_transcription_progress(),
             background_transcription_active: self.background_transcription_active,
             background_transcription_queued_count: self.background_transcription_queued_count,
             degraded: self.degraded,
@@ -605,17 +590,6 @@ impl AppModel {
             error: self.error.clone(),
             capture_notice: self.capture_notice.clone(),
         }
-    }
-
-    /// The just-stopped meeting's transcription progress: only while the
-    /// capture itself is `transcribing`, only for that meeting, and `None`
-    /// until the worker has reported an amount.
-    fn live_transcription_progress(&self) -> Option<transcription_progress::AudioProgress> {
-        if self.reducer.capture() != CaptureState::Transcribing {
-            return None;
-        }
-        let meeting_id = Uuid::parse_str(self.meeting_id.as_deref()?).ok()?;
-        self.transcription_progress.latest(meeting_id)
     }
 
     fn clear_meeting_projection(&mut self) {
@@ -649,9 +623,6 @@ struct AppSnapshot {
     started_at_epoch_seconds: Option<u64>,
     capture_state_started_at_epoch_seconds: Option<u64>,
     transcription_last_worker_heartbeat_at_epoch_seconds: Option<u64>,
-    /// `{audio_seconds_done, audio_seconds_total}` while the capture is
-    /// `transcribing` and the worker has reported an amount, else `null`.
-    transcription_progress: Option<transcription_progress::AudioProgress>,
     background_transcription_active: bool,
     background_transcription_queued_count: usize,
     degraded: bool,
@@ -4142,7 +4113,7 @@ fn library_open_note_for(
 fn library_transcription_progress(
     meeting_id: String,
     state: State<'_, ApplicationState>,
-) -> Option<transcription_progress::LibraryAudioProgress> {
+) -> Option<transcription_progress::AudioProgress> {
     transcription_progress::library_progress(&state.transcription_progress, &meeting_id)
 }
 
@@ -8653,13 +8624,9 @@ fn request_worker(
 ) -> Result<HashMap<String, String>, WorkerCallError> {
     let port = product_coordinator::ProcessWorkerPort::new(state.worker.clone());
     let result: WorkerResult = port
-        .request_observing(
-            operation,
-            arguments,
-            timeout,
-            |progress| record_transcription_heartbeat(state, progress),
-            |measured| state.transcription_progress.record(measured),
-        )
+        .request_with_progress(operation, arguments, timeout, |progress| {
+            record_transcription_heartbeat(state, progress)
+        })
         .map_err(|unavailable| WorkerCallError::Supervisor(unavailable.0))?;
     if !result.ok {
         return Err(WorkerCallError::Rejected);

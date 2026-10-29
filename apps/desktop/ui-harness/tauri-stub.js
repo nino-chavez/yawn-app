@@ -102,20 +102,13 @@
   const progressMode = mode === "transcribing-progress" || mode === "transcribing-progress-cap"
     || mode === "transcribing-progress-none";
   const transcribingMode = mode === "transcribing-meeting" || mode === "transcribing-meeting-lands" || progressMode;
-  // mode=live-transcribing-progress / live-transcribing-none: the just-stopped
-  // capture while its capture state is "transcribing" (the legacy live panel;
-  // a normal Stop now goes straight to the library page above), with and
-  // without an amount. Invented.
-  const liveProgressMode = mode === "live-transcribing-progress" || mode === "live-transcribing-none";
   let harnessProgress = mode === "transcribing-progress" ? { audioSecondsDone: 1466, audioSecondsTotal: 3664 }
     : mode === "transcribing-progress-cap" ? { audioSecondsDone: 3664, audioSecondsTotal: 3664 }
     : null;
   window.__harnessSetProgress = (done, total) => {
     harnessProgress = done === null ? null : { audioSecondsDone: done, audioSecondsTotal: total };
   };
-  const liveProgress = mode === "live-transcribing-progress"
-    ? { audio_seconds_done: 1466, audio_seconds_total: 3664 }
-    : null;
+
   // `&legacy=1` answers with the backend contract from before the fix: the
   // just-stopped meeting opens as "transcript-only" with the retained-meeting
   // message, and its row carries no pending flag. It is the negative control --
@@ -258,13 +251,6 @@
     // never reach, so the harness can show them without a packaged build.
     app_snapshot: () => (mode === "capture" || mode === "search-capture" ? { ...captureSnapshot }
       : transcribingMode ? { ...idleSnapshot, background_transcription_active: !transcriptLanded, background_transcription_queued_count: transcriptLanded ? 0 : 1 }
-      : liveProgressMode ? {
-        ...captureSnapshot,
-        capture: "transcribing",
-        capture_state_started_at_epoch_seconds: Math.floor(Date.now() / 1000) - 95,
-        transcription_last_worker_heartbeat_at_epoch_seconds: Math.floor(Date.now() / 1000) - 1,
-        transcription_progress: liveProgress,
-      }
       : mode === "stop-status" || stopLandsMode ? { ...stopStatusSnapshot }
       : mode === "mic-change-stop" ? { ...micChangeSnapshot }
       : mode === "mic-change-failed" ? { ...captureSnapshot, meeting_id: "harness-meeting-new", capture: "recovered-interrupted", mic_state: "failed", system_state: "stopped", error: MIC_CHANGE_FAILED }

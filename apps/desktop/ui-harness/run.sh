@@ -105,15 +105,18 @@ case "$mode" in
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   # Transcription progress on the meeting page: the page follows the amount,
   # patches only the bar and percent, and leaves the editor alone.
-  progress) run transcribing-progress progress.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
-  # The five states the cold review looks at, in both appearances, at the size
+  progress)
+    run transcribing-progress progress.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    run transcribing-progress-none progress.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    ;;
+  # The three states the cold review looks at, in both appearances, at the size
   # the 2026-10-28 review used (1080 by 760). Needs HARNESS_CAPTURE_DIR; writes
   # <state>-<appearance>.png at 2x. The caller scales and maps them.
   progress-frames)
     : "${HARNESS_CAPTURE_DIR:?run.sh progress-frames needs HARNESS_CAPTURE_DIR}"
     for appearance in light dark; do
       export HARNESS_APPEARANCE="$appearance"
-      for frame in transcribing-progress transcribing-progress-cap live-transcribing-progress transcribing-progress-none live-transcribing-none; do
+      for frame in transcribing-progress transcribing-progress-cap transcribing-progress-none; do
         run "$frame" still.js "&width=1080&height=760&appearance=$appearance"
       done
     done
