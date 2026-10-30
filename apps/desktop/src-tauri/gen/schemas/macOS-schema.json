@@ -195,6 +195,12 @@
           "markdownDescription": "Enables the authorize_locked_action command without any pre-configured scope."
         },
         {
+          "description": "Enables the cancel_empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cancel-empty-trash",
+          "markdownDescription": "Enables the cancel_empty_trash command without any pre-configured scope."
+        },
+        {
           "description": "Enables the check_for_updates command without any pre-configured scope.",
           "type": "string",
           "const": "allow-check-for-updates",
@@ -229,6 +235,12 @@
           "type": "string",
           "const": "allow-dismiss-meeting",
           "markdownDescription": "Enables the dismiss_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-empty-trash",
+          "markdownDescription": "Enables the empty_trash command without any pre-configured scope."
         },
         {
           "description": "Enables the first_run_permissions command without any pre-configured scope.",
@@ -457,6 +469,12 @@
           "type": "string",
           "const": "allow-pause-meeting",
           "markdownDescription": "Enables the pause_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the prepare_empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-prepare-empty-trash",
+          "markdownDescription": "Enables the prepare_empty_trash command without any pre-configured scope."
         },
         {
           "description": "Enables the preview_delete_meeting command without any pre-configured scope.",
@@ -717,6 +735,12 @@
           "markdownDescription": "Denies the authorize_locked_action command without any pre-configured scope."
         },
         {
+          "description": "Denies the cancel_empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cancel-empty-trash",
+          "markdownDescription": "Denies the cancel_empty_trash command without any pre-configured scope."
+        },
+        {
           "description": "Denies the check_for_updates command without any pre-configured scope.",
           "type": "string",
           "const": "deny-check-for-updates",
@@ -751,6 +775,12 @@
           "type": "string",
           "const": "deny-dismiss-meeting",
           "markdownDescription": "Denies the dismiss_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-empty-trash",
+          "markdownDescription": "Denies the empty_trash command without any pre-configured scope."
         },
         {
           "description": "Denies the first_run_permissions command without any pre-configured scope.",
@@ -979,6 +1009,12 @@
           "type": "string",
           "const": "deny-pause-meeting",
           "markdownDescription": "Denies the pause_meeting command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the prepare_empty_trash command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-prepare-empty-trash",
+          "markdownDescription": "Denies the prepare_empty_trash command without any pre-configured scope."
         },
         {
           "description": "Denies the preview_delete_meeting command without any pre-configured scope.",

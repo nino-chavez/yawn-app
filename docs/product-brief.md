@@ -105,6 +105,12 @@ a small auxiliary window.
 - Keep recording, personal notes and transcript access usable without a note
   model. Remove note-model setup and generation controls. A stale command must
   refuse before a download, generation job or meeting change starts.
+- Trash keeps deleted meetings recoverable for 30 days by default. The operator
+  can choose **Empty Trash** to permanently delete the reviewed meetings now,
+  after a confirmation naming the count and the loss of recordings, transcripts,
+  and notes. Cancel changes nothing. A stale confirmation must not delete a
+  restored or re-trashed meeting, or one added after the review. Report any
+  meetings that could not be deleted. (Amended 2026-10-30.)
 - Use a short, quiet Mac-native surface: generous reading width, one main
   content column, light chrome, and color only for recording or attention.
 - Never use fake counts, placeholder meetings, promised automation, or a

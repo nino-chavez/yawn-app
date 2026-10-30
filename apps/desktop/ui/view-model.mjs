@@ -1730,6 +1730,7 @@ export function trashLinkPresentation(trash) {
 // constraint. `entries` carries a fallback label so a never-titled meeting
 // still reads as something in the list, not a bare identifier.
 export function trashListPresentation(trash) {
+  if (trash?.state === "unavailable") return { state: "unavailable", entries: [] };
   if (!trash) {
     return { state: "loading", entries: [] };
   }

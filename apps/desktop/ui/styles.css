@@ -3532,6 +3532,15 @@ html, body, #app {
   flex-shrink: 0;
 }
 
+.trash-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+  margin-bottom: var(--space-8);
+}
+
 .trash-pane h1 {
   font-size: var(--t-title);
   font-weight: 600;

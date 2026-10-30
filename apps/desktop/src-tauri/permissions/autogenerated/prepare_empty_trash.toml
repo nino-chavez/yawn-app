@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-prepare-empty-trash"
+description = "Enables the prepare_empty_trash command without any pre-configured scope."
+commands.allow = ["prepare_empty_trash"]
+
+[[permission]]
+identifier = "deny-prepare-empty-trash"
+description = "Denies the prepare_empty_trash command without any pre-configured scope."
+commands.deny = ["prepare_empty_trash"]

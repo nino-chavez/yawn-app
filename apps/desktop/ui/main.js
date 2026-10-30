@@ -108,6 +108,7 @@ const state = {
   // it, so the escalation is state-driven, never derived from the DOM.
   libraryStalled: false,
   meetingManagementOpen: false,
+  emptyTrashConfirmation: null,
   // DESIGN.md (Rail): one transport; which retained recording it plays.
   playbackSource: "microphone",
   modal: "",
@@ -449,6 +450,7 @@ function render() {
       </div>
       ${firstRunVisible ? renderFirstRunSheet() : ""}
       ${state.modal === "start" ? renderStartSheet() : ""}
+      ${state.modal === "empty-trash" ? renderEmptyTrashSheet() : ""}
       ${state.modal === "rename-meeting" ? renderRenameMeetingSheet() : ""}
       ${state.modal === "speaker-correction" ? renderSpeakerCorrectionSheet() : ""}
       ${state.modal === "transcript-retry" ? renderTranscriptRetrySheet() : ""}
@@ -989,8 +991,12 @@ function renderTrashPane() {
   return `
     <div class="doc-wrap">
       <article class="read trash-pane" aria-labelledby="trash-heading">
-        <h1 id="trash-heading">Trash</h1>
-        <p class="caption doc-caption">Deleted meetings stay here for 30 days, then Yawn removes them permanently. There is no server copy, so a meeting cannot be recovered after that.</p>
+        <div class="trash-heading-row">
+          <h1 id="trash-heading" tabindex="-1">Trash</h1>
+          <button class="btn" type="button" data-action="empty-trash" ${presentation.state !== "populated" || state.busyAction ? "disabled" : ""}>Empty Trash…</button>
+        </div>
+        <p class="caption doc-caption">Meetings are automatically deleted after 30 days. Empty Trash deletes them permanently now.</p>
+        ${presentation.state === "unavailable" ? `<p class="caption" role="alert">Yawn could not load Trash. <button class="btn" type="button" data-action="open-trash">Try again</button></p>` : ""}
         ${presentation.state === "loading" ? `<p class="caption">Loading Trash…</p>` : ""}
         ${presentation.state === "empty" ? `<p class="caption">Trash is empty.</p>` : ""}
         ${presentation.state === "populated" ? `
@@ -1003,11 +1009,31 @@ function renderTrashPane() {
                   <span class="row-title">${escapeHtml(entry.label)}</span>
                   <span class="row-caption caption">Deleted ${escapeHtml(dateLabel(entry.deletedAtEpochSeconds))} · removed permanently ${escapeHtml(dateLabel(entry.purgeAfterEpochSeconds))}</span>
                 </span>
-                <button class="btn" type="button" data-action="restore-trash-entry" data-meeting-id="${escapeHtml(entry.meetingId)}" ${busy ? "disabled" : ""}>${busy ? "Restoring…" : "Restore"}</button>
+                <button class="btn" type="button" data-action="restore-trash-entry" data-meeting-id="${escapeHtml(entry.meetingId)}" ${state.busyAction ? "disabled" : ""}>${busy ? "Restoring…" : "Restore"}</button>
               </li>`;
             }).join("")}
           </ul>` : ""}
       </article>
+    </div>`;
+}
+
+function renderEmptyTrashSheet() {
+  const confirmation = state.emptyTrashConfirmation;
+  if (!confirmation) return "";
+  const busy = state.busyAction === "confirm-empty-trash";
+  const target = confirmation.count === 1 ? "1 meeting" : `${confirmation.count} meetings`;
+  return `
+    <div class="modal-backdrop" role="presentation">
+      <section class="start-sheet destructive-sheet" role="dialog" aria-modal="true" aria-labelledby="empty-trash-title" aria-describedby="empty-trash-detail" aria-busy="${busy}">
+        <div class="sheet-head">
+          <div><h2 id="empty-trash-title" tabindex="-1" aria-live="polite">${busy ? `Deleting ${target}…` : `Permanently delete ${target}?`}</h2>
+          <p id="empty-trash-detail">This deletes their recordings, transcripts, and notes from this Mac. This cannot be undone.</p></div>
+        </div>
+        <div class="sheet-actions">
+          ${busy ? "" : `<button class="button button-quiet" type="button" data-action="close-modal">Cancel</button>`}
+          <button class="button button-danger" type="button" data-action="confirm-empty-trash" ${busy ? "disabled" : ""}>${busy ? "Deleting…" : "Delete permanently"}</button>
+        </div>
+      </section>
     </div>`;
 }
 
@@ -2185,6 +2211,12 @@ function resetVocabularyDraft() {
 }
 
 function closeModal() {
+  if (state.modal === "empty-trash" && state.busyAction === "confirm-empty-trash") return;
+  const emptyTrashOpen = state.modal === "empty-trash";
+  if (emptyTrashOpen && state.emptyTrashConfirmation && invoke) {
+    void invoke("cancel_empty_trash", { handle: state.emptyTrashConfirmation.handle }).catch(() => {});
+  }
+  state.emptyTrashConfirmation = null;
   const retryOpen = state.modal === "transcript-retry";
   state.modal = "";
   state.speakerCorrection = null;
@@ -2197,6 +2229,7 @@ function closeModal() {
   state.startSheetGuided = false;
   // The retry action lives in the toolbar's More menu (Rail slice 1), so
   // focus returns to the menu button the person opened it from.
+  if (emptyTrashOpen) queueMicrotask(focusTrashAction);
   if (retryOpen) queueMicrotask(() => root.querySelector('[data-action="toggle-meeting-management"]')?.focus());
 }
 
@@ -2704,7 +2737,7 @@ async function refreshLibrary({ rebuild = false } = {}) {
 
 async function refreshTrash() {
   const response = await invoke("preview_list_trash");
-  state.trash = { entries: response.entries || [] };
+  state.trash = { state: response.state, entries: response.entries || [] };
 }
 
 async function refreshPermissions() {
@@ -3791,6 +3824,57 @@ function closeTrash() {
   render();
 }
 
+function focusTrashAction() {
+  const button = root.querySelector('[data-action="empty-trash"]');
+  (button && !button.disabled ? button : root.querySelector("#trash-heading"))?.focus();
+}
+
+async function openEmptyTrash() {
+  if (state.busyAction || !state.trashOpen || !state.trash?.entries?.length) return;
+  state.error = "";
+  state.notice = "";
+  await runBusy("prepare-empty-trash", async () => {
+    const response = await invoke("prepare_empty_trash");
+    if (!state.trashOpen) {
+      if (response.handle) await invoke("cancel_empty_trash", { handle: response.handle });
+      return;
+    }
+    if (response.state !== "ready" || !response.handle || !response.count) {
+      await refreshTrash();
+      if (response.state !== "empty") throw new Error(response.message || "Yawn could not prepare to empty Trash. Try again.");
+      return;
+    }
+    state.emptyTrashConfirmation = { handle: response.handle, count: response.count };
+    state.modal = "empty-trash";
+    render();
+    root.querySelector('[role="dialog"] [data-action="close-modal"]')?.focus();
+  });
+}
+
+async function emptyTrash() {
+  const confirmation = state.emptyTrashConfirmation;
+  if (!confirmation || state.modal !== "empty-trash" || state.busyAction) return;
+  await runBusy("confirm-empty-trash", async () => {
+    root.querySelector("#empty-trash-title")?.focus();
+    try {
+      const response = await invoke("empty_trash", { handle: confirmation.handle, confirmed: true });
+      state.modal = "";
+      state.emptyTrashConfirmation = null;
+      await refreshTrash();
+      await refreshLibraryQuietly();
+      if (response.state !== "emptied") throw new Error(response.message || "Some meetings could not be deleted. Check Trash and try again.");
+      state.notice = response.message;
+    } catch (error) {
+      // A confirmation is single-use, including a failed or uncertain attempt.
+      state.modal = "";
+      state.emptyTrashConfirmation = null;
+      await refreshTrash().catch(() => { state.trash = { state: "unavailable", entries: [] }; });
+      throw error;
+    }
+  });
+  focusTrashAction();
+}
+
 async function restoreTrashEntry(meetingId) {
   if (!meetingId) return;
   await runBusy(`restore-${meetingId}`, async () => {
@@ -4004,6 +4088,7 @@ function handleClick(event) {
   const control = event.target.closest("[data-action]");
   if (!control || control.disabled) return;
   const action = control.dataset.action;
+  if (state.modal === "empty-trash" && !control.closest('[role="dialog"]')) return;
   if (action === "home" || action === "meetings") void openMeetings();
   else if (action === "toggle-sidebar") toggleSidebar();
   else if (action === "open-full-transcript") openFullTranscriptFromInspector();
@@ -4085,6 +4170,8 @@ function handleClick(event) {
   else if (action === "transcribe-interrupted") void transcribeInterruptedMeeting().catch(reportError);
   else if (action === "open-trash") openTrash();
   else if (action === "close-trash") closeTrash();
+  else if (action === "empty-trash") void openEmptyTrash();
+  else if (action === "confirm-empty-trash") void emptyTrash();
   else if (action === "restore-trash-entry") void restoreTrashEntry(control.dataset.meetingId);
   else if (action === "confirm-delete-recording") void deleteSelectedRecording();
   else if (action === "confirm-delete-transcript") void deleteSelectedTranscript();
@@ -4209,6 +4296,16 @@ function handleChange(event) {
 }
 
 function handleKeydown(event) {
+  if (state.modal === "empty-trash") {
+    if (event.key === "Tab") {
+      const controls = [...root.querySelectorAll('[role="dialog"] button:not(:disabled)')];
+      const index = controls.indexOf(document.activeElement);
+      event.preventDefault();
+      if (controls.length) controls[(index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length]?.focus();
+      return;
+    }
+    if (event.key !== "Escape") return;
+  }
   if (event.key === "Escape") {
     // Roadmap packet W10: the first-run sheet is not tracked in `state.modal`
     // (its visibility is fully derived -- see `render()`), so it needs its

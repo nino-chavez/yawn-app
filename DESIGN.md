@@ -25,6 +25,19 @@ each line the operator wrote carries the moment it was written, the rail is
 how they move through the audio, and after the meeting the transcript turn
 spoken nearest each note sits level with it.
 
+## Empty Trash — 2026-10-30
+
+Preserve the existing Trash list and the shared confirmation sheet. A quiet
+**Empty Trash…** button sits beside the Trash heading. It is disabled while
+the list is empty, loading, unavailable, or busy. The confirmation names the
+number of meetings and permanent loss of recordings, transcripts, and notes;
+Cancel receives initial focus. Escape cancels before deletion starts. During
+deletion, the heading states that deletion is underway, Cancel is hidden, and
+the destructive action is disabled. Completion stays
+in Trash; an incomplete deletion names the failure and shows what remains.
+No navigation, typography, palette, or motion changes. No existing action is
+removed, combined, demoted, or hidden by this addition.
+
 ## What this system keeps from the prior decisions
 
 - The Mac window frame (Concept A, 2026-09-02): a meeting list beside a

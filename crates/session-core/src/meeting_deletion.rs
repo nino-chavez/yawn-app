@@ -358,6 +358,26 @@ pub(crate) fn purge_trashed_meeting(
     )
 }
 
+/// Manual Trash deletion uses the same durable removal path, but checks the
+/// reviewed receipt and cleans it up inside the lease/sequence critical section.
+/// It must never follow a restored meeting into the live library on recovery.
+pub(crate) fn purge_reviewed_trash_entry(
+    storage: &StorageRoot,
+    coordination: &MeetingStorageCoordination,
+    entry: &crate::meeting_trash::ReviewedTrashEntry,
+) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
+    let _lease = match coordination.acquire(&entry.meeting_id) {
+        Ok(lease) => lease,
+        Err(MeetingCoordinationError::AlreadyActive) => return Ok(MeetingDeletionOutcome::DeferredActive),
+        Err(error) => return Err(error.into()),
+    };
+    let _sequence = coordination.lock_sequence()?;
+    entry.verify(storage)?;
+    let outcome = remove_meeting_directory_locked(storage, &entry.meeting_id, crate::meeting_trash::TRASH_DIR)?;
+    entry.remove_receipt(storage)?;
+    Ok(outcome)
+}
+
 /// `default_root` names where a *fresh* removal (no receipt on disk yet) looks
 /// for its target: `"meetings"` for the original immediate-deletion caller,
 /// `meeting_trash::TRASH_DIR` for a purge. A *resumed* removal (receipt
@@ -386,7 +406,14 @@ fn remove_meeting_directory(
         Err(error) => return Err(error.into()),
     };
     let _sequence = coordination.lock_sequence()?;
+    remove_meeting_directory_locked(storage, meeting_id, default_root)
+}
 
+fn remove_meeting_directory_locked(
+    storage: &StorageRoot,
+    meeting_id: &str,
+    default_root: &str,
+) -> Result<MeetingDeletionOutcome, MeetingDeletionError> {
     let receipt_path = receipt_path(storage, meeting_id)?;
     let live_dir = storage
         .resolve(&Path::new("meetings").join(meeting_id))
