@@ -39,6 +39,7 @@
 //! exactly as it could have while still live.
 
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -47,7 +48,7 @@ use thiserror::Error;
 
 use crate::library_metadata;
 use crate::meeting::{
-    MAX_RECEIPT_BYTES, MeetingError, load_meeting, read_private_bytes, require_private_directory,
+    MAX_RECEIPT_BYTES, MeetingError, load_meeting, open_private_file, read_private_bytes, require_private_directory,
     valid_opaque_id,
 };
 use crate::meeting_coordination::{MeetingCoordinationError, MeetingStorageCoordination};
@@ -230,6 +231,67 @@ pub struct TrashEntrySummary {
     pub purge_after_epoch_seconds: u64,
 }
 
+/// An in-process snapshot of the exact Trash receipts the operator reviews.
+/// Open descriptors keep their inode identities alive even after a restore.
+/// This works with existing receipts, without rewriting their saved format.
+#[derive(Debug)]
+pub struct EmptyTrashReview {
+    entries: Vec<ReviewedTrashEntry>,
+}
+
+impl EmptyTrashReview {
+    pub fn count(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ReviewedTrashEntry {
+    pub(crate) meeting_id: String,
+    file: fs::File,
+    bytes: Vec<u8>,
+}
+
+impl ReviewedTrashEntry {
+    /// Called with the meeting lease and storage-sequence lock held, before
+    /// entering permanent removal (including its recovery path).
+    pub(crate) fn verify(&self, storage: &StorageRoot) -> Result<(), MeetingDeletionError> {
+        if !valid_opaque_id(&self.meeting_id) { return Err(MeetingDeletionError::MalformedReceipt); }
+        let path = receipt_path(storage, &self.meeting_id)?;
+        let current = open_private_file(&path)?;
+        let before = self.file.metadata()?;
+        let after = current.metadata()?;
+        if (before.dev(), before.ino()) != (after.dev(), after.ino())
+            || read_private_bytes(&path, MAX_RECEIPT_BYTES)? != self.bytes
+        {
+            return Err(MeetingDeletionError::MalformedReceipt);
+        }
+        let receipt = load_receipt(&path).map_err(|_| MeetingDeletionError::MalformedReceipt)?;
+        if receipt.meeting_id != self.meeting_id || receipt.state != TrashEntryState::Trashed {
+            return Err(MeetingDeletionError::MalformedReceipt);
+        }
+        let live = storage.resolve(&Path::new("meetings").join(&self.meeting_id))
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        if live.try_exists()? {
+            return Err(MeetingDeletionError::MalformedReceipt);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn remove_receipt(&self, storage: &StorageRoot) -> Result<(), MeetingDeletionError> {
+        let path = receipt_path(storage, &self.meeting_id)?;
+        fs::remove_file(&path)?;
+        if let Some(parent) = path.parent() { sync_directory(parent)?; }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct EmptyTrashOutcome {
+    pub deleted: usize,
+    pub retained: usize,
+}
+
 /// One outcome of a scheduled purge pass, for diagnostic logging.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrashPurgeOutcome {
@@ -254,6 +316,35 @@ pub struct MeetingTrashAuthority<'a> {
 }
 
 impl MeetingTrashAuthority<'_> {
+    pub fn review_empty_trash(&self) -> Result<EmptyTrashReview, MeetingTrashError> {
+        let _sequence = self.coordination.lock_sequence()?;
+        let mut entries = Vec::new();
+        for entry in list_trash_entries(self.storage)? {
+            if !valid_opaque_id(&entry.meeting_id) { return Err(MeetingTrashError::MalformedReceipt); }
+            if entries.iter().any(|prior: &ReviewedTrashEntry| prior.meeting_id == entry.meeting_id) {
+                return Err(MeetingTrashError::MalformedReceipt);
+            }
+            let path = receipt_path(self.storage, &entry.meeting_id)?;
+            // Keep the actual file open: timestamps alone cannot distinguish a
+            // restore followed by re-trashing the same meeting in one second.
+            let file = open_private_file(&path)?;
+            let bytes = read_private_bytes(&path, MAX_RECEIPT_BYTES)?;
+            entries.push(ReviewedTrashEntry { meeting_id: entry.meeting_id, file, bytes });
+        }
+        Ok(EmptyTrashReview { entries })
+    }
+
+    pub fn empty_trash(&self, review: EmptyTrashReview) -> EmptyTrashOutcome {
+        let mut outcome = EmptyTrashOutcome::default();
+        for entry in review.entries {
+            match meeting_deletion::purge_reviewed_trash_entry(self.storage, self.coordination, &entry) {
+                Ok(MeetingDeletionOutcome::MeetingRemoved | MeetingDeletionOutcome::RecoveredRemoval | MeetingDeletionOutcome::AlreadyRemoved) => outcome.deleted += 1,
+                _ => outcome.retained += 1,
+            }
+        }
+        outcome
+    }
+
     pub fn trash_meeting(
         &self,
         meeting_id: &str,
@@ -894,6 +985,109 @@ mod tests {
         )
         .unwrap();
         directory
+    }
+
+    #[test]
+    fn empty_trash_removes_reviewed_legacy_entries_immediately_and_keeps_live_meetings() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        for id in ["one", "two", "live"] { fixture(&storage, id); }
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        for id in ["one", "two"] { authority.trash_meeting(id, 1000).unwrap(); }
+        let review = authority.review_empty_trash().unwrap();
+        assert_eq!(review.count(), 2);
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 2, retained: 0 });
+        assert!(list_trash_entries(&storage).unwrap().is_empty());
+        for id in ["one", "two"] {
+            assert!(!storage.path().join("trash").join(id).exists());
+            assert!(storage.path().join("deletions").join(format!("{id}.json")).exists());
+        }
+        assert!(storage.path().join("meetings/live/capture/mic.wav").exists());
+        assert_eq!(authority.review_empty_trash().unwrap().count(), 0);
+    }
+
+    #[test]
+    fn empty_trash_does_not_include_entries_added_after_review() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        for id in ["reviewed", "later"] { fixture(&storage, id); }
+        authority.trash_meeting("reviewed", 1000).unwrap();
+        let review = authority.review_empty_trash().unwrap();
+        authority.trash_meeting("later", 1001).unwrap();
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 1, retained: 0 });
+        assert!(storage.path().join("trash/later/capture/mic.wav").exists());
+        assert_eq!(list_trash_entries(&storage).unwrap()[0].meeting_id, "later");
+    }
+
+    #[test]
+    fn empty_trash_refuses_restored_and_same_second_retrashed_entries() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        for id in ["restored", "retrashed"] {
+            fixture(&storage, id);
+            authority.trash_meeting(id, 1000).unwrap();
+        }
+        let review = authority.review_empty_trash().unwrap();
+        for id in ["restored", "retrashed"] { authority.restore_meeting(id, 1000).unwrap(); }
+        authority.trash_meeting("retrashed", 1000).unwrap();
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 0, retained: 2 });
+        assert!(storage.path().join("meetings/restored/capture/mic.wav").exists());
+        assert!(storage.path().join("trash/retrashed/capture/mic.wav").exists());
+        // A fresh review of the new incarnation works normally.
+        assert_eq!(authority.empty_trash(authority.review_empty_trash().unwrap()).deleted, 1);
+    }
+
+    #[test]
+    fn empty_trash_keeps_active_malformed_and_changed_entries() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        for id in ["active", "malformed", "changed", "good"] {
+            fixture(&storage, id);
+            authority.trash_meeting(id, 1000).unwrap();
+        }
+        let review = authority.review_empty_trash().unwrap();
+        let _active = coordination.acquire("active").unwrap();
+        fs::write(storage.path().join("trash/malformed/meeting.json"), b"invalid").unwrap();
+        fs::write(receipt_path(&storage, "changed").unwrap(), b"invalid").unwrap();
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 1, retained: 3 });
+        for id in ["active", "malformed", "changed"] {
+            assert!(storage.path().join("trash").join(id).join("capture/mic.wav").exists());
+            assert!(!storage.path().join("deletions").join(format!("{id}.json")).exists());
+        }
+    }
+
+    #[test]
+    fn empty_trash_never_follows_a_recovery_receipt_into_a_live_meeting() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        fixture(&storage, "collision");
+        authority.trash_meeting("collision", 1000).unwrap();
+        let review = authority.review_empty_trash().unwrap();
+        fixture(&storage, "collision");
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 0, retained: 1 });
+        assert!(storage.path().join("meetings/collision/capture/mic.wav").exists());
+        assert!(storage.path().join("trash/collision/capture/mic.wav").exists());
+    }
+
+    #[test]
+    fn empty_trash_refuses_a_symlink_receipt_replacement() {
+        let (_temp, storage) = storage();
+        let coordination = MeetingStorageCoordination::default();
+        let authority = MeetingTrashAuthority { storage: &storage, coordination: &coordination };
+        fixture(&storage, "symlink");
+        authority.trash_meeting("symlink", 1000).unwrap();
+        let review = authority.review_empty_trash().unwrap();
+        let path = receipt_path(&storage, "symlink").unwrap();
+        let held = storage.path().join("saved-receipt.json");
+        fs::rename(&path, &held).unwrap();
+        std::os::unix::fs::symlink(&held, &path).unwrap();
+        assert_eq!(authority.empty_trash(review), EmptyTrashOutcome { deleted: 0, retained: 1 });
+        assert!(storage.path().join("trash/symlink/capture/mic.wav").exists());
+        assert!(held.exists());
     }
 
     #[test]

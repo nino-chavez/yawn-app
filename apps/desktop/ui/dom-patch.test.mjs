@@ -100,14 +100,13 @@ test("no modal backdrop or dialog carries an id, so it is reused across a patch 
   // `[^"]*` tolerates the first-run sheet's `first-run-backdrop` modifier
   // class (refit R12) -- still one unkeyed div, just with an extra class.
   const backdropOpenTags = [...main.matchAll(/<div class="modal-backdrop[^"]*"[^>]*>/g)];
-  // Roadmap packet W10 adds the once-only first-run sheet as an eighth
-  // consumer of this same unkeyed idiom.
-  assert.equal(backdropOpenTags.length, 8, "expected all eight sheets' backdrop tags");
+  // Empty Trash adds the ninth sheet using this same unkeyed idiom.
+  assert.equal(backdropOpenTags.length, 9, "expected all nine sheets' backdrop tags");
   for (const [tag] of backdropOpenTags) {
     assert.doesNotMatch(tag, /\bid=/, `modal-backdrop must stay unkeyed: ${tag}`);
   }
   const dialogOpenTags = [...main.matchAll(/<section class="start-sheet[^>]*role="dialog"[^>]*>/g)];
-  assert.equal(dialogOpenTags.length, 8, "expected all eight sheets' dialog tags");
+  assert.equal(dialogOpenTags.length, 9, "expected all nine sheets' dialog tags");
   for (const [tag] of dialogOpenTags) {
     assert.doesNotMatch(tag, /\bid=/, `sheet dialog must stay unkeyed: ${tag}`);
     assert.doesNotMatch(tag, /data-field=/, `sheet dialog must stay unkeyed: ${tag}`);

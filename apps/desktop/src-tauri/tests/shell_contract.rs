@@ -64,6 +64,9 @@ const PRODUCT_COMMANDS: &[&str] = &[
     // the quiet secondary surface; restoring is the recovery path within the
     // 30-day window.
     "preview_list_trash",
+    "prepare_empty_trash",
+    "cancel_empty_trash",
+    "empty_trash",
     "restore_meeting_from_trash_command",
     "operator_note",
     "save_operator_note",
@@ -145,6 +148,9 @@ const MAIN_PERMISSIONS: &[&str] = &[
     "allow-library-transcribe-interrupted-meeting",
     "allow-preview-delete-meeting",
     "allow-preview-list-trash",
+    "allow-prepare-empty-trash",
+    "allow-cancel-empty-trash",
+    "allow-empty-trash",
     "allow-restore-meeting-from-trash-command",
     "allow-operator-note",
     "allow-save-operator-note",

@@ -100,6 +100,17 @@ case "$mode" in
     echo "== search: capture blocks the probe affordance =="
     run search-capture search.js
     ;;
+  trash) run trash trash.js "&width=1080&height=760&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  trash-negative) run trash trash.js "&width=1080&height=760&negative-control=1" ;;
+  trash-frames)
+    : "${HARNESS_CAPTURE_DIR:?run.sh trash-frames needs HARNESS_CAPTURE_DIR}"
+    for appearance in light dark; do
+      export HARNESS_APPEARANCE="$appearance"
+      for frame in populated confirm busy empty failure partial unavailable; do
+        run trash trash.js "&width=1080&height=760&appearance=$appearance&frame=$frame" "trash-$frame"
+      done
+    done
+    ;;
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
@@ -146,5 +157,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|trash|trash-negative|trash-frames|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac

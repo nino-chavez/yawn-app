@@ -23,6 +23,14 @@
     at.setHours(hour, minute, 0, 0);
     return Math.floor(at.getTime() / 1000);
   };
+  // Synthetic Trash data; no user storage is read or written by this bridge.
+  const trashMode = mode.startsWith("trash");
+  const trashFixture = [
+    { meetingId: "trash-a", label: "Project kickoff", deletedAtEpochSeconds: fixtureEpoch(2, 10, 0), purgeAfterEpochSeconds: fixtureEpoch(-28, 10, 0) },
+    { meetingId: "trash-b", label: "Weekly planning", deletedAtEpochSeconds: fixtureEpoch(1, 14, 30), purgeAfterEpochSeconds: fixtureEpoch(-29, 14, 30) },
+  ];
+  window.__harnessTrash = { entries: trashMode ? [...trashFixture] : [], state: "ok", outcome: "emptied", delay: 0 };
+  let trashReview = null;
   const captureSnapshot = {
     startup: "ready",
     capture: "recording",
@@ -337,7 +345,26 @@
           createdAtEpochSeconds: fixtureEpoch(9, 9, 30),
         }], total: 2, metadataRevision: 1, searchProbeEnabled: searchMode }
       : { rows: [], total: 0, metadataRevision: 1 }),
-    preview_list_trash: () => ({ entries: [] }),
+    preview_list_trash: () => ({ state: window.__harnessTrash.state, entries: [...window.__harnessTrash.entries] }),
+    prepare_empty_trash: () => {
+      trashReview = [...window.__harnessTrash.entries];
+      return { state: trashReview.length ? "ready" : "empty", handle: "trash-review-1", count: trashReview.length };
+    },
+    cancel_empty_trash: () => { trashReview = null; return null; },
+    empty_trash: async (args) => {
+      if (args.handle !== "trash-review-1" || args.confirmed !== true || !trashReview) throw new Error("unconfirmed purge");
+      const review = trashReview;
+      trashReview = null;
+      if (window.__harnessTrash.delay) await new Promise((resolve) => setTimeout(resolve, window.__harnessTrash.delay));
+      const outcome = window.__harnessTrash.outcome;
+      if (outcome === "failure") throw new Error("Trash could not be emptied. Try again.");
+      if (outcome === "changed") return { state: "changed", message: "Trash changed. Review it and try again. Nothing was deleted." };
+      const ids = new Set((outcome === "partial" ? review.slice(0, 1) : review).map((entry) => entry.meetingId));
+      if (!new URLSearchParams(location.search).has("negative-control")) {
+        window.__harnessTrash.entries = window.__harnessTrash.entries.filter((entry) => !ids.has(entry.meetingId));
+      }
+      return { state: outcome, message: outcome === "partial" ? "1 meeting was deleted. 1 meeting could not be deleted. Check Trash and try again." : "2 meetings were permanently deleted." };
+    },
     operator_note: () => ({ text: "", unreadable: false }),
     meeting_context: () => ({ text: "", unreadable: false }),
     save_operator_note: () => ({ unreadable: false }),

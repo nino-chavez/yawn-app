@@ -274,6 +274,7 @@ struct ApplicationState {
     note_model_setup: Mutex<NoteModelSetup>,
     transcription_engine: Mutex<TranscriptionEngineState>,
     preview_library: Mutex<Option<library_reader::LibraryReader>>,
+    empty_trash_review: Mutex<Option<(String, local_meeting_notes_session_core::meeting_trash::EmptyTrashReview)>>,
     /// The one audio child the shell owns. This is deliberately a `Child`,
     /// never a PID: every stop and reap action is constrained to this exact
     /// process object rather than a reused system process identifier.
@@ -333,6 +334,7 @@ impl Default for ApplicationState {
             }),
             transcription_engine: Mutex::new(TranscriptionEngineState::default()),
             preview_library: Mutex::new(None),
+            empty_trash_review: Mutex::new(None),
             audio_playback: Mutex::new(None),
             note_projector: Mutex::new(None),
             note_generation_admission: Arc::new(Mutex::new(None)),
@@ -4909,6 +4911,95 @@ fn preview_list_trash_for(state: &ApplicationState) -> TrashListResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct EmptyTrashPreparation {
+    state: &'static str,
+    handle: Option<String>,
+    count: usize,
+    message: &'static str,
+}
+
+#[tauri::command(async)]
+fn prepare_empty_trash(state: State<'_, ApplicationState>) -> EmptyTrashPreparation {
+    prepare_empty_trash_for(&state)
+}
+
+fn prepare_empty_trash_for(state: &ApplicationState) -> EmptyTrashPreparation {
+    let unavailable = || EmptyTrashPreparation {
+        state: "unavailable", handle: None, count: 0,
+        message: "Yawn could not prepare to empty Trash. Try again.",
+    };
+    let Ok(_command) = state.command_lock.lock() else { return unavailable(); };
+    let Ok(mut pending) = state.empty_trash_review.lock() else { return unavailable(); };
+    *pending = None;
+    let writer = state.app_data_writer_lock.lock().ok().and_then(|slot| slot.clone());
+    let Some(writer) = writer else { return unavailable(); };
+    let Ok(review) = writer.meeting_trash_authority().review_empty_trash() else { return unavailable(); };
+    let count = review.count();
+    if count == 0 {
+        return EmptyTrashPreparation { state: "empty", handle: None, count, message: "Trash is empty." };
+    }
+    let handle = uuid::Uuid::new_v4().to_string();
+    *pending = Some((handle.clone(), review));
+    EmptyTrashPreparation { state: "ready", handle: Some(handle), count, message: "" }
+}
+
+#[tauri::command]
+fn cancel_empty_trash(handle: String, state: State<'_, ApplicationState>) {
+    cancel_empty_trash_for(&handle, &state);
+}
+
+fn cancel_empty_trash_for(handle: &str, state: &ApplicationState) {
+    if let Ok(mut pending) = state.empty_trash_review.lock() {
+        if pending.as_ref().is_some_and(|(expected, _)| expected == handle) {
+            *pending = None;
+        }
+    }
+}
+
+#[tauri::command(async)]
+fn empty_trash(handle: String, confirmed: bool, state: State<'_, ApplicationState>) -> RestoreMeetingResponse {
+    empty_trash_for(handle, confirmed, &state)
+}
+
+fn empty_trash_for(handle: String, confirmed: bool, state: &ApplicationState) -> RestoreMeetingResponse {
+    let response = |state, message: &str| RestoreMeetingResponse { state, message: message.into() };
+    if !confirmed {
+        return response("confirmation-required", "Confirm permanent deletion before emptying Trash.");
+    }
+    let Ok(_command) = state.command_lock.lock() else {
+        return response("unavailable", "Yawn could not empty Trash. Try again.");
+    };
+    let Ok(mut pending) = state.empty_trash_review.lock() else {
+        return response("unavailable", "Yawn could not empty Trash. Try again.");
+    };
+    let Some((expected, review)) = pending.take() else {
+        return response("changed", "Reopen Empty Trash to review the meetings before deleting them.");
+    };
+    if handle != expected {
+        return response("changed", "Reopen Empty Trash to review the meetings before deleting them.");
+    }
+    drop(pending);
+    let writer = state.app_data_writer_lock.lock().ok().and_then(|slot| slot.clone());
+    let Some(writer) = writer else {
+        return response("unavailable", "Yawn could not empty Trash. Try again.");
+    };
+    if with_preview_library_invalidated(state, || ()).is_err() {
+        return response("unavailable", "Yawn could not empty Trash. Try again.");
+    }
+    stop_owned_audio_playback(state);
+    let outcome = writer.meeting_trash_authority().empty_trash(review);
+    let deleted = match outcome.deleted {
+        1 => "1 meeting was permanently deleted.".to_string(),
+        n => format!("{n} meetings were permanently deleted."),
+    };
+    if outcome.retained > 0 {
+        return response("partial", &format!("{deleted} Some meetings changed or could not be deleted. Check Trash and try again."));
+    }
+    response("emptied", &deleted)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RestoreMeetingResponse {
     state: &'static str,
     message: String,
@@ -6478,6 +6569,9 @@ fn main() {
             library_transcribe_interrupted_meeting,
             preview_delete_meeting,
             preview_list_trash,
+            prepare_empty_trash,
+            cancel_empty_trash,
+            empty_trash,
             restore_meeting_from_trash_command,
             preview_library_open_evidence,
             product_facade::restore_withheld_turn,
@@ -10277,6 +10371,56 @@ mod tests {
             .unwrap();
         assert!(output.status.success());
         assert_eq!(output.stdout, b"RIFF");
+    }
+
+    #[test]
+    fn empty_trash_command_requires_confirmation_and_a_single_use_review() {
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, "trash-command", 0, AudioState::Retained, "synthetic");
+        let state = ApplicationState::default();
+        let writer = Arc::new(acquire_app_data_writer_lock(&storage).unwrap());
+        writer.meeting_trash_authority().trash_meeting("trash-command", 1000).unwrap();
+        *state.app_data_writer_lock.lock().unwrap() = Some(writer);
+        let before = storage_tree_bytes(storage.path());
+        let preparation = prepare_empty_trash_for(&state);
+        assert_eq!(preparation.state, "ready");
+        assert_eq!(preparation.count, 1);
+        let handle = preparation.handle.unwrap();
+        assert_eq!(empty_trash_for(handle.clone(), false, &state).state, "confirmation-required");
+        assert_eq!(storage_tree_bytes(storage.path()), before);
+        assert_eq!(empty_trash_for("forged".into(), true, &state).state, "changed");
+        assert_eq!(storage_tree_bytes(storage.path()), before);
+        let cancelled = prepare_empty_trash_for(&state).handle.unwrap();
+        cancel_empty_trash_for(&cancelled, &state);
+        assert_eq!(empty_trash_for(cancelled, true, &state).state, "changed");
+        assert_eq!(storage_tree_bytes(storage.path()), before);
+        let handle = prepare_empty_trash_for(&state).handle.unwrap();
+        cancel_empty_trash_for("old-review", &state);
+        assert_eq!(empty_trash_for(handle.clone(), true, &state).state, "emptied");
+        assert_eq!(empty_trash_for(handle, true, &state).state, "changed");
+        assert!(!storage.path().join("trash/trash-command").exists());
+        assert!(state.command_lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn empty_trash_command_needs_writer_authority_and_preserves_replaced_reviews() {
+        let state = ApplicationState::default();
+        assert_eq!(prepare_empty_trash_for(&state).state, "unavailable");
+        assert_eq!(empty_trash_for("forged".into(), true, &state).state, "changed");
+        let (_temporary, storage) = test_storage();
+        write_transcript_fixture(&storage, "trash-command", 0, AudioState::Retained, "synthetic");
+        let writer = Arc::new(acquire_app_data_writer_lock(&storage).unwrap());
+        writer.meeting_trash_authority().trash_meeting("trash-command", 1000).unwrap();
+        *state.app_data_writer_lock.lock().unwrap() = Some(writer);
+        let old = prepare_empty_trash_for(&state).handle.unwrap();
+        let new = prepare_empty_trash_for(&state).handle.unwrap();
+        assert_ne!(old, new);
+        assert_eq!(empty_trash_for(old, true, &state).state, "changed");
+        assert!(storage.path().join("trash/trash-command/meeting.json").exists());
+        let current = prepare_empty_trash_for(&state).handle.unwrap();
+        *state.app_data_writer_lock.lock().unwrap() = None;
+        assert_eq!(empty_trash_for(current, true, &state).state, "unavailable");
+        assert!(storage.path().join("trash/trash-command/meeting.json").exists());
     }
 
     #[test]

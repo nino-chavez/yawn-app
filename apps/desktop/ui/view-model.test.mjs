@@ -1369,6 +1369,7 @@ test("the Trash link is absent when empty and names the count when it is not", (
 
 test("the quiet Trash list reports loading, empty, and populated states without artwork", () => {
   assert.deepEqual(trashListPresentation(null), { state: "loading", entries: [] });
+  assert.deepEqual(trashListPresentation({ state: "unavailable", entries: [] }), { state: "unavailable", entries: [] });
   assert.deepEqual(trashListPresentation({ entries: [] }), { state: "empty", entries: [] });
 
   const populated = trashListPresentation({
