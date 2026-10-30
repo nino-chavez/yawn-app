@@ -13,6 +13,8 @@ import json
 import math
 import os
 import re
+import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -33,6 +35,10 @@ _MAX_RESULT_BYTES = 16 * 1024 * 1024
 # "nan", and no digit separators that float() would otherwise accept.
 _PROGRESS_NUMBER = re.compile(rb"\d{1,9}(?:\.\d{1,6})?")
 _MAX_PROGRESS_LINE = 65
+# What tempfile.TemporaryDirectory(prefix=".apple-speech-") names a leg's private
+# directory.  The capability check's ".apple-speech-capability-*" directories live
+# in the storage root and do not match: their name has a "-" after the prefix.
+_LEG_DIRECTORY = re.compile(r"\.apple-speech-[a-z0-9_]+")
 _MIN_LEG_TIMEOUT_SECONDS = 600
 _PROGRESS_READER_JOIN_SECONDS = 5.0
 _KILLED_HELPER_REAP_SECONDS = 10.0
@@ -165,6 +171,54 @@ def _drain_progress(stream: Any, duration: float, on_progress: Callable[[float],
                 reporting = False
 
 
+class _HelperRegistry:
+    """The speech helpers this worker has running, so the watchdog can stop them.
+
+    The desktop puts other processes in the worker's process group (the meeting
+    capture helper, whose own liveness pipe makes it finalize a recording when
+    the app quits), so the watchdog must stop exactly the helpers this worker
+    started and signal no group.  Once stopping, no new helper may start: a leg
+    that begins just as the app quits would otherwise be missed.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._running: set[subprocess.Popen] = set()
+        self._stopping = False
+
+    def start(self, argv: list[str]) -> subprocess.Popen:
+        with self._lock:
+            if self._stopping:
+                raise AppleSpeechRefused("Apple speech transcription stopped because the app is closing")
+            process = subprocess.Popen(
+                argv,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            self._running.add(process)
+            return process
+
+    def finished(self, process: subprocess.Popen) -> None:
+        with self._lock:
+            self._running.discard(process)
+
+    def kill_all(self) -> None:
+        with self._lock:
+            self._stopping = True
+            for process in list(self._running):
+                with contextlib.suppress(OSError):
+                    process.kill()
+
+
+_HELPERS = _HelperRegistry()
+
+
+def kill_running_helpers() -> None:
+    """Stop every speech helper this worker started, and start no more."""
+    _HELPERS.kill_all()
+
+
 def _run_transcribe_helper(
     argv: list[str],
     *,
@@ -177,12 +231,7 @@ def _run_transcribe_helper(
     The deadline is enforced on the process itself, not on stdout: a helper that
     closes stdout but keeps running is still killed when time is up.
     """
-    process = subprocess.Popen(
-        argv,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
+    process = _HELPERS.start(argv)
     closed = threading.Event()
     reader = threading.Thread(
         target=_drain_progress,
@@ -209,9 +258,44 @@ def _run_transcribe_helper(
         closed.set()
         if not reader.is_alive():
             process.stdout.close()
+        _HELPERS.finished(process)
     if timed_out:
         raise AppleSpeechRefused("Apple speech transcription timed out")
     return returncode
+
+
+def sweep_stale_leg_directories(transcript_dir: Path) -> int:
+    """Remove leg directories a killed worker left in one meeting's transcript folder.
+
+    A leg's result (raw transcript text) lives in ``.apple-speech-*/result.json``
+    until the leg ends, and the worker removes it itself.  A worker that is killed
+    mid-leg (a supervisor timeout, a crash, a quit before the worker took its
+    helper down with it) cannot.  This is safe only because one transcription runs
+    per meeting at a time, so a directory found before the first leg is never a
+    live leg's.
+
+    Only real directories owned by this user, directly inside ``transcript_dir``
+    and named like a leg directory, are removed; symlinks are never followed.  Best
+    effort: a failure is skipped, never raised.  Returns how many were removed.
+    """
+    try:
+        names = os.listdir(transcript_dir)
+    except OSError:
+        return 0
+    removed = 0
+    for name in names:
+        if _LEG_DIRECTORY.fullmatch(name) is None:
+            continue
+        path = Path(transcript_dir) / name
+        try:
+            info = os.lstat(path)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid():
+                continue
+            shutil.rmtree(path)
+            removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def transcribe_leg(
