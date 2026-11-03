@@ -1,0 +1,25 @@
+{
+  "baseCommit": "fc23a11e793e1fdefa3e80ce073ec9b4aaf783ab",
+  "sourceHashes": {
+    "apps/desktop/ui/settings-standalone.css": "89ccba7e1aca5eb308f6e3722991001996b5483788250822d542f63be4d96b59",
+    "apps/desktop/ui/index.html": "2425b52af9c2effe854d26e670ac895252e704f14dc31d9d1e9cf8f7bc317e8f",
+    "apps/desktop/ui/styles.css": "2062242ce54a1917c0736d1e2c211d93b2f1d792a07d709a066acaaa143acc11",
+    "apps/desktop/ui/tokens.css": "2824bdda4a18c6c293deae2f55f79adc43c3e2185fd62e6e0273450ddc61ed94",
+    "apps/desktop/ui/appearance.mjs": "149c9165f97f134df9827996d53d079379a914dc1181081e71b00f062d3a513a",
+    "apps/desktop/ui/view-model.mjs": "73fa02e91cefece8fc22740a04e6c46ece26fafd4a5814b9b9f4b8f99fcab348",
+    "apps/desktop/ui/settings-window.css": "972cb820461b781147bae733357f181a080264bec0e995583dbd4ef72f89ef8f",
+    "apps/desktop/ui/main.js": "9e735a27abeb737aecc4f112263ea92711067d9ff664a22391ea49179c36f5fc",
+    "apps/desktop/ui/dom-patch.mjs": "d49f76080dcea510d90eef46e8a8bd360090ce276dbc340f2eb472e9390efc1d",
+    "apps/desktop/ui/text-size.mjs": "ac6719fb1e0445144ad010de2b646b56d5e3015e37fb7a9e57f8414ff9e83a2b",
+    "apps/desktop/ui/settings-window.js": "7f4c4f83c6d6067d3a79356e64efdda2cd83d433b91491cfe5e3e4d0b00f123a",
+    "apps/desktop/ui/settings.html": "b6dbc4f997c8c2c66e7418b37a1c5dbe4e69d1bd9d6fdc81e9b42505bf39399f",
+    "apps/desktop/ui/settings.js": "3d56b13002a20900f84784b2486461c584d24d12c38e7aaebe106f19ecf047c7",
+    "apps/desktop/ui-harness/runner.swift": "5950893a0058b9b0d2797aa306110604c6f97e522f5ff57de9266813c8eae3c5",
+    "apps/desktop/ui-harness/inspection-frame.js": "3e7a3049cd86a1232075e8b38a6f29ed9153c959f081f18d441d0b8597f575c2",
+    "apps/desktop/ui-harness/tauri-stub.js": "88dd030f4166bf4d68c3c5bc5c3919bc0cc7e72783bf1bd04901553071638a7f",
+    "apps/desktop/ui-harness/harness.html": "90bdccf6ebde032136349c3106d8d747b33e9ccfb236ddc7bbb294eef603aa42",
+    "apps/desktop/ui-harness/rail.contract.json": "f05237186b838eb11ab1c313bc20083bda8a75b19439ff11087a8a6e649af378"
+  },
+  "captureMode": "run.sh inspection-frames; background by default",
+  "frames": "final-frames/manifest.json"
+}

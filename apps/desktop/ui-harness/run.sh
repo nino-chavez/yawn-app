@@ -34,7 +34,9 @@ printf '%s' "$ready_token" > "$serve/harness-ready.txt"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!
 
-swiftc -O runner.swift -o "$build_dir/runner"
+if [ "$mode" != "serve" ]; then
+  swiftc -O runner.swift -o "$build_dir/runner"
+fi
 # Readiness is a token only this invocation's server can return. If the port
 # was already taken, python exits and someone else's server answers; never
 # run a scenario against that.
@@ -71,6 +73,11 @@ run_settings() {
   if [ -n "${HARNESS_CAPTURE_DIR:-}" ]; then mkdir -p "$HARNESS_CAPTURE_DIR"; export HARNESS_CAPTURE_PATH="$HARNESS_CAPTURE_DIR/settings-${HARNESS_APPEARANCE:-dark}.png"; fi
   "$build_dir/runner" "http://127.0.0.1:$port/settings-retirement.html?mode=settings-retirement${2:-}" "$PWD/$1"; }
 case "$mode" in
+  serve)
+    stamp_nonce
+    echo "Synthetic frontend ready: http://127.0.0.1:$port/harness.html"
+    wait "$server_pid"
+    ;;
   capture) run capture scenario.js ;;
   stop-status) run stop-status scenario.js ;;
   stop-lands)
@@ -113,6 +120,17 @@ case "$mode" in
     ;;
   smoke) run library smoke.js ;;
   sheets) run library sheets.js ;;
+  inspection) run ledger inspection.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
+  inspection-frames)
+    : "${HARNESS_CAPTURE_DIR:?inspection-frames needs HARNESS_CAPTURE_DIR}"
+    for appearance in light dark; do
+      export HARNESS_APPEARANCE="$appearance"
+      for pose in rest related expanded; do
+        run ledger inspection-frame.js "&width=1080&height=900&appearance=$appearance&inspection=$pose" "ledger-$pose"
+      done
+      run capture still.js "&width=1080&height=900&appearance=$appearance" "capture"
+    done
+    ;;
   fidelity) run ledger fidelity.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   # Transcription progress on the meeting page: the page follows the amount,
   # patches only the bar and percent, and leaves the editor alone.
@@ -157,5 +175,5 @@ case "$mode" in
     echo "== sheets: entrance animation fires once across repeated render ticks =="
     run library sheets.js
     ;;
-  *) echo "usage: run.sh [capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|trash|trash-negative|trash-frames|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [serve|inspection|inspection-frames|capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|trash|trash-negative|trash-frames|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac

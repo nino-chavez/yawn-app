@@ -1765,6 +1765,27 @@ function renderTransport(playback, transcript, row) {
 // layoutLedgers() places the rail marks and the turn column beside those
 // lines. Marks come from the stored note moments, never from line position.
 // A note without moments is a plain page: no rail, no marks, no turn column.
+// The browser owns hover/focus state. Recompute its matching logical lines
+// after layout/polling so no second selection model or inline stylesheet is needed.
+function updateLedgerInspection(ledger) {
+  const activeLines = new Set(Array.from(ledger.querySelectorAll(
+    ".ledger-turn:hover, .ledger-fold:hover, .ledger-fold:focus-visible",
+  ), (element) => element.dataset.line));
+  for (const element of ledger.querySelectorAll(".ledger-mirror-line, .ledger-mark, .ledger-turn")) {
+    element.classList.toggle("is-inspected", activeLines.has(element.dataset.line));
+  }
+}
+
+let ledgerInspectionPending = false;
+function queueLedgerInspection() {
+  if (ledgerInspectionPending) return;
+  ledgerInspectionPending = true;
+  requestAnimationFrame(() => {
+    ledgerInspectionPending = false;
+    for (const ledger of root.querySelectorAll(".ledger.has-turns")) updateLedgerInspection(ledger);
+  });
+}
+
 function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, editable, placeholder, live = false, stop = null, openFolds = [] }) {
   const ledger = noteLedgerPresentation({ text, moments, turns, pauses });
   const lines = String(text ?? "").split("\n");
@@ -1785,21 +1806,22 @@ function renderNoteLedger({ text, moments, turns, pauses, field, meetingId, edit
     const who = transcriptSpeakerLabel(turn);
     return `<span class="ledger-turn-time">${escapeHtml(timeLabel(turn?.start))}${who ? ` · ${escapeHtml(who)}` : ""}</span>${turn?.withheld ? "This turn was withheld by the voice check." : escapeHtml(turn?.text || "")}`;
   };
-  const turnColumn = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat).map((row, position) => {
+  const turnRows = showTurns ? timedRows.filter((row) => row.turnIndex >= 0 && !row.repeat) : [];
+  const turnColumn = turnRows.map((row, position) => {
     const turn = turns[row.turnIndex];
     const fold = position > 0 ? ledgerFoldPresentation(row, openFolds) : null;
     const foldId = fold ? `ledger-fold-${escapeHtml(meetingId)}-${fold.key}` : "";
     return `${fold ? `<button class="ledger-fold${fold.expanded ? " open" : ""}" id="${foldId}" type="button" data-action="toggle-ledger-fold" data-fold="${fold.key}" data-line="${row.line}" aria-expanded="${fold.expanded ? "true" : "false"}" aria-controls="${foldId}-turns" aria-label="${escapeHtml(fold.accessibleName)}"><span>${escapeHtml(fold.visibleLabel)}</span><svg class="ledger-fold-chevron" width="8" height="5" viewBox="0 0 10 6" fill="none" aria-hidden="true"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       ${fold.expanded ? `<div class="ledger-fold-turns" id="${foldId}-turns" data-fold="${fold.key}" role="group" aria-label="${escapeHtml(fold.accessibleName)}">${fold.turnIndexes.map((index) => `<div class="ledger-folded-turn" data-turn-index="${escapeHtml(turns[index]?.sourceTurnIndex ?? index)}">${turnBody(turns[index])}</div>`).join("")}</div>` : ""}` : ""}
       <div class="ledger-turn" data-line="${row.line}" data-turn-index="${escapeHtml(turn?.sourceTurnIndex ?? row.turnIndex)}"${fold ? ` data-fold="${fold.key}"` : ""}>${turnBody(turn)}</div>`;
-  }).join("") : "";
+  }).join("");
   return `
     <div class="ledger${ledger.hasRail || stop ? " has-rail" : ""}${showTurns ? " has-turns" : ""}">
       <div class="ledger-rail" aria-hidden="true"></div>
       <div class="ledger-marks" aria-hidden="true">${marks}${ledger.afterStopLine >= 0 ? `<div class="ledger-after" data-line="${ledger.afterStopLine}">After the meeting</div>` : ""}${stop ? `<div class="ledger-mark stop ledger-stop" title="${escapeHtml(stop.label)}"><span>${escapeHtml(timeLabel(stop.seconds))}</span><i></i></div>` : ""}</div>
       <div class="ledger-note">
         <textarea class="notes-area meeting-notes-editor ledger-editor" data-field="${escapeHtml(field)}" data-meeting-id="${escapeHtml(meetingId)}" aria-label="Your meeting notes" placeholder="${escapeHtml(placeholder)}" ${editable ? "" : "disabled"}>${escapeHtml(text)}</textarea>
-        <div class="ledger-mirror" aria-hidden="true" data-text-length="${lines.join("\n").length}">${lines.map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("")}</div>
+        <div class="ledger-mirror" aria-hidden="true" data-text-length="${lines.join("\n").length}">${lines.map((line, index) => `<div class="ledger-mirror-line" data-line="${index}">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("")}</div>
       </div>
       ${showTurns ? `<div class="ledger-turns">${turnColumn}</div>` : ""}
     </div>
@@ -1812,7 +1834,7 @@ function syncLedgerMirror(editor, mirror) {
   const value = editor.value || "";
   if (mirror.dataset.text === value) return;
   mirror.dataset.text = value;
-  mirror.innerHTML = value.split("\n").map((line) => `<div class="ledger-mirror-line">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("");
+  mirror.innerHTML = value.split("\n").map((line, index) => `<div class="ledger-mirror-line" data-line="${index}">${line ? escapeHtml(line) : "&nbsp;"}</div>`).join("");
 }
 
 // Measures each line's position in the mirror and places the rail marks, the
@@ -1929,6 +1951,7 @@ function layoutLedgers({ recheck = true } = {}) {
       bottom = Math.max(bottom, noteHeight + 36);
     }
     ledger.style.minHeight = `${bottom}px`;
+    updateLedgerInspection(ledger);
   }
 }
 
@@ -4634,6 +4657,10 @@ async function initialize() {
         .catch(reportError);
     }
   }, 900);
+}
+
+for (const event of ["pointerover", "pointerout", "focusin", "focusout"]) {
+  root.addEventListener(event, queueLedgerInspection);
 }
 
 document.addEventListener("click", handleClick);
