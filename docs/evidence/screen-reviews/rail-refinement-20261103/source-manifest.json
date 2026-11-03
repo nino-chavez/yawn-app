@@ -16,10 +16,12 @@
     "apps/desktop/ui/settings.js": "3d56b13002a20900f84784b2486461c584d24d12c38e7aaebe106f19ecf047c7",
     "apps/desktop/ui-harness/runner.swift": "5950893a0058b9b0d2797aa306110604c6f97e522f5ff57de9266813c8eae3c5",
     "apps/desktop/ui-harness/inspection-frame.js": "3e7a3049cd86a1232075e8b38a6f29ed9153c959f081f18d441d0b8597f575c2",
-    "apps/desktop/ui-harness/tauri-stub.js": "06c9cad93fdb793acb505d2cfbe22730c2abc82734d221805af006208ff7a1e1",
+    "apps/desktop/ui-harness/tauri-stub.js": "1b34158864d423fbb596e9ce81def0b7e3315fea0852eaffb8c4fd145db50b72",
     "apps/desktop/ui-harness/harness.html": "90bdccf6ebde032136349c3106d8d747b33e9ccfb236ddc7bbb294eef603aa42",
-    "apps/desktop/ui-harness/rail.contract.json": "f05237186b838eb11ab1c313bc20083bda8a75b19439ff11087a8a6e649af378"
+    "apps/desktop/ui-harness/rail.contract.json": "f05237186b838eb11ab1c313bc20083bda8a75b19439ff11087a8a6e649af378",
+    "apps/desktop/ui-harness/still.js": "a2bda08a766ccf71dbc2ac33aa901a5e0b94e77c2c41ffdc01dabe7e3c765a3b",
+    "apps/desktop/ui-harness/run.sh": "37e1dfa6b011d719bd455481dc510e177936f603a9bcec1e3b9357e42dc3c4bd"
   },
-  "captureMode": "run.sh inspection-frames; background by default",
+  "captureMode": "run.sh inspection-frames plus light recording recheck; corrected final source, background; all eight byte-identical to final cold-reviewed captures",
   "frames": "final-frames/manifest.json"
 }

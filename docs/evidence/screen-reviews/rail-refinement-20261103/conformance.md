@@ -45,3 +45,12 @@ rewrite the independent reviewers' verdicts or imply an installed-app review.
 Validation: 215 frontend tests; four complete Chromium/WebKit light/dark
 journeys under the packaged CSP; native inspection, Rail fidelity and capture
 undo checks. Durable full logs: repository `.artifacts/rail-refinement-20261103`.
+
+After source-review fixes, the final-source capture run and light-recording
+recheck reproduced all eight `final-frames/` PNG hashes exactly. The first light
+recording recheck caught the live clock at 0:30 rather than 0:31; the second
+caught the reviewed instant. No frame was edited. A fresh independent cold pass
+accepted all eight (`cold-final.md`). The complete background `run.sh all` gate
+passed: native capture/library undo, smoke, native inspection and four headless
+Chromium/WebKit light/dark journeys, including repeated note-to-turn links and
+real-DOM sheet animation checks. The corrected frontend suite remains 215/215.
