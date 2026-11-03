@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Yawn undo harness</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="styles.css" />
+  <script>{const p=new URLSearchParams(location.search);if(p.get('study')==='refined')document.documentElement.dataset.yawnStudy='refined';if(['light','dark'].includes(p.get('appearance'))){try{localStorage.setItem('yawn.appearance',p.get('appearance'));}catch{}document.documentElement.dataset.theme=p.get('appearance');}}</script>
+    <link rel="stylesheet" href="refined.css">
+    <script src="relationships.js" defer></script>
+  </head>
+  <body>
+    <div id="app" aria-live="polite"></div>
+    <script src="harness-nonce.js"></script>
+    <script src="tauri-stub.js"></script>
+    <script src="study-stub.js"></script>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

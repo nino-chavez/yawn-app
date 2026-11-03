@@ -1,0 +1,170 @@
+[
+  {
+    "id": "01-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "01-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "02-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "02-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "03-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "03-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "04-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "04-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "05-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "05-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "06-light.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "06-dark.png",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "07-light.png",
+    "viewport": {
+      "width": 580,
+      "height": 640
+    },
+    "appearance": "light",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  },
+  {
+    "id": "07-dark.png",
+    "viewport": {
+      "width": 580,
+      "height": 640
+    },
+    "appearance": "dark",
+    "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
+    "textSize": "project default fixed text size",
+    "contrast": "OS accessibility setting unverified; no override applied",
+    "motion": "default; still frame"
+  }
+]
