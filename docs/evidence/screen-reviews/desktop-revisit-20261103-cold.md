@@ -1,14 +1,21 @@
 ---
 kind: cold
-scope: desktop-revisit-20261103 rendered frames
-verdict: revise
+surface: Yawn desktop review prototype
+build: Uncommitted study on fc23a11 before the Settings-host fix; superseded by 917c136
+source_capture: Original manifest and blank Settings frames superseded; meeting frames retained
+reviewer: Codex worker 01a1a104-9c51-71c0-94c7-f9757d8d129c via Operator dispatch 2c230efa-4a07-492e-9f86-e7c9be83d340
+implementer: Codex parent chat 01a198a4-399c-7363-b9d1-babb0e76f147
+cold: true
+device: Offscreen WKWebView content on this Mac; 1080x900 main and 580x640 Settings; default text; OS contrast unverified
+states: 01 resting, 02 related, 03 expanded, 04 recording, 05 empty, 06 interrupted, 07 Settings; light and dark
+verdict: revise; meeting states accepted, original Settings frames blank; see focused verification
 ---
 
 # Cold screen review
 
 ## Evidence limits
 
-Reviewed only the 14 PNG frames and `frames/manifest.json`. Frames are offscreen WKWebView captures with synthetic data, not installed-app acceptance. This review does not verify interaction, accessibility settings, motion, audio, storage, or real-meeting behavior.
+Reviewed only the original 14 PNG frames and `frames/manifest.json`. The current `07-*` files were replaced after this review; the original blank Settings images were not retained. This is the historical finding, not a verdict on the corrected files. See [focused verification](desktop-revisit-20261103-settings-fix.md) for the corrected capture verdict. Frames are offscreen WKWebView captures with synthetic data, not installed-app acceptance. This review does not verify interaction, accessibility settings, motion, audio, storage, or real-meeting behavior.
 
 ## Overall
 

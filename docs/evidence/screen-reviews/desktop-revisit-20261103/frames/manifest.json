@@ -9,7 +9,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "830430365deae8b23dc4fc97b484713c020ab245a43ee3bb897cf88a9074a4b2"
   },
   {
     "id": "01-dark.png",
@@ -21,7 +22,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "153e5eeaa957ef6a2e13f51dfa82b06a388dbf4db01d01f62c7e317c67e9aa46"
   },
   {
     "id": "02-light.png",
@@ -33,7 +35,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "a293f513185d0377a233ee31427182e811595e994394ef7bfe8ca5801c022fb3"
   },
   {
     "id": "02-dark.png",
@@ -45,7 +48,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "b499999386c1f2fa42c8eef9d7b72ba34b1d38accfca3f1fe3353fa3b5f04d45"
   },
   {
     "id": "03-light.png",
@@ -57,7 +61,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "74c62beac68a0d49f78b9c673633a774ca44626595cdc6751cceba722115ca13"
   },
   {
     "id": "03-dark.png",
@@ -69,7 +74,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "78a738988011a4f02df874d8a60353c29b2abefe354c58dab4dd93e10bb30efd"
   },
   {
     "id": "04-light.png",
@@ -81,7 +87,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "37662fdc15d164c29403be8043cf5ff91b2723b3c14394fc1e47b10f0be7264e"
   },
   {
     "id": "04-dark.png",
@@ -93,7 +100,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "8ca8e9667fccb181b508363005b93f3fe472952e970566c4a5eb2913ddcbed6a"
   },
   {
     "id": "05-light.png",
@@ -105,7 +113,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "dde7b05c68e121dd5c692125eabb64a3501410d10604893fb2cc34cbc2f9376a"
   },
   {
     "id": "05-dark.png",
@@ -117,7 +126,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "30d96f76ee833b0b36afdde11ac529f9dd43ad2bec7ae19d0f76c02baf02918a"
   },
   {
     "id": "06-light.png",
@@ -129,7 +139,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "b54fa7f0eb65e16b0f02344614dacc595fa679ee9835fa30ce64e3aa663019c2"
   },
   {
     "id": "06-dark.png",
@@ -141,7 +152,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "8b79ed2adec32e2808faba4691cb8299b9d9930558b0f40dbe135a8f2ef72ba5"
   },
   {
     "id": "07-light.png",
@@ -153,7 +165,8 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "318b524f1270fcf1e3e6751db4bf50e0f7b97334a286a2b626a7650e6b1dbfa3"
   },
   {
     "id": "07-dark.png",
@@ -165,6 +178,7 @@
     "renderer": "Offscreen native WKWebView content, synthetic command bridge; not installed-app acceptance",
     "textSize": "project default fixed text size",
     "contrast": "OS accessibility setting unverified; no override applied",
-    "motion": "default; still frame"
+    "motion": "default; still frame",
+    "sha256": "aca6d699c136936d4f778a38e3dc35ad3fff71375e6612d1f6dd17f7f36b1994"
   }
 ]

@@ -39,7 +39,7 @@ def capture(binary):
             a = next((r for r in records if r['study'] == 'current' and r['mode'] == mode and (r['probe'] == 'none') and (r['appearance'] == appearance)))
             b = next((r for r in records if r['study'] == 'refined' and r['mode'] == mode and (r['probe'] == 'none') and (r['appearance'] == appearance)))
             assert a['result']['notes'] == b['result']['notes']
-    sourceFiles = ['apps/desktop/ui/main.js', 'apps/desktop/ui/styles.css', 'apps/desktop/ui/tokens.css', 'apps/desktop/ui-harness/revisit/refined.css', 'apps/desktop/ui-harness/revisit/relationships.js', 'apps/desktop/ui-harness/revisit/runner.swift', 'apps/desktop/ui-harness/revisit/study-stub.js', 'apps/desktop/ui-harness/revisit/harness.html', 'apps/desktop/ui-harness/revisit/capture-state.js', 'apps/desktop/ui-harness/revisit/settings-retirement.html', 'apps/desktop/ui/settings.js', 'apps/desktop/ui/settings-window.js', 'apps/desktop/ui/settings-window.css', 'apps/desktop/ui/settings-standalone.css']
+    sourceFiles = sorted({str(file.relative_to(root)) for file in served_sources + [harness / 'revisit/capture-state.js', harness / 'revisit/runner.swift']})
     manifest = {'renderer': 'Offscreen native WKWebView; same frontend, stubbed Tauri bridge; synthetic meetings', 'limits': 'Not installed-app/backend acceptance. Related/expanded native frames pose the relationship state explicitly because an offscreen window has no physical hover/keyboard focus; real interaction is tested separately in the browser.', 'sourceHead': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, stdin=subprocess.DEVNULL, timeout=10, text=True).strip(), 'sourceHashes': {p: hashlib.sha256((root / p).read_bytes()).hexdigest() for p in sourceFiles}, 'records': records}
     (out / 'native-results.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print('Completed', len(records), 'native captures', flush=True)
@@ -49,15 +49,26 @@ def stop(_signum, _frame):
 signal.signal(signal.SIGTERM, stop)
 with tempfile.TemporaryDirectory(prefix='yawn-review-') as scratch:
     serve = Path(scratch)
+    served_sources = []
     for file in (root / 'apps/desktop/ui').iterdir():
         if file.suffix in ['.js', '.mjs', '.css', '.html'] and file.name != 'index.html' and (not file.name.endswith('.test.mjs')):
             (serve / file.name).symlink_to(file)
+            served_sources.append(file)
     harness = root / 'apps/desktop/ui-harness'
     for file in [harness / 'tauri-stub.js', harness / 'rail.contract.json', *[harness / 'revisit' / name for name in ['index.html', 'harness.html', 'settings-retirement.html', 'refined.css', 'relationships.js', 'study-stub.js']]]:
         (serve / file.name).symlink_to(file)
+        served_sources.append(file)
     (serve / 'captures').symlink_to(out, target_is_directory=True)
     (serve / 'harness-nonce.js').write_text('window.__harnessNonce = ' + json.dumps(nonce) + ';\n')
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(serve))
+    ready = threading.Event()
+    class ReviewHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            path = self.path.split('?', 1)[0]
+            if not ready.is_set() and (path in ['/', '/index.html'] or path.startswith('/captures/')):
+                self.send_error(503, 'Review captures are being verified')
+                return
+            super().do_GET()
+    handler = functools.partial(ReviewHandler, directory=str(serve))
     server = http.server.ThreadingHTTPServer(('127.0.0.1', port), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -67,9 +78,13 @@ with tempfile.TemporaryDirectory(prefix='yawn-review-') as scratch:
             subprocess.run(['swiftc', '-O', str(harness / 'revisit/runner.swift'), '-o', str(binary)], stdin=subprocess.DEVNULL, timeout=120, check=True)
             capture(binary)
         manifest = json.loads((out / 'native-results.json').read_text())
+        expected_sources = {str(file.relative_to(root)) for file in served_sources + [harness / 'revisit/capture-state.js', harness / 'revisit/runner.swift']}
+        if set(manifest['sourceHashes']) != expected_sources:
+            raise RuntimeError('Native frame input set changed; restart with --capture')
         for name, digest in manifest['sourceHashes'].items():
             if hashlib.sha256((root / name).read_bytes()).hexdigest() != digest:
                 raise RuntimeError('Native frames are stale; restart with --capture: ' + name)
+        ready.set()
         print(f'Yawn comparison ready: http://127.0.0.1:{port}/', flush=True)
         thread.join()
     except KeyboardInterrupt:
