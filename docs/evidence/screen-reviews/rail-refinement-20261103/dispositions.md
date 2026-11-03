@@ -43,3 +43,21 @@ A packaging check found the comparison-style inline rules would violate the
 existing `style-src 'self'` CSP. The implementation now uses static external CSS
 and derives inspected classes from browser hover/focus state after layout. The
 browser journeys enforce the actual packaged CSP; no security policy is relaxed.
+
+The exact-commit source review identified stale build references in the first
+two cold records. They now point at `reviewed-source-manifest.json`. A fresh
+cold reviewer inspected all eight final frames and accepted each, with missing
+verified meeting context noted separately from layout defects (`cold-final.md`).
+
+The review also found that multiple timed note lines could map to one retained
+turn. The renderer now records every matching logical line on the passage and
+disclosure; inspection emphasizes all matching lines and marks. A two-note,
+one-passage fixture is exercised in all four browser journeys.
+
+Inspection now runs in the routine `run.sh all` gate. Playwright is pinned in
+the desktop dev dependencies; browser and server defaults use the same port.
+The full gate exposed two stale checks: Rename must first open the More menu,
+and hidden native views emit no entrance-animation events. The smoke scenario
+now uses the existing menu path. The unchanged real-DOM sheet scenario runs in
+a headless browser, where animations render, instead of accepting zero events
+or showing a native window. No production sheet behavior changed.

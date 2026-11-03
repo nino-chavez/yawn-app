@@ -1,7 +1,7 @@
 ---
 kind: cold
 surface: Yawn desktop Rail refinement
-build: Input hashes in source-manifest.json; base fc23a11 plus the captured frontend change
+build: Input hashes in reviewed-source-manifest.json; base fc23a11 plus the captured frontend change
 reviewer: Codex worker 01a1a1cb-cda7-7f02-8ca0-63f03542c3a4; Operator dispatch 5bcf3cbc-bd7d-403f-aa8c-f582339294fa
 implementer: Codex parent chat 01a198a4-399c-7363-b9d1-babb0e76f147
 cold: true

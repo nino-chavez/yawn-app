@@ -15,9 +15,12 @@
     "preview-build": "npm run runtime-fresh && tauri build --config src-tauri/tauri.preview.conf.json --features preview-surface && ../../scripts/prepare-preview-bundle.sh sign",
     "preview-verify": "../../scripts/prepare-preview-bundle.sh verify",
     "fixture-build": "npm run runtime-fresh && tauri build --config src-tauri/tauri.fixture.conf.json --features preview-surface && LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh sign",
-    "fixture-verify": "LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh verify"
+    "fixture-verify": "LMN_BUNDLE_APP=\"../../target/release/bundle/macos/Yawn Fixture.app\" ../../scripts/prepare-preview-bundle.sh verify",
+    "test:ui:harness": "ui-harness/run.sh all",
+    "test:ui:interaction": "ui-harness/run.sh inspection-browser"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tauri-apps/cli": "^2.8.0"
   }
 }

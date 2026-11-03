@@ -1,7 +1,7 @@
 ---
 kind: cold
 surface: Yawn desktop inspection, focused completion
-build: Input hashes in source-manifest.json; inspected and expanded states
+build: Input hashes in reviewed-source-manifest.json; inspected and expanded states
 reviewer: Codex worker 01a1a1ce-f805-7153-9fe2-8ec444d35ee2; Operator dispatch 200f71f6-42fe-4f88-ba04-b430059ccb0a
 implementer: Codex parent chat 01a198a4-399c-7363-b9d1-babb0e76f147
 cold: true

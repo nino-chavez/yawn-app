@@ -46,6 +46,8 @@ step("library note editor kept node identity", q('[data-field="library-operator-
 const details = q("details.transcript-disclosure");
 details.open = true;
 await sleep(20);
+q('[data-action="toggle-meeting-management"]').click();
+await sleep(50);
 const renameOpen = q('[data-action="rename-meeting"]');
 renameOpen.click();
 await sleep(50);

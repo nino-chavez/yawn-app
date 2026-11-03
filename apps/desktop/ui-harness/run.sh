@@ -34,7 +34,7 @@ printf '%s' "$ready_token" > "$serve/harness-ready.txt"
 python3 -m http.server "$port" --directory "$serve" --bind 127.0.0.1 >/dev/null 2>&1 &
 server_pid=$!
 
-if [ "$mode" != "serve" ]; then
+if [ "$mode" != "serve" ] && [ "$mode" != "inspection-browser" ] && [ "$mode" != "sheets" ]; then
   swiftc -O runner.swift -o "$build_dir/runner"
 fi
 # Readiness is a token only this invocation's server can return. If the port
@@ -119,7 +119,8 @@ case "$mode" in
     done
     ;;
   smoke) run library smoke.js ;;
-  sheets) run library sheets.js ;;
+  sheets) HARNESS_ORIGIN="http://127.0.0.1:$port" node "$PWD/inspection-browser.mjs" --sheets ;;
+  inspection-browser) HARNESS_ORIGIN="http://127.0.0.1:$port" node "$PWD/inspection-browser.mjs" ;;
   inspection) run ledger inspection.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}" ;;
   inspection-frames)
     : "${HARNESS_CAPTURE_DIR:?inspection-frames needs HARNESS_CAPTURE_DIR}"
@@ -172,8 +173,9 @@ case "$mode" in
     run library scenario.js
     echo "== smoke: interactive flows under the in-place patcher =="
     run library smoke.js
-    echo "== sheets: entrance animation fires once across repeated render ticks =="
-    run library sheets.js
+    echo "== inspection: native editor, CSP browser journeys and sheet animations =="
+    run ledger inspection.js "&width=1080&height=900&appearance=${HARNESS_APPEARANCE:-dark}"
+    HARNESS_ORIGIN="http://127.0.0.1:$port" node "$PWD/inspection-browser.mjs"
     ;;
-  *) echo "usage: run.sh [serve|inspection|inspection-frames|capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|trash|trash-negative|trash-frames|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
+  *) echo "usage: run.sh [serve|inspection-browser|inspection|inspection-frames|capture|stop-status|stop-lands|mic-change|transcribing-meeting|transcribing-meeting-legacy|progress|progress-frames|library|search|trash|trash-negative|trash-frames|smoke|sheets|fidelity|still <mode>|palette <mode> <scenario> <name>|still-fold|still-settings|note-retirement|all]" >&2; exit 2 ;;
 esac
