@@ -1,0 +1,58 @@
+[
+  {
+    "frame": "01-light.png",
+    "source": "refined/ledger-light.png"
+  },
+  {
+    "frame": "01-dark.png",
+    "source": "refined/ledger-dark.png"
+  },
+  {
+    "frame": "02-light.png",
+    "source": "refined/ledger-related-light.png"
+  },
+  {
+    "frame": "02-dark.png",
+    "source": "refined/ledger-related-dark.png"
+  },
+  {
+    "frame": "03-light.png",
+    "source": "refined/ledger-expanded-light.png"
+  },
+  {
+    "frame": "03-dark.png",
+    "source": "refined/ledger-expanded-dark.png"
+  },
+  {
+    "frame": "04-light.png",
+    "source": "refined/capture-light.png"
+  },
+  {
+    "frame": "04-dark.png",
+    "source": "refined/capture-dark.png"
+  },
+  {
+    "frame": "05-light.png",
+    "source": "refined/first-run-light.png"
+  },
+  {
+    "frame": "05-dark.png",
+    "source": "refined/first-run-dark.png"
+  },
+  {
+    "frame": "06-light.png",
+    "source": "refined/interrupted-light.png"
+  },
+  {
+    "frame": "06-dark.png",
+    "source": "refined/interrupted-dark.png"
+  },
+  {
+    "frame": "07-light.png",
+    "source": "refined/settings-light.png"
+  },
+  {
+    "frame": "07-dark.png",
+    "source": "refined/settings-dark.png"
+  }
+]
