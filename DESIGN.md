@@ -113,6 +113,25 @@ were darkened on 2026-10-15 (the concept frames' first values failed). The
 rail line and the scrub track are guides, not meaning: the dots, the playhead
 and the ticks on them carry the meaning and use Label or Moment.
 
+## Note and transcript inspection — selected November 3, 2026
+
+The [selected refinement](decisions/desktop-rail-refinement-2026-11-03.md) keeps
+Rail’s layout and palette. Hovering a retained transcript passage, or reaching
+its existing disclosure with the keyboard, marks the corresponding note line,
+transcript passage and elapsed-time mark with Moment blue and its soft tint.
+The cue clears when inspection ends. A live recording mark keeps Record red.
+
+The note remains one native textarea. Its transparent, accessibility-hidden
+mirror carries the tint without adding another editor or keyboard stop.
+Inspection follows the rendered logical line indexes, including line
+insertions and wrapping. Existing fold expansion, Escape, focus return, note
+saving and native undo remain intact. Disclosure controls have a 22px minimum
+height; a faint guide separates transcript evidence from the primary writing
+column. No animation, audio-seeking control or backend command is added.
+
+Nothing is removed, combined or hidden. Transcript emphasis appears during
+inspection; its content and disclosure actions remain available at rest.
+
 ## Type
 
 The system sans throughout, with one exception: on the Mac, the meeting

@@ -47,8 +47,14 @@ final class Delegate: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             }
         }
         window.contentView = webView
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Routine checks stay in the background. Opt in only for a requested
+        // interactive native review; offscreen snapshots use the same engine.
+        if ProcessInfo.processInfo.environment["HARNESS_SHOW_WINDOW"] == "1" {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            window.orderOut(nil)
+        }
         webView.load(URLRequest(url: pageURL))
         DispatchQueue.main.asyncAfter(deadline: .now() + 45) {
             FileHandle.standardError.write(Data("TIMEOUT\n".utf8))

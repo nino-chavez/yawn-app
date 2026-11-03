@@ -178,6 +178,8 @@
     moments: [{ line: 0, seconds: 48 }, { line: 1, seconds: 130 }, { line: 2, seconds: 245 }, { line: 3, seconds: 440 }, { line: 4, seconds: 735 }, { line: 5, seconds: 947 }, { line: 6, seconds: 1225 }],
     unreadable: false,
   };
+  // Two timed note lines can belong to one retained passage.
+  if (new URLSearchParams(location.search).has("repeat-note")) ledgerNote.moments[1].seconds = 48;
   const currentTurns = [
     { start: 1, end: 3, speaker: "Me", text: "alpha decision about the launch", sourceTurnIndex: 0 },
     { start: 4, end: 6, speaker: "Them", text: "bravo follow-up owed by Friday", sourceTurnIndex: 1 },

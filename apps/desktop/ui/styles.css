@@ -3336,6 +3336,37 @@ html, body, #app {
   padding-left: 24px;
 }
 
+.ledger-turns::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 1px;
+  background: var(--separator);
+  pointer-events: none;
+}
+
+/* The pointer-inert mirror carries color beneath the single native textarea.
+   Its text stays transparent and hidden from assistive technology. */
+.ledger.has-turns .ledger-mirror {
+  visibility: visible;
+  color: transparent;
+  z-index: 0;
+}
+.ledger.has-turns .ledger-editor {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+.ledger.has-turns .ledger-mirror-line { border-radius: 3px; }
+.ledger .ledger-mirror-line.is-inspected,
+.ledger .ledger-turn.is-inspected { background: var(--moment-soft); }
+.ledger .ledger-mark.is-inspected:not(.live) span { color: var(--moment); }
+.ledger .ledger-mark.is-inspected:not(.live) i { background: var(--moment); }
+.ledger .ledger-turn.is-inspected { box-shadow: inset 2px 0 0 var(--moment); }
+
+
 .ledger-turn {
   position: absolute;
   left: 0;
@@ -3371,6 +3402,8 @@ html, body, #app {
 }
 
 .ledger-fold {
+  min-height: 22px;
+  padding: 2px 7px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -3391,8 +3424,8 @@ html, body, #app {
 }
 
 .ledger-fold:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--moment);
+  outline-offset: 2px;
 }
 
 /* An open fold: the folded turns in place under it, set like the turn rows

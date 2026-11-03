@@ -1,0 +1,82 @@
+[
+  {
+    "id": "capture-dark.png",
+    "sha256": "8ca8e9667fccb181b508363005b93f3fe472952e970566c4a5eb2913ddcbed6a",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": false,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "capture-light.png",
+    "sha256": "37662fdc15d164c29403be8043cf5ff91b2723b3c14394fc1e47b10f0be7264e",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": false,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-expanded-dark.png",
+    "sha256": "cec4593a55f06c1e09380c4300bce1e028522947762c8af4733d1b319d5ff31e",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": true,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-expanded-light.png",
+    "sha256": "b4e436fc8454ac6203d199be8fc00d804070b193c0dfcb12b3ef84239d27b537",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": true,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-related-dark.png",
+    "sha256": "260524d569c88aa5c659e3ec63d7b3613b95dd68b588f8bc7bc13a23d1b34742",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": true,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-related-light.png",
+    "sha256": "7025ea434c64ea754db70e3bf4cccec6000394ab1ec6b8a5461f18e9e5342d6b",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": true,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-rest-dark.png",
+    "sha256": "c131eb1011bc86db38ee71f16b2de7ad1e48c542bdd3e21d122eeb7395437675",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": false,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  },
+  {
+    "id": "ledger-rest-light.png",
+    "sha256": "83af6ba9e16085a7d68305f494b830d417d1d2c10586eec12bef6457a81beea8",
+    "viewport": {
+      "width": 1080,
+      "height": 900
+    },
+    "pose": false,
+    "renderer": "Offscreen WKWebView; synthetic bridge; final static-CSS source"
+  }
+]
