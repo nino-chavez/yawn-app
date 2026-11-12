@@ -48,6 +48,13 @@ SENSITIVE_KEYS = frozenset(
         "words",
     }
 )
+# Invented test material may hold speech-shaped fields. A file is exempt only
+# when it sits directly in this directory AND its top-level object carries
+# `"synthetic": true`. Either alone is not enough, and the index and the
+# working copy are judged separately, so a staged file without the header is
+# still refused. Never put a real recording's text here: the header is an
+# attestation that a person wrote the content from scratch.
+SYNTHETIC_FIXTURE_DIR = "notes/fixtures/synthetic"
 TRANSCRIPT_SCHEMAS = (
     "capture-protocol",
     "evidence-bound-note",
@@ -144,12 +151,30 @@ def find_sensitive_content(value: object) -> list[str]:
     return findings
 
 
-def parse_and_scan(payload: bytes, label: str) -> list[str]:
+def in_synthetic_dir(relative: Path) -> bool:
+    return relative.parent.as_posix() == SYNTHETIC_FIXTURE_DIR
+
+
+def declares_synthetic(document: object) -> bool:
+    return isinstance(document, dict) and document.get("synthetic") is True
+
+
+def parse_and_scan(payload: bytes, label: str, relative: Path | None = None) -> list[str]:
     try:
         document = json.loads(payload)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         return [f"{label}: cannot inspect tracked JSON safely ({exc.__class__.__name__})"]
+    if relative is not None and in_synthetic_dir(relative) and declares_synthetic(document):
+        return []
     return [f"{label}: {finding}" for finding in find_sensitive_content(document)]
+
+
+def synthetic_fixtures(repo: Path) -> list[Path]:
+    return [
+        relative
+        for relative in [*tracked_json(repo), *untracked_json(repo)]
+        if in_synthetic_dir(relative)
+    ]
 
 
 def scan_repo(repo: Path) -> list[str]:
@@ -158,15 +183,19 @@ def scan_repo(repo: Path) -> list[str]:
     for relative in tracked:
         path_label = relative.as_posix()
         index_payload = git(repo, "show", f":{path_label}")
-        findings.extend(parse_and_scan(index_payload, f"index:{path_label}"))
+        findings.extend(parse_and_scan(index_payload, f"index:{path_label}", relative))
 
         worktree_path = repo / relative
         if worktree_path.exists():
-            findings.extend(parse_and_scan(worktree_path.read_bytes(), f"worktree:{path_label}"))
+            findings.extend(
+                parse_and_scan(worktree_path.read_bytes(), f"worktree:{path_label}", relative)
+            )
 
     for relative in untracked_json(repo):
         path_label = relative.as_posix()
-        findings.extend(parse_and_scan((repo / relative).read_bytes(), f"untracked:{path_label}"))
+        findings.extend(
+            parse_and_scan((repo / relative).read_bytes(), f"untracked:{path_label}", relative)
+        )
     return findings
 
 
@@ -193,6 +222,34 @@ def run_self_test() -> int:
         ),
         "human-language object key is refused": bool(hostile_locations),
     }
+    speech_shaped = json.dumps({"synthetic": True, "turns": [{"text": "invented line"}]})
+    unmarked = json.dumps({"turns": [{"text": "invented line"}]})
+    marked_false = json.dumps({"synthetic": "true", "turns": [{"text": "invented line"}]})
+    inside = Path(SYNTHETIC_FIXTURE_DIR) / "fixture.json"
+    nested = Path(SYNTHETIC_FIXTURE_DIR) / "deeper" / "fixture.json"
+    outside = Path("notes") / "fixture.json"
+    checks.update(
+        {
+            "synthetic fixture with header in its directory passes": not parse_and_scan(
+                speech_shaped.encode(), "t", inside
+            ),
+            "synthetic directory without header is refused": bool(
+                parse_and_scan(unmarked.encode(), "t", inside)
+            ),
+            "header that is not literally true is refused": bool(
+                parse_and_scan(marked_false.encode(), "t", inside)
+            ),
+            "header outside the directory is refused": bool(
+                parse_and_scan(speech_shaped.encode(), "t", outside)
+            ),
+            "header in a subdirectory is refused": bool(
+                parse_and_scan(speech_shaped.encode(), "t", nested)
+            ),
+            "header without a path is refused": bool(
+                parse_and_scan(speech_shaped.encode(), "t")
+            ),
+        }
+    )
     failed = [name for name, passed in checks.items() if not passed]
     if failed:
         for name in failed:
@@ -226,7 +283,8 @@ def main() -> int:
     print(
         "privacy gate: OK "
         f"({len(tracked_json(repo))} tracked and "
-        f"{len(untracked_json(repo))} untracked JSON files inspected)"
+        f"{len(untracked_json(repo))} untracked JSON files inspected; "
+        f"{len(synthetic_fixtures(repo))} in {SYNTHETIC_FIXTURE_DIR}/ judged by their header)"
     )
     return 0
 
