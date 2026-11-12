@@ -180,12 +180,18 @@ receipts stay in the owner's
   column.** All three engines heard "N4417", so the voice said "en", not
   "E-N-G". The capture-path arm, read by a person, tests it properly.
 
-**A separate finding.** In the installed Yawn 0.6.19, the bundled Python is
-killed by the system (exit 137) after importing `numba`, and so cannot import
-`mlx_whisper`; the first Whisper attempts failed this way, and the run above
-used a separate environment with the same pinned versions (`mlx 0.29.3`,
-`mlx-whisper 0.4.3`, `numba 0.66.0`), which imports cleanly. This was seen
-from a shell. Whether the app's own worker hits it is not verified.
+**A separate finding, diagnosed the same day: the app is not affected.** The
+first Whisper attempts were killed (exit 137) because they ran the bundle's
+`bin/python3`. In the installed 0.6.19 bundle, `python3` and `python` are
+separate copies of the interpreter, signed with the Hardened Runtime but with no
+entitlements. Importing `numba` runs llvmlite's JIT self-check
+(`check_jit_execution`), and macOS kills a hardened process that executes
+JIT-written code without `com.apple.security.cs.allow-unsigned-executable-memory`.
+`scripts/sign-notarize.sh` grants that entitlement to `bin/python3.12` only,
+and `app-runtime.json` points the app at `python-runtime/bin/python3.12`. From
+the same shell, `bin/python3.12` imports `mlx_whisper.transcribe` and `numba`
+and passes the JIT check. A transcription inside the app was not run. Research
+runs against the installed runtime must use `bin/python3.12`.
 
 **Still open:** the capture-path arm (about ten minutes of the operator's
 time) and the note arm (deferred until generation returns).

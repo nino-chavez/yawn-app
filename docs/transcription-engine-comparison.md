@@ -277,7 +277,9 @@ was changed.
 Use `run_comparison.py --help` for the sequential engine runner and
 `replay_notes.py --help` for the bounded replay inputs. The native probe builds
 with `swift build -c release` in its `native` directory. Whisper runs with the
-installed Yawn Python runtime and the installed catalog/model paths. Results
+installed Yawn Python runtime (pass `bin/python3.12` as `--python`: the bundle's
+`python3` and `python` lack the JIT entitlement, and importing `numba` kills
+them) and the installed catalog/model paths. Results
 must go outside app and repository storage. `summarize_results.py` derives the
 content-free receipt from those saved artifacts; it needs `rapidfuzz==3.14.3`,
 pinned in that directory's `requirements.txt`. Layer it on the research `.venv`,
@@ -1057,7 +1059,10 @@ Not measured:
   identical runs. These figures are not comparable with the timing table above.
 - A same-machine Whisper baseline. The installed runtime's `import numba`
   exited with SIGKILL when launched from this session's command environment.
-  The cause was not established.
+  Diagnosed on 2026-11-11: that run used the bundle's `bin/python3`, which is
+  signed without the JIT entitlement that `bin/python3.12`, the interpreter the
+  app runs, carries. See the
+  [planted-trap results](planted-trap-evaluation-scope.md#results--direct-decode-arm-2026-11-11).
 - A same-day FluidAudio rerun, the private two-leg captures, note generation,
   and any approval. Only the accuracy columns are compared with the earlier run.
 
