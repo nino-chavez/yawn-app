@@ -1,0 +1,66 @@
+{
+  "synthetic": true,
+  "schema_version": 1,
+  "provenance": "Invented on 2026-11-11 for the planted-trap check (docs/planted-trap-evaluation-scope.md). No real meeting, person, or recording is the source.",
+  "speakers": {
+    "Me": "near leg: the operator's microphone",
+    "Them": "far leg: system audio"
+  },
+  "lines": [
+    {"id": "L01", "speaker": "Me", "text": "Thanks for jumping on. I want to settle the lab refresh and the release date before the end of the week."},
+    {"id": "L02", "speaker": "Them", "text": "Sure. Siobhan sent the quote this morning. The workstation build uses an RTX 4070 Ti Super, and the total came to $1,249 per machine."},
+    {"id": "L03", "speaker": "Me", "text": "Is that with sixteen gigabytes of memory or thirty-two?"},
+    {"id": "L04", "speaker": "Them", "text": "Sixteen. We can go to thirty-two later. The laptops for the design team are M4 Pro with the 14-inch screen."},
+    {"id": "L05", "speaker": "Me", "text": "Okay. The test machines still run Windows 11 24H2, and the two Macs are on macOS 15.4.1. Can we keep those versions through the release?"},
+    {"id": "L06", "speaker": "Them", "text": "Yes. Freezing them is the safer call. Let's agree on that: no operating-system updates until the release ships."},
+    {"id": "L07", "speaker": "Me", "text": "Good, that's decided. Now the release. We are shipping version 2.14.3, and the build server moves to Python 3.13 first."},
+    {"id": "L08", "speaker": "Them", "text": "Nguyen owns the Python upgrade. He said he can finish it by December 3rd."},
+    {"id": "L09", "speaker": "Me", "text": "And the database stays on PostgreSQL. The migration ticket is ENG-4417, and I'll take that one. I'll have it done by Friday."},
+    {"id": "L10", "speaker": "Them", "text": "The network side is the open question. The Cisco switch in rack two drops about fifteen percent of packets under load."},
+    {"id": "L11", "speaker": "Me", "text": "Do we replace it or just move the lab traffic? I don't want to decide that today."},
+    {"id": "L12", "speaker": "Them", "text": "Agreed, let's leave it open. I'll gather the numbers and we can look at them next week. Siobhan, can you book a call for Tuesday at 2:30 p.m.?"},
+    {"id": "L13", "speaker": "Me", "text": "Siobhan isn't on this call, so I'll ask her. Last thing: the logs keep sixty days, not sixteen. Please don't change that."},
+    {"id": "L14", "speaker": "Them", "text": "Understood. Sixty days of logs, sixteen gigabytes per workstation. The full rollout lands in Q1 2027."},
+    {"id": "L15", "speaker": "Me", "text": "Great. I'll send the summary."}
+  ],
+  "traps": [
+    {"id": "T01", "line": "L02", "category": "proper_name", "spoken": "Siobhan", "accepted": ["Siobhan"]},
+    {"id": "T02", "line": "L02", "category": "model_number", "spoken": "RTX 4070 Ti Super", "accepted": ["RTX 4070 Ti Super", "RTX 4070 TI Super", "RTX 4070Ti Super"]},
+    {"id": "T03", "line": "L02", "category": "currency", "spoken": "$1,249", "accepted": ["$1,249", "$1249", "1,249 dollars", "1249 dollars"]},
+    {"id": "T04", "line": "L04", "category": "model_number", "spoken": "M4 Pro", "accepted": ["M4 Pro"]},
+    {"id": "T05", "line": "L05", "category": "version", "spoken": "Windows 11 24H2", "accepted": ["Windows 11 24H2", "Windows 11 24 H2"]},
+    {"id": "T06", "line": "L05", "category": "version", "spoken": "macOS 15.4.1", "accepted": ["macOS 15.4.1", "Mac OS 15.4.1", "MacOS 15.4.1"]},
+    {"id": "T07", "line": "L07", "category": "version", "spoken": "2.14.3", "accepted": ["2.14.3"]},
+    {"id": "T08", "line": "L07", "category": "version", "spoken": "Python 3.13", "accepted": ["Python 3.13"]},
+    {"id": "T09", "line": "L08", "category": "proper_name", "spoken": "Nguyen", "accepted": ["Nguyen"]},
+    {"id": "T10", "line": "L08", "category": "date", "spoken": "December 3rd", "accepted": ["December 3rd", "December 3", "December third", "Dec 3"]},
+    {"id": "T11", "line": "L09", "category": "run_together_name", "spoken": "PostgreSQL", "accepted": ["PostgreSQL", "Postgres SQL", "Postgre SQL"]},
+    {"id": "T12", "line": "L09", "category": "identifier", "spoken": "ENG-4417", "accepted": ["ENG-4417", "ENG 4417", "Eng-4417", "Eng 4417"]},
+    {"id": "T13", "line": "L10", "category": "homophone", "spoken": "Cisco", "accepted": ["Cisco"]},
+    {"id": "T14", "line": "L10", "category": "quantity", "spoken": "fifteen percent", "accepted": ["fifteen percent", "15 percent", "15%"]},
+    {"id": "T15", "line": "L12", "category": "time", "spoken": "2:30 p.m.", "accepted": ["2:30 p.m.", "2:30 pm", "2:30 PM", "2.30 p.m.", "two thirty"]},
+    {"id": "T16", "line": "L13", "category": "near_number", "spoken": "sixty days", "accepted": ["sixty days", "60 days"]},
+    {"id": "T17", "line": "L14", "category": "near_number", "spoken": "sixteen gigabytes", "accepted": ["sixteen gigabytes", "16 gigabytes", "16 GB", "16GB"]},
+    {"id": "T18", "line": "L14", "category": "date", "spoken": "Q1 2027", "accepted": ["Q1 2027", "Q1, 2027"]}
+  ],
+  "note_claims_deferred": {
+    "reason": "New note generation is retired in source. Kept so the script does not change if a note arm returns.",
+    "decisions": [
+      {"line": "L06", "decision": "No operating-system updates on test machines until the release ships."}
+    ],
+    "open_questions": [
+      {"line": "L11", "claim": "Whether to replace the rack-two switch or move lab traffic. Not decided."}
+    ],
+    "action_items": [
+      {"line": "L08", "owner": "Nguyen", "task": "Upgrade the build server to Python 3.13", "deadline": "December 3rd"},
+      {"line": "L09", "owner": "Me", "task": "Database migration, ENG-4417", "deadline": "Friday"},
+      {"line": "L12", "owner": "Them", "task": "Gather switch packet-loss numbers", "deadline": "next week"},
+      {"line": "L13", "owner": "Me", "task": "Ask Siobhan to book a call for Tuesday at 2:30 p.m.", "deadline": "none stated"}
+    ],
+    "traps": [
+      "L12 addresses Siobhan, but L13 says she is absent: the booking owner is Me, not Siobhan.",
+      "L11 is an open question; a note that lists it as a decision fails.",
+      "L13 to L14: sixty applies to days of logs and sixteen to gigabytes; a swap fails."
+    ]
+  }
+}

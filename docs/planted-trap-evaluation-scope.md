@@ -1,7 +1,7 @@
 # Scope — a planted-trap check for exact names and numbers
 
-Status: scoped on 2026-11-11. Nothing is built. Each slice below needs its own
-go-ahead before work starts.
+Status: scoped on 2026-11-11. Slice 1 is built: the operator chose the narrow
+gate exemption the same day. Slices 2 and 3 need their own go-ahead.
 
 **Recommendation:** build a small, synthetic test script with deliberate traps,
 and score transcripts against it. It extends `notes/compare_transcripts.py`; it
@@ -57,20 +57,29 @@ something fails.
   and quantities, proper names, and one near-homophone pair.
 - Each trap records the exact spoken form, the accepted written forms (for
   example `26H2` and `26 H2`), its speaker, and its position in the script.
-- **Privacy gate.** `privacy_gate.py` refuses JSON with keys like `phrase`,
-  `word` and `text`, and has no exemption. Do not pick a different file format
-  to get past it. Choose one before building:
-  - add a narrow exemption: one directory, plus a required `"synthetic": true`
-    header the gate verifies; or
-  - keep the key out of Git with the private evaluation material.
-  The first keeps the fixture reproducible. Either change needs operator
-  approval, because the gate guards real meeting content.
+- **Privacy gate — decided 2026-11-11: narrow exemption.** `privacy_gate.py`
+  now skips a JSON file only when it sits directly in `notes/fixtures/synthetic/`
+  **and** its top-level object has `"synthetic": true`. Either condition alone
+  is refused, as is a subdirectory, a header that is not literally `true`, or a
+  staged copy without the header. The gate's self-test covers each case, and
+  two deliberately broken copies of the gate each failed it. The OK line counts
+  the files judged by their header, so the exemption is visible.
 - The gate already refuses `origin/main` at `8195de7`: about 500 locations,
   including UI-harness capture fixtures and `apps/desktop/package.json`. It is
   not running as a commit gate today. Restoring it is separate work, but an
   exemption added for the trap key should not widen what already fails.
-- Freeze the script, the key, and their SHA-256 hashes in a commit before any
-  engine runs, as the engine comparison did.
+- **Built.** [`notes/fixtures/synthetic/trap-briefing.json`](../notes/fixtures/synthetic/trap-briefing.json)
+  holds the script (15 lines, 282 words, about two minutes spoken) and 18
+  traps in nine categories. Script and key are one file, so they cannot drift.
+  Frozen SHA-256:
+  `2c8e19db634c041428f1b448d26c0cf9cabe6af6db6f5d033e00d9c1b112102c`.
+  If this hash changes, results from before and after are not comparable.
+- The same file carries the decisions, open question, action items and
+  note-level traps for a future note arm, under `note_claims_deferred`, so the
+  script need not change if generation returns.
+- `notes/test_trap_fixture.py` checks that every trap is spoken in its line and
+  accepted, that IDs are unique, and that the key is exempt only because of
+  its header. A planted misspelling made it fail.
 
 ### 2. Audio
 
@@ -116,6 +125,6 @@ faithful to a wrong transcript passes grounding but fails against the key.
 
 ## Size
 
-Slices 1 to 3 are one short branch: a script, a key, a scorer flag with tests,
+Slices 2 and 3 are one short branch: rendered audio, a scorer flag with tests,
 and one result section appended to this document. The capture-path arm needs
 about ten minutes of the operator's time at the Mac.
