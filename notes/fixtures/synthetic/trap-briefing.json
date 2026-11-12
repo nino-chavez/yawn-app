@@ -33,7 +33,7 @@
     {"id": "T07", "line": "L07", "category": "version", "spoken": "2.14.3", "accepted": ["2.14.3"]},
     {"id": "T08", "line": "L07", "category": "version", "spoken": "Python 3.13", "accepted": ["Python 3.13"]},
     {"id": "T09", "line": "L08", "category": "proper_name", "spoken": "Nguyen", "accepted": ["Nguyen"]},
-    {"id": "T10", "line": "L08", "category": "date", "spoken": "December 3rd", "accepted": ["December 3rd", "December 3", "December third", "Dec 3"]},
+    {"id": "T10", "line": "L08", "category": "date", "spoken": "December 3rd", "accepted": ["December 3rd", "December 3", "December third", "Dec 3", "3rd of December", "third of December"]},
     {"id": "T11", "line": "L09", "category": "run_together_name", "spoken": "PostgreSQL", "accepted": ["PostgreSQL", "Postgres SQL", "Postgre SQL"]},
     {"id": "T12", "line": "L09", "category": "identifier", "spoken": "ENG-4417", "accepted": ["ENG-4417", "ENG 4417", "Eng-4417", "Eng 4417"]},
     {"id": "T13", "line": "L10", "category": "homophone", "spoken": "Cisco", "accepted": ["Cisco"]},

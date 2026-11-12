@@ -1,7 +1,8 @@
 # Scope — a planted-trap check for exact names and numbers
 
-Status: scoped on 2026-11-11. Slice 1 is built: the operator chose the narrow
-gate exemption the same day. Slices 2 and 3 need their own go-ahead.
+Status: slices 1 to 3 built and the direct-decode arm run on 2026-11-11.
+[Results](#results--direct-decode-arm-2026-11-11) are below. The capture-path
+arm needs the operator at the Mac; the note arm stays deferred.
 
 **Recommendation:** build a small, synthetic test script with deliberate traps,
 and score transcripts against it. It extends `notes/compare_transcripts.py`; it
@@ -72,7 +73,7 @@ something fails.
   holds the script (15 lines, 282 words, about two minutes spoken) and 18
   traps in nine categories. Script and key are one file, so they cannot drift.
   Frozen SHA-256:
-  `2c8e19db634c041428f1b448d26c0cf9cabe6af6db6f5d033e00d9c1b112102c`.
+  `40faa4d244b9c621ca3a2c6596b7c81a70719a2a7b17f1019cd641ca5f4bb6b3`.
   If this hash changes, results from before and after are not comparable.
 - The same file carries the decisions, open question, action items and
   note-level traps for a future note arm, under `note_claims_deferred`, so the
@@ -92,6 +93,11 @@ something fails.
   operator's voice: they stay outside Git, with only hashes recorded.
 - Limit to state in the result: synthetic voices are cleaner than people, so
   direct-decode survival is an upper bound.
+- **Built.** [`notes/render_trap_audio.py`](../notes/render_trap_audio.py)
+  voices `Me` with Samantha (en_US) and `Them` with Daniel (en_GB), writes one
+  16 kHz mono leg per speaker plus a mix, and refuses to write inside the
+  repository. Its `manifest.json` is the `speech-engine-corpus/1` shape that
+  `spike/speech-engine-comparison/run_comparison.py` already accepts.
 
 ### 3. Scorer
 
@@ -104,6 +110,16 @@ something fails.
 - **Negative control.** A copy of the expected transcript with every trap
   mangled must score 0 kept and exit non-zero. A clean copy must score every
   trap kept. Run both before trusting any engine result.
+- **Built.** `python notes/compare_transcripts.py --traps <key> [--speaker Me]
+  run.json ...` reads probe results (every run) or transcript files. Each
+  transcript is aligned to the script by its words; a trap is looked for only
+  in the stretch aligned to its own line, and the words heard in its place are
+  recorded positionally, not by similarity. `notes/test_trap_scoring.py` covers
+  the clean and mangled controls, a form said in another line not counting,
+  dropped lines and dropped words, and one leg scoring only its speaker. The
+  first test run caught two scorer bugs (a garble at a line's first word was
+  credited to the line before, and the "heard" words were picked by
+  similarity); both are fixed and tested.
 
 ### 4. Note arm — deferred
 
@@ -116,6 +132,64 @@ returns, reuse `check_owner_grounding`, `check_recall`, and `check_numbers` in
 `notes/summarize.py`. Add one category the current checks miss: a claim that is
 faithful to a wrong transcript passes grounding but fails against the key.
 
+## Results — direct-decode arm, 2026-11-11
+
+Three runs per engine on the rendered audio, Apple-silicon Mac on macOS 27.2.
+Whisper is `whisper-large-v3-turbo` full model, revision `a4aaeec0`, the
+catalog's "Full model" (the 4-bit shipping default is not on this Mac).
+Parakeet is FluidAudio 0.15.6, Parakeet TDT 0.6B v3, the model Meetily ships.
+Apple is SpeechTranscriber. Audio SHA-256 prefixes: `trap-me` `3516fe23e863`,
+`trap-them` `f12868b55163`, `trap-mixed` `dca7e39ae85e`. Raw output and
+receipts stay in the owner's
+`~/Library/Application Support/yawn-research/trap-check-2026-11-11`.
+
+| Engine | Traps kept per run (of 18) | Without T12 (of 17) | Missed, as heard |
+| --- | ---: | ---: | --- |
+| Whisper | 15 | 15 | `4070T Super`, `post-GurSQL` |
+| Parakeet | 13 | 13 | `Shavan`, `When` (Nguyen), `4070T Super`, `1124 H2` |
+| Apple | 12 | 12 | `When` (Nguyen), `4070 T Super`, `1124 H2`, `post-Ger SQL`, `230 PM` |
+
+**What it means**
+
+- **The traps separate the engines,** so the falsifier did not fire. Whisper
+  kept the most. That supports keeping it as the shipping baseline; it does
+  not by itself settle the open engine decision, which also weighs waiting
+  time.
+- **Parakeet loses names.** It wrote "Shavan" for Siobhan and "When" for
+  Nguyen, the same failure class the XDA test saw in Meetily. Apple shares the
+  Nguyen error and also merges numbers ("Windows 11 24H2" became "1124 H2",
+  "2:30" became "230").
+- **Every engine lost "Ti".** "RTX 4070 Ti Super" came back as "4070T" or
+  "4070 T" from all three.
+- **Mixing the legs cost nothing here.** Each engine's per-leg scores sum to
+  its mixed score. That holds for clean synthetic legs only.
+- **Vocabulary fixability is not established.** Every miss repeated
+  identically across the three runs, but each run decoded the same audio, so a
+  repeat is expected and proves little. Whether "4070T" recurs across
+  different recordings and voices is the real question, and only more
+  recordings (the capture-path arm, or more voices) can answer it.
+
+**Corrections made before these numbers**
+
+- **T10 key widened.** All three engines wrote "the 3rd of December". The
+  British voice reads the date day-first, and that transcript is correct, so
+  "3rd of December" and "third of December" were added as accepted forms. The
+  script text did not change, so the rendered audio still matches; the key's
+  frozen hash moved to `40faa4d2…b6b3` and the fixture test pins it.
+- **T12 is a voice artifact, kept in the table but excluded from the second
+  column.** All three engines heard "N4417", so the voice said "en", not
+  "E-N-G". The capture-path arm, read by a person, tests it properly.
+
+**A separate finding.** In the installed Yawn 0.6.19, the bundled Python is
+killed by the system (exit 137) after importing `numba`, and so cannot import
+`mlx_whisper`; the first Whisper attempts failed this way, and the run above
+used a separate environment with the same pinned versions (`mlx 0.29.3`,
+`mlx-whisper 0.4.3`, `numba 0.66.0`), which imports cleanly. This was seen
+from a shell. Whether the app's own worker hits it is not verified.
+
+**Still open:** the capture-path arm (about ten minutes of the operator's
+time) and the note arm (deferred until generation returns).
+
 ## Not in scope
 
 - Any change to the shipping engine, the app, or the minimum OS.
@@ -125,6 +199,5 @@ faithful to a wrong transcript passes grounding but fails against the key.
 
 ## Size
 
-Slices 2 and 3 are one short branch: rendered audio, a scorer flag with tests,
-and one result section appended to this document. The capture-path arm needs
-about ten minutes of the operator's time at the Mac.
+Slices 2 and 3 shipped as one branch. The capture-path arm needs about ten
+minutes of the operator's time at the Mac.
