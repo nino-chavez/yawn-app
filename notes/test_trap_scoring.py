@@ -89,3 +89,13 @@ def test_dropped_trap_word_is_not_fixable():
     rows = {row["id"]: row for row in report["rows"]}
     assert rows["T09"]["heard"] == ["", ""]
     assert "T09" not in report["vocabulary_fixable"]
+
+
+def test_nothing_scored_is_not_a_pass(tmp_path):
+    key = HERE / "fixtures" / "synthetic" / "trap-briefing.json"
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"runs": []}))
+    clean = tmp_path / "clean.txt"
+    clean.write_text(_script())
+    assert ct.trap_main(key, [empty], None, True) == 1
+    assert ct.trap_main(key, [clean], "me", True) == 2

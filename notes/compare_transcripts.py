@@ -228,8 +228,16 @@ def trap_report(key: dict, texts: list[str], speaker: str | None = None) -> dict
 
 def trap_main(key_path: Path, paths: list[Path], speaker: str | None, as_json: bool) -> int:
     key = json.loads(key_path.read_text())
+    if speaker is not None and speaker not in key["speakers"]:
+        print(f"unknown speaker {speaker!r}; the key declares {sorted(key['speakers'])}",
+              file=sys.stderr)
+        return 2
     texts = [text for path in paths for text in transcript_texts(path)]
     report = trap_report(key, texts, speaker)
+    if report["total"] == 0:
+        # Nothing scored is not a pass: no runs, or no traps for this speaker.
+        print("no trap checks were scored", file=sys.stderr)
+        return 1
     if as_json:
         print(json.dumps(report, indent=2))
     else:
