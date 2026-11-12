@@ -143,6 +143,11 @@ source changes and checks from remaining native validation. The existing search
 probe stays default-off. System-audio timeout detection and the deferred human
 note-quality review remain open; this work does not change the roadmap gates.
 
+**Research follow-up — 2026-11-11.** An XDA comparison of open-source meeting
+note-takers prompted a [planted-trap check](planted-trap-evaluation-scope.md)
+for exact names and numbers in transcripts. It is scoped only; each slice needs
+its own go-ahead, and it does not change the roadmap gates.
+
 ## Design direction rethink — 2026-09-02
 
 The operator rejected the visual direction: the installed app rendered a
