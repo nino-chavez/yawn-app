@@ -40,3 +40,14 @@ def test_key_is_exempt_only_because_of_its_header():
     assert privacy_gate.parse_and_scan(payload, "key", relative) == []
     stripped = {k: v for k, v in _key().items() if k != "synthetic"}
     assert privacy_gate.parse_and_scan(json.dumps(stripped).encode(), "key", relative)
+
+
+FROZEN_SHA256 = "2c8e19db634c041428f1b448d26c0cf9cabe6af6db6f5d033e00d9c1b112102c"
+
+
+def test_key_matches_its_frozen_hash():
+    # Results before and after an edit are not comparable. Changing the key
+    # means updating this hash and the scope doc together, on purpose.
+    import hashlib
+
+    assert hashlib.sha256(KEY.read_bytes()).hexdigest() == FROZEN_SHA256
