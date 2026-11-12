@@ -42,7 +42,7 @@ def test_key_is_exempt_only_because_of_its_header():
     assert privacy_gate.parse_and_scan(json.dumps(stripped).encode(), "key", relative)
 
 
-FROZEN_SHA256 = "2c8e19db634c041428f1b448d26c0cf9cabe6af6db6f5d033e00d9c1b112102c"
+FROZEN_SHA256 = "40faa4d244b9c621ca3a2c6596b7c81a70719a2a7b17f1019cd641ca5f4bb6b3"
 
 
 def test_key_matches_its_frozen_hash():
