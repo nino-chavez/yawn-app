@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Yawn Settings — synthetic</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="settings-standalone.css" />
+    <link rel="stylesheet" href="settings-window.css" />
+  <script>{const p=new URLSearchParams(location.search);if(p.get('study')==='refined')document.documentElement.dataset.yawnStudy='refined';if(['light','dark'].includes(p.get('appearance'))){try{localStorage.setItem('yawn.appearance',p.get('appearance'));}catch{}document.documentElement.dataset.theme=p.get('appearance');}}</script>
+    <link rel="stylesheet" href="refined.css">
+    <script src="relationships.js" defer></script>
+  </head>
+  <body>
+    <div id="settings-root"></div>
+    <script src="harness-nonce.js"></script>
+    <script src="tauri-stub.js"></script>
+    <script src="study-stub.js"></script>
+    <script type="module">
+      const source = await fetch("settings.html").then((response) => response.text());
+      const documentSource = new DOMParser().parseFromString(source, "text/html");
+      document.querySelector("#settings-root").replaceWith(documentSource.querySelector("main"));
+      await import("./settings-window.js");
+    </script>
+  </body>
+</html>

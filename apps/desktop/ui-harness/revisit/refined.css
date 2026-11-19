@@ -1,0 +1,35 @@
+/* Local comparison only. Keep Rail's current semantic palette in both themes. */
+html[data-yawn-study="refined"] .ledger-fold {
+  min-height: 22px;
+  padding: 2px 7px;
+  border-color: var(--separator-strong);
+}
+html[data-yawn-study="refined"] .ledger-fold:focus-visible {
+  outline: 2px solid var(--moment);
+  outline-offset: 2px;
+}
+html[data-yawn-study="refined"] .ledger-turns::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  width: 1px;
+  background: var(--separator);
+  pointer-events: none;
+}
+/* The mirror stays accessibility-hidden and noninteractive. Transparent text
+   preserves the single textarea while its exact wrapped lines carry a cue. */
+html[data-yawn-study="refined"] .ledger-mirror {
+  visibility: visible;
+  color: transparent;
+  z-index: 0;
+}
+html[data-yawn-study="refined"] .ledger-editor {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+html[data-yawn-study="refined"] .ledger-mirror-line {
+  border-radius: 3px;
+}
